@@ -74,7 +74,6 @@ export function GlobalCallScreen() {
       onEnd={endCall}
       onToggleAudio={toggleAudio}
       onToggleVideo={toggleVideo}
-      key={`call-${remoteStream?.id || 'no-remote'}`}
     />
   )
 }
