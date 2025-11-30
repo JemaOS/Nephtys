@@ -61,7 +61,7 @@ export function PersistentCallScreen() {
     (localStream?.getVideoTracks().length ?? 0) > 0 ||
     (remoteStream?.getVideoTracks().length ?? 0) > 0
 
-  console.log('📹 PersistentCallScreen render - isVideoCall:', isVideoCall, 'hasRemoteStream:', !!remoteStream)
+  console.log('📹 PersistentCallScreen render - isInCall:', isInCall, 'isRinging:', isRinging, 'isCalling:', isCalling, 'isVideoCall:', isVideoCall, 'hasRemoteStream:', !!remoteStream, 'incomingCall:', !!incomingCall)
 
   return (
     <div ref={containerRef} className="fixed inset-0 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 z-[100] flex flex-col">
