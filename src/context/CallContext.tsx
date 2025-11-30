@@ -287,6 +287,22 @@ export function CallProvider({ children }: { children: ReactNode }) {
       const stream = await webrtcManager.initializeCall(config)
       setLocalStream(stream)
 
+      // Configurer les callbacks AVANT de créer l'answer
+      webrtcManager.onRemoteStream((stream) => {
+        console.log('📞 Remote stream received')
+        setRemoteStream(stream)
+      })
+
+      webrtcManager.onIceCandidate(async (candidate) => {
+        await sendSignal({
+          type: 'ice-candidate',
+          from: user!.id,
+          to: incomingCallSignal.from,
+          data: candidate,
+          conversation_id: incomingCallSignal.conversation_id,
+        })
+      })
+
       const answer = await webrtcManager.createAnswer(incomingCallSignal.data)
 
       setIsPeerConnectionReady(true)
@@ -311,20 +327,6 @@ export function CallProvider({ children }: { children: ReactNode }) {
         conversation_id: incomingCallSignal.conversation_id,
       })
 
-      webrtcManager.onIceCandidate(async (candidate) => {
-        await sendSignal({
-          type: 'ice-candidate',
-          from: user!.id,
-          to: incomingCallSignal.from,
-          data: candidate,
-          conversation_id: incomingCallSignal.conversation_id,
-        })
-      })
-
-      webrtcManager.onRemoteStream((stream) => {
-        setRemoteStream(stream)
-      })
-
       await supabase.from('call_logs').insert({
         conversation_id: incomingCallSignal.conversation_id,
         caller_id: incomingCallSignal.from,
@@ -334,7 +336,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       })
 
       setIncomingCallSignal(null)
-      setIncomingCall(null)
+      // NE PAS effacer incomingCall - on en a besoin pour afficher le nom pendant l'appel
     } catch (error) {
       console.error('Error answering call:', error)
       setIsRinging(false)
