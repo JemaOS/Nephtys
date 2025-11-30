@@ -12,7 +12,7 @@ import { CallsPage } from './pages/CallsPage'
 import { ArchivedPage } from './pages/ArchivedPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { OfflineIndicator } from './components/OfflineIndicator'
-import { CallScreenWrapper } from './components/CallScreenWrapper'
+import { PersistentCallScreen } from './components/PersistentCallScreen'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()
@@ -111,7 +111,7 @@ function App() {
         <AuthProvider>
           <CallProvider>
             <OfflineIndicator />
-            <CallScreenWrapper />
+            <PersistentCallScreen />
             <AppRoutes />
           </CallProvider>
         </AuthProvider>
