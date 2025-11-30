@@ -177,6 +177,7 @@ export const CallScreen: React.FC<CallScreenProps> = ({
               ref={remoteVideoRef}
               autoPlay
               playsInline
+              muted={false}
               className={`w-full h-full bg-black ${remoteVideoFit === 'contain' ? 'object-contain' : 'object-cover'}`}
             />
             {console.log('📹 CallScreen: Rendering remote video element')}
