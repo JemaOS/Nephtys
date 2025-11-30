@@ -80,7 +80,7 @@ export function PersistentCallScreen() {
             ref={remoteVideoRef}
             autoPlay
             playsInline
-            muted={false}
+            muted
             className="w-full h-full bg-black object-contain"
           />
         ) : (
