@@ -1,0 +1,73 @@
+{
+  "name": "Anu - Messagerie Sécurisée",
+  "short_name": "Anu",
+  "description": "Application de messagerie chiffrée de bout en bout pour JemaOS",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#111b21",
+  "theme_color": "#6b6fdb",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "categories": ["social", "communication"],
+  "shortcuts": [
+    {
+      "name": "Nouvelle discussion",
+      "short_name": "Nouveau",
+      "description": "Démarrer une nouvelle conversation",
+      "url": "/contacts",
+      "icons": [{ "src": "/icon.svg", "sizes": "192x192" }]
+    },
+    {
+      "name": "Statuts",
+      "short_name": "Statuts",
+      "description": "Voir les statuts",
+      "url": "/status",
+      "icons": [{ "src": "/icon.svg", "sizes": "192x192" }]
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshot-mobile.png",
+      "sizes": "540x720",
+      "type": "image/png",
+      "form_factor": "narrow"
+    },
+    {
+      "src": "/screenshot-desktop.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide"
+    }
+  ]
+}

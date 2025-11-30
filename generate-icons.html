@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Générateur d'icônes Anu</title>
+</head>
+<body>
+    <h1>Générateur d'icônes PWA pour Anu</h1>
+    <canvas id="canvas192" width="192" height="192" style="border:1px solid #ccc; margin:10px;"></canvas>
+    <canvas id="canvas512" width="512" height="512" style="border:1px solid #ccc; margin:10px;"></canvas>
+    <br>
+    <button onclick="downloadIcons()">Télécharger les icônes</button>
+
+    <script>
+        function drawIcon(canvas, size) {
+            const ctx = canvas.getContext('2d');
+            const scale = size / 512;
+            
+            // Fond dégradé violet
+            const gradient = ctx.createLinearGradient(0, 0, size, size);
+            gradient.addColorStop(0, '#7578db');
+            gradient.addColorStop(1, '#6b6fdb');
+            
+            // Rectangle avec coins arrondis
+            const radius = 110 * scale;
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.roundRect(0, 0, size, size, radius);
+            ctx.fill();
+            
+            // Bulle de chat blanche
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+            ctx.beginPath();
+            const centerX = size / 2;
+            const centerY = size / 2;
+            const bubbleWidth = 280 * scale;
+            const bubbleHeight = 200 * scale;
+            const bubbleRadius = 40 * scale;
+            
+            // Bulle arrondie
+            ctx.roundRect(
+                centerX - bubbleWidth/2, 
+                centerY - bubbleHeight/2 - 20 * scale, 
+                bubbleWidth, 
+                bubbleHeight, 
+                bubbleRadius
+            );
+            ctx.fill();
+            
+            // Queue de la bulle
+            ctx.beginPath();
+            ctx.moveTo(centerX - 40 * scale, centerY + bubbleHeight/2 - 20 * scale);
+            ctx.lineTo(centerX - 60 * scale, centerY + bubbleHeight/2 + 20 * scale);
+            ctx.lineTo(centerX - 20 * scale, centerY + bubbleHeight/2 - 20 * scale);
+            ctx.fill();
+            
+            // Lettre A
+            ctx.fillStyle = '#6b6fdb';
+            ctx.font = `bold ${140 * scale}px system-ui, -apple-system, sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('A', centerX, centerY - 10 * scale);
+            
+            // Point de notification vert
+            ctx.fillStyle = '#00a884';
+            ctx.beginPath();
+            ctx.arc(size * 0.75, size * 0.25, 35 * scale, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        
+        // Dessiner les icônes
+        drawIcon(document.getElementById('canvas192'), 192);
+        drawIcon(document.getElementById('canvas512'), 512);
+        
+        function downloadIcons() {
+            // Télécharger 192x192
+            const canvas192 = document.getElementById('canvas192');
+            const link192 = document.createElement('a');
+            link192.download = 'icon-192.png';
+            link192.href = canvas192.toDataURL('image/png');
+            link192.click();
+            
+            // Télécharger 512x512
+            setTimeout(() => {
+                const canvas512 = document.getElementById('canvas512');
+                const link512 = document.createElement('a');
+                link512.download = 'icon-512.png';
+                link512.href = canvas512.toDataURL('image/png');
+                link512.click();
+            }, 500);
+        }
+    </script>
+</body>
+</html>
