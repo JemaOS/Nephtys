@@ -1,6 +1,6 @@
 import { useCall } from '@/context/CallContext'
 import { CallScreen } from './CallScreen'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 
 export function GlobalCallScreen() {
   const {
@@ -19,10 +19,8 @@ export function GlobalCallScreen() {
     toggleVideo,
   } = useCall()
 
-  const [isVideoCall, setIsVideoCall] = useState(false)
-
-  // Détecter si c'est un appel vidéo
-  useEffect(() => {
+  // Mémoriser isVideoCall pour éviter les re-renders
+  const isVideoCall = useMemo(() => {
     const hasVideo =
       incomingCall?.isVideo ||
       (localStream?.getVideoTracks().length ?? 0) > 0 ||
@@ -35,7 +33,7 @@ export function GlobalCallScreen() {
       result: hasVideo
     })
     
-    setIsVideoCall(hasVideo)
+    return hasVideo
   }, [incomingCall?.isVideo, localStream, remoteStream])
 
   // N'afficher que si un appel est actif
