@@ -99,10 +99,8 @@ export const CallScreen: React.FC<CallScreenProps> = ({
       console.log('📹 CallScreen: Attaching remote stream to video element');
       remoteVideoRef.current.srcObject = remoteStream;
       
-      // Forcer la lecture de la vidéo
-      remoteVideoRef.current.play().catch(err => {
-        console.error('Error playing remote video:', err);
-      });
+      // NE PAS appeler play() manuellement - laisser autoPlay faire son travail
+      // Cela évite l'AbortError quand le composant se re-rend
       
       // Détecter le ratio de la vidéo pour ajuster l'affichage
       remoteVideoRef.current.onloadedmetadata = () => {
@@ -126,9 +124,7 @@ export const CallScreen: React.FC<CallScreenProps> = ({
       remoteAudioRef.current.srcObject = remoteStream;
       // S'assurer que l'audio est activé
       remoteAudioRef.current.volume = 1.0;
-      remoteAudioRef.current.play().catch(err => {
-        console.error('Error playing remote audio:', err);
-      });
+      // NE PAS appeler play() manuellement - laisser autoPlay faire son travail
     }
   }, [remoteStream]);
 
