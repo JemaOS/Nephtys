@@ -1,11 +1,45 @@
 import { useNavigate, useLocation } from 'react-router-dom'
 import { MessageCircle, Users, Settings, Circle, Phone, Archive } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
+import { useEffect, useState } from 'react'
+import { supabase } from '@/lib/supabase'
 
 export function Sidebar() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { profile } = useAuth()
+  const { profile, user } = useAuth()
+  const [avatarUrl, setAvatarUrl] = useState(profile?.avatar_url)
+
+  // Update avatar when profile changes
+  useEffect(() => {
+    setAvatarUrl(profile?.avatar_url)
+  }, [profile?.avatar_url])
+
+  // Subscribe to profile updates for real-time avatar changes
+  useEffect(() => {
+    if (!user) return
+
+    const channel = supabase
+      .channel('sidebar-profile-updates')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'profiles',
+          filter: `id=eq.${user.id}`
+        },
+        (payload: any) => {
+          console.log('Sidebar: Profile avatar updated', payload.new.avatar_url)
+          setAvatarUrl(payload.new.avatar_url)
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [user])
 
   const navItems = [
     { path: '/chats', icon: MessageCircle, label: 'Discussions' },
@@ -24,11 +58,12 @@ export function Sidebar() {
         className="w-10 h-10 rounded-full cursor-pointer hover:opacity-80 transition-opacity overflow-hidden"
         onClick={() => navigate('/settings')}
       >
-        {profile?.avatar_url ? (
+        {avatarUrl ? (
           <img
-            src={profile.avatar_url}
-            alt={profile.username}
+            src={avatarUrl}
+            alt={profile?.username}
             className="w-full h-full object-cover"
+            key={avatarUrl}
           />
         ) : (
           <div className="w-full h-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-sm">

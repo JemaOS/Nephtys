@@ -101,14 +101,9 @@ export const CallScreen: React.FC<CallScreenProps> = ({
           const videoRatio = remoteVideoRef.current.videoWidth / remoteVideoRef.current.videoHeight;
           const screenRatio = window.innerWidth / window.innerHeight;
           
-          // Si la vidéo est beaucoup plus étroite que l'écran (portrait sur landscape)
-          // ou beaucoup plus large (landscape sur portrait), utiliser contain
-          // Sinon utiliser cover pour un meilleur rendu
-          if (Math.abs(videoRatio - screenRatio) > 0.5) {
-            setRemoteVideoFit('contain');
-          } else {
-            setRemoteVideoFit('cover');
-          }
+          // Toujours utiliser 'contain' pour éviter le zoom excessif
+          // Cela garantit que toute la vidéo est visible sans être coupée
+          setRemoteVideoFit('contain');
         }
       };
     }

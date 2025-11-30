@@ -28,21 +28,39 @@ export function ChatsPage() {
     if (user) {
       loadConversations()
       
-      // Subscribe to new conversations
-      const channel = supabase
+      // Subscribe to conversation changes
+      const conversationsChannel = supabase
         .channel('conversations')
-        .on('postgres_changes', 
-          { 
-            event: '*', 
-            schema: 'public', 
-            table: 'conversations' 
-          }, 
+        .on('postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'conversations'
+          },
           () => loadConversations()
         )
         .subscribe()
 
+      // Subscribe to profile changes for real-time avatar updates
+      const profilesChannel = supabase
+        .channel('profiles-updates')
+        .on('postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'profiles'
+          },
+          (payload) => {
+            console.log('Profile updated in ChatsPage:', payload)
+            // Reload conversations to get updated profile data
+            loadConversations()
+          }
+        )
+        .subscribe()
+
       return () => {
-        supabase.removeChannel(channel)
+        supabase.removeChannel(conversationsChannel)
+        supabase.removeChannel(profilesChannel)
       }
     }
   }, [user])
