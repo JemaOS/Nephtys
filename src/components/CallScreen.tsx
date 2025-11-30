@@ -92,14 +92,26 @@ export const CallScreen: React.FC<CallScreenProps> = ({
   }, [localStream]);
 
   useEffect(() => {
+    console.log('📹 CallScreen: remoteStream changed:', remoteStream);
+    console.log('📹 CallScreen: remoteStream tracks:', remoteStream?.getTracks().map(t => ({ kind: t.kind, enabled: t.enabled, readyState: t.readyState })));
+    
     if (remoteVideoRef.current && remoteStream) {
+      console.log('📹 CallScreen: Attaching remote stream to video element');
       remoteVideoRef.current.srcObject = remoteStream;
+      
+      // Forcer la lecture de la vidéo
+      remoteVideoRef.current.play().catch(err => {
+        console.error('Error playing remote video:', err);
+      });
       
       // Détecter le ratio de la vidéo pour ajuster l'affichage
       remoteVideoRef.current.onloadedmetadata = () => {
+        console.log('📹 CallScreen: Remote video metadata loaded');
         if (remoteVideoRef.current) {
           const videoRatio = remoteVideoRef.current.videoWidth / remoteVideoRef.current.videoHeight;
           const screenRatio = window.innerWidth / window.innerHeight;
+          
+          console.log('📹 Video ratio:', videoRatio, 'Screen ratio:', screenRatio);
           
           // Toujours utiliser 'contain' pour éviter le zoom excessif
           // Cela garantit que toute la vidéo est visible sans être coupée
@@ -110,6 +122,7 @@ export const CallScreen: React.FC<CallScreenProps> = ({
     
     // Attacher également le stream audio à un élément audio pour les appels audio
     if (remoteAudioRef.current && remoteStream) {
+      console.log('🔊 CallScreen: Attaching remote stream to audio element');
       remoteAudioRef.current.srcObject = remoteStream;
       // S'assurer que l'audio est activé
       remoteAudioRef.current.volume = 1.0;
