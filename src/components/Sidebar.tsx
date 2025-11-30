@@ -20,9 +20,21 @@ export function Sidebar() {
   return (
     <div className="w-16 h-screen bg-bg-surface flex flex-col items-center py-4 gap-6">
       {/* Logo / Avatar */}
-      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-sm cursor-pointer hover:opacity-80 transition-opacity"
-           onClick={() => navigate('/settings')}>
-        {profile?.username?.[0]?.toUpperCase() || 'A'}
+      <div
+        className="w-10 h-10 rounded-full cursor-pointer hover:opacity-80 transition-opacity overflow-hidden"
+        onClick={() => navigate('/settings')}
+      >
+        {profile?.avatar_url ? (
+          <img
+            src={profile.avatar_url}
+            alt={profile.username}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <div className="w-full h-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-sm">
+            {profile?.username?.[0]?.toUpperCase() || 'A'}
+          </div>
+        )}
       </div>
 
       {/* Separator */}
