@@ -52,7 +52,10 @@ export function GlobalCallScreen() {
     callerName,
     isVideoCall,
     hasLocalStream: !!localStream,
-    hasRemoteStream: !!remoteStream
+    localStreamTracks: localStream?.getTracks().length,
+    hasRemoteStream: !!remoteStream,
+    remoteStreamTracks: remoteStream?.getTracks().length,
+    remoteStreamId: remoteStream?.id
   })
 
   return (
@@ -71,6 +74,7 @@ export function GlobalCallScreen() {
       onEnd={endCall}
       onToggleAudio={toggleAudio}
       onToggleVideo={toggleVideo}
+      key={`call-${remoteStream?.id || 'no-remote'}`}
     />
   )
 }
