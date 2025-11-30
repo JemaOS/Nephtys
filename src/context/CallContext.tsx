@@ -221,6 +221,22 @@ export function CallProvider({ children }: { children: ReactNode }) {
       setCurrentCallUserId(userId)
       setCurrentCallConversationId(conversationId)
 
+      // Récupérer le nom de la personne qu'on appelle
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('display_name, username')
+        .eq('id', userId)
+        .maybeSingle()
+
+      const calleeName = profile?.display_name || profile?.username || 'Utilisateur'
+
+      setIncomingCall({
+        from: userId,
+        conversationId: conversationId,
+        isVideo: config.video,
+        callerName: calleeName
+      })
+
       const stream = await webrtcManager.initializeCall(config)
       setLocalStream(stream)
       setAudioEnabled(config.audio)
@@ -249,6 +265,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       })
 
       webrtcManager.onRemoteStream((stream) => {
+        console.log('📞 Remote stream received (caller side)')
         setRemoteStream(stream)
       })
 
