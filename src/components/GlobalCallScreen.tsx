@@ -1,8 +1,8 @@
 import { useCall } from '@/context/CallContext'
 import { CallScreen } from './CallScreen'
-import { useEffect, useState, useMemo } from 'react'
+import { useMemo, memo } from 'react'
 
-export function GlobalCallScreen() {
+export const GlobalCallScreen = memo(function GlobalCallScreen() {
   const {
     isInCall,
     isRinging,
@@ -74,4 +74,4 @@ export function GlobalCallScreen() {
       onToggleVideo={toggleVideo}
     />
   )
-}
+})
