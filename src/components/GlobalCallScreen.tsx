@@ -1,5 +1,6 @@
 import { useCall } from '@/context/CallContext'
 import { CallScreen } from './CallScreen'
+import { useEffect, useState } from 'react'
 
 export function GlobalCallScreen() {
   const {
@@ -18,13 +19,41 @@ export function GlobalCallScreen() {
     toggleVideo,
   } = useCall()
 
+  const [isVideoCall, setIsVideoCall] = useState(false)
+
+  // Détecter si c'est un appel vidéo
+  useEffect(() => {
+    const hasVideo =
+      incomingCall?.isVideo ||
+      (localStream?.getVideoTracks().length ?? 0) > 0 ||
+      (remoteStream?.getVideoTracks().length ?? 0) > 0
+    
+    console.log('📹 GlobalCallScreen: Detecting video call:', {
+      incomingCallIsVideo: incomingCall?.isVideo,
+      localVideoTracks: localStream?.getVideoTracks().length,
+      remoteVideoTracks: remoteStream?.getVideoTracks().length,
+      result: hasVideo
+    })
+    
+    setIsVideoCall(hasVideo)
+  }, [incomingCall?.isVideo, localStream, remoteStream])
+
   // N'afficher que si un appel est actif
   if (!isInCall && !isRinging && !isCalling) {
     return null
   }
 
   const callerName = incomingCall?.callerName || 'Utilisateur'
-  const isVideoCall = incomingCall?.isVideo || localStream?.getVideoTracks().length > 0 || false
+
+  console.log('📹 GlobalCallScreen render:', {
+    isInCall,
+    isRinging,
+    isCalling,
+    callerName,
+    isVideoCall,
+    hasLocalStream: !!localStream,
+    hasRemoteStream: !!remoteStream
+  })
 
   return (
     <CallScreen
