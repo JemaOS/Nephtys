@@ -17,7 +17,7 @@ import { VoiceMessage } from '@/components/VoiceMessage'
 import { CallScreen } from '@/components/CallScreen'
 import { ConversationInfo } from '@/components/ConversationInfo'
 import { useMessageReactions } from '@/hooks/useMessageReactions'
-import { useWebRTCCall } from '@/hooks/useWebRTCCall'
+import { useCall } from '@/context/CallContext'
 import { useNotifications } from '@/hooks/useNotifications'
 
 export function ChatViewPage() {
@@ -44,11 +44,7 @@ export function ChatViewPage() {
   const emojiPickerRef = useRef<HTMLDivElement>(null)
   
   const { reactions, addReaction, removeReaction } = useMessageReactions(conversationId || '')
-  const {
-    isInCall, isRinging, isCalling, localStream, remoteStream,
-    audioEnabled, videoEnabled, startCall, answerCall, endCall,
-    toggleAudio, toggleVideo, rejectCall,
-  } = useWebRTCCall(user?.id || '')
+  const { startCall } = useCall()
   const { permission, requestPermission, sendNotification, subscribeToConversation, unsubscribeFromConversation } = useNotifications()
   const { wallpaper } = useTheme()
   
@@ -555,9 +551,6 @@ export function ChatViewPage() {
           onStartVideoCall={handleStartVideoCall}
           onStartAudioCall={handleStartAudioCall}
         />
-      )}
-      {(isInCall || isRinging || isCalling) && (
-        <CallScreen isInCall={isInCall} isRinging={isRinging} isCalling={isCalling} localStream={localStream} remoteStream={remoteStream} audioEnabled={audioEnabled} videoEnabled={videoEnabled} callerName={displayName} isVideoCall={localStream?.getVideoTracks().length > 0 || false} onAnswer={answerCall} onReject={rejectCall} onEnd={endCall} onToggleAudio={toggleAudio} onToggleVideo={toggleVideo} />
       )}
     </MainLayout>
   )

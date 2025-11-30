@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { ThemeProvider } from './context/ThemeContext'
+import { CallProvider } from './context/CallContext'
 import { AuthPage } from './pages/AuthPage'
 import { ChatsPage } from './pages/ChatsPage'
 import { ChatViewPage } from './pages/ChatViewPage'
@@ -11,6 +12,7 @@ import { CallsPage } from './pages/CallsPage'
 import { ArchivedPage } from './pages/ArchivedPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { OfflineIndicator } from './components/OfflineIndicator'
+import { GlobalCallScreen } from './components/GlobalCallScreen'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()
@@ -107,8 +109,11 @@ function App() {
     <BrowserRouter>
       <ThemeProvider>
         <AuthProvider>
-          <OfflineIndicator />
-          <AppRoutes />
+          <CallProvider>
+            <OfflineIndicator />
+            <GlobalCallScreen />
+            <AppRoutes />
+          </CallProvider>
         </AuthProvider>
       </ThemeProvider>
     </BrowserRouter>
