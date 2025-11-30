@@ -39,6 +39,7 @@ export const CallScreen: React.FC<CallScreenProps> = ({
   const remoteAudioRef = useRef<HTMLAudioElement>(null);
   const [callDuration, setCallDuration] = useState(0);
   const [isAnswering, setIsAnswering] = useState(false);
+  const [remoteVideoFit, setRemoteVideoFit] = useState<'contain' | 'cover'>('contain');
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   const handleAnswer = async () => {
@@ -93,6 +94,23 @@ export const CallScreen: React.FC<CallScreenProps> = ({
   useEffect(() => {
     if (remoteVideoRef.current && remoteStream) {
       remoteVideoRef.current.srcObject = remoteStream;
+      
+      // Détecter le ratio de la vidéo pour ajuster l'affichage
+      remoteVideoRef.current.onloadedmetadata = () => {
+        if (remoteVideoRef.current) {
+          const videoRatio = remoteVideoRef.current.videoWidth / remoteVideoRef.current.videoHeight;
+          const screenRatio = window.innerWidth / window.innerHeight;
+          
+          // Si la vidéo est beaucoup plus étroite que l'écran (portrait sur landscape)
+          // ou beaucoup plus large (landscape sur portrait), utiliser contain
+          // Sinon utiliser cover pour un meilleur rendu
+          if (Math.abs(videoRatio - screenRatio) > 0.5) {
+            setRemoteVideoFit('contain');
+          } else {
+            setRemoteVideoFit('cover');
+          }
+        }
+      };
     }
     
     // Attacher également le stream audio à un élément audio pour les appels audio
@@ -150,7 +168,7 @@ export const CallScreen: React.FC<CallScreenProps> = ({
             ref={remoteVideoRef}
             autoPlay
             playsInline
-            className="w-full h-full object-contain bg-black"
+            className={`w-full h-full bg-black ${remoteVideoFit === 'contain' ? 'object-contain' : 'object-cover'}`}
           />
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center">
