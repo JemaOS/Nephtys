@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, useRef, ReactNode } from 'react'
 import { supabase } from '@/lib/supabase'
 import { webrtcManager, CallConfig } from '@/lib/webrtc'
 import { useAuth } from './AuthContext'
@@ -56,7 +56,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const [currentCallUserId, setCurrentCallUserId] = useState<string | null>(null)
   const [currentCallConversationId, setCurrentCallConversationId] = useState<string | null>(null)
   const [channelRef, setChannelRef] = useState<any>(null)
-  const [iceCandidateQueue, setIceCandidateQueue] = useState<QueuedIceCandidate[]>([])
+  const iceCandidateQueueRef = useRef<QueuedIceCandidate[]>([])
   const [isPeerConnectionReady, setIsPeerConnectionReady] = useState(false)
 
   // Subscribe to call signals globally
@@ -177,7 +177,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
         break
 
       case 'ice-candidate':
-        console.log('🔔 CallContext: ICE candidate received')
+        // NE PAS logger pour éviter le spam
         if (signal.data) {
           if (isPeerConnectionReady) {
             try {
@@ -186,10 +186,11 @@ export function CallProvider({ children }: { children: ReactNode }) {
               console.error('Error adding ICE candidate:', error)
             }
           } else {
-            setIceCandidateQueue(prev => [...prev, {
+            // Utiliser une ref au lieu de state pour éviter les re-renders
+            iceCandidateQueueRef.current.push({
               candidate: signal.data,
               timestamp: Date.now()
-            }])
+            })
           }
         }
         break
@@ -216,7 +217,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       console.log('📞 Starting call to:', userId)
       setIsCalling(true)
       setIsPeerConnectionReady(false)
-      setIceCandidateQueue([])
+      iceCandidateQueueRef.current = []
       
       setCurrentCallUserId(userId)
       setCurrentCallConversationId(conversationId)
@@ -324,16 +325,17 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
       setIsPeerConnectionReady(true)
 
-      if (iceCandidateQueue.length > 0) {
-        console.log(`Processing ${iceCandidateQueue.length} queued ICE candidates`)
-        for (const { candidate } of iceCandidateQueue) {
+      if (iceCandidateQueueRef.current.length > 0) {
+        console.log(`Processing ${iceCandidateQueueRef.current.length} queued ICE candidates`)
+        for (const { candidate } of iceCandidateQueueRef.current) {
           try {
             await webrtcManager.addIceCandidate(candidate)
           } catch (error) {
             console.error('Error adding queued ICE candidate:', error)
           }
         }
-        setIceCandidateQueue([])
+        // Vider la queue
+        iceCandidateQueueRef.current = []
       }
 
       await sendSignal({
@@ -403,7 +405,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
     setCurrentCallUserId(null)
     setCurrentCallConversationId(null)
     setIsPeerConnectionReady(false)
-    setIceCandidateQueue([])
+    iceCandidateQueueRef.current = []
   }
 
   const toggleAudio = () => {
