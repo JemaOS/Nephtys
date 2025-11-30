@@ -215,6 +215,36 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const startCall = async (userId: string, conversationId: string, config: CallConfig) => {
     try {
       console.log('📞 Starting call to:', userId)
+      
+      // DEMANDER EXPLICITEMENT les permissions sur mobile
+      if (typeof window !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
+        try {
+          console.log('📱 Mobile: Requesting permissions explicitly...')
+          const testStream = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+            video: config.video
+          })
+          
+          // Arrêter le stream de test immédiatement
+          testStream.getTracks().forEach(track => track.stop())
+          console.log('✅ Permissions granted')
+        } catch (permError: any) {
+          console.error('❌ Permission denied:', permError.name, permError.message)
+          
+          let errorMsg = '❌ Permissions requises\n\nPour appeler, vous devez autoriser :\n'
+          
+          if (permError.name === 'NotAllowedError') {
+            errorMsg += '• Caméra et Microphone\n\nSur Chrome Mobile :\n1. Appuyez sur 🔒 à côté de l\'URL\n2. Activez "Caméra" et "Microphone"'
+          } else {
+            errorMsg += '• Caméra et/ou Microphone\n\nAutorisez l\'accès dans les paramètres de votre navigateur.'
+          }
+          
+          alert(errorMsg)
+          setIsCalling(false)
+          return
+        }
+      }
+      
       setIsCalling(true)
       setIsPeerConnectionReady(false)
       iceCandidateQueueRef.current = []
