@@ -25,6 +25,8 @@ export class WebRTCManager {
 
   async initializeCall(config: CallConfig): Promise<MediaStream> {
     try {
+      console.log('🎥 WebRTC: Requesting permissions for audio:', config.audio, 'video:', config.video);
+      
       // Obtenir le stream local (audio/vidéo)
       this.localStream = await navigator.mediaDevices.getUserMedia({
         audio: config.audio,
@@ -33,6 +35,11 @@ export class WebRTCManager {
           height: { ideal: 720 },
           facingMode: 'user'
         } : false,
+      });
+
+      console.log('🎥 WebRTC: Local stream obtained:', this.localStream.getTracks().length, 'tracks');
+      this.localStream.getTracks().forEach((track, i) => {
+        console.log(`🎥 WebRTC: Track ${i}:`, track.kind, 'enabled:', track.enabled, 'readyState:', track.readyState);
       });
 
       // Créer la connexion peer
