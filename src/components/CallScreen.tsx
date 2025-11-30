@@ -172,12 +172,15 @@ export const CallScreen: React.FC<CallScreenProps> = ({
       {/* Remote Video (or avatar) */}
       <div className="flex-1 relative">
         {isVideoCall && remoteStream ? (
-          <video
-            ref={remoteVideoRef}
-            autoPlay
-            playsInline
-            className={`w-full h-full bg-black ${remoteVideoFit === 'contain' ? 'object-contain' : 'object-cover'}`}
-          />
+          <>
+            <video
+              ref={remoteVideoRef}
+              autoPlay
+              playsInline
+              className={`w-full h-full bg-black ${remoteVideoFit === 'contain' ? 'object-contain' : 'object-cover'}`}
+            />
+            {console.log('📹 CallScreen: Rendering remote video element')}
+          </>
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center">
             <div className="w-32 h-32 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-5xl mb-6">
