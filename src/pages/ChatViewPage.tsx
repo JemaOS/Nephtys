@@ -72,7 +72,7 @@ export function ChatViewPage() {
     if (permission === 'default') requestPermission()
     subscribeToConversation(conversationId)
     
-    const channel = supabase
+    const messagesChannel = supabase
       .channel(`messages:${conversationId}`, { config: { broadcast: { self: true } } })
       .on('postgres_changes', {
         event: 'INSERT', schema: 'public', table: 'messages',
@@ -90,8 +90,31 @@ export function ChatViewPage() {
         }
       })
       .subscribe()
-    return () => { supabase.removeChannel(channel); unsubscribeFromConversation(conversationId) }
-  }, [conversationId, user?.id, permission])
+
+    // Subscribe to profile changes for real-time avatar updates
+    const profilesChannel = supabase
+      .channel(`profiles-chat:${conversationId}`)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'profiles'
+      }, (payload) => {
+        console.log('Profile updated in ChatViewPage:', payload)
+        // Si c'est le profil de l'autre utilisateur, le mettre à jour
+        if (otherUser && payload.new.id === otherUser.id) {
+          setOtherUser(payload.new as Profile)
+        }
+        // Recharger aussi la conversation pour les groupes
+        loadConversation()
+      })
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(messagesChannel)
+      supabase.removeChannel(profilesChannel)
+      unsubscribeFromConversation(conversationId)
+    }
+  }, [conversationId, user?.id, permission, otherUser?.id])
 
   useEffect(() => { scrollToBottom() }, [messages])
   const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -298,11 +321,12 @@ export function ChatViewPage() {
             className="flex-1 flex items-center gap-3 cursor-pointer hover:bg-bg-hover -mx-2 px-2 py-1 rounded transition-colors"
             onClick={() => setShowConversationInfo(true)}
           >
-            {conversation?.avatar_url ? (
+            {(conversation?.type === 'direct' && otherUser?.avatar_url) || conversation?.avatar_url ? (
               <img
-                src={conversation.avatar_url}
+                src={conversation?.type === 'direct' ? otherUser?.avatar_url! : conversation?.avatar_url!}
                 alt={displayName}
                 className="w-10 h-10 rounded-full object-cover"
+                key={conversation?.type === 'direct' ? otherUser?.avatar_url : conversation?.avatar_url}
               />
             ) : (
               <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold">

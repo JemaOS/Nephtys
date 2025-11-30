@@ -465,11 +465,12 @@ export function ChatsPage() {
                   <div className="flex items-center gap-3">
                     {/* Avatar */}
                     <div className="relative">
-                      {conversation.avatar_url ? (
+                      {(conversation.type === 'direct' && conversation.otherUserProfile?.avatar_url) || conversation.avatar_url ? (
                         <img
-                          src={conversation.avatar_url}
+                          src={conversation.type === 'direct' ? conversation.otherUserProfile?.avatar_url! : conversation.avatar_url!}
                           alt={displayName}
                           className="w-12 h-12 rounded-full object-cover flex-shrink-0"
+                          key={conversation.type === 'direct' ? conversation.otherUserProfile?.avatar_url : conversation.avatar_url}
                         />
                       ) : (
                         <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold text-lg flex-shrink-0">
