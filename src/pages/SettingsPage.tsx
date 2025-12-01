@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { MainLayout } from '@/components/MainLayout'
 import { useAuth } from '@/context/AuthContext'
@@ -8,7 +8,7 @@ import {
   ArrowLeft, User, Lock, Bell, MessageSquare, Video, Palette,
   Globe, Database, HelpCircle, Info, LogOut, ChevronRight,
   Moon, Sun, Monitor, Check, Camera, Edit2, Shield, Key, Trash2,
-  Eye, EyeOff, Download, Wifi, WifiOff, Mail
+  Eye, EyeOff, Download, Wifi, WifiOff, Mail, Image, FileText, Mic, Loader2
 } from 'lucide-react'
 
 type SettingsView = 'main' | 'profile' | 'account' | 'privacy' | 'security' | '2fa' | 'delete' | 
@@ -31,8 +31,136 @@ export function SettingsPage() {
   const [showProfilePhoto, setShowProfilePhoto] = useState(true)
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false)
   const [enterToSend, setEnterToSend] = useState(true)
-  const [autoDownload, setAutoDownload] = useState(true)
+  const [autoDownloadWifi, setAutoDownloadWifi] = useState(true)
+  const [autoDownloadMobile, setAutoDownloadMobile] = useState(false)
+  const [autoDownloadPhotos, setAutoDownloadPhotos] = useState(true)
+  const [autoDownloadVideos, setAutoDownloadVideos] = useState(false)
+  const [autoDownloadFiles, setAutoDownloadFiles] = useState(true)
+  const [autoDownloadAudio, setAutoDownloadAudio] = useState(true)
+  
+  // Storage stats
+  const [storageStats, setStorageStats] = useState({
+    total: 0,
+    photos: 0,
+    videos: 0,
+    files: 0,
+    audio: 0,
+    loading: true
+  })
+  const [clearingStorage, setClearingStorage] = useState(false)
 
+
+  // Load storage stats
+  useEffect(() => {
+    loadStorageStats()
+  }, [user])
+
+  const loadStorageStats = async () => {
+    if (!user) return
+    
+    try {
+      // Get all messages with media for this user's conversations
+      const { data: memberData } = await supabase
+        .from('conversation_members')
+        .select('conversation_id')
+        .eq('user_id', user.id)
+      
+      if (!memberData || memberData.length === 0) {
+        setStorageStats({ total: 0, photos: 0, videos: 0, files: 0, audio: 0, loading: false })
+        return
+      }
+      
+      const conversationIds = memberData.map(m => m.conversation_id)
+      
+      const { data: messages } = await supabase
+        .from('messages')
+        .select('type, media_type, file_size')
+        .in('conversation_id', conversationIds)
+        .not('file_size', 'is', null)
+      
+      if (!messages) {
+        setStorageStats({ total: 0, photos: 0, videos: 0, files: 0, audio: 0, loading: false })
+        return
+      }
+      
+      let photos = 0, videos = 0, files = 0, audio = 0
+      
+      messages.forEach(msg => {
+        const size = msg.file_size || 0
+        const type = msg.media_type || msg.type
+        
+        if (type === 'image') photos += size
+        else if (type === 'video') videos += size
+        else if (type === 'audio' || type === 'voice') audio += size
+        else if (type === 'file') files += size
+      })
+      
+      setStorageStats({
+        total: photos + videos + files + audio,
+        photos,
+        videos,
+        files,
+        audio,
+        loading: false
+      })
+    } catch (err) {
+      console.error('Error loading storage stats:', err)
+      setStorageStats({ total: 0, photos: 0, videos: 0, files: 0, audio: 0, loading: false })
+    }
+  }
+
+  const formatBytes = (bytes: number): string => {
+    if (bytes === 0) return '0 B'
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
+  }
+
+  const handleClearStorage = async (type: 'all' | 'photos' | 'videos' | 'files' | 'audio') => {
+    if (!user) return
+    
+    const typeLabel = type === 'all' ? 'toutes les données' :
+                      type === 'photos' ? 'les photos' :
+                      type === 'videos' ? 'les vidéos' :
+                      type === 'files' ? 'les fichiers' : 'les messages vocaux'
+    
+    if (!confirm(`Voulez-vous vraiment supprimer ${typeLabel} en cache ?\n\nCette action est irréversible.`)) return
+    
+    setClearingStorage(true)
+    try {
+      const { data: memberData } = await supabase
+        .from('conversation_members')
+        .select('conversation_id')
+        .eq('user_id', user.id)
+      
+      if (!memberData) return
+      
+      const conversationIds = memberData.map(m => m.conversation_id)
+      
+      let query = supabase
+        .from('messages')
+        .update({ media_url: null, file_url: null, file_size: null })
+        .in('conversation_id', conversationIds)
+      
+      if (type !== 'all') {
+        const mediaType = type === 'photos' ? 'image' :
+                         type === 'videos' ? 'video' :
+                         type === 'audio' ? 'audio' : 'file'
+        query = query.or(`media_type.eq.${mediaType},type.eq.${mediaType}`)
+      }
+      
+      await query
+      
+      alert('✅ Cache vidé avec succès !')
+      loadStorageStats()
+    } catch (err) {
+      console.error('Error clearing storage:', err)
+      alert('❌ Erreur lors du vidage du cache')
+    } finally {
+      setClearingStorage(false)
+    }
+  }
 
   const handleSignOut = async () => {
     if (confirm('Êtes-vous sûr de vouloir vous déconnecter ?')) {
@@ -519,13 +647,127 @@ export function SettingsPage() {
   const renderStorageView = () => (
     <div className="flex-1 overflow-y-auto pb-4">
       <div className="py-2">
-        <div className="px-6 py-4 bg-bg-surface mx-4 rounded-2xl mb-4">
-          <div className="text-center space-y-2">
+        {/* Total storage card */}
+        <div className="px-6 py-6 bg-bg-surface mx-4 rounded-2xl mb-4">
+          <div className="text-center space-y-3">
             <Database size={48} className="mx-auto text-accent" />
-            <div className="text-2xl font-bold text-text-primary">125 MB</div>
-            <div className="text-sm text-text-secondary">Espace utilisé</div>
+            {storageStats.loading ? (
+              <Loader2 size={24} className="mx-auto animate-spin text-accent" />
+            ) : (
+              <>
+                <div className="text-3xl font-bold text-text-primary">{formatBytes(storageStats.total)}</div>
+                <div className="text-sm text-text-secondary">Espace utilisé</div>
+              </>
+            )}
           </div>
         </div>
+
+        {/* Storage breakdown */}
+        {!storageStats.loading && storageStats.total > 0 && (
+          <div className="px-4 mb-4">
+            <div className="bg-bg-surface rounded-2xl p-4 space-y-3">
+              <h3 className="text-sm text-accent font-medium mb-3">Répartition</h3>
+              
+              {storageStats.photos > 0 && (
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Image size={20} className="text-blue-400" />
+                    <span className="text-text-primary">Photos</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-text-secondary">{formatBytes(storageStats.photos)}</span>
+                    <button
+                      onClick={() => handleClearStorage('photos')}
+                      disabled={clearingStorage}
+                      className="text-xs text-accent hover:underline"
+                    >
+                      Vider
+                    </button>
+                  </div>
+                </div>
+              )}
+              
+              {storageStats.videos > 0 && (
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Video size={20} className="text-purple-400" />
+                    <span className="text-text-primary">Vidéos</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-text-secondary">{formatBytes(storageStats.videos)}</span>
+                    <button
+                      onClick={() => handleClearStorage('videos')}
+                      disabled={clearingStorage}
+                      className="text-xs text-accent hover:underline"
+                    >
+                      Vider
+                    </button>
+                  </div>
+                </div>
+              )}
+              
+              {storageStats.audio > 0 && (
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Mic size={20} className="text-green-400" />
+                    <span className="text-text-primary">Messages vocaux</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-text-secondary">{formatBytes(storageStats.audio)}</span>
+                    <button
+                      onClick={() => handleClearStorage('audio')}
+                      disabled={clearingStorage}
+                      className="text-xs text-accent hover:underline"
+                    >
+                      Vider
+                    </button>
+                  </div>
+                </div>
+              )}
+              
+              {storageStats.files > 0 && (
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <FileText size={20} className="text-orange-400" />
+                    <span className="text-text-primary">Fichiers</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-text-secondary">{formatBytes(storageStats.files)}</span>
+                    <button
+                      onClick={() => handleClearStorage('files')}
+                      disabled={clearingStorage}
+                      className="text-xs text-accent hover:underline"
+                    >
+                      Vider
+                    </button>
+                  </div>
+                </div>
+              )}
+              
+              <div className="pt-3 border-t border-bg-hover">
+                <button
+                  onClick={() => handleClearStorage('all')}
+                  disabled={clearingStorage}
+                  className="w-full py-2 rounded-xl bg-red-500/10 text-red-500 text-sm font-medium hover:bg-red-500/20 transition-colors flex items-center justify-center gap-2"
+                >
+                  {clearingStorage ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" />
+                      Suppression...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 size={16} />
+                      Vider tout le cache
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Network settings link */}
         <button onClick={() => setCurrentView('network')} className="w-full px-6 py-4 flex items-center gap-4 hover:bg-bg-surface transition-colors">
           <Globe size={24} className="text-text-secondary" />
           <div className="flex-1 text-left">
@@ -539,15 +781,99 @@ export function SettingsPage() {
   )
 
   const renderNetworkView = () => (
-    <div className="flex-1 overflow-y-auto p-6 space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="text-text-primary">Téléchargement automatique</div>
-          <div className="text-sm text-text-secondary">Photos, vidéos et fichiers</div>
+    <div className="flex-1 overflow-y-auto pb-4">
+      <div className="py-2">
+        {/* WiFi settings */}
+        <div className="px-6 py-4">
+          <h3 className="text-sm text-accent mb-4 flex items-center gap-2">
+            <Wifi size={16} />
+            Connexion Wi-Fi
+          </h3>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-text-primary">Téléchargement automatique</div>
+                <div className="text-sm text-text-secondary">Télécharger les médias en Wi-Fi</div>
+              </div>
+              <button onClick={() => setAutoDownloadWifi(!autoDownloadWifi)} className={`w-12 h-6 rounded-full relative transition-colors ${autoDownloadWifi ? 'bg-accent' : 'bg-[#8696a0]'}`}>
+                <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${autoDownloadWifi ? 'right-1' : 'left-1'}`}></div>
+              </button>
+            </div>
+          </div>
         </div>
-        <button onClick={() => setAutoDownload(!autoDownload)} className={`w-12 h-6 rounded-full relative transition-colors ${autoDownload ? 'bg-accent' : 'bg-[#8696a0]'}`}>
-          <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${autoDownload ? 'right-1' : 'left-1'}`}></div>
-        </button>
+
+        {/* Mobile data settings */}
+        <div className="px-6 py-4 border-t border-bg-hover">
+          <h3 className="text-sm text-accent mb-4 flex items-center gap-2">
+            <WifiOff size={16} />
+            Données mobiles
+          </h3>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-text-primary">Téléchargement automatique</div>
+                <div className="text-sm text-text-secondary">Télécharger avec données mobiles</div>
+              </div>
+              <button onClick={() => setAutoDownloadMobile(!autoDownloadMobile)} className={`w-12 h-6 rounded-full relative transition-colors ${autoDownloadMobile ? 'bg-accent' : 'bg-[#8696a0]'}`}>
+                <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${autoDownloadMobile ? 'right-1' : 'left-1'}`}></div>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Media type settings */}
+        <div className="px-6 py-4 border-t border-bg-hover">
+          <h3 className="text-sm text-accent mb-4">Types de médias</h3>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Image size={20} className="text-blue-400" />
+                <span className="text-text-primary">Photos</span>
+              </div>
+              <button onClick={() => setAutoDownloadPhotos(!autoDownloadPhotos)} className={`w-12 h-6 rounded-full relative transition-colors ${autoDownloadPhotos ? 'bg-accent' : 'bg-[#8696a0]'}`}>
+                <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${autoDownloadPhotos ? 'right-1' : 'left-1'}`}></div>
+              </button>
+            </div>
+            
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Video size={20} className="text-purple-400" />
+                <span className="text-text-primary">Vidéos</span>
+              </div>
+              <button onClick={() => setAutoDownloadVideos(!autoDownloadVideos)} className={`w-12 h-6 rounded-full relative transition-colors ${autoDownloadVideos ? 'bg-accent' : 'bg-[#8696a0]'}`}>
+                <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${autoDownloadVideos ? 'right-1' : 'left-1'}`}></div>
+              </button>
+            </div>
+            
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Mic size={20} className="text-green-400" />
+                <span className="text-text-primary">Messages vocaux</span>
+              </div>
+              <button onClick={() => setAutoDownloadAudio(!autoDownloadAudio)} className={`w-12 h-6 rounded-full relative transition-colors ${autoDownloadAudio ? 'bg-accent' : 'bg-[#8696a0]'}`}>
+                <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${autoDownloadAudio ? 'right-1' : 'left-1'}`}></div>
+              </button>
+            </div>
+            
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <FileText size={20} className="text-orange-400" />
+                <span className="text-text-primary">Fichiers</span>
+              </div>
+              <button onClick={() => setAutoDownloadFiles(!autoDownloadFiles)} className={`w-12 h-6 rounded-full relative transition-colors ${autoDownloadFiles ? 'bg-accent' : 'bg-[#8696a0]'}`}>
+                <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${autoDownloadFiles ? 'right-1' : 'left-1'}`}></div>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Info */}
+        <div className="px-6 py-4">
+          <p className="text-xs text-text-secondary">
+            Les paramètres de téléchargement automatique déterminent quand les médias sont téléchargés automatiquement.
+            Désactivez le téléchargement automatique pour économiser des données.
+          </p>
+        </div>
       </div>
     </div>
   )

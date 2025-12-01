@@ -1,23 +1,50 @@
-import React, { useRef, useState } from 'react';
-import { Image, Video, File, X, Loader2 } from 'lucide-react';
+import React, { useRef, useState, useEffect } from 'react';
+import { Image, Video, File as FileIcon, X, Loader2, Camera, Smile, Sticker, FileImage, Search, Plus, Send } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
+// Tenor GIF API (free tier)
+const TENOR_API_KEY = 'AIzaSyAyimkuYQYF_FXVALexPuGQctUWRURdCYQ'; // Public API key for demo
+const TENOR_CLIENT_KEY = 'nephtys_app';
+
 interface MediaUploaderProps {
-  onMediaSelect: (file: File, type: 'image' | 'video' | 'file') => void;
+  onMediaSelect: (selectedFile: globalThis.File, type: 'image' | 'video' | 'file') => void;
   onUploadComplete: (url: string, type: 'image' | 'video' | 'file', fileName: string, fileSize: number) => void;
   onCancel: () => void;
+  onEmojiSelect?: (emoji: string) => void;
+  onGifStickerSend?: (url: string, type: 'gif' | 'sticker', caption?: string) => void;
 }
 
 export const MediaUploader: React.FC<MediaUploaderProps> = ({
   onMediaSelect,
   onUploadComplete,
   onCancel,
+  onEmojiSelect,
+  onGifStickerSend,
 }) => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [activeTab, setActiveTab] = useState<'attach' | 'emoji' | 'sticker' | 'gif'>('attach');
+  const [cameraMode, setCameraMode] = useState<'photo' | 'video' | null>(null);
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const [gifSearchQuery, setGifSearchQuery] = useState('');
+  const [gifs, setGifs] = useState<any[]>([]);
+  const [loadingGifs, setLoadingGifs] = useState(false);
+  const [stickerPack, setStickerPack] = useState<'love' | 'fun' | 'animals' | 'food'>('love');
+  // GIF/Sticker preview state
+  const [selectedGifSticker, setSelectedGifSticker] = useState<{
+    url: string;
+    previewUrl: string;
+    type: 'gif' | 'sticker';
+  } | null>(null);
+  const [gifStickerCaption, setGifStickerCaption] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const getFileType = (file: File): 'image' | 'video' | 'file' => {
     if (file.type.startsWith('image/')) return 'image';
@@ -47,6 +74,69 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       };
       reader.readAsDataURL(file);
     }
+  };
+
+  // Camera functions
+  const startCamera = async (mode: 'photo' | 'video') => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment' },
+        audio: mode === 'video'
+      });
+      setCameraStream(stream);
+      setCameraMode(mode);
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    } catch (error) {
+      console.error('Error accessing camera:', error);
+      alert('Impossible d\'accéder à la caméra. Vérifiez les permissions.');
+    }
+  };
+
+  const stopCamera = () => {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(track => track.stop());
+      setCameraStream(null);
+    }
+    setCameraMode(null);
+  };
+
+  const capturePhoto = () => {
+    if (videoRef.current && canvasRef.current) {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(video, 0, 0);
+        canvas.toBlob((blob) => {
+          if (blob) {
+            const file = new File([blob], `photo-${Date.now()}.jpg`, { type: 'image/jpeg' });
+            setSelectedFile(file);
+            setPreview(canvas.toDataURL('image/jpeg'));
+            onMediaSelect(file, 'image');
+            stopCamera();
+          }
+        }, 'image/jpeg', 0.9);
+      }
+    }
+  };
+
+  const handleCameraCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    setSelectedFile(file);
+    const type = getFileType(file);
+    onMediaSelect(file, type);
+    
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setPreview(reader.result as string);
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleUpload = async () => {
@@ -115,9 +205,18 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
   };
 
   const handleCancel = () => {
+    stopCamera();
     setSelectedFile(null);
     setPreview(null);
+    setActiveTab('attach');
     onCancel();
+  };
+
+  const handleEmojiClick = (emoji: string) => {
+    if (onEmojiSelect) {
+      onEmojiSelect(emoji);
+      onCancel();
+    }
   };
 
   const formatFileSize = (bytes: number): string => {
@@ -126,56 +225,572 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   };
 
+  // Emoji categories
+  const emojiCategories = {
+    recent: ['👍', '❤️', '😂', '😮', '😢', '🙏'],
+    smileys: ['😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😂', '🙂', '😊', '😇', '🥰', '😍', '🤩', '😘', '😗', '😚', '😋', '😛', '😜', '🤪', '😝', '🤑', '🤗', '🤭', '🤫', '🤔', '🤐', '🤨', '😐'],
+    gestures: ['👋', '🤚', '🖐️', '✋', '🖖', '👌', '🤌', '🤏', '✌️', '🤞', '🤟', '🤘', '🤙', '👈', '👉', '👆', '🖕', '👇', '☝️', '👍', '👎', '✊', '👊', '🤛', '🤜', '👏', '🙌', '👐', '🤲', '🤝'],
+    hearts: ['❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝', '💟', '♥️'],
+    objects: ['🎉', '🎊', '🎁', '🎈', '🎀', '🏆', '🥇', '🥈', '🥉', '⚽', '🏀', '🏈', '⚾', '🎾', '🏐', '🎱', '🎮', '🎯', '🎲', '🧩'],
+    nature: ['🌸', '🌺', '🌻', '🌹', '🌷', '🌼', '💐', '🌿', '🍀', '🌴', '🌵', '🌲', '🌳', '🍁', '🍂', '🍃', '🌾', '🌱', '🌊', '🔥'],
+    food: ['🍎', '🍊', '🍋', '🍌', '🍉', '🍇', '🍓', '🫐', '🍒', '🍑', '🥭', '🍍', '🥥', '🥝', '🍅', '🥑', '🍕', '🍔', '🍟', '🌭'],
+  };
+
+  // Sticker search categories
+  const stickerCategories = ['love', 'happy', 'sad', 'angry', 'cute', 'funny', 'hello', 'bye', 'thanks', 'sorry'];
+  const [selectedStickerCategory, setSelectedStickerCategory] = useState('love');
+  const [stickers, setStickers] = useState<any[]>([]);
+  const [loadingStickers, setLoadingStickers] = useState(false);
+  const [stickerSearchQuery, setStickerSearchQuery] = useState('');
+
+  // Fetch stickers from Tenor API
+  const fetchStickers = async (query: string = 'love') => {
+    setLoadingStickers(true);
+    try {
+      const endpoint = `https://tenor.googleapis.com/v2/search?q=${encodeURIComponent(query + ' sticker')}&key=${TENOR_API_KEY}&client_key=${TENOR_CLIENT_KEY}&limit=20&media_filter=tinywebp,webp`;
+      
+      const response = await fetch(endpoint);
+      const data = await response.json();
+      
+      if (data.results) {
+        setStickers(data.results);
+      }
+    } catch (error) {
+      console.error('Error fetching stickers:', error);
+      setStickers([]);
+    } finally {
+      setLoadingStickers(false);
+    }
+  };
+
+  // Load stickers when sticker tab is opened
+  useEffect(() => {
+    if (activeTab === 'sticker' && stickers.length === 0) {
+      fetchStickers(selectedStickerCategory);
+    }
+  }, [activeTab]);
+
+  // Fetch stickers when category changes
+  useEffect(() => {
+    if (activeTab === 'sticker') {
+      fetchStickers(stickerSearchQuery || selectedStickerCategory);
+    }
+  }, [selectedStickerCategory]);
+
+  // Debounced sticker search
+  useEffect(() => {
+    if (activeTab === 'sticker' && stickerSearchQuery) {
+      const timer = setTimeout(() => {
+        fetchStickers(stickerSearchQuery);
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [stickerSearchQuery]);
+
+  const handleStickerSelect = async (sticker: any) => {
+    const stickerUrl = sticker.media_formats?.webp?.url || sticker.media_formats?.tinywebp?.url || sticker.media_formats?.gif?.url || sticker.media_formats?.tinygif?.url;
+    const previewUrl = sticker.media_formats?.tinywebp?.url || sticker.media_formats?.tinygif?.url || stickerUrl;
+    
+    if (stickerUrl) {
+      // Show preview instead of sending immediately
+      setSelectedGifSticker({
+        url: stickerUrl,
+        previewUrl: previewUrl,
+        type: 'sticker'
+      });
+    }
+  };
+
+  // Fetch GIFs from Tenor API
+  const fetchGifs = async (query: string = '') => {
+    setLoadingGifs(true);
+    try {
+      const endpoint = query
+        ? `https://tenor.googleapis.com/v2/search?q=${encodeURIComponent(query)}&key=${TENOR_API_KEY}&client_key=${TENOR_CLIENT_KEY}&limit=20`
+        : `https://tenor.googleapis.com/v2/featured?key=${TENOR_API_KEY}&client_key=${TENOR_CLIENT_KEY}&limit=20`;
+      
+      const response = await fetch(endpoint);
+      const data = await response.json();
+      
+      if (data.results) {
+        setGifs(data.results);
+      }
+    } catch (error) {
+      console.error('Error fetching GIFs:', error);
+      // Fallback to placeholder GIFs if API fails
+      setGifs([]);
+    } finally {
+      setLoadingGifs(false);
+    }
+  };
+
+  // Load featured GIFs when GIF tab is opened
+  useEffect(() => {
+    if (activeTab === 'gif' && gifs.length === 0) {
+      fetchGifs();
+    }
+  }, [activeTab]);
+
+  // Debounced GIF search
+  useEffect(() => {
+    if (activeTab === 'gif') {
+      const timer = setTimeout(() => {
+        fetchGifs(gifSearchQuery);
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [gifSearchQuery, activeTab]);
+
+  const handleGifSelect = async (gif: any) => {
+    // Get the GIF URL - use medium quality for sending
+    const gifUrl = gif.media_formats?.gif?.url || gif.media_formats?.mediumgif?.url || gif.media_formats?.tinygif?.url || gif.url;
+    const previewUrl = gif.media_formats?.tinygif?.url || gif.media_formats?.nanogif?.url || gifUrl;
+    
+    if (gifUrl) {
+      // Show preview instead of sending immediately
+      setSelectedGifSticker({
+        url: gifUrl,
+        previewUrl: previewUrl,
+        type: 'gif'
+      });
+    }
+  };
+
+  const handleSendGifSticker = () => {
+    if (!selectedGifSticker) return;
+    
+    if (onGifStickerSend) {
+      onGifStickerSend(selectedGifSticker.url, selectedGifSticker.type, gifStickerCaption || undefined);
+    } else if (onEmojiSelect) {
+      // Fallback to old method
+      const prefix = selectedGifSticker.type === 'gif' ? 'GIF' : 'STICKER';
+      onEmojiSelect(`[${prefix}](${selectedGifSticker.url})`);
+    }
+    
+    setSelectedGifSticker(null);
+    setGifStickerCaption('');
+    onCancel();
+  };
+
+  const handleCancelGifStickerPreview = () => {
+    setSelectedGifSticker(null);
+    setGifStickerCaption('');
+  };
+
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-bg-secondary backdrop-blur-[30px] border border-glass-border rounded-2xl p-6 max-w-lg w-full shadow-2xl">
-        {!selectedFile ? (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-end md:items-center justify-center">
+      {/* GIF/Sticker Preview Mode - Full screen overlay */}
+      {selectedGifSticker && (
+        <div className="fixed inset-0 bg-bg-primary z-[110] flex flex-col">
+          {/* Header */}
+          <div className="flex items-center p-4 safe-area-top">
+            <button
+              onClick={handleCancelGifStickerPreview}
+              className="p-2 rounded-full hover:bg-bg-hover transition-colors text-text-primary"
+            >
+              <X size={24} />
+            </button>
+          </div>
+
+          {/* Preview area - takes remaining space */}
+          <div className="flex-1 flex items-center justify-center p-4 overflow-hidden">
+            <div className="max-w-full max-h-full flex items-center justify-center">
+              <img
+                src={selectedGifSticker.url}
+                alt={selectedGifSticker.type === 'gif' ? 'GIF' : 'Sticker'}
+                className="max-w-[90%] max-h-[50vh] md:max-h-[60vh] object-contain rounded-lg"
+              />
+            </div>
+          </div>
+
+          {/* Bottom bar with input and send - Mobile optimized */}
+          <div className="p-3 md:p-4 border-t border-bg-hover bg-bg-primary safe-area-bottom">
+            {/* Mobile layout: thumbnails on top, input below */}
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-3">
+              {/* Thumbnails row */}
+              <div className="flex items-center gap-2">
+                {/* Thumbnail */}
+                <div className="w-12 h-12 md:w-14 md:h-14 rounded-lg overflow-hidden border-2 border-accent flex-shrink-0">
+                  <img
+                    src={selectedGifSticker.previewUrl}
+                    alt="Preview"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                
+                {/* Add more button */}
+                <button
+                  onClick={handleCancelGifStickerPreview}
+                  className="w-12 h-12 md:w-14 md:h-14 rounded-lg border-2 border-dashed border-bg-hover flex items-center justify-center text-text-secondary hover:bg-bg-hover transition-colors flex-shrink-0"
+                >
+                  <Plus size={20} />
+                </button>
+              </div>
+
+              {/* Input and send row */}
+              <div className="flex items-center gap-2 flex-1">
+                {/* Caption input */}
+                <div className="flex-1">
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={gifStickerCaption}
+                      onChange={(e) => setGifStickerCaption(e.target.value)}
+                      placeholder="Entrez un message"
+                      className="w-full px-4 py-2.5 md:py-3 rounded-full bg-bg-surface text-text-primary placeholder:text-text-secondary outline-none text-sm md:text-base"
+                    />
+                  </div>
+                </div>
+
+                {/* Send button */}
+                <button
+                  onClick={handleSendGifSticker}
+                  className="w-11 h-11 md:w-12 md:h-12 rounded-full bg-accent hover:bg-[#5a5ec9] flex items-center justify-center transition-colors flex-shrink-0"
+                >
+                  <Send size={18} className="text-white md:hidden" />
+                  <Send size={20} className="text-white hidden md:block" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Normal mode */}
+      {!selectedGifSticker && (
+      <div className="bg-bg-secondary backdrop-blur-[30px] border border-glass-border rounded-t-3xl md:rounded-2xl w-full md:max-w-lg md:mx-4 shadow-2xl max-h-[85vh] flex flex-col">
+        {/* Camera mode */}
+        {cameraMode && (
+          <div className="flex-1 flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b border-bg-hover">
+              <h3 className="text-lg font-semibold text-text-primary">
+                {cameraMode === 'photo' ? 'Prendre une photo' : 'Enregistrer une vidéo'}
+              </h3>
+              <button onClick={stopCamera} className="p-2 rounded-full hover:bg-bg-hover text-text-primary">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="flex-1 relative bg-black">
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className="w-full h-full object-cover"
+              />
+              <canvas ref={canvasRef} className="hidden" />
+            </div>
+            <div className="p-4 flex justify-center">
+              <button
+                onClick={capturePhoto}
+                className="w-16 h-16 rounded-full bg-white border-4 border-accent flex items-center justify-center"
+              >
+                <div className="w-12 h-12 rounded-full bg-accent" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Normal mode */}
+        {!cameraMode && !selectedFile && (
           <>
-            <h3 className="text-lg font-semibold mb-4 text-text-primary">Partager un fichier</h3>
-            
-            <div className="grid grid-cols-3 gap-4 mb-4">
+            {/* Tabs */}
+            <div className="flex border-b border-bg-hover">
               <button
-                onClick={() => fileInputRef.current?.click()}
-                className="flex flex-col items-center gap-2 p-4 rounded-xl bg-bg-surface hover:bg-bg-hover transition-colors"
+                onClick={() => setActiveTab('attach')}
+                className={`flex-1 py-3 text-sm font-medium transition-colors ${
+                  activeTab === 'attach' ? 'text-accent border-b-2 border-accent' : 'text-text-secondary'
+                }`}
               >
-                <Image size={32} className="text-primary-500" />
-                <span className="text-sm text-text-primary">Image</span>
+                Fichiers
               </button>
-              
               <button
-                onClick={() => fileInputRef.current?.click()}
-                className="flex flex-col items-center gap-2 p-4 rounded-xl bg-bg-surface hover:bg-bg-hover transition-colors"
+                onClick={() => setActiveTab('emoji')}
+                className={`flex-1 py-3 text-sm font-medium transition-colors ${
+                  activeTab === 'emoji' ? 'text-accent border-b-2 border-accent' : 'text-text-secondary'
+                }`}
               >
-                <Video size={32} className="text-primary-500" />
-                <span className="text-sm text-text-primary">Vidéo</span>
+                Emojis
               </button>
-              
               <button
-                onClick={() => fileInputRef.current?.click()}
-                className="flex flex-col items-center gap-2 p-4 rounded-xl bg-bg-surface hover:bg-bg-hover transition-colors"
+                onClick={() => setActiveTab('sticker')}
+                className={`flex-1 py-3 text-sm font-medium transition-colors ${
+                  activeTab === 'sticker' ? 'text-accent border-b-2 border-accent' : 'text-text-secondary'
+                }`}
               >
-                <File size={32} className="text-primary-500" />
-                <span className="text-sm text-text-primary">Fichier</span>
+                Stickers
+              </button>
+              <button
+                onClick={() => setActiveTab('gif')}
+                className={`flex-1 py-3 text-sm font-medium transition-colors ${
+                  activeTab === 'gif' ? 'text-accent border-b-2 border-accent' : 'text-text-secondary'
+                }`}
+              >
+                GIFs
               </button>
             </div>
 
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-4">
+              {/* Attach tab */}
+              {activeTab === 'attach' && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-4 gap-3">
+                    {/* Camera */}
+                    <button
+                      onClick={() => cameraInputRef.current?.click()}
+                      className="flex flex-col items-center gap-2 p-3 rounded-xl bg-bg-surface hover:bg-bg-hover transition-colors"
+                    >
+                      <div className="w-12 h-12 rounded-full bg-accent flex items-center justify-center">
+                        <Camera size={24} className="text-white" />
+                      </div>
+                      <span className="text-xs text-text-primary">Caméra</span>
+                    </button>
+                    
+                    {/* Gallery */}
+                    <button
+                      onClick={() => imageInputRef.current?.click()}
+                      className="flex flex-col items-center gap-2 p-3 rounded-xl bg-bg-surface hover:bg-bg-hover transition-colors"
+                    >
+                      <div className="w-12 h-12 rounded-full bg-accent flex items-center justify-center">
+                        <Image size={24} className="text-white" />
+                      </div>
+                      <span className="text-xs text-text-primary">Galerie</span>
+                    </button>
+                    
+                    {/* Video */}
+                    <button
+                      onClick={() => videoInputRef.current?.click()}
+                      className="flex flex-col items-center gap-2 p-3 rounded-xl bg-bg-surface hover:bg-bg-hover transition-colors"
+                    >
+                      <div className="w-12 h-12 rounded-full bg-accent flex items-center justify-center">
+                        <Video size={24} className="text-white" />
+                      </div>
+                      <span className="text-xs text-text-primary">Vidéo</span>
+                    </button>
+                    
+                    {/* Document */}
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      className="flex flex-col items-center gap-2 p-3 rounded-xl bg-bg-surface hover:bg-bg-hover transition-colors"
+                    >
+                      <div className="w-12 h-12 rounded-full bg-accent flex items-center justify-center">
+                        <FileIcon size={24} className="text-white" />
+                      </div>
+                      <span className="text-xs text-text-primary">Document</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Emoji tab */}
+              {activeTab === 'emoji' && (
+                <div className="space-y-4">
+                  {Object.entries(emojiCategories).map(([category, emojis]) => (
+                    <div key={category}>
+                      <h4 className="text-xs text-text-secondary uppercase mb-2">
+                        {category === 'recent' ? 'Récents' :
+                         category === 'smileys' ? 'Smileys' :
+                         category === 'gestures' ? 'Gestes' :
+                         category === 'hearts' ? 'Cœurs' :
+                         category === 'objects' ? 'Objets' :
+                         category === 'nature' ? 'Nature' :
+                         category === 'food' ? 'Nourriture' : category}
+                      </h4>
+                      <div className="grid grid-cols-8 gap-1">
+                        {emojis.map((emoji, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => handleEmojiClick(emoji)}
+                            className="w-10 h-10 flex items-center justify-center text-2xl hover:bg-bg-hover rounded-lg transition-all hover:scale-110 active:scale-95"
+                          >
+                            {emoji}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Sticker tab */}
+              {activeTab === 'sticker' && (
+                <div className="space-y-4">
+                  {/* Search bar */}
+                  <div className="relative">
+                    <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" />
+                    <input
+                      type="text"
+                      value={stickerSearchQuery}
+                      onChange={(e) => setStickerSearchQuery(e.target.value)}
+                      placeholder="Rechercher des stickers..."
+                      className="w-full pl-10 pr-4 py-2 rounded-xl bg-bg-surface text-text-primary placeholder:text-text-secondary outline-none focus:ring-2 focus:ring-accent"
+                    />
+                  </div>
+
+                  {/* Category selector */}
+                  <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4">
+                    {stickerCategories.map((category) => (
+                      <button
+                        key={category}
+                        onClick={() => {
+                          setSelectedStickerCategory(category);
+                          setStickerSearchQuery('');
+                        }}
+                        className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
+                          selectedStickerCategory === category && !stickerSearchQuery
+                            ? 'bg-accent text-white'
+                            : 'bg-bg-surface text-text-secondary hover:bg-bg-hover'
+                        }`}
+                      >
+                        {category === 'love' ? '❤️ Amour' :
+                         category === 'happy' ? '😊 Joyeux' :
+                         category === 'sad' ? '😢 Triste' :
+                         category === 'angry' ? '😠 Fâché' :
+                         category === 'cute' ? '🥰 Mignon' :
+                         category === 'funny' ? '😂 Drôle' :
+                         category === 'hello' ? '👋 Salut' :
+                         category === 'bye' ? '👋 Au revoir' :
+                         category === 'thanks' ? '🙏 Merci' :
+                         '😔 Désolé'}
+                      </button>
+                    ))}
+                  </div>
+                  
+                  {/* Stickers grid */}
+                  {loadingStickers ? (
+                    <div className="flex justify-center py-8">
+                      <Loader2 size={32} className="animate-spin text-accent" />
+                    </div>
+                  ) : stickers.length > 0 ? (
+                    <div className="grid grid-cols-3 gap-3">
+                      {stickers.map((sticker) => (
+                        <button
+                          key={sticker.id}
+                          onClick={() => handleStickerSelect(sticker)}
+                          className="aspect-square rounded-xl overflow-hidden bg-transparent hover:bg-bg-hover transition-all p-2"
+                        >
+                          <img
+                            src={sticker.media_formats?.tinywebp?.url || sticker.media_formats?.tinygif?.url}
+                            alt={sticker.content_description || 'Sticker'}
+                            className="w-full h-full object-contain"
+                            loading="lazy"
+                          />
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-text-secondary">
+                      <p>Aucun sticker trouvé</p>
+                      <p className="text-xs mt-1">Essayez une autre recherche</p>
+                    </div>
+                  )}
+                  
+                  {/* Tenor attribution */}
+                  <p className="text-xs text-text-secondary text-center">
+                    Powered by Tenor
+                  </p>
+                </div>
+              )}
+
+              {/* GIF tab */}
+              {activeTab === 'gif' && (
+                <div className="space-y-4">
+                  {/* Search bar */}
+                  <div className="relative">
+                    <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" />
+                    <input
+                      type="text"
+                      value={gifSearchQuery}
+                      onChange={(e) => setGifSearchQuery(e.target.value)}
+                      placeholder="Rechercher des GIFs..."
+                      className="w-full pl-10 pr-4 py-2 rounded-xl bg-bg-surface text-text-primary placeholder:text-text-secondary outline-none focus:ring-2 focus:ring-accent"
+                    />
+                  </div>
+                  
+                  {/* GIFs grid */}
+                  {loadingGifs ? (
+                    <div className="flex justify-center py-8">
+                      <Loader2 size={32} className="animate-spin text-accent" />
+                    </div>
+                  ) : gifs.length > 0 ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      {gifs.map((gif) => (
+                        <button
+                          key={gif.id}
+                          onClick={() => handleGifSelect(gif)}
+                          className="aspect-video rounded-xl overflow-hidden bg-bg-surface hover:opacity-80 transition-opacity"
+                        >
+                          <img
+                            src={gif.media_formats?.tinygif?.url || gif.media_formats?.nanogif?.url}
+                            alt={gif.content_description || 'GIF'}
+                            className="w-full h-full object-cover"
+                            loading="lazy"
+                          />
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-text-secondary">
+                      <p>Aucun GIF trouvé</p>
+                      <p className="text-xs mt-1">Essayez une autre recherche</p>
+                    </div>
+                  )}
+                  
+                  {/* Tenor attribution */}
+                  <p className="text-xs text-text-secondary text-center">
+                    Powered by Tenor
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Hidden inputs */}
             <input
               ref={fileInputRef}
               type="file"
               onChange={handleFileSelect}
-              accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar,.7z,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,application/zip,application/x-rar-compressed,application/x-7z-compressed"
+              accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar,.7z"
+              className="hidden"
+            />
+            <input
+              ref={imageInputRef}
+              type="file"
+              onChange={handleFileSelect}
+              accept="image/*"
+              className="hidden"
+            />
+            <input
+              ref={videoInputRef}
+              type="file"
+              onChange={handleFileSelect}
+              accept="video/*"
+              className="hidden"
+            />
+            <input
+              ref={cameraInputRef}
+              type="file"
+              onChange={handleCameraCapture}
+              accept="image/*,video/*"
+              capture="environment"
               className="hidden"
             />
 
-            <button
-              onClick={handleCancel}
-              className="w-full py-2 rounded-lg bg-bg-surface hover:bg-bg-hover transition-colors text-text-primary"
-            >
-              Annuler
-            </button>
+            {/* Cancel button */}
+            <div className="p-4 border-t border-bg-hover">
+              <button
+                onClick={handleCancel}
+                className="w-full py-3 rounded-xl bg-bg-surface hover:bg-bg-hover transition-colors text-text-primary font-medium"
+              >
+                Annuler
+              </button>
+            </div>
           </>
-        ) : (
-          <>
+        )}
+
+        {/* File preview */}
+        {!cameraMode && selectedFile && (
+          <div className="p-4">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-text-primary">Aperçu</h3>
               <button
@@ -196,7 +811,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
               )}
               {getFileType(selectedFile) === 'file' && (
                 <div className="p-8 text-center">
-                  <File size={48} className="mx-auto mb-2 text-text-tertiary" />
+                  <FileIcon size={48} className="mx-auto mb-2 text-text-tertiary" />
                   <p className="text-sm text-text-secondary">{selectedFile.name}</p>
                   <p className="text-xs text-text-tertiary mt-1">{formatFileSize(selectedFile.size)}</p>
                 </div>
@@ -243,9 +858,10 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
                 )}
               </button>
             </div>
-          </>
+          </div>
         )}
       </div>
+      )}
     </div>
   );
 };

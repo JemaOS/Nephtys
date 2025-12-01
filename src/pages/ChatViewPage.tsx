@@ -1222,7 +1222,55 @@ export function ChatViewPage() {
                         )}
                         {(!message.media_url && message.content) && (
                           <>
-                            <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
+                            {/* Check for GIF or Sticker patterns */}
+                            {(() => {
+                              // Pattern with optional caption: "caption\n[GIF](url)" or just "[GIF](url)"
+                              const gifMatch = message.content.match(/^(?:([\s\S]*?)\n)?\[GIF\]\((https?:\/\/[^\)]+)\)$/)
+                              const stickerMatch = message.content.match(/^(?:([\s\S]*?)\n)?\[STICKER\]\((https?:\/\/[^\)]+)\)$/)
+                              
+                              if (gifMatch) {
+                                const caption = gifMatch[1]
+                                const gifUrl = gifMatch[2]
+                                return (
+                                  <div className="space-y-1">
+                                    <div className="rounded-lg overflow-hidden">
+                                      <img
+                                        src={gifUrl}
+                                        alt="GIF"
+                                        className="w-full h-auto max-h-[300px] object-contain"
+                                        loading="lazy"
+                                      />
+                                    </div>
+                                    {caption && (
+                                      <p className="text-sm whitespace-pre-wrap break-words pt-1">{caption}</p>
+                                    )}
+                                  </div>
+                                )
+                              }
+                              
+                              if (stickerMatch) {
+                                const caption = stickerMatch[1]
+                                const stickerUrl = stickerMatch[2]
+                                return (
+                                  <div className="space-y-1">
+                                    <div className="max-w-[180px]">
+                                      <img
+                                        src={stickerUrl}
+                                        alt="Sticker"
+                                        className="w-full h-auto max-h-[180px] object-contain"
+                                        loading="lazy"
+                                      />
+                                    </div>
+                                    {caption && (
+                                      <p className="text-sm whitespace-pre-wrap break-words pt-1">{caption}</p>
+                                    )}
+                                  </div>
+                                )
+                              }
+                              
+                              // Regular text message
+                              return <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
+                            })()}
                             {/* Link Preview in message */}
                             {(message as any).link_preview && (() => {
                               try {
@@ -1411,7 +1459,43 @@ export function ChatViewPage() {
         />
       )}
 
-      {showMediaUploader && <MediaUploader onMediaSelect={(file, type) => console.log('Media selected:', file.name, type)} onUploadComplete={handleMediaUploadComplete} onCancel={() => setShowMediaUploader(false)} />}
+      {showMediaUploader && (
+        <MediaUploader
+          onMediaSelect={(file, type) => console.log('Media selected:', file.name, type)}
+          onUploadComplete={handleMediaUploadComplete}
+          onCancel={() => setShowMediaUploader(false)}
+          onEmojiSelect={(emoji) => {
+            setNewMessage(prev => prev + emoji)
+            setShowMediaUploader(false)
+          }}
+          onGifStickerSend={async (url, type, caption) => {
+            if (!user) return
+            setSending(true)
+            try {
+              const prefix = type === 'gif' ? 'GIF' : 'STICKER'
+              const content = caption ? `${caption}\n[${prefix}](${url})` : `[${prefix}](${url})`
+              
+              const messageData: any = {
+                conversation_id: conversationId!,
+                sender_id: user.id,
+                content: content,
+                type: 'text',
+                status: 'sent',
+                reply_to_id: replyToMessage?.id || null,
+              }
+              
+              const { error } = await supabase.from('messages').insert(messageData)
+              if (!error) {
+                setReplyToMessage(null)
+                setShowMediaUploader(false)
+                await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conversationId!)
+              }
+            } finally {
+              setSending(false)
+            }
+          }}
+        />
+      )}
       {showVoiceRecorder && <VoiceRecorder onRecordingComplete={handleVoiceRecordingComplete} onCancel={() => setShowVoiceRecorder(false)} />}
       {showConversationInfo && (
         <ConversationInfo
