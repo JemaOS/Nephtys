@@ -1,7 +1,7 @@
 // Service Worker for Push Notifications
 // Version: 1.0.0
 
-const CACHE_NAME = 'anu-app-v1';
+const CACHE_NAME = 'nephtys-app-v1';
 const urlsToCache = [
   '/',
   '/index.html',

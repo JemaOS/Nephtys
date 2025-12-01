@@ -43,7 +43,7 @@ module.exports = {
 				// Accent violet
 				'jemaos-accent': 'var(--accent)',
 				
-				// Primary - Violet Anu (conservé pour compatibilité)
+				// Primary - Violet Nephtys (conservé pour compatibilité)
 				primary: {
 					100: '#d4d5f7',
 					300: '#9fa1eb',

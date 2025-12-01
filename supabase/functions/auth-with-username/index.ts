@@ -27,7 +27,7 @@ Deno.serve(async (req) => {
 
         // Générer email fictif (domaine interne)
         const sanitizedUsername = username.toLowerCase().replace(/[^a-z0-9]/g, '');
-        const email = `${sanitizedUsername}@anu.internal`;
+        const email = `${sanitizedUsername}@nephtys.internal`;
 
         if (action === 'signup') {
             // Créer l'utilisateur avec l'API admin (pas de validation d'email stricte)

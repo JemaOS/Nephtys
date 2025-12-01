@@ -178,7 +178,7 @@ export function SettingsPage() {
         ))}
       </div>
       <div className="px-6 py-8 text-center space-y-2">
-        <p className="text-sm text-text-secondary">Anu pour JemaOS</p>
+        <p className="text-sm text-text-secondary">Nephtys pour JemaOS</p>
         <p className="text-xs text-text-secondary">Version 1.0.0</p>
       </div>
       <div className="px-6 pb-8">
@@ -313,7 +313,7 @@ export function SettingsPage() {
         </div>
         <div>
           <h3 className="text-lg font-semibold text-text-primary mb-2">Chiffrement activé</h3>
-          <p className="text-sm text-text-secondary">Tous vos messages et appels sont chiffrés de bout en bout. Personne, pas même Anu, ne peut y accéder.</p>
+          <p className="text-sm text-text-secondary">Tous vos messages et appels sont chiffrés de bout en bout. Personne, pas même Nephtys, ne peut y accéder.</p>
         </div>
         <div className="pt-4 border-t border-bg-hover">
           <p className="text-xs text-text-secondary">Protocole : Signal Protocol (E2EE)</p>
@@ -559,9 +559,9 @@ export function SettingsPage() {
           <ChevronRight size={20} className="text-text-secondary" />
         </button>
         <div className="px-6 py-8 text-center space-y-2">
-          <p className="text-sm text-text-secondary">Anu pour JemaOS</p>
+          <p className="text-sm text-text-secondary">Nephtys pour JemaOS</p>
           <p className="text-xs text-text-secondary">Version 1.0.0</p>
-          <p className="text-xs text-text-secondary mt-4">© 2025 Anu. Tous droits réservés.</p>
+          <p className="text-xs text-text-secondary mt-4">© 2025 Nephtys. Tous droits réservés.</p>
         </div>
       </div>
     </div>
@@ -570,9 +570,9 @@ export function SettingsPage() {
   const renderFAQView = () => (
     <div className="flex-1 overflow-y-auto p-6 space-y-4">
       {[
-        { q: 'Comment fonctionne le chiffrement ?', a: 'Anu utilise le protocole Signal pour chiffrer vos messages de bout en bout.' },
+        { q: 'Comment fonctionne le chiffrement ?', a: 'Nephtys utilise le protocole Signal pour chiffrer vos messages de bout en bout.' },
         { q: 'Mes données sont-elles sauvegardées ?', a: 'En mode normal oui, en mode éphémère non. Tout est supprimé à la déconnexion.' },
-        { q: 'Puis-je utiliser Anu sur plusieurs appareils ?', a: 'Oui, jusqu\'à 4 appareils simultanément.' },
+        { q: 'Puis-je utiliser Nephtys sur plusieurs appareils ?', a: 'Oui, jusqu\'à 4 appareils simultanément.' },
       ].map((faq, idx) => (
         <div key={idx} className="bg-bg-surface rounded-2xl p-4">
           <h4 className="text-text-primary font-medium mb-2">{faq.q}</h4>
@@ -591,8 +591,8 @@ export function SettingsPage() {
           <p className="text-sm text-text-secondary mb-4">Notre équipe est là pour vous aider</p>
         </div>
         <div className="space-y-3">
-          <a href="mailto:support@anu-app.com" className="block py-3 rounded-xl bg-accent hover:bg-[#5a5ec9] text-white font-medium">
-            support@anu-app.com
+          <a href="mailto:support@nephtys-app.com" className="block py-3 rounded-xl bg-accent hover:bg-[#5a5ec9] text-white font-medium">
+            support@nephtys-app.com
           </a>
         </div>
       </div>
@@ -603,7 +603,7 @@ export function SettingsPage() {
     <div className="flex-1 overflow-y-auto p-6 space-y-4">
       <div className="bg-bg-surface rounded-2xl p-6 space-y-4 text-sm text-text-secondary">
         <h3 className="text-lg font-semibold text-text-primary">Politique de confidentialité</h3>
-        <p>Anu respecte votre vie privée. Nous ne collectons aucune donnée personnelle.</p>
+        <p>Nephtys respecte votre vie privée. Nous ne collectons aucune donnée personnelle.</p>
         <p>• Aucun tracking</p>
         <p>• Aucune publicité</p>
         <p>• Aucun log des conversations</p>

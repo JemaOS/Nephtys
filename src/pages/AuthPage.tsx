@@ -51,7 +51,7 @@ export function AuthPage() {
             </svg>
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-text-primary">Anu</h1>
+            <h1 className="text-3xl font-bold text-text-primary">Nephtys</h1>
             <p className="text-sm text-text-secondary">Messagerie sécurisée</p>
           </div>
         </div>
@@ -107,7 +107,7 @@ export function AuthPage() {
               {mode === 'guest' ? 'Mode éphémère' : mode === 'signin' ? 'Connexion' : 'Créer un compte'}
             </h2>
             <p className="text-xs text-text-secondary">
-              {mode === 'guest' ? 'Session temporaire sans compte' : mode === 'signin' ? 'Accédez à vos conversations' : 'Rejoignez Anu'}
+              {mode === 'guest' ? 'Session temporaire sans compte' : mode === 'signin' ? 'Accédez à vos conversations' : 'Rejoignez Nephtys'}
             </p>
           </div>
 

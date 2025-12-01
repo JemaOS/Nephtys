@@ -1,6 +1,6 @@
 {
-  "name": "Anu - Messagerie Sécurisée",
-  "short_name": "Anu",
+  "name": "Nephtys - Messagerie Sécurisée",
+  "short_name": "Nephtys",
   "description": "Application de messagerie chiffrée de bout en bout pour JemaOS",
   "start_url": "/",
   "display": "standalone",

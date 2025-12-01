@@ -1,7 +1,7 @@
 // Offline Storage with IndexedDB
 // Permet de stocker les messages localement pour le mode hors ligne
 
-const DB_NAME = 'anu-offline-db';
+const DB_NAME = 'nephtys-offline-db';
 const DB_VERSION = 1;
 const MESSAGES_STORE = 'messages';
 const CONVERSATIONS_STORE = 'conversations';
