@@ -631,12 +631,12 @@ export function ChatsPage() {
           ) : (
           filteredConversations.map((conversation) => {
             // Déterminer le nom à afficher
-            // For "Saved Messages" conversations, use the conversation name if set, otherwise use profile name
+            // For "Saved Messages" conversations (self-contact), display "Moi" or user's name
             const isSavedMessagesConv = conversation.type === 'direct' && conversation.name === 'Messages enregistrés'
             const displayName = conversation.type === 'group'
               ? conversation.name || 'Groupe'
               : isSavedMessagesConv
-                ? 'Messages enregistrés'
+                ? 'Moi'
                 : conversation.otherUserProfile?.display_name || conversation.otherUserProfile?.username || 'Utilisateur'
 
             // Déterminer l'aperçu du dernier message

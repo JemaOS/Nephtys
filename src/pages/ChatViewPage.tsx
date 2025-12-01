@@ -950,7 +950,7 @@ export function ChatViewPage() {
   const displayName = conversation?.type === 'group'
     ? conversation.name
     : isSavedMessages
-      ? 'Messages enregistrés'
+      ? 'Moi'
       : otherUser?.display_name || otherUser?.username || 'Utilisateur'
 
   return (
