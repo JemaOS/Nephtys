@@ -166,19 +166,39 @@ export function ChatsPage() {
       }
 
       // Step 3: Batch fetch all members for all conversations (single query)
-      const { data: allMembers } = await supabase
+      // Include all members (not just others) to detect "Saved Messages" conversations
+      const { data: allMembersIncludingSelf } = await supabase
         .from('conversation_members')
         .select('conversation_id, user_id')
         .in('conversation_id', conversationIds)
-        .neq('user_id', user.id)
+      
+      // Filter to get other members (for normal conversations)
+      const allMembers = allMembersIncludingSelf?.filter(m => m.user_id !== user.id) || []
+      
+      // Detect "Saved Messages" conversations (only one member = self)
+      const savedMessagesConvIds = new Set<string>()
+      const memberCountByConv = new Map<string, number>()
+      allMembersIncludingSelf?.forEach(m => {
+        memberCountByConv.set(m.conversation_id, (memberCountByConv.get(m.conversation_id) || 0) + 1)
+      })
+      memberCountByConv.forEach((count, convId) => {
+        if (count === 1) {
+          savedMessagesConvIds.add(convId)
+        }
+      })
 
       // Step 4: Get unique user IDs and batch fetch all profiles (single query)
+      // Include current user's profile for "Saved Messages" conversations
       const otherUserIds = [...new Set(allMembers?.map(m => m.user_id) || [])]
-      const { data: profiles } = otherUserIds.length > 0
+      const userIdsToFetch = savedMessagesConvIds.size > 0
+        ? [...new Set([...otherUserIds, user.id])]
+        : otherUserIds
+      
+      const { data: profiles } = userIdsToFetch.length > 0
         ? await supabase
             .from('profiles')
             .select('*')
-            .in('id', otherUserIds)
+            .in('id', userIdsToFetch)
         : { data: [] }
 
       const profileMap = new Map(profiles?.map(p => [p.id, p]) || [])
@@ -226,14 +246,27 @@ export function ChatsPage() {
 
       const enrichedConversations: ConversationWithDetails[] = conversationsData.map(conv => {
         const memberInfo = activeMembers.find(m => m.conversation_id === conv.id)
-        const otherUserIds = membersByConversation.get(conv.id) || []
-        const otherProfile = otherUserIds.length > 0 ? profileMap.get(otherUserIds[0]) : undefined
+        const otherUserIdsForConv = membersByConversation.get(conv.id) || []
+        
+        // Check if this is a "Saved Messages" conversation (only one member = self)
+        const isSavedMessages = savedMessagesConvIds.has(conv.id)
+        
+        // For "Saved Messages", use current user's profile; otherwise use other user's profile
+        let otherProfile: Profile | undefined
+        if (conv.type === 'direct') {
+          if (isSavedMessages) {
+            // Use current user's profile for "Saved Messages"
+            otherProfile = profileMap.get(user.id)
+          } else {
+            otherProfile = otherUserIdsForConv.length > 0 ? profileMap.get(otherUserIdsForConv[0]) : undefined
+          }
+        }
 
         return {
           ...conv,
           is_pinned: memberInfo?.is_pinned || false,
           is_muted: memberInfo?.is_muted || false,
-          otherUserProfile: conv.type === 'direct' ? otherProfile : undefined,
+          otherUserProfile: otherProfile,
           lastMessage: lastMessageMap.get(conv.id),
           unreadCount: unreadCountMap.get(conv.id) || 0
         }
@@ -598,9 +631,13 @@ export function ChatsPage() {
           ) : (
           filteredConversations.map((conversation) => {
             // Déterminer le nom à afficher
+            // For "Saved Messages" conversations, use the conversation name if set, otherwise use profile name
+            const isSavedMessagesConv = conversation.type === 'direct' && conversation.name === 'Messages enregistrés'
             const displayName = conversation.type === 'group'
               ? conversation.name || 'Groupe'
-              : conversation.otherUserProfile?.display_name || conversation.otherUserProfile?.username || 'Utilisateur'
+              : isSavedMessagesConv
+                ? 'Messages enregistrés'
+                : conversation.otherUserProfile?.display_name || conversation.otherUserProfile?.username || 'Utilisateur'
 
             // Déterminer l'aperçu du dernier message
             const lastMessagePreview = conversation.lastMessage

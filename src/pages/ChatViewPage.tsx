@@ -234,10 +234,21 @@ export function ChatViewPage() {
     if (!error && data) {
       setConversation(data)
       if (data.type === 'direct') {
-        const { data: members } = await supabase.from('conversation_members').select('user_id').eq('conversation_id', conversationId!).neq('user_id', user!.id)
-        if (members && members.length > 0) {
-          const { data: otherUserData } = await supabase.from('profiles').select('*').eq('id', members[0].user_id).maybeSingle()
-          if (otherUserData) setOtherUser(otherUserData)
+        // First, get all members of this conversation
+        const { data: allMembers } = await supabase.from('conversation_members').select('user_id').eq('conversation_id', conversationId!)
+        
+        // Check if this is a "Saved Messages" conversation (only one member = self)
+        if (allMembers && allMembers.length === 1 && allMembers[0].user_id === user!.id) {
+          // This is "Saved Messages" - use own profile
+          const { data: selfProfile } = await supabase.from('profiles').select('*').eq('id', user!.id).maybeSingle()
+          if (selfProfile) setOtherUser(selfProfile)
+        } else {
+          // Normal direct conversation - find the other user
+          const { data: members } = await supabase.from('conversation_members').select('user_id').eq('conversation_id', conversationId!).neq('user_id', user!.id)
+          if (members && members.length > 0) {
+            const { data: otherUserData } = await supabase.from('profiles').select('*').eq('id', members[0].user_id).maybeSingle()
+            if (otherUserData) setOtherUser(otherUserData)
+          }
         }
       }
     }
@@ -934,7 +945,13 @@ export function ChatViewPage() {
     exitSelectionMode()
   }, [messages, selectedMessages, exitSelectionMode])
 
-  const displayName = conversation?.type === 'group' ? conversation.name : otherUser?.display_name || otherUser?.username || 'Utilisateur'
+  // For "Saved Messages" (conversation with self), show special name
+  const isSavedMessages = conversation?.type === 'direct' && conversation?.name === 'Messages enregistrés'
+  const displayName = conversation?.type === 'group'
+    ? conversation.name
+    : isSavedMessages
+      ? 'Messages enregistrés'
+      : otherUser?.display_name || otherUser?.username || 'Utilisateur'
 
   return (
     <MainLayout>

@@ -150,25 +150,58 @@ export function ContactsPage() {
       }
 
       // Créer automatiquement une conversation avec ce contact
+      // Cas spécial: "Saved Messages" (conversation avec soi-même)
+      const isSelfContact = profileData.id === user.id
+      
       // Vérifier d'abord si une conversation existe déjà
-      const { data: existingMembers } = await supabase
-        .from('conversation_members')
-        .select('conversation_id')
-        .eq('user_id', user.id)
-
       let conversationExists = false
-      if (existingMembers) {
-        for (const member of existingMembers) {
-          const { data: otherMember } = await supabase
-            .from('conversation_members')
-            .select('*')
-            .eq('conversation_id', member.conversation_id)
-            .eq('user_id', profileData.id)
-            .maybeSingle()
+      let existingConversationId: string | null = null
+      
+      if (isSelfContact) {
+        // Pour "Saved Messages", chercher une conversation où l'utilisateur est le seul membre
+        // ou une conversation de type 'direct' créée par soi-même avec soi-même
+        const { data: myConversations } = await supabase
+          .from('conversations')
+          .select('id')
+          .eq('type', 'direct')
+          .eq('created_by', user.id)
+        
+        if (myConversations) {
+          for (const conv of myConversations) {
+            const { data: members } = await supabase
+              .from('conversation_members')
+              .select('user_id')
+              .eq('conversation_id', conv.id)
+            
+            // Si la conversation n'a qu'un seul membre et c'est nous, c'est "Saved Messages"
+            if (members && members.length === 1 && members[0].user_id === user.id) {
+              conversationExists = true
+              existingConversationId = conv.id
+              break
+            }
+          }
+        }
+      } else {
+        // Cas normal: chercher une conversation avec l'autre utilisateur
+        const { data: existingMembers } = await supabase
+          .from('conversation_members')
+          .select('conversation_id')
+          .eq('user_id', user.id)
 
-          if (otherMember) {
-            conversationExists = true
-            break
+        if (existingMembers) {
+          for (const member of existingMembers) {
+            const { data: otherMember } = await supabase
+              .from('conversation_members')
+              .select('*')
+              .eq('conversation_id', member.conversation_id)
+              .eq('user_id', profileData.id)
+              .maybeSingle()
+
+            if (otherMember) {
+              conversationExists = true
+              existingConversationId = member.conversation_id
+              break
+            }
           }
         }
       }
@@ -182,20 +215,38 @@ export function ContactsPage() {
             created_by: user.id,
             is_encrypted: true,
             last_message_at: new Date().toISOString(),
+            // Pour "Saved Messages", on peut ajouter un nom spécial
+            name: isSelfContact ? 'Messages enregistrés' : null,
           })
           .select()
           .maybeSingle()
 
         if (!convError && conversation) {
-          await supabase
-            .from('conversation_members')
-            .insert([
-              { conversation_id: conversation.id, user_id: user.id, role: 'admin', is_active: true },
-              { conversation_id: conversation.id, user_id: profileData.id, role: 'member', is_active: true }
-            ])
+          if (isSelfContact) {
+            // Pour "Saved Messages", un seul membre (soi-même)
+            await supabase
+              .from('conversation_members')
+              .insert([
+                { conversation_id: conversation.id, user_id: user.id, role: 'admin', is_active: true }
+              ])
+          } else {
+            // Cas normal: deux membres
+            await supabase
+              .from('conversation_members')
+              .insert([
+                { conversation_id: conversation.id, user_id: user.id, role: 'admin', is_active: true },
+                { conversation_id: conversation.id, user_id: profileData.id, role: 'member', is_active: true }
+              ])
+          }
           
           console.log('Conversation créée automatiquement:', conversation.id)
+          existingConversationId = conversation.id
         }
+      }
+      
+      // Naviguer vers la conversation créée ou existante
+      if (existingConversationId) {
+        navigate(`/chat/${existingConversationId}`)
       }
 
       // Recharger la liste
@@ -213,27 +264,56 @@ export function ContactsPage() {
     if (!user) return
 
     console.log('Creating conversation with contact:', contactId)
+    
+    // Cas spécial: "Saved Messages" (conversation avec soi-même)
+    const isSelfContact = contactId === user.id
 
     try {
       // Check if conversation already exists
-      const { data: existingMembers } = await supabase
-        .from('conversation_members')
-        .select('conversation_id')
-        .eq('user_id', user.id)
+      if (isSelfContact) {
+        // Pour "Saved Messages", chercher une conversation où l'utilisateur est le seul membre
+        const { data: myConversations } = await supabase
+          .from('conversations')
+          .select('id')
+          .eq('type', 'direct')
+          .eq('created_by', user.id)
+        
+        if (myConversations) {
+          for (const conv of myConversations) {
+            const { data: members } = await supabase
+              .from('conversation_members')
+              .select('user_id')
+              .eq('conversation_id', conv.id)
+            
+            // Si la conversation n'a qu'un seul membre et c'est nous, c'est "Saved Messages"
+            if (members && members.length === 1 && members[0].user_id === user.id) {
+              console.log('Saved Messages conversation already exists:', conv.id)
+              navigate(`/chat/${conv.id}`)
+              return
+            }
+          }
+        }
+      } else {
+        // Cas normal: chercher une conversation avec l'autre utilisateur
+        const { data: existingMembers } = await supabase
+          .from('conversation_members')
+          .select('conversation_id')
+          .eq('user_id', user.id)
 
-      if (existingMembers) {
-        for (const member of existingMembers) {
-          const { data: otherMember } = await supabase
-            .from('conversation_members')
-            .select('*')
-            .eq('conversation_id', member.conversation_id)
-            .eq('user_id', contactId)
-            .maybeSingle()
+        if (existingMembers) {
+          for (const member of existingMembers) {
+            const { data: otherMember } = await supabase
+              .from('conversation_members')
+              .select('*')
+              .eq('conversation_id', member.conversation_id)
+              .eq('user_id', contactId)
+              .maybeSingle()
 
-          if (otherMember) {
-            console.log('Conversation already exists:', member.conversation_id)
-            navigate(`/chat/${member.conversation_id}`)
-            return
+            if (otherMember) {
+              console.log('Conversation already exists:', member.conversation_id)
+              navigate(`/chat/${member.conversation_id}`)
+              return
+            }
           }
         }
       }
@@ -246,6 +326,7 @@ export function ContactsPage() {
           created_by: user.id,
           is_encrypted: true,
           last_message_at: new Date().toISOString(),
+          name: isSelfContact ? 'Messages enregistrés' : null,
         })
         .select()
         .maybeSingle()
@@ -258,16 +339,31 @@ export function ContactsPage() {
       console.log('Conversation created:', conversation)
 
       if (conversation) {
-        const { error: membersError } = await supabase
-          .from('conversation_members')
-          .insert([
-            { conversation_id: conversation.id, user_id: user.id, role: 'admin', is_active: true },
-            { conversation_id: conversation.id, user_id: contactId, role: 'member', is_active: true }
-          ])
+        if (isSelfContact) {
+          // Pour "Saved Messages", un seul membre (soi-même)
+          const { error: membersError } = await supabase
+            .from('conversation_members')
+            .insert([
+              { conversation_id: conversation.id, user_id: user.id, role: 'admin', is_active: true }
+            ])
 
-        if (membersError) {
-          console.error('Error adding members:', membersError)
-          return
+          if (membersError) {
+            console.error('Error adding member:', membersError)
+            return
+          }
+        } else {
+          // Cas normal: deux membres
+          const { error: membersError } = await supabase
+            .from('conversation_members')
+            .insert([
+              { conversation_id: conversation.id, user_id: user.id, role: 'admin', is_active: true },
+              { conversation_id: conversation.id, user_id: contactId, role: 'member', is_active: true }
+            ])
+
+          if (membersError) {
+            console.error('Error adding members:', membersError)
+            return
+          }
         }
 
         console.log('Members added, navigating to chat')
