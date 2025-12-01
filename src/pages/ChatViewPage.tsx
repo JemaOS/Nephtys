@@ -88,6 +88,8 @@ export function ChatViewPage() {
   } | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const emojiPickerRef = useRef<HTMLDivElement>(null)
+  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const longPressMessageRef = useRef<Message | null>(null)
   
   const { reactions, addReaction, removeReaction } = useMessageReactions(conversationId || '')
   const { startCall, startGroupCall } = useCall()
@@ -956,7 +958,52 @@ export function ChatViewPage() {
   return (
     <MainLayout>
       <div className="flex-1 flex flex-col bg-bg-primary h-full overflow-hidden">
-        {/* Header JemaOS */}
+        {/* Header JemaOS - Selection mode header on mobile */}
+        {isSelectionMode && isMobile ? (
+          <div className="bg-bg-surface px-2 sm:px-4 py-2 sm:py-3 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={exitSelectionMode}
+                className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1]"
+              >
+                <ArrowLeft size={20} />
+              </button>
+              <span className="text-lg font-medium text-text-primary">{selectedMessages.size}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setReplyToMessage(messages.find(m => selectedMessages.has(m.id)) || null)}
+                disabled={selectedMessages.size !== 1}
+                className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1] disabled:opacity-50"
+                title="Répondre"
+              >
+                <Reply size={20} />
+              </button>
+              <button
+                onClick={handleBulkDelete}
+                disabled={selectedMessages.size === 0}
+                className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1] disabled:opacity-50"
+                title="Supprimer"
+              >
+                <Trash2 size={20} />
+              </button>
+              <button
+                onClick={handleBulkForward}
+                disabled={selectedMessages.size === 0}
+                className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1] disabled:opacity-50"
+                title="Transférer"
+              >
+                <Forward size={20} />
+              </button>
+              <button
+                onClick={() => setShowConversationMenu(!showConversationMenu)}
+                className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1]"
+              >
+                <MoreVertical size={20} />
+              </button>
+            </div>
+          </div>
+        ) : (
         <div className="bg-bg-surface px-2 sm:px-4 py-2 sm:py-3 flex items-center gap-2 sm:gap-4">
           <button onClick={() => navigate('/chats')} className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1]">
             <ArrowLeft size={20} />
@@ -1090,6 +1137,7 @@ export function ChatViewPage() {
             </div>
           </div>
         </div>
+        )}
 
         {isSearching && <MessageSearch messages={messages} onSearchResults={setFilteredMessages} onClose={() => { setIsSearching(false); setFilteredMessages([]) }} />}
 
@@ -1130,6 +1178,46 @@ export function ChatViewPage() {
                 const isOwn = message.sender_id === user?.id
                 const messageReactions = reactions.filter(r => r.message_id === message.id)
                 const isSelected = selectedMessages.has(message.id)
+                // Long press handlers for mobile
+                const handleTouchStart = (msg: Message) => {
+                  if (!isMobile) return
+                  longPressMessageRef.current = msg
+                  longPressTimerRef.current = setTimeout(() => {
+                    // On long press: enter selection mode and show emoji bar
+                    setIsSelectionMode(true)
+                    setSelectedMessages(new Set([msg.id]))
+                    
+                    // Show quick reaction bar above the message
+                    const messageElement = document.querySelector(`[data-message-id="${msg.id}"]`)
+                    if (messageElement) {
+                      const rect = messageElement.getBoundingClientRect()
+                      setQuickReactionBar({
+                        isOpen: true,
+                        position: { x: rect.left + rect.width / 2, y: rect.top - 10 },
+                        message: msg,
+                      })
+                    }
+                    longPressMessageRef.current = null
+                  }, 500) // 500ms for long press
+                }
+
+                const handleTouchEnd = () => {
+                  if (longPressTimerRef.current) {
+                    clearTimeout(longPressTimerRef.current)
+                    longPressTimerRef.current = null
+                  }
+                  longPressMessageRef.current = null
+                }
+
+                const handleTouchMove = () => {
+                  // Cancel long press if user moves finger
+                  if (longPressTimerRef.current) {
+                    clearTimeout(longPressTimerRef.current)
+                    longPressTimerRef.current = null
+                  }
+                  longPressMessageRef.current = null
+                }
+
                 return (
                   <div
                     key={message.id}
@@ -1137,13 +1225,25 @@ export function ChatViewPage() {
                     className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-1 ${isSelected ? 'bg-[#00a884]/10' : ''} transition-colors duration-500`}
                     onMouseEnter={() => setHoveredMessageId(message.id)}
                     onMouseLeave={() => setHoveredMessageId(null)}
+                    onTouchStart={() => handleTouchStart(message)}
+                    onTouchEnd={handleTouchEnd}
+                    onTouchMove={handleTouchMove}
                   >
-                    {/* Quick action buttons - LEFT of sent messages (isOwn) - Hidden on mobile */}
-                    {isOwn && hoveredMessageId === message.id && !isSelectionMode && !isMobile && (
-                      <div className="hidden md:flex items-center gap-1 mr-2">
+                    {/* Quick action buttons - LEFT of sent messages (isOwn) */}
+                    {isOwn && hoveredMessageId === message.id && !isSelectionMode && (
+                      <div className="flex items-center gap-0.5 md:gap-1 mr-1 md:mr-2">
+                        {/* Mobile: only Reply button */}
+                        <button
+                          onClick={() => setReplyToMessage(message)}
+                          className="md:hidden w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] flex items-center justify-center transition-colors shadow-md"
+                          title="Répondre"
+                        >
+                          <Reply size={16} className="text-[#8696a0]" />
+                        </button>
+                        {/* Desktop: all 3 buttons */}
                         <button
                           onClick={() => handleForwardMessage(message)}
-                          className="w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] flex items-center justify-center transition-colors shadow-md"
+                          className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
                           title="Transférer"
                         >
                           <Forward size={16} className="text-[#8696a0]" />
@@ -1157,14 +1257,14 @@ export function ChatViewPage() {
                               message,
                             });
                           }}
-                          className="w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] flex items-center justify-center transition-colors shadow-md"
+                          className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
                           title="Réagir"
                         >
                           <Smile size={16} className="text-[#8696a0]" />
                         </button>
                         <button
                           onClick={() => setReplyToMessage(message)}
-                          className="w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] flex items-center justify-center transition-colors shadow-md"
+                          className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
                           title="Répondre"
                         >
                           <Reply size={16} className="text-[#8696a0]" />
@@ -1387,12 +1487,21 @@ export function ChatViewPage() {
                         <MessageReactions reactions={messageReactions} currentUserId={user?.id || ''} onReactionClick={(emoji) => addReaction(message.id, emoji)} onReactionRemove={(emoji) => removeReaction(message.id, emoji)} />
                       )}
                     </div>
-                    {/* Quick action buttons - RIGHT of received messages - Hidden on mobile */}
-                    {!isOwn && hoveredMessageId === message.id && !isSelectionMode && !isMobile && (
-                      <div className="hidden md:flex items-center gap-1 pb-4 ml-2">
+                    {/* Quick action buttons - RIGHT of received messages */}
+                    {!isOwn && hoveredMessageId === message.id && !isSelectionMode && (
+                      <div className="flex items-center gap-0.5 md:gap-1 pb-4 ml-1 md:ml-2">
+                        {/* Mobile: only Reply button */}
                         <button
                           onClick={() => setReplyToMessage(message)}
-                          className="w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] flex items-center justify-center transition-colors shadow-md"
+                          className="md:hidden w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] flex items-center justify-center transition-colors shadow-md"
+                          title="Répondre"
+                        >
+                          <Reply size={16} className="text-[#8696a0]" />
+                        </button>
+                        {/* Desktop: all 3 buttons */}
+                        <button
+                          onClick={() => setReplyToMessage(message)}
+                          className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
                           title="Répondre"
                         >
                           <Reply size={16} className="text-[#8696a0]" />
@@ -1406,14 +1515,14 @@ export function ChatViewPage() {
                               message,
                             });
                           }}
-                          className="w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] flex items-center justify-center transition-colors shadow-md"
+                          className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
                           title="Réagir"
                         >
                           <Smile size={16} className="text-[#8696a0]" />
                         </button>
                         <button
                           onClick={() => handleForwardMessage(message)}
-                          className="w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] flex items-center justify-center transition-colors shadow-md"
+                          className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
                           title="Transférer"
                         >
                           <Forward size={16} className="text-[#8696a0]" />
@@ -1492,8 +1601,8 @@ export function ChatViewPage() {
         </div>
         )}
 
-        {/* Selection Mode Toolbar */}
-        {isSelectionMode && (
+        {/* Selection Mode Toolbar - Desktop only (mobile has header actions) */}
+        {isSelectionMode && !isMobile && (
           <SelectionModeToolbar
             selectedCount={selectedMessages.size}
             onCopy={handleBulkCopy}
