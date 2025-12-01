@@ -9,6 +9,7 @@ interface ConversationContextMenuProps {
   onPin: () => void
   onArchive: () => void
   onMute: () => void
+  onClearMessages: () => void
   onDelete: () => void
   onOpenInNewWindow: () => void
   isPinned?: boolean
@@ -16,7 +17,7 @@ interface ConversationContextMenuProps {
 }
 
 export function ConversationContextMenu({
-  x, y, onClose, onMarkAsUnread, onPin, onArchive, onMute, onDelete, onOpenInNewWindow,
+  x, y, onClose, onMarkAsUnread, onPin, onArchive, onMute, onClearMessages, onDelete, onOpenInNewWindow,
   isPinned = false, isMuted = false
 }: ConversationContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null)
@@ -45,7 +46,7 @@ export function ConversationContextMenu({
     { icon: Pin, label: isPinned ? 'Désépingler' : 'Épingler en haut', onClick: onPin },
     { icon: Archive, label: 'Archiver', onClick: onArchive },
     { icon: isMuted ? Volume2 : VolumeX, label: isMuted ? 'Réactiver le son' : 'Désactiver les notifications', onClick: onMute },
-    { icon: Trash2, label: 'Effacer les messages', onClick: onDelete, danger: true },
+    { icon: Trash2, label: 'Effacer les messages', onClick: onClearMessages, danger: true },
     { icon: X, label: 'Supprimer', onClick: onDelete, danger: true },
     { icon: Edit, label: 'Ouvrir dans une nouvelle fenêtre', onClick: onOpenInNewWindow },
     { icon: X, label: 'Fermer la discussion', onClick: onClose },
@@ -59,7 +60,7 @@ export function ConversationContextMenu({
       {/* Menu */}
       <div
         ref={menuRef}
-        className="fixed z-50 min-w-[280px] bg-[#233138] rounded-lg shadow-2xl py-2 border border-bg-hover"
+        className="fixed z-50 min-w-[280px] bg-bg-surface rounded-lg shadow-2xl py-2 border border-bg-hover"
         style={{
           left: `${x}px`,
           top: `${y}px`,

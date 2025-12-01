@@ -102,19 +102,19 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-glass-surface-light backdrop-blur-[30px] border border-glass-border rounded-2xl p-6 max-w-md w-full shadow-2xl">
+      <div className="bg-bg-secondary backdrop-blur-[30px] border border-glass-border rounded-2xl p-6 max-w-md w-full shadow-2xl">
         <div className="flex items-center justify-between mb-6">
-          <h3 className="text-lg font-semibold">Message vocal</h3>
+          <h3 className="text-lg font-semibold text-text-primary">Message vocal</h3>
           <button
             onClick={onCancel}
-            className="p-2 rounded-full hover:bg-white/10 transition-colors"
+            className="p-2 rounded-full hover:bg-bg-hover transition-colors text-text-primary"
           >
             <X size={20} />
           </button>
         </div>
 
         {/* Waveform visualization (simplified) */}
-        <div className="mb-6 flex items-center justify-center h-24 bg-glass-surface-medium rounded-xl">
+        <div className="mb-6 flex items-center justify-center h-24 bg-bg-surface rounded-xl">
           {isRecording ? (
             <div className="flex items-center gap-1">
               {[...Array(20)].map((_, i) => (

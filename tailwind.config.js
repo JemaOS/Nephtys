@@ -51,13 +51,13 @@ module.exports = {
 					500: '#6b6fdb',
 					600: '#5558c9',
 				},
-				// Glassmorphism surfaces (conservé pour compatibilité)
+				// Glassmorphism surfaces (dark theme)
 				glass: {
-					'bg-start': '#F0F2F5',
-					'bg-end': '#FFFFFF',
-					'surface-light': 'rgba(255,255,255,0.5)',
-					'surface-medium': 'rgba(255,255,255,0.3)',
-					border: 'rgba(255,255,255,0.2)',
+					'bg-start': '#0b141a',
+					'bg-end': '#111b21',
+					'surface-light': 'rgba(32,44,51,0.95)',
+					'surface-medium': 'rgba(42,57,66,0.9)',
+					border: 'rgba(255,255,255,0.1)',
 				},
 				// Semantic colors (conservé pour compatibilité)
 				success: {

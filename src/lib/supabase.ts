@@ -55,8 +55,12 @@ export interface Message {
   updated_at: string
   deleted_at: string | null
   is_pinned: boolean
+  pinned_at: string | null
+  pinned_until: string | null
+  is_starred: boolean
   edited_at: string | null
   is_edited: boolean
+  link_preview: string | null // JSON string containing LinkPreviewData
 }
 
 export interface Contact {

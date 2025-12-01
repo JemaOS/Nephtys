@@ -60,9 +60,23 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       if (!user) throw new Error('User not authenticated');
 
       const fileType = getFileType(selectedFile);
-      const fileExt = selectedFile.name.split('.').pop();
-      const fileName = `${user.id}/${Date.now()}.${fileExt}`;
-      const bucket = fileType === 'image' || fileType === 'video' ? 'media' : 'files';
+      const fileExt = selectedFile.name.split('.').pop() || 'bin';
+      // Use 'media' bucket for all file types to ensure consistency
+      const bucket = 'media';
+      // Create a subfolder based on file type for organization
+      const folder = fileType === 'image' ? 'images' : fileType === 'video' ? 'videos' : 'documents';
+      const fileName = `${user.id}/${folder}/${Date.now()}_${selectedFile.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+
+      // Simulate progress for better UX
+      const progressInterval = setInterval(() => {
+        setUploadProgress(prev => {
+          if (prev >= 90) {
+            clearInterval(progressInterval);
+            return prev;
+          }
+          return prev + 10;
+        });
+      }, 200);
 
       // Upload vers Supabase Storage
       const { data, error } = await supabase.storage
@@ -70,9 +84,15 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
         .upload(fileName, selectedFile, {
           cacheControl: '3600',
           upsert: false,
+          contentType: selectedFile.type || 'application/octet-stream',
         });
 
-      if (error) throw error;
+      clearInterval(progressInterval);
+
+      if (error) {
+        console.error('Upload error details:', error);
+        throw new Error(error.message || 'Upload failed');
+      }
 
       // Obtenir l'URL publique
       const { data: { publicUrl } } = supabase.storage
@@ -85,9 +105,10 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       // Reset
       setSelectedFile(null);
       setPreview(null);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error uploading file:', error);
-      alert('Erreur lors de l\'upload du fichier');
+      const errorMessage = error?.message || 'Erreur inconnue';
+      alert(`Erreur lors de l'upload du fichier: ${errorMessage}`);
     } finally {
       setUploading(false);
     }
@@ -107,34 +128,34 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-glass-surface-light backdrop-blur-[30px] border border-glass-border rounded-2xl p-6 max-w-lg w-full shadow-2xl">
+      <div className="bg-bg-secondary backdrop-blur-[30px] border border-glass-border rounded-2xl p-6 max-w-lg w-full shadow-2xl">
         {!selectedFile ? (
           <>
-            <h3 className="text-lg font-semibold mb-4">Partager un fichier</h3>
+            <h3 className="text-lg font-semibold mb-4 text-text-primary">Partager un fichier</h3>
             
             <div className="grid grid-cols-3 gap-4 mb-4">
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="flex flex-col items-center gap-2 p-4 rounded-xl bg-glass-surface-medium hover:bg-white/10 transition-colors"
+                className="flex flex-col items-center gap-2 p-4 rounded-xl bg-bg-surface hover:bg-bg-hover transition-colors"
               >
                 <Image size={32} className="text-primary-500" />
-                <span className="text-sm">Image</span>
+                <span className="text-sm text-text-primary">Image</span>
               </button>
               
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="flex flex-col items-center gap-2 p-4 rounded-xl bg-glass-surface-medium hover:bg-white/10 transition-colors"
+                className="flex flex-col items-center gap-2 p-4 rounded-xl bg-bg-surface hover:bg-bg-hover transition-colors"
               >
                 <Video size={32} className="text-primary-500" />
-                <span className="text-sm">Vidéo</span>
+                <span className="text-sm text-text-primary">Vidéo</span>
               </button>
               
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="flex flex-col items-center gap-2 p-4 rounded-xl bg-glass-surface-medium hover:bg-white/10 transition-colors"
+                className="flex flex-col items-center gap-2 p-4 rounded-xl bg-bg-surface hover:bg-bg-hover transition-colors"
               >
                 <File size={32} className="text-primary-500" />
-                <span className="text-sm">Fichier</span>
+                <span className="text-sm text-text-primary">Fichier</span>
               </button>
             </div>
 
@@ -142,13 +163,13 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
               ref={fileInputRef}
               type="file"
               onChange={handleFileSelect}
-              accept="image/*,video/*,application/*"
+              accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar,.7z,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,application/zip,application/x-rar-compressed,application/x-7z-compressed"
               className="hidden"
             />
 
             <button
               onClick={handleCancel}
-              className="w-full py-2 rounded-lg bg-glass-surface-medium hover:bg-white/10 transition-colors"
+              className="w-full py-2 rounded-lg bg-bg-surface hover:bg-bg-hover transition-colors text-text-primary"
             >
               Annuler
             </button>
@@ -156,17 +177,17 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
         ) : (
           <>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold">Aperçu</h3>
+              <h3 className="text-lg font-semibold text-text-primary">Aperçu</h3>
               <button
                 onClick={handleCancel}
-                className="p-2 rounded-full hover:bg-white/10 transition-colors"
+                className="p-2 rounded-full hover:bg-bg-hover transition-colors text-text-primary"
               >
                 <X size={20} />
               </button>
             </div>
 
             {/* Preview */}
-            <div className="mb-4 rounded-xl overflow-hidden bg-glass-surface-medium">
+            <div className="mb-4 rounded-xl overflow-hidden bg-bg-surface">
               {preview && getFileType(selectedFile) === 'image' && (
                 <img src={preview} alt="Preview" className="w-full h-auto max-h-96 object-contain" />
               )}
@@ -185,11 +206,11 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
             {/* Upload progress */}
             {uploading && (
               <div className="mb-4">
-                <div className="flex items-center justify-between text-sm mb-2">
+                <div className="flex items-center justify-between text-sm mb-2 text-text-primary">
                   <span>Upload en cours...</span>
                   <span>{uploadProgress}%</span>
                 </div>
-                <div className="h-2 bg-glass-surface-medium rounded-full overflow-hidden">
+                <div className="h-2 bg-bg-surface rounded-full overflow-hidden">
                   <div
                     className="h-full bg-primary-500 transition-all duration-300"
                     style={{ width: `${uploadProgress}%` }}
@@ -203,7 +224,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
               <button
                 onClick={handleCancel}
                 disabled={uploading}
-                className="flex-1 py-2 rounded-lg bg-glass-surface-medium hover:bg-white/10 transition-colors disabled:opacity-50"
+                className="flex-1 py-2 rounded-lg bg-bg-surface hover:bg-bg-hover transition-colors disabled:opacity-50 text-text-primary"
               >
                 Annuler
               </button>

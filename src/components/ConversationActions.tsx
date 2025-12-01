@@ -131,11 +131,11 @@ export const ConversationActions: React.FC<ConversationActionsProps> = ({
           />
 
           {/* Menu */}
-          <div className="absolute right-0 top-full mt-1 bg-white/10 backdrop-blur-xl rounded-xl p-2 shadow-2xl border border-white/20 z-50 min-w-[200px]">
+          <div className="absolute right-0 top-full mt-1 bg-bg-surface backdrop-blur-xl rounded-xl p-2 shadow-2xl border border-bg-hover z-50 min-w-[200px]">
             <button
               onClick={handlePin}
               disabled={loading}
-              className="w-full flex items-center gap-3 px-3 py-2 hover:bg-white/10 rounded-lg transition-colors text-left disabled:opacity-50"
+              className="w-full flex items-center gap-3 px-3 py-2 hover:bg-bg-hover rounded-lg transition-colors text-left disabled:opacity-50 text-text-primary"
             >
               <Pin size={16} className={isPinned ? 'text-primary-500' : 'text-text-tertiary'} fill={isPinned ? 'currentColor' : 'none'} />
               <span className="text-sm">{isPinned ? 'Désépingler' : 'Épingler'}</span>
@@ -144,7 +144,7 @@ export const ConversationActions: React.FC<ConversationActionsProps> = ({
             <button
               onClick={handleArchive}
               disabled={loading}
-              className="w-full flex items-center gap-3 px-3 py-2 hover:bg-white/10 rounded-lg transition-colors text-left disabled:opacity-50"
+              className="w-full flex items-center gap-3 px-3 py-2 hover:bg-bg-hover rounded-lg transition-colors text-left disabled:opacity-50 text-text-primary"
             >
               {isArchived ? (
                 <>
@@ -162,7 +162,7 @@ export const ConversationActions: React.FC<ConversationActionsProps> = ({
             <button
               onClick={handleMute}
               disabled={loading}
-              className="w-full flex items-center gap-3 px-3 py-2 hover:bg-white/10 rounded-lg transition-colors text-left disabled:opacity-50"
+              className="w-full flex items-center gap-3 px-3 py-2 hover:bg-bg-hover rounded-lg transition-colors text-left disabled:opacity-50 text-text-primary"
             >
               {isMuted ? (
                 <>
@@ -177,7 +177,7 @@ export const ConversationActions: React.FC<ConversationActionsProps> = ({
               )}
             </button>
 
-            <div className="h-px bg-white/10 my-2" />
+            <div className="h-px bg-bg-hover my-2" />
 
             <button
               onClick={handleDelete}

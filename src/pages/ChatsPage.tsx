@@ -1,10 +1,42 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { MainLayout } from '@/components/MainLayout'
 import { ConversationContextMenu } from '@/components/ConversationContextMenu'
 import { supabase, Conversation, Profile, Message } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { MessageCircle, Search, Plus, MoreVertical, Check, UserPlus, Users, Pin, BellOff } from 'lucide-react'
+
+// Memoized formatDate function outside component to prevent recreation on every render
+const formatDate = (dateStr: string): string => {
+  const date = new Date(dateStr)
+  const now = new Date()
+  const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24))
+  
+  if (diffDays === 0) {
+    return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+  } else if (diffDays === 1) {
+    return 'Hier'
+  } else if (diffDays < 7) {
+    return date.toLocaleDateString('fr-FR', { weekday: 'short' })
+  } else {
+    return date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })
+  }
+}
+
+// Skeleton loader component for conversation items
+const ConversationSkeleton = () => (
+  <div className="space-y-4 p-4">
+    {[1, 2, 3, 4, 5].map((i) => (
+      <div key={i} className="flex items-center gap-3 animate-pulse">
+        <div className="w-12 h-12 rounded-full bg-bg-surface" />
+        <div className="flex-1 space-y-2">
+          <div className="h-4 bg-bg-surface rounded w-1/3" />
+          <div className="h-3 bg-bg-surface rounded w-2/3" />
+        </div>
+      </div>
+    ))}
+  </div>
+)
 
 interface ConversationWithDetails extends Omit<Conversation, 'is_pinned'> {
   otherUserProfile?: Profile
@@ -21,14 +53,37 @@ export function ChatsPage() {
   const [showFilterMenu, setShowFilterMenu] = useState(false)
   const [showNewMenu, setShowNewMenu] = useState(false)
   const [activeFilter, setActiveFilter] = useState<'all' | 'unread' | 'groups'>('all')
+  const [isLoading, setIsLoading] = useState(true)
   const { user } = useAuth()
   const navigate = useNavigate()
+  
+  // Ref for debouncing real-time subscription reloads
+  const reloadTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  
+  // Debounced reload function to prevent excessive reloads from real-time subscriptions
+  const debouncedReload = useCallback(() => {
+    if (reloadTimeoutRef.current) {
+      clearTimeout(reloadTimeoutRef.current)
+    }
+    reloadTimeoutRef.current = setTimeout(() => {
+      loadConversations()
+    }, 500) // 500ms debounce
+  }, [])
+  
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (reloadTimeoutRef.current) {
+        clearTimeout(reloadTimeoutRef.current)
+      }
+    }
+  }, [])
 
   useEffect(() => {
     if (user) {
       loadConversations()
       
-      // Subscribe to conversation changes
+      // Subscribe to conversation changes with debounced reload
       const conversationsChannel = supabase
         .channel('conversations')
         .on('postgres_changes',
@@ -37,11 +92,11 @@ export function ChatsPage() {
             schema: 'public',
             table: 'conversations'
           },
-          () => loadConversations()
+          () => debouncedReload()
         )
         .subscribe()
 
-      // Subscribe to profile changes for real-time avatar updates
+      // Subscribe to profile changes for real-time avatar updates with debounced reload
       const profilesChannel = supabase
         .channel('profiles-updates')
         .on('postgres_changes',
@@ -50,11 +105,7 @@ export function ChatsPage() {
             schema: 'public',
             table: 'profiles'
           },
-          (payload) => {
-            console.log('Profile updated in ChatsPage:', payload)
-            // Reload conversations to get updated profile data
-            loadConversations()
-          }
+          () => debouncedReload()
         )
         .subscribe()
 
@@ -63,25 +114,31 @@ export function ChatsPage() {
         supabase.removeChannel(profilesChannel)
       }
     }
-  }, [user])
+  }, [user, debouncedReload])
 
   const loadConversations = async () => {
     if (!user) return
 
-    console.log('📋 Loading conversations for user:', user.id)
+    setIsLoading(true)
 
-    // Charger TOUTES les conversations de l'utilisateur avec leurs métadonnées
-    const { data: memberData, error: memberError } = await supabase
-      .from('conversation_members')
-      .select('conversation_id, is_pinned, is_muted, is_archived')
-      .eq('user_id', user.id)
+    try {
+      // Step 1: Get all conversation memberships for the user (single query)
+      const { data: memberData, error: memberError } = await supabase
+        .from('conversation_members')
+        .select('conversation_id, is_pinned, is_muted, is_archived')
+        .eq('user_id', user.id)
 
-    console.log('📋 Member data:', memberData)
-    console.log('📋 Member count:', memberData?.length || 0)
-    if (memberError) console.error('❌ Error loading members:', memberError)
+      if (memberError) {
+        console.error('Error loading members:', memberError)
+        return
+      }
 
-    if (memberData && memberData.length > 0) {
-      // Filtrer les non archivées
+      if (!memberData || memberData.length === 0) {
+        setConversations([])
+        return
+      }
+
+      // Filter non-archived conversations
       const activeMembers = memberData.filter(m => !m.is_archived)
       const conversationIds = activeMembers.map(m => m.conversation_id)
       
@@ -89,93 +146,112 @@ export function ChatsPage() {
         setConversations([])
         return
       }
-      console.log('📋 Conversation IDs:', conversationIds)
-      
-      const { data, error } = await supabase
+
+      // Step 2: Fetch all conversations (single query)
+      const { data: conversationsData, error: convError } = await supabase
         .from('conversations')
         .select('*')
         .in('id', conversationIds)
         .order('last_message_at', { ascending: false, nullsFirst: true })
         .order('created_at', { ascending: false })
 
-      console.log('📋 Conversations loaded:', data)
-      console.log('📋 Conversations count:', data?.length || 0)
-      if (error) console.error('❌ Error loading conversations:', error)
-
-      if (!error && data) {
-        // Enrichir chaque conversation avec les détails
-        const enrichedConversations = await Promise.all(
-          data.map(async (conv) => {
-            const memberInfo = activeMembers.find(m => m.conversation_id === conv.id)
-            const enriched: ConversationWithDetails = {
-              ...conv,
-              is_pinned: memberInfo?.is_pinned || false,
-              is_muted: memberInfo?.is_muted || false
-            }
-
-            // Pour les conversations directes, charger le profil de l'autre utilisateur
-            if (conv.type === 'direct') {
-              const { data: members } = await supabase
-                .from('conversation_members')
-                .select('user_id')
-                .eq('conversation_id', conv.id)
-                .neq('user_id', user.id)
-
-              if (members && members.length > 0) {
-                const { data: profile } = await supabase
-                  .from('profiles')
-                  .select('*')
-                  .eq('id', members[0].user_id)
-                  .maybeSingle()
-
-                if (profile) {
-                  enriched.otherUserProfile = profile
-                }
-              }
-            }
-
-            // Charger le dernier message
-            const { data: lastMsg } = await supabase
-              .from('messages')
-              .select('*')
-              .eq('conversation_id', conv.id)
-              .is('deleted_at', null)
-              .order('created_at', { ascending: false })
-              .limit(1)
-              .maybeSingle()
-
-            if (lastMsg) {
-              enriched.lastMessage = lastMsg
-            }
-
-            // Compter les messages non lus (messages reçus avec status != 'read')
-            const { count: unreadCount } = await supabase
-              .from('messages')
-              .select('*', { count: 'exact', head: true })
-              .eq('conversation_id', conv.id)
-              .neq('sender_id', user.id)
-              .neq('status', 'read')
-              .is('deleted_at', null)
-
-            enriched.unreadCount = unreadCount || 0
-
-            return enriched
-          })
-        )
-
-        // Trier : épinglées en premier
-        const sorted = enrichedConversations.sort((a, b) => {
-          if (a.is_pinned && !b.is_pinned) return -1
-          if (!a.is_pinned && b.is_pinned) return 1
-          return 0
-        })
-        
-        console.log('📋 Setting conversations state with', sorted.length, 'conversations')
-        setConversations(sorted)
+      if (convError) {
+        console.error('Error loading conversations:', convError)
+        return
       }
-    } else {
-      console.log('📋 No conversation members found for user')
+
+      if (!conversationsData || conversationsData.length === 0) {
+        setConversations([])
+        return
+      }
+
+      // Step 3: Batch fetch all members for all conversations (single query)
+      const { data: allMembers } = await supabase
+        .from('conversation_members')
+        .select('conversation_id, user_id')
+        .in('conversation_id', conversationIds)
+        .neq('user_id', user.id)
+
+      // Step 4: Get unique user IDs and batch fetch all profiles (single query)
+      const otherUserIds = [...new Set(allMembers?.map(m => m.user_id) || [])]
+      const { data: profiles } = otherUserIds.length > 0
+        ? await supabase
+            .from('profiles')
+            .select('*')
+            .in('id', otherUserIds)
+        : { data: [] }
+
+      const profileMap = new Map(profiles?.map(p => [p.id, p]) || [])
+
+      // Step 5: Batch fetch last messages for all conversations (single query)
+      // Get recent messages and filter to get the last one per conversation
+      const { data: recentMessages } = await supabase
+        .from('messages')
+        .select('*')
+        .in('conversation_id', conversationIds)
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false })
+        .limit(conversationIds.length * 2) // Get enough to have at least 1 per conversation
+
+      // Group by conversation and take the first (most recent) for each
+      const lastMessageMap = new Map<string, Message>()
+      recentMessages?.forEach(msg => {
+        if (!lastMessageMap.has(msg.conversation_id)) {
+          lastMessageMap.set(msg.conversation_id, msg)
+        }
+      })
+
+      // Step 6: Batch count unread messages (single query)
+      const { data: unreadData } = await supabase
+        .from('messages')
+        .select('conversation_id')
+        .in('conversation_id', conversationIds)
+        .neq('sender_id', user.id)
+        .neq('status', 'read')
+        .is('deleted_at', null)
+
+      // Count unread per conversation
+      const unreadCountMap = new Map<string, number>()
+      unreadData?.forEach(msg => {
+        unreadCountMap.set(msg.conversation_id, (unreadCountMap.get(msg.conversation_id) || 0) + 1)
+      })
+
+      // Step 7: Build the enriched conversations array (no additional queries)
+      const membersByConversation = new Map<string, string[]>()
+      allMembers?.forEach(m => {
+        const existing = membersByConversation.get(m.conversation_id) || []
+        existing.push(m.user_id)
+        membersByConversation.set(m.conversation_id, existing)
+      })
+
+      const enrichedConversations: ConversationWithDetails[] = conversationsData.map(conv => {
+        const memberInfo = activeMembers.find(m => m.conversation_id === conv.id)
+        const otherUserIds = membersByConversation.get(conv.id) || []
+        const otherProfile = otherUserIds.length > 0 ? profileMap.get(otherUserIds[0]) : undefined
+
+        return {
+          ...conv,
+          is_pinned: memberInfo?.is_pinned || false,
+          is_muted: memberInfo?.is_muted || false,
+          otherUserProfile: conv.type === 'direct' ? otherProfile : undefined,
+          lastMessage: lastMessageMap.get(conv.id),
+          unreadCount: unreadCountMap.get(conv.id) || 0
+        }
+      })
+
+      // Sort: pinned first, then by last_message_at
+      const sorted = enrichedConversations.sort((a, b) => {
+        if (a.is_pinned && !b.is_pinned) return -1
+        if (!a.is_pinned && b.is_pinned) return 1
+        return new Date(b.last_message_at || 0).getTime() - new Date(a.last_message_at || 0).getTime()
+      })
+      
+      setConversations(sorted)
+    } catch (err) {
+      console.error('Error loading conversations:', err)
       setConversations([])
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -185,6 +261,13 @@ export function ChatsPage() {
   }
 
   const handleMarkAsUnread = async (conversationId: string) => {
+    // Optimistic update - increment unread count immediately
+    setConversations(prev => prev.map(conv =>
+      conv.id === conversationId
+        ? { ...conv, unreadCount: Math.max(1, (conv.unreadCount || 0) + 1) }
+        : conv
+    ))
+    
     const { data: messages } = await supabase
       .from('messages')
       .select('id')
@@ -193,12 +276,19 @@ export function ChatsPage() {
       .eq('status', 'read')
 
     if (messages && messages.length > 0) {
-      await supabase
+      const { error } = await supabase
         .from('messages')
         .update({ status: 'delivered' })
         .in('id', messages.map(m => m.id))
       
-      await loadConversations()
+      if (error) {
+        // Revert on error
+        setConversations(prev => prev.map(conv =>
+          conv.id === conversationId
+            ? { ...conv, unreadCount: Math.max(0, (conv.unreadCount || 1) - 1) }
+            : conv
+        ))
+      }
     }
   }
 
@@ -206,54 +296,136 @@ export function ChatsPage() {
     const conv = conversations.find(c => c.id === conversationId)
     if (!conv) return
 
-    await supabase
+    const currentPinned = conv.is_pinned || false
+    
+    // Optimistic update - update UI immediately
+    setConversations(prev => {
+      const updated = prev.map(c =>
+        c.id === conversationId ? { ...c, is_pinned: !currentPinned } : c
+      )
+      // Re-sort: pinned first, then by last_message_at
+      return updated.sort((a, b) => {
+        if (a.is_pinned && !b.is_pinned) return -1
+        if (!a.is_pinned && b.is_pinned) return 1
+        return new Date(b.last_message_at || 0).getTime() - new Date(a.last_message_at || 0).getTime()
+      })
+    })
+    
+    // Then sync with database
+    const { error } = await supabase
       .from('conversation_members')
-      .update({ is_pinned: !(conv as any).is_pinned || false })
+      .update({ is_pinned: !currentPinned })
       .eq('conversation_id', conversationId)
       .eq('user_id', user!.id)
     
-    await loadConversations()
+    if (error) {
+      // Revert on error
+      setConversations(prev => {
+        const updated = prev.map(c =>
+          c.id === conversationId ? { ...c, is_pinned: currentPinned } : c
+        )
+        return updated.sort((a, b) => {
+          if (a.is_pinned && !b.is_pinned) return -1
+          if (!a.is_pinned && b.is_pinned) return 1
+          return new Date(b.last_message_at || 0).getTime() - new Date(a.last_message_at || 0).getTime()
+        })
+      })
+    }
   }
 
   const handleArchiveConversation = async (conversationId: string) => {
-    await supabase
+    // Optimistic update - remove from list immediately
+    const archivedConv = conversations.find(c => c.id === conversationId)
+    setConversations(prev => prev.filter(c => c.id !== conversationId))
+    
+    const { error } = await supabase
       .from('conversation_members')
       .update({ is_archived: true })
       .eq('conversation_id', conversationId)
       .eq('user_id', user!.id)
     
-    await loadConversations()
+    if (error && archivedConv) {
+      // Revert on error - add back to list
+      setConversations(prev => {
+        const updated = [...prev, archivedConv]
+        return updated.sort((a, b) => {
+          if (a.is_pinned && !b.is_pinned) return -1
+          if (!a.is_pinned && b.is_pinned) return 1
+          return new Date(b.last_message_at || 0).getTime() - new Date(a.last_message_at || 0).getTime()
+        })
+      })
+    }
   }
 
   const handleMuteConversation = async (conversationId: string) => {
     const conv = conversations.find(c => c.id === conversationId)
     if (!conv) return
 
-    await supabase
+    const currentMuted = conv.is_muted || false
+    
+    // Optimistic update - update UI immediately
+    setConversations(prev => prev.map(c =>
+      c.id === conversationId ? { ...c, is_muted: !currentMuted } : c
+    ))
+    
+    // Then sync with database
+    const { error } = await supabase
       .from('conversation_members')
-      .update({ is_muted: !(conv as any).is_muted || false })
+      .update({ is_muted: !currentMuted })
       .eq('conversation_id', conversationId)
       .eq('user_id', user!.id)
     
-    await loadConversations()
+    if (error) {
+      // Revert on error
+      setConversations(prev => prev.map(c =>
+        c.id === conversationId ? { ...c, is_muted: currentMuted } : c
+      ))
+    }
+  }
+
+  const handleClearMessages = async (conversationId: string) => {
+    if (confirm('Voulez-vous vraiment effacer tous les messages de cette conversation ?')) {
+      // Soft-delete all messages in the conversation (set deleted_at timestamp)
+      const { error } = await supabase
+        .from('messages')
+        .update({ deleted_at: new Date().toISOString() })
+        .eq('conversation_id', conversationId)
+      
+      if (!error) {
+        // Update local state to show empty conversation (clear lastMessage)
+        setConversations(prev => prev.map(conv =>
+          conv.id === conversationId
+            ? { ...conv, lastMessage: undefined, unreadCount: 0 }
+            : conv
+        ))
+      }
+    }
   }
 
   const handleDeleteConversation = async (conversationId: string) => {
-    if (confirm('Voulez-vous vraiment supprimer cette conversation ? Tous les messages seront supprimés.')) {
-      // Supprimer tous les messages
-      await supabase
-        .from('messages')
-        .delete()
-        .eq('conversation_id', conversationId)
+    if (confirm('Voulez-vous vraiment supprimer cette conversation ? La conversation sera supprimée de votre liste.')) {
+      // Optimistic update - remove from list immediately
+      const deletedConv = conversations.find(c => c.id === conversationId)
+      setConversations(prev => prev.filter(c => c.id !== conversationId))
       
-      // Supprimer la conversation
-      await supabase
+      // Remove user from conversation (soft delete the conversation for this user)
+      const { error } = await supabase
         .from('conversation_members')
         .delete()
         .eq('conversation_id', conversationId)
         .eq('user_id', user!.id)
       
-      await loadConversations()
+      if (error && deletedConv) {
+        // Revert on error - add back to list
+        setConversations(prev => {
+          const updated = [...prev, deletedConv]
+          return updated.sort((a, b) => {
+            if (a.is_pinned && !b.is_pinned) return -1
+            if (!a.is_pinned && b.is_pinned) return 1
+            return new Date(b.last_message_at || 0).getTime() - new Date(a.last_message_at || 0).getTime()
+          })
+        })
+      }
     }
   }
 
@@ -261,26 +433,33 @@ export function ChatsPage() {
     window.open(`/chat/${conversationId}`, '_blank')
   }
 
-  const filteredConversations = conversations.filter(conv => {
-    // Filtre par recherche
-    if (searchQuery.trim() && !conv.name?.toLowerCase().includes(searchQuery.toLowerCase())) {
-      return false
-    }
-    
-    // Filtre par type
-    if (activeFilter === 'unread' && (conv.unreadCount || 0) === 0) {
-      return false
-    }
-    if (activeFilter === 'groups' && conv.type !== 'group') {
-      return false
-    }
-    
-    return true
-  })
-  
-  console.log('📋 Total conversations:', conversations.length)
-  console.log('📋 Filtered conversations:', filteredConversations.length)
-  console.log('📋 Search query:', searchQuery)
+  // Memoize filtered conversations to prevent unnecessary recalculations
+  const filteredConversations = useMemo(() => {
+    return conversations.filter(conv => {
+      // Filtre par recherche
+      if (searchQuery.trim() && !conv.name?.toLowerCase().includes(searchQuery.toLowerCase())) {
+        // Also check other user profile name for direct conversations
+        if (conv.type === 'direct' && conv.otherUserProfile) {
+          const profileName = conv.otherUserProfile.display_name || conv.otherUserProfile.username || ''
+          if (!profileName.toLowerCase().includes(searchQuery.toLowerCase())) {
+            return false
+          }
+        } else {
+          return false
+        }
+      }
+      
+      // Filtre par type
+      if (activeFilter === 'unread' && (conv.unreadCount || 0) === 0) {
+        return false
+      }
+      if (activeFilter === 'groups' && conv.type !== 'group') {
+        return false
+      }
+      
+      return true
+    })
+  }, [conversations, searchQuery, activeFilter])
 
   return (
     <MainLayout>
@@ -304,7 +483,7 @@ export function ChatsPage() {
                 {showNewMenu && (
                   <>
                     <div className="fixed inset-0 z-40" onClick={() => setShowNewMenu(false)} />
-                    <div className="absolute right-0 top-12 z-50 min-w-[220px] bg-[#233138] rounded-2xl shadow-2xl py-2 border border-bg-hover">
+                    <div className="absolute right-0 top-12 z-50 min-w-[220px] bg-bg-surface rounded-2xl shadow-2xl py-2 border border-bg-hover">
                       <button
                         onClick={() => { navigate('/contacts'); setShowNewMenu(false) }}
                         className="w-full px-4 py-3 text-left hover:bg-bg-hover transition-colors text-text-primary text-sm flex items-center gap-3"
@@ -336,7 +515,7 @@ export function ChatsPage() {
                 {showFilterMenu && (
                   <>
                     <div className="fixed inset-0 z-40" onClick={() => setShowFilterMenu(false)} />
-                    <div className="absolute right-0 top-12 z-50 min-w-[200px] bg-[#233138] rounded-2xl shadow-2xl py-2 border border-bg-hover">
+                    <div className="absolute right-0 top-12 z-50 min-w-[200px] bg-bg-surface rounded-2xl shadow-2xl py-2 border border-bg-hover">
                       <button
                         onClick={() => { setActiveFilter('all'); setShowFilterMenu(false) }}
                         className="w-full px-4 py-2 text-left hover:bg-bg-hover transition-colors text-text-primary text-sm flex items-center gap-3"
@@ -408,7 +587,9 @@ export function ChatsPage() {
 
         {/* Liste des conversations */}
         <div className="flex-1 overflow-y-auto pb-4">
-          {filteredConversations.length === 0 ? (
+          {isLoading ? (
+            <ConversationSkeleton />
+          ) : filteredConversations.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center px-8">
               <MessageCircle size={64} className="text-[#3b4a54] mb-4" />
               <h3 className="text-lg font-medium text-text-secondary mb-2">Aucune conversation</h3>
@@ -435,23 +616,6 @@ export function ChatsPage() {
               : 'Aucun message'
 
               const hasUnread = (conversation.unreadCount || 0) > 0
-              
-              // Formater la date
-              const formatDate = (dateStr: string) => {
-                const date = new Date(dateStr)
-                const now = new Date()
-                const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24))
-                
-                if (diffDays === 0) {
-                  return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
-                } else if (diffDays === 1) {
-                  return 'Hier'
-                } else if (diffDays < 7) {
-                  return date.toLocaleDateString('fr-FR', { weekday: 'short' })
-                } else {
-                  return date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })
-                }
-              }
 
               return (
                 <div
@@ -582,6 +746,7 @@ export function ChatsPage() {
           onPin={() => handlePinConversation(contextMenu.conversationId)}
           onArchive={() => handleArchiveConversation(contextMenu.conversationId)}
           onMute={() => handleMuteConversation(contextMenu.conversationId)}
+          onClearMessages={() => handleClearMessages(contextMenu.conversationId)}
           onDelete={() => handleDeleteConversation(contextMenu.conversationId)}
           onOpenInNewWindow={() => handleOpenInNewWindow(contextMenu.conversationId)}
         />

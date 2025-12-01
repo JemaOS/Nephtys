@@ -1,10 +1,10 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { useTheme } from '@/context/ThemeContext'
 import { MainLayout } from '@/components/MainLayout'
 import { supabase, Message, Conversation, Profile } from '@/lib/supabase'
-import { ArrowLeft, Send, Phone, Video, MoreVertical, Search, Smile, Mic, Plus, Reply, UserPlus, Archive, Trash2, Bell, BellOff, Lock } from 'lucide-react'
+import { ArrowLeft, Send, Phone, Video, MoreVertical, Search, Smile, Mic, Plus, Reply, UserPlus, Archive, Trash2, Bell, BellOff, Lock, Star } from 'lucide-react'
 import { EmojiPicker } from '@/components/EmojiPicker'
 import { MessageReactions } from '@/components/MessageReactions'
 import { MessageReply } from '@/components/MessageReply'
@@ -19,6 +19,15 @@ import { ConversationInfo } from '@/components/ConversationInfo'
 import { useMessageReactions } from '@/hooks/useMessageReactions'
 import { useCall } from '@/context/CallContext'
 import { useNotifications } from '@/hooks/useNotifications'
+import { MessageContextMenu } from '@/components/MessageContextMenu'
+import { MessageHoverActions } from '@/components/MessageHoverActions'
+import { ChatBackgroundContextMenu } from '@/components/ChatBackgroundContextMenu'
+import { SelectionModeToolbar } from '@/components/SelectionModeToolbar'
+import { useIsMobile } from '@/hooks/use-mobile'
+import { LinkPreview, LinkPreviewSkeleton } from '@/components/LinkPreview'
+import { LinkPreviewData, getFirstPreviewUrl, fetchLinkPreview, debounce } from '@/lib/linkPreview'
+import { PinMessageDialog } from '@/components/PinMessageDialog'
+import { PinnedMessageBanner } from '@/components/PinnedMessageBanner'
 
 export function ChatViewPage() {
   const { conversationId } = useParams()
@@ -40,6 +49,29 @@ export function ChatViewPage() {
   const [showConversationMenu, setShowConversationMenu] = useState(false)
   const [showConversationInfo, setShowConversationInfo] = useState(false)
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
+  const [contextMenu, setContextMenu] = useState<{
+    isOpen: boolean;
+    position: { x: number; y: number };
+    message: Message | null;
+  }>({ isOpen: false, position: { x: 0, y: 0 }, message: null })
+  const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set())
+  const [isSelectionMode, setIsSelectionMode] = useState(false)
+  const [backgroundContextMenu, setBackgroundContextMenu] = useState<{
+    isOpen: boolean;
+    position: { x: number; y: number };
+  }>({ isOpen: false, position: { x: 0, y: 0 } })
+  const [linkPreview, setLinkPreview] = useState<LinkPreviewData | null>(null)
+  const [isLoadingPreview, setIsLoadingPreview] = useState(false)
+  const [dismissedPreviewUrl, setDismissedPreviewUrl] = useState<string | null>(null)
+  const [showPinDialog, setShowPinDialog] = useState(false)
+  const [messageToPin, setMessageToPin] = useState<Message | null>(null)
+  const [pinnedMessage, setPinnedMessage] = useState<{
+    id: string;
+    content: string;
+    sender_name: string;
+    pinned_at: string;
+    pinned_until: string;
+  } | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const emojiPickerRef = useRef<HTMLDivElement>(null)
   
@@ -47,6 +79,7 @@ export function ChatViewPage() {
   const { startCall } = useCall()
   const { permission, requestPermission, sendNotification, subscribeToConversation, unsubscribeFromConversation } = useNotifications()
   const { wallpaper } = useTheme()
+  const isMobile = useIsMobile()
   
   const displayedMessages = filteredMessages.length > 0 ? filteredMessages : messages
 
@@ -136,6 +169,47 @@ export function ChatViewPage() {
     }
   }, [showEmojiPicker])
 
+  // Debounced function to fetch link preview
+  const debouncedFetchPreview = useCallback(
+    debounce(async (url: string) => {
+      setIsLoadingPreview(true)
+      const preview = await fetchLinkPreview(url)
+      setLinkPreview(preview)
+      setIsLoadingPreview(false)
+    }, 500),
+    []
+  )
+
+  // Effect to detect URLs in input and fetch preview
+  useEffect(() => {
+    const url = getFirstPreviewUrl(newMessage)
+    
+    if (url && url !== dismissedPreviewUrl) {
+      // Only fetch if URL changed
+      if (!linkPreview || linkPreview.url !== url) {
+        debouncedFetchPreview(url)
+      }
+    } else if (!url) {
+      setLinkPreview(null)
+      setIsLoadingPreview(false)
+    }
+  }, [newMessage, dismissedPreviewUrl])
+
+  // Reset dismissed URL when message is cleared
+  useEffect(() => {
+    if (!newMessage.trim()) {
+      setDismissedPreviewUrl(null)
+    }
+  }, [newMessage])
+
+  const handleDismissPreview = () => {
+    if (linkPreview) {
+      setDismissedPreviewUrl(linkPreview.url)
+    }
+    setLinkPreview(null)
+    setIsLoadingPreview(false)
+  }
+
   const handleEmojiSelect = (emoji: string) => {
     setNewMessage(prev => prev + emoji)
     setShowEmojiPicker(false)
@@ -189,6 +263,19 @@ export function ChatViewPage() {
         conversation_id: conversationId!, sender_id: user.id, content: newMessage.trim(),
         type: 'text', status: 'sent', reply_to_id: replyToMessage?.id || null,
       }
+      
+      // Add link preview data if available
+      if (linkPreview) {
+        messageData.link_preview = JSON.stringify({
+          url: linkPreview.url,
+          title: linkPreview.title,
+          description: linkPreview.description,
+          image: linkPreview.image,
+          siteName: linkPreview.siteName,
+          domain: linkPreview.domain,
+        })
+      }
+      
       if (ephemeralDuration) {
         const expiresAt = new Date()
         expiresAt.setSeconds(expiresAt.getSeconds() + ephemeralDuration)
@@ -200,6 +287,8 @@ export function ChatViewPage() {
       if (!error) {
         setNewMessage('')
         setReplyToMessage(null)
+        setLinkPreview(null)
+        setDismissedPreviewUrl(null)
         await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conversationId!)
       }
     } finally { setSending(false) }
@@ -307,6 +396,310 @@ export function ChatViewPage() {
     return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
   }
 
+  // Context menu handlers
+  const handleContextMenu = useCallback((e: React.MouseEvent, message: Message) => {
+    e.preventDefault()
+    setContextMenu({
+      isOpen: true,
+      position: { x: e.clientX, y: e.clientY },
+      message,
+    })
+  }, [])
+
+  const closeContextMenu = useCallback(() => {
+    setContextMenu({ isOpen: false, position: { x: 0, y: 0 }, message: null })
+  }, [])
+
+  // Background context menu handlers (desktop only)
+  const handleBackgroundContextMenu = useCallback((e: React.MouseEvent) => {
+    // Only on desktop
+    if (isMobile) return
+    
+    // Check if click is on the background, not on a message
+    const target = e.target as HTMLElement
+    const isOnMessage = target.closest('[data-message-id]')
+    
+    if (!isOnMessage) {
+      e.preventDefault()
+      // Close any open message context menu first
+      setContextMenu({ isOpen: false, position: { x: 0, y: 0 }, message: null })
+      setBackgroundContextMenu({
+        isOpen: true,
+        position: { x: e.clientX, y: e.clientY },
+      })
+    }
+  }, [isMobile])
+
+  const closeBackgroundContextMenu = useCallback(() => {
+    setBackgroundContextMenu({ isOpen: false, position: { x: 0, y: 0 } })
+  }, [])
+
+  const enterSelectionMode = useCallback(() => {
+    setIsSelectionMode(true)
+    setSelectedMessages(new Set())
+  }, [])
+
+  const exitSelectionMode = useCallback(() => {
+    setIsSelectionMode(false)
+    setSelectedMessages(new Set())
+  }, [])
+
+  const handleSelectMessage = useCallback((messageId: string) => {
+    setSelectedMessages(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(messageId)) {
+        newSet.delete(messageId)
+      } else {
+        newSet.add(messageId)
+      }
+      return newSet
+    })
+  }, [])
+
+  const handleDeleteMessage = async (messageId: string) => {
+    if (confirm('Voulez-vous vraiment supprimer ce message ?')) {
+      await supabase.from('messages').update({ deleted_at: new Date().toISOString() }).eq('id', messageId)
+      setMessages(prev => prev.filter(m => m.id !== messageId))
+    }
+  }
+
+  const handleForwardMessage = (message: Message) => {
+    // TODO: Implement forward functionality
+    alert('Fonctionnalité de transfert à venir')
+  }
+
+  const handlePinMessage = async (messageId: string) => {
+    const message = messages.find(m => m.id === messageId)
+    if (message) {
+      setMessageToPin(message)
+      setShowPinDialog(true)
+    }
+  }
+
+  const handleConfirmPin = async (durationSeconds: number) => {
+    if (!messageToPin || !conversationId) return
+
+    const pinnedAt = new Date()
+    const pinnedUntil = new Date(pinnedAt.getTime() + durationSeconds * 1000)
+
+    // Update the message as pinned
+    const { error } = await supabase
+      .from('messages')
+      .update({
+        is_pinned: true,
+        pinned_at: pinnedAt.toISOString(),
+        pinned_until: pinnedUntil.toISOString(),
+      })
+      .eq('id', messageToPin.id)
+
+    if (!error) {
+      // Update local state
+      setMessages(prev => prev.map(m =>
+        m.id === messageToPin.id
+          ? { ...m, is_pinned: true, pinned_at: pinnedAt.toISOString(), pinned_until: pinnedUntil.toISOString() }
+          : m
+      ))
+
+      // Set the pinned message for the banner
+      const senderName = messageToPin.sender_id === user?.id
+        ? 'Vous'
+        : otherUser?.display_name || otherUser?.username || 'Utilisateur'
+
+      setPinnedMessage({
+        id: messageToPin.id,
+        content: messageToPin.content || '',
+        sender_name: senderName,
+        pinned_at: pinnedAt.toISOString(),
+        pinned_until: pinnedUntil.toISOString(),
+      })
+    }
+
+    setMessageToPin(null)
+    setShowPinDialog(false)
+  }
+
+  const handleUnpinMessage = async () => {
+    if (!pinnedMessage) return
+
+    const { error } = await supabase
+      .from('messages')
+      .update({
+        is_pinned: false,
+        pinned_at: null,
+        pinned_until: null,
+      })
+      .eq('id', pinnedMessage.id)
+
+    if (!error) {
+      // Update local state
+      setMessages(prev => prev.map(m =>
+        m.id === pinnedMessage.id
+          ? { ...m, is_pinned: false, pinned_at: null, pinned_until: null }
+          : m
+      ))
+      setPinnedMessage(null)
+    }
+  }
+
+  const scrollToPinnedMessage = () => {
+    if (!pinnedMessage) return
+    const messageElement = document.querySelector(`[data-message-id="${pinnedMessage.id}"]`)
+    if (messageElement) {
+      messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      // Add a highlight effect
+      messageElement.classList.add('bg-[#00a884]/20')
+      setTimeout(() => {
+        messageElement.classList.remove('bg-[#00a884]/20')
+      }, 2000)
+    }
+  }
+
+  // Load pinned message on mount
+  useEffect(() => {
+    const loadPinnedMessage = async () => {
+      if (!conversationId) return
+
+      const { data, error } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('conversation_id', conversationId)
+        .eq('is_pinned', true)
+        .gt('pinned_until', new Date().toISOString())
+        .order('pinned_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (!error && data) {
+        const senderName = data.sender_id === user?.id
+          ? 'Vous'
+          : otherUser?.display_name || otherUser?.username || 'Utilisateur'
+
+        setPinnedMessage({
+          id: data.id,
+          content: data.content || '',
+          sender_name: senderName,
+          pinned_at: data.pinned_at,
+          pinned_until: data.pinned_until,
+        })
+      }
+    }
+
+    loadPinnedMessage()
+  }, [conversationId, user?.id, otherUser])
+
+  const handleStarMessage = async (messageId: string) => {
+    // Find the message to toggle its starred status
+    const message = messages.find(m => m.id === messageId)
+    if (!message) return
+    
+    const newStarredStatus = !message.is_starred
+    
+    // Update in database
+    const { error } = await supabase
+      .from('messages')
+      .update({ is_starred: newStarredStatus })
+      .eq('id', messageId)
+    
+    if (!error) {
+      // Update local state
+      setMessages(prev => prev.map(m =>
+        m.id === messageId ? { ...m, is_starred: newStarredStatus } : m
+      ))
+    }
+  }
+
+  const handleReportMessage = (messageId: string) => {
+    // TODO: Implement report functionality
+    alert('Message signalé')
+  }
+
+  // Bulk action handlers for selection mode
+  const handleBulkCopy = useCallback(async () => {
+    const selectedMsgs = messages.filter(m => selectedMessages.has(m.id))
+    const textContent = selectedMsgs
+      .filter(m => m.type === 'text' && m.content)
+      .map(m => m.content)
+      .join('\n')
+    
+    if (textContent) {
+      await navigator.clipboard.writeText(textContent)
+      alert('Messages copiés!')
+    } else {
+      alert('Aucun texte à copier')
+    }
+    exitSelectionMode()
+  }, [messages, selectedMessages, exitSelectionMode])
+
+  const handleBulkStar = useCallback(async () => {
+    const ids = Array.from(selectedMessages)
+    
+    // Update all selected messages to starred
+    const { error } = await supabase
+      .from('messages')
+      .update({ is_starred: true })
+      .in('id', ids)
+    
+    if (!error) {
+      // Update local state
+      setMessages(prev => prev.map(m =>
+        selectedMessages.has(m.id) ? { ...m, is_starred: true } : m
+      ))
+    }
+    
+    exitSelectionMode()
+  }, [selectedMessages, exitSelectionMode])
+
+  const handleBulkDelete = useCallback(async () => {
+    if (confirm(`Supprimer ${selectedMessages.size} message(s)?`)) {
+      const ids = Array.from(selectedMessages)
+      await supabase
+        .from('messages')
+        .update({ deleted_at: new Date().toISOString() })
+        .in('id', ids)
+      
+      setMessages(prev => prev.filter(m => !selectedMessages.has(m.id)))
+      exitSelectionMode()
+    }
+  }, [selectedMessages, exitSelectionMode])
+
+  const handleBulkForward = useCallback(() => {
+    // TODO: Implement bulk forward
+    alert(`Transférer ${selectedMessages.size} message(s)`)
+    exitSelectionMode()
+  }, [selectedMessages, exitSelectionMode])
+
+  const handleBulkDownload = useCallback(async () => {
+    const selectedMsgs = messages.filter(m => selectedMessages.has(m.id))
+    const mediaMessages = selectedMsgs.filter(m => m.media_url)
+    
+    if (mediaMessages.length === 0) {
+      alert('Aucun média à télécharger')
+      return
+    }
+    
+    // Download each media file
+    for (const msg of mediaMessages) {
+      if (msg.media_url) {
+        try {
+          const response = await fetch(msg.media_url)
+          const blob = await response.blob()
+          const url = window.URL.createObjectURL(blob)
+          const a = document.createElement('a')
+          a.href = url
+          a.download = msg.file_name || `download-${Date.now()}`
+          document.body.appendChild(a)
+          a.click()
+          document.body.removeChild(a)
+          window.URL.revokeObjectURL(url)
+        } catch (error) {
+          console.error('Error downloading:', error)
+        }
+      }
+    }
+    
+    exitSelectionMode()
+  }, [messages, selectedMessages, exitSelectionMode])
+
   const displayName = conversation?.type === 'group' ? conversation.name : otherUser?.display_name || otherUser?.username || 'Utilisateur'
 
   return (
@@ -363,7 +756,7 @@ export function ChatViewPage() {
               {showConversationMenu && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setShowConversationMenu(false)} />
-                  <div className="absolute right-0 top-12 z-50 min-w-[240px] bg-[#233138] rounded-2xl shadow-2xl py-2 border border-bg-hover">
+                  <div className="absolute right-0 top-12 z-50 min-w-[240px] bg-bg-surface rounded-2xl shadow-2xl py-2 border border-bg-hover">
                     <button
                       onClick={() => {
                         navigate('/contacts')
@@ -436,8 +829,21 @@ export function ChatViewPage() {
 
         {isSearching && <MessageSearch messages={messages} onSearchResults={setFilteredMessages} onClose={() => { setIsSearching(false); setFilteredMessages([]) }} />}
 
+        {/* Pinned Message Banner */}
+        {pinnedMessage && (
+          <PinnedMessageBanner
+            pinnedMessage={pinnedMessage}
+            onUnpin={handleUnpinMessage}
+            onClick={scrollToPinnedMessage}
+          />
+        )}
+
         {/* Messages avec fond personnalisable */}
-        <div className="flex-1 overflow-y-auto p-2 sm:p-3 md:p-4 space-y-2 pb-24 md:pb-4" style={getWallpaperStyle()}>
+        <div
+          className="flex-1 overflow-y-auto p-2 sm:p-3 md:p-4 space-y-2 pb-24 md:pb-4"
+          style={getWallpaperStyle()}
+          onContextMenu={handleBackgroundContextMenu}
+        >
           {loading ? (
             <div className="flex justify-center items-center h-full">
               <div className="w-8 h-8 rounded-full border-4 border-[#00a884] border-t-transparent animate-spin" />
@@ -459,10 +865,33 @@ export function ChatViewPage() {
               {displayedMessages.map((message) => {
                 const isOwn = message.sender_id === user?.id
                 const messageReactions = reactions.filter(r => r.message_id === message.id)
+                const isSelected = selectedMessages.has(message.id)
                 return (
-                  <div key={message.id} className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-1`} onMouseEnter={() => setHoveredMessageId(message.id)} onMouseLeave={() => setHoveredMessageId(null)}>
-                    <div className={`max-w-[85%] md:max-w-[65%] relative group`}>
-                      <div className={`px-3 py-2 rounded-2xl ${isOwn ? 'bg-[#005c4b] text-white rounded-br-none' : 'bg-bg-surface text-text-primary rounded-bl-none'}`}>
+                  <div
+                    key={message.id}
+                    className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-1 ${isSelected ? 'bg-[#00a884]/10' : ''}`}
+                  >
+                    <div
+                      className={`max-w-[85%] md:max-w-[65%] relative group`}
+                      data-message-id={message.id}
+                      onMouseEnter={() => setHoveredMessageId(message.id)}
+                      onMouseLeave={() => setHoveredMessageId(null)}
+                      onContextMenu={(e) => handleContextMenu(e, message)}
+                    >
+                      <div className={`relative px-3 py-2 rounded-2xl ${isOwn ? 'bg-[#005c4b] text-white rounded-br-none' : 'bg-bg-surface text-text-primary rounded-bl-none'}`}>
+                        {/* Hover Actions (Chevron dropdown) - Inside message bubble */}
+                        <MessageHoverActions
+                          isVisible={hoveredMessageId === message.id}
+                          isOwn={isOwn}
+                          onOpenMenu={(e) => {
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            setContextMenu({
+                              isOpen: true,
+                              position: { x: rect.left, y: rect.bottom + 5 },
+                              message,
+                            });
+                          }}
+                        />
                         {message.media_url && message.media_type && message.type !== 'audio' && (
                           <MediaMessage url={message.media_url} type={message.media_type as 'image' | 'video' | 'file'} fileName={message.file_name} fileSize={message.file_size} caption={message.content} />
                         )}
@@ -470,9 +899,31 @@ export function ChatViewPage() {
                           <VoiceMessage url={message.media_url} duration={message.ephemeral_duration || 0} isOwn={isOwn} />
                         )}
                         {(!message.media_url && message.content) && (
-                          <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
+                          <>
+                            <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
+                            {/* Link Preview in message */}
+                            {(message as any).link_preview && (() => {
+                              try {
+                                const previewData = typeof (message as any).link_preview === 'string'
+                                  ? JSON.parse((message as any).link_preview)
+                                  : (message as any).link_preview
+                                return (
+                                  <LinkPreview
+                                    preview={previewData}
+                                    isInMessage={true}
+                                    isOwn={isOwn}
+                                  />
+                                )
+                              } catch {
+                                return null
+                              }
+                            })()}
+                          </>
                         )}
                         <div className={`flex items-center justify-end gap-1 mt-1 text-xs ${isOwn ? 'text-text-secondary' : 'text-text-secondary'}`}>
+                          {message.is_starred && (
+                            <Star size={12} className="fill-current" />
+                          )}
                           <span>{formatTime(message.created_at)}</span>
                           {isOwn && (
                             <svg width="16" height="11" viewBox="0 0 16 11" fill="none">
@@ -482,6 +933,28 @@ export function ChatViewPage() {
                           )}
                         </div>
                       </div>
+                      {/* Selection checkbox - shown in selection mode */}
+                      {isSelectionMode && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSelectMessage(message.id);
+                          }}
+                          className={`absolute top-1/2 -translate-y-1/2 ${
+                            isOwn ? '-left-10' : '-right-10'
+                          } w-7 h-7 rounded-full flex items-center justify-center transition-all ${
+                            isSelected
+                              ? 'bg-[#00a884] text-white'
+                              : 'bg-bg-surface hover:bg-bg-hover text-text-tertiary border border-bg-hover'
+                          }`}
+                          type="button"
+                          aria-label={isSelected ? 'Désélectionner le message' : 'Sélectionner le message'}
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="20 6 9 17 4 12"></polyline>
+                          </svg>
+                        </button>
+                      )}
                       {messageReactions.length > 0 && (
                         <MessageReactions reactions={messageReactions} currentUserId={user?.id || ''} onReactionClick={(emoji) => addReaction(message.id, emoji)} onReactionRemove={(emoji) => removeReaction(message.id, emoji)} />
                       )}
@@ -502,8 +975,18 @@ export function ChatViewPage() {
           )}
         </div>
 
-        {/* Input Bar WhatsApp - Fixed at bottom on mobile, above nav bar */}
+        {/* Input Bar WhatsApp - Fixed at bottom on mobile, above nav bar - Hidden in selection mode */}
+        {!isSelectionMode && (
         <div className="fixed md:relative bottom-14 md:bottom-0 left-0 right-0 bg-bg-surface px-2 sm:px-3 md:px-4 py-2 md:py-3 border-t border-bg-hover md:border-t-0 z-40">
+          {/* Link Preview above input */}
+          {isLoadingPreview && <LinkPreviewSkeleton />}
+          {linkPreview && !isLoadingPreview && (
+            <LinkPreview
+              preview={linkPreview}
+              onDismiss={handleDismissPreview}
+            />
+          )}
+          
           {replyToMessage && (
             <MessageReply replyToMessage={{ id: replyToMessage.id, content: replyToMessage.content, sender_id: replyToMessage.sender_id, senderName: replyToMessage.sender_id === user?.id ? 'Vous' : otherUser?.display_name || otherUser?.username || 'Utilisateur' }} onCancel={() => setReplyToMessage(null)} isPreview={true} />
           )}
@@ -554,7 +1037,32 @@ export function ChatViewPage() {
             )}
           </form>
         </div>
+        )}
+
+        {/* Selection Mode Toolbar */}
+        {isSelectionMode && (
+          <SelectionModeToolbar
+            selectedCount={selectedMessages.size}
+            onCopy={handleBulkCopy}
+            onStar={handleBulkStar}
+            onDelete={handleBulkDelete}
+            onForward={handleBulkForward}
+            onDownload={handleBulkDownload}
+            onClose={exitSelectionMode}
+          />
+        )}
       </div>
+
+      {/* Background Context Menu - Desktop only */}
+      {!isMobile && (
+        <ChatBackgroundContextMenu
+          isOpen={backgroundContextMenu.isOpen}
+          position={backgroundContextMenu.position}
+          onClose={closeBackgroundContextMenu}
+          onSelectMessages={enterSelectionMode}
+          onCloseDiscussion={() => navigate('/chats')}
+        />
+      )}
 
       {showMediaUploader && <MediaUploader onMediaSelect={(file, type) => console.log('Media selected:', file.name, type)} onUploadComplete={handleMediaUploadComplete} onCancel={() => setShowMediaUploader(false)} />}
       {showVoiceRecorder && <VoiceRecorder onRecordingComplete={handleVoiceRecordingComplete} onCancel={() => setShowVoiceRecorder(false)} />}
@@ -576,6 +1084,58 @@ export function ChatViewPage() {
           onStartAudioCall={handleStartAudioCall}
         />
       )}
+
+      {/* Context Menu */}
+      {contextMenu.isOpen && contextMenu.message && (
+        <MessageContextMenu
+          isOpen={true}
+          position={contextMenu.position}
+          messageId={contextMenu.message.id}
+          messageContent={contextMenu.message.content || ''}
+          messageType={contextMenu.message.type as 'text' | 'image' | 'video' | 'file' | 'audio'}
+          isOwn={contextMenu.message.sender_id === user?.id}
+          isGroupChat={conversation?.type === 'group'}
+          senderName={contextMenu.message.sender_id === user?.id ? profile?.display_name || profile?.username : otherUser?.display_name || otherUser?.username}
+          mediaUrl={contextMenu.message.media_url || undefined}
+          onClose={closeContextMenu}
+          onReply={() => setReplyToMessage(contextMenu.message)}
+          onReplyPrivately={() => {
+            // TODO: Implement reply privately for group chats
+            alert('Répondre en privé')
+          }}
+          onSendMessage={() => {
+            // TODO: Navigate to direct message with user
+            alert('Envoyer un message')
+          }}
+          onCopy={() => {
+            // Copy handled in component
+          }}
+          onForward={() => handleForwardMessage(contextMenu.message!)}
+          onPin={() => handlePinMessage(contextMenu.message!.id)}
+          onStar={() => handleStarMessage(contextMenu.message!.id)}
+          onSelect={() => {
+            // Enter selection mode and select the message
+            setIsSelectionMode(true)
+            setSelectedMessages(new Set([contextMenu.message!.id]))
+          }}
+          onSaveAs={() => {
+            // Save handled in component
+          }}
+          onReport={() => handleReportMessage(contextMenu.message!.id)}
+          onDelete={() => handleDeleteMessage(contextMenu.message!.id)}
+          onReaction={(emoji) => addReaction(contextMenu.message!.id, emoji)}
+        />
+      )}
+
+      {/* Pin Message Dialog */}
+      <PinMessageDialog
+        isOpen={showPinDialog}
+        onClose={() => {
+          setShowPinDialog(false)
+          setMessageToPin(null)
+        }}
+        onPin={handleConfirmPin}
+      />
     </MainLayout>
   )
 }

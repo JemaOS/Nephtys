@@ -414,17 +414,44 @@ export function SettingsPage() {
     </div>
   )
 
-  const renderWallpaperView = () => (
-    <div className="flex-1 overflow-y-auto p-6">
-      <div className="grid grid-cols-2 gap-4">
-        {['Par défaut', 'Sombre', 'Clair', 'Dégradé', 'Personnalisé'].map((wallpaper) => (
-          <button key={wallpaper} className="aspect-video bg-bg-surface rounded-2xl hover:bg-bg-hover transition-colors flex items-center justify-center">
-            <span className="text-sm text-text-primary">{wallpaper}</span>
-          </button>
-        ))}
+  const renderWallpaperView = () => {
+    const wallpaperOptions = [
+      { value: 'default' as const, label: 'Par défaut', style: {} },
+      { value: 'dark' as const, label: 'Sombre', style: { backgroundColor: '#000000' } },
+      { value: 'light' as const, label: 'Clair', style: { backgroundColor: '#e5ddd5' } },
+      { value: 'gradient' as const, label: 'Dégradé', style: { background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' } },
+    ]
+    
+    return (
+      <div className="flex-1 overflow-y-auto p-6">
+        <div className="grid grid-cols-2 gap-4">
+          {wallpaperOptions.map((option) => (
+            <button
+              key={option.value}
+              onClick={() => setWallpaper(option.value)}
+              className={`aspect-video rounded-2xl transition-all flex items-center justify-center relative overflow-hidden border-2 ${
+                wallpaper === option.value
+                  ? 'border-accent ring-2 ring-accent/30'
+                  : 'border-transparent hover:border-bg-hover'
+              }`}
+              style={option.value === 'default' ? { backgroundColor: 'var(--bg-surface)' } : option.style}
+            >
+              <span className={`text-sm font-medium ${
+                option.value === 'dark' || option.value === 'gradient' ? 'text-white' : 'text-text-primary'
+              }`}>
+                {option.label}
+              </span>
+              {wallpaper === option.value && (
+                <div className="absolute top-2 right-2 w-6 h-6 rounded-full bg-accent flex items-center justify-center">
+                  <Check size={14} className="text-white" />
+                </div>
+              )}
+            </button>
+          ))}
+        </div>
       </div>
-    </div>
-  )
+    )
+  }
 
   const renderNotificationsView = () => (
     <div className="flex-1 overflow-y-auto pb-4">

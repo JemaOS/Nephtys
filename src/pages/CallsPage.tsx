@@ -82,26 +82,40 @@ export function CallsPage() {
   const loadContacts = async () => {
     if (!user) return
 
-    const { data: contactsData } = await supabase
-      .from('contacts')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('is_blocked', false)
+    try {
+      // Step 1: Fetch all contacts (single query)
+      const { data: contactsData, error } = await supabase
+        .from('contacts')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('is_blocked', false)
 
-    if (contactsData) {
-      const contactsWithProfiles = await Promise.all(
-        contactsData.map(async (contact) => {
-          const { data: profileData } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', contact.contact_user_id)
-            .maybeSingle()
+      if (error || !contactsData || contactsData.length === 0) {
+        setContacts([])
+        return
+      }
 
-          return { ...contact, profile: profileData! }
-        })
-      )
+      // Step 2: Batch fetch all profiles (single query)
+      const contactUserIds = contactsData.map(c => c.contact_user_id)
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('*')
+        .in('id', contactUserIds)
 
-      setContacts(contactsWithProfiles.filter(c => c.profile))
+      const profileMap = new Map(profiles?.map(p => [p.id, p]) || [])
+
+      // Step 3: Enrich contacts with profiles (no additional queries)
+      const contactsWithProfiles = contactsData
+        .map(contact => ({
+          ...contact,
+          profile: profileMap.get(contact.contact_user_id)
+        }))
+        .filter(c => c.profile)
+
+      setContacts(contactsWithProfiles)
+    } catch (err) {
+      console.error('Error loading contacts:', err)
+      setContacts([])
     }
   }
 
@@ -125,54 +139,62 @@ export function CallsPage() {
     if (!user) return
     setLoading(true)
 
-    // Charger tous les appels (entrants et sortants)
-    console.log('📞 Loading calls for user:', user.id)
-    
-    const { data: callsData, error } = await supabase
-      .from('call_logs')
-      .select('*')
-      .or(`caller_id.eq.${user.id},callee_id.eq.${user.id}`)
-      .order('started_at', { ascending: false })
-      .limit(100)
+    try {
+      // Step 1: Fetch all calls (single query)
+      console.log('📞 Loading calls for user:', user.id)
+      
+      const { data: callsData, error } = await supabase
+        .from('call_logs')
+        .select('*')
+        .or(`caller_id.eq.${user.id},callee_id.eq.${user.id}`)
+        .order('started_at', { ascending: false })
+        .limit(100)
 
-    console.log('📞 Calls data:', callsData)
-    console.log('📞 Error:', error)
+      console.log('📞 Calls data:', callsData)
+      console.log('📞 Error:', error)
 
-    if (error) {
-      console.error('Error loading calls:', error)
-      // Si la table n'existe pas, afficher un message vide
-      setCalls([])
-      setLoading(false)
-      return
-    }
+      if (error) {
+        console.error('Error loading calls:', error)
+        setCalls([])
+        setLoading(false)
+        return
+      }
 
-    if (callsData) {
-      // Enrichir avec les profils
-      const enrichedCalls = await Promise.all(
-        callsData.map(async (call) => {
-          const { data: callerProfile } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', call.caller_id)
-            .maybeSingle()
+      if (!callsData || callsData.length === 0) {
+        setCalls([])
+        setLoading(false)
+        return
+      }
 
-          const { data: calleeProfile } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', call.callee_id)
-            .maybeSingle()
+      // Step 2: Collect all unique user IDs
+      const userIds = new Set<string>()
+      callsData.forEach(call => {
+        userIds.add(call.caller_id)
+        userIds.add(call.callee_id)
+      })
 
-          return {
-            ...call,
-            caller_profile: callerProfile,
-            callee_profile: calleeProfile
-          }
-        })
-      )
+      // Step 3: Batch fetch all profiles (single query)
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('*')
+        .in('id', Array.from(userIds))
+
+      const profileMap = new Map(profiles?.map(p => [p.id, p]) || [])
+
+      // Step 4: Enrich calls with profiles (no additional queries)
+      const enrichedCalls = callsData.map(call => ({
+        ...call,
+        caller_profile: profileMap.get(call.caller_id) || null,
+        callee_profile: profileMap.get(call.callee_id) || null
+      }))
 
       setCalls(enrichedCalls)
+    } catch (err) {
+      console.error('Error loading calls:', err)
+      setCalls([])
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   const formatDuration = (seconds: number | null) => {

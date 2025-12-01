@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  X, Camera, Video, Phone, Users, Image, FileText, Link as LinkIcon, 
+import {
+  X, Camera, Video, Phone, Users, Image, FileText, Link as LinkIcon,
   Calendar, Lock, Edit2, Check, ChevronRight, Bell, BellOff, Archive,
-  Trash2, UserPlus, Crown
+  Trash2, UserPlus, Crown, Download, ExternalLink, Loader2, Search
 } from 'lucide-react';
-import { supabase, Profile } from '@/lib/supabase';
+import { supabase, Profile, Message } from '@/lib/supabase';
 
 interface ConversationInfoProps {
   conversationId: string;
@@ -48,6 +48,21 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [currentAvatar, setCurrentAvatar] = useState(conversationAvatar);
+  
+  // Add member modal state
+  const [showAddMemberModal, setShowAddMemberModal] = useState(false);
+  const [availableContacts, setAvailableContacts] = useState<Profile[]>([]);
+  const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
+  const [addingMembers, setAddingMembers] = useState(false);
+  const [contactSearchQuery, setContactSearchQuery] = useState('');
+  
+  // Media/Files/Links state
+  const [mediaMessages, setMediaMessages] = useState<Message[]>([]);
+  const [fileMessages, setFileMessages] = useState<Message[]>([]);
+  const [linkMessages, setLinkMessages] = useState<{message: Message, urls: string[]}[]>([]);
+  const [loadingMedia, setLoadingMedia] = useState(false);
+  const [loadingFiles, setLoadingFiles] = useState(false);
+  const [loadingLinks, setLoadingLinks] = useState(false);
 
   useEffect(() => {
     if (conversationType === 'group') {
@@ -55,6 +70,17 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
     }
     loadMuteStatus();
   }, [conversationId]);
+
+  // Load media/files/links when tab changes
+  useEffect(() => {
+    if (activeTab === 'media' && mediaMessages.length === 0) {
+      loadMedia();
+    } else if (activeTab === 'files' && fileMessages.length === 0) {
+      loadFiles();
+    } else if (activeTab === 'links' && linkMessages.length === 0) {
+      loadLinks();
+    }
+  }, [activeTab, conversationId]);
 
   const loadMembers = async () => {
     const { data: memberData } = await supabase
@@ -94,6 +120,177 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
       setIsMuted(data.is_muted || false);
     }
   };
+
+  // Load available contacts for adding to group
+  const loadAvailableContacts = async () => {
+    // Get current member user IDs
+    const memberUserIds = members.map(m => m.user_id);
+    
+    // Get user's contacts
+    const { data: contacts } = await supabase
+      .from('contacts')
+      .select('contact_user_id')
+      .eq('user_id', currentUserId)
+      .eq('is_blocked', false);
+    
+    if (contacts && contacts.length > 0) {
+      const contactIds = contacts.map(c => c.contact_user_id);
+      // Filter out users already in the group
+      const availableIds = contactIds.filter(id => !memberUserIds.includes(id));
+      
+      if (availableIds.length > 0) {
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('*')
+          .in('id', availableIds);
+        
+        setAvailableContacts(profiles || []);
+      } else {
+        setAvailableContacts([]);
+      }
+    } else {
+      setAvailableContacts([]);
+    }
+  };
+
+  // Handle opening add member modal
+  const handleOpenAddMemberModal = () => {
+    setShowAddMemberModal(true);
+    setSelectedContacts([]);
+    setContactSearchQuery('');
+    loadAvailableContacts();
+  };
+
+  // Handle adding selected members to group
+  const handleAddMembers = async () => {
+    if (selectedContacts.length === 0) return;
+    
+    setAddingMembers(true);
+    try {
+      const newMembers = selectedContacts.map(userId => ({
+        conversation_id: conversationId,
+        user_id: userId,
+        role: 'member' as const,
+      }));
+      
+      const { error } = await supabase
+        .from('conversation_members')
+        .insert(newMembers);
+      
+      if (error) throw error;
+      
+      // Reload members list
+      await loadMembers();
+      setShowAddMemberModal(false);
+      setSelectedContacts([]);
+      alert('✅ Membres ajoutés avec succès !');
+    } catch (err) {
+      console.error('Error adding members:', err);
+      alert('❌ Erreur lors de l\'ajout des membres');
+    } finally {
+      setAddingMembers(false);
+    }
+  };
+
+  // Toggle contact selection
+  const toggleContactSelection = (userId: string) => {
+    setSelectedContacts(prev =>
+      prev.includes(userId)
+        ? prev.filter(id => id !== userId)
+        : [...prev, userId]
+    );
+  };
+
+  // Load media messages
+  const loadMedia = async () => {
+    setLoadingMedia(true);
+    try {
+      const { data } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('conversation_id', conversationId)
+        .or('type.eq.image,type.eq.video,media_type.eq.image,media_type.eq.video')
+        .order('created_at', { ascending: false });
+      
+      setMediaMessages(data || []);
+    } catch (err) {
+      console.error('Error loading media:', err);
+    } finally {
+      setLoadingMedia(false);
+    }
+  };
+
+  // Load file messages
+  const loadFiles = async () => {
+    setLoadingFiles(true);
+    try {
+      const { data } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('conversation_id', conversationId)
+        .or('type.eq.file,media_type.eq.file')
+        .order('created_at', { ascending: false });
+      
+      setFileMessages(data || []);
+    } catch (err) {
+      console.error('Error loading files:', err);
+    } finally {
+      setLoadingFiles(false);
+    }
+  };
+
+  // Load messages with links
+  const loadLinks = async () => {
+    setLoadingLinks(true);
+    try {
+      const { data } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('conversation_id', conversationId)
+        .eq('type', 'text')
+        .order('created_at', { ascending: false });
+      
+      if (data) {
+        const urlRegex = /(https?:\/\/[^\s]+)/g;
+        const messagesWithLinks = data
+          .map(message => {
+            const urls = message.content?.match(urlRegex) || [];
+            return { message, urls };
+          })
+          .filter(item => item.urls.length > 0);
+        
+        setLinkMessages(messagesWithLinks);
+      }
+    } catch (err) {
+      console.error('Error loading links:', err);
+    } finally {
+      setLoadingLinks(false);
+    }
+  };
+
+  // Format file size
+  const formatFileSize = (bytes: number | null): string => {
+    if (!bytes) return 'Taille inconnue';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  // Format date
+  const formatDate = (dateString: string): string => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('fr-FR', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric'
+    });
+  };
+
+  // Filter contacts by search query
+  const filteredContacts = availableContacts.filter(contact =>
+    contact.username.toLowerCase().includes(contactSearchQuery.toLowerCase()) ||
+    (contact.display_name?.toLowerCase().includes(contactSearchQuery.toLowerCase()))
+  );
 
   const handleUploadPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -423,7 +620,10 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
           {activeTab === 'members' && conversationType === 'group' && (
             <div className="p-4 space-y-2">
               {isAdmin && (
-                <button className="w-full bg-bg-surface rounded-2xl p-4 flex items-center gap-3 hover:bg-bg-hover transition-colors mb-4">
+                <button
+                  onClick={handleOpenAddMemberModal}
+                  className="w-full bg-bg-surface rounded-2xl p-4 flex items-center gap-3 hover:bg-bg-hover transition-colors mb-4"
+                >
                   <UserPlus size={20} className="text-accent" />
                   <span className="text-sm text-text-primary">Ajouter des membres</span>
                 </button>
@@ -456,33 +656,234 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
 
           {activeTab === 'media' && (
             <div className="p-4">
-              <div className="text-center py-12 text-text-secondary">
-                <Image size={48} className="mx-auto mb-2 opacity-50" />
-                <p className="text-sm">Aucun média partagé</p>
-              </div>
+              {loadingMedia ? (
+                <div className="text-center py-12">
+                  <Loader2 size={32} className="mx-auto mb-2 animate-spin text-accent" />
+                  <p className="text-sm text-text-secondary">Chargement des médias...</p>
+                </div>
+              ) : mediaMessages.length === 0 ? (
+                <div className="text-center py-12 text-text-secondary">
+                  <Image size={48} className="mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">Aucun média partagé</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-3 gap-2">
+                  {mediaMessages.map((media) => (
+                    <a
+                      key={media.id}
+                      href={media.media_url || media.file_url || '#'}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="aspect-square rounded-lg overflow-hidden bg-bg-hover hover:opacity-80 transition-opacity"
+                    >
+                      {(media.type === 'video' || media.media_type === 'video') ? (
+                        <div className="w-full h-full flex items-center justify-center bg-bg-surface">
+                          <Video size={32} className="text-text-secondary" />
+                        </div>
+                      ) : (
+                        <img
+                          src={media.media_url || media.file_url || ''}
+                          alt="Media"
+                          className="w-full h-full object-cover"
+                        />
+                      )}
+                    </a>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
           {activeTab === 'files' && (
             <div className="p-4">
-              <div className="text-center py-12 text-text-secondary">
-                <FileText size={48} className="mx-auto mb-2 opacity-50" />
-                <p className="text-sm">Aucun fichier partagé</p>
-              </div>
+              {loadingFiles ? (
+                <div className="text-center py-12">
+                  <Loader2 size={32} className="mx-auto mb-2 animate-spin text-accent" />
+                  <p className="text-sm text-text-secondary">Chargement des fichiers...</p>
+                </div>
+              ) : fileMessages.length === 0 ? (
+                <div className="text-center py-12 text-text-secondary">
+                  <FileText size={48} className="mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">Aucun fichier partagé</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {fileMessages.map((file) => (
+                    <div
+                      key={file.id}
+                      className="bg-bg-surface rounded-xl p-3 flex items-center gap-3"
+                    >
+                      <div className="w-10 h-10 rounded-lg bg-accent/20 flex items-center justify-center">
+                        <FileText size={20} className="text-accent" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-text-primary truncate">
+                          {file.file_name || 'Fichier'}
+                        </p>
+                        <p className="text-xs text-text-secondary">
+                          {formatFileSize(file.file_size)} • {formatDate(file.created_at)}
+                        </p>
+                      </div>
+                      <a
+                        href={file.media_url || file.file_url || '#'}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-8 h-8 rounded-full bg-bg-hover flex items-center justify-center hover:bg-accent/20 transition-colors"
+                      >
+                        <Download size={16} className="text-text-secondary" />
+                      </a>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
           {activeTab === 'links' && (
             <div className="p-4">
-              <div className="text-center py-12 text-text-secondary">
-                <LinkIcon size={48} className="mx-auto mb-2 opacity-50" />
-                <p className="text-sm">Aucun lien partagé</p>
-              </div>
+              {loadingLinks ? (
+                <div className="text-center py-12">
+                  <Loader2 size={32} className="mx-auto mb-2 animate-spin text-accent" />
+                  <p className="text-sm text-text-secondary">Chargement des liens...</p>
+                </div>
+              ) : linkMessages.length === 0 ? (
+                <div className="text-center py-12 text-text-secondary">
+                  <LinkIcon size={48} className="mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">Aucun lien partagé</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {linkMessages.map(({ message, urls }) => (
+                    <div
+                      key={message.id}
+                      className="bg-bg-surface rounded-xl p-3"
+                    >
+                      <p className="text-xs text-text-secondary mb-2">
+                        {formatDate(message.created_at)}
+                      </p>
+                      {urls.map((url, index) => (
+                        <a
+                          key={index}
+                          href={url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-2 text-accent hover:underline text-sm mb-1"
+                        >
+                          <ExternalLink size={14} />
+                          <span className="truncate">{url}</span>
+                        </a>
+                      ))}
+                      {message.content && (
+                        <p className="text-xs text-text-secondary mt-2 line-clamp-2">
+                          {message.content}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
           </div>
         </div>
       </div>
+
+      {/* Add Member Modal */}
+      {showAddMemberModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
+          <div className="bg-bg-surface w-full max-w-md rounded-2xl overflow-hidden shadow-2xl">
+            {/* Modal Header */}
+            <div className="px-4 py-3 border-b border-bg-hover flex items-center justify-between">
+              <h3 className="text-lg font-medium text-text-primary">Ajouter des membres</h3>
+              <button
+                onClick={() => setShowAddMemberModal(false)}
+                className="w-8 h-8 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors"
+              >
+                <X size={18} className="text-text-secondary" />
+              </button>
+            </div>
+
+            {/* Search Input */}
+            <div className="p-4 border-b border-bg-hover">
+              <div className="relative">
+                <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" />
+                <input
+                  type="text"
+                  value={contactSearchQuery}
+                  onChange={(e) => setContactSearchQuery(e.target.value)}
+                  placeholder="Rechercher un contact..."
+                  className="w-full pl-10 pr-4 py-2 bg-bg-hover text-text-primary rounded-xl outline-none focus:ring-2 focus:ring-accent"
+                />
+              </div>
+            </div>
+
+            {/* Contacts List */}
+            <div className="max-h-64 overflow-y-auto p-2">
+              {filteredContacts.length === 0 ? (
+                <div className="text-center py-8 text-text-secondary">
+                  <Users size={32} className="mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">Aucun contact disponible</p>
+                </div>
+              ) : (
+                filteredContacts.map((contact) => (
+                  <button
+                    key={contact.id}
+                    onClick={() => toggleContactSelection(contact.id)}
+                    className={`w-full p-3 rounded-xl flex items-center gap-3 transition-colors ${
+                      selectedContacts.includes(contact.id)
+                        ? 'bg-accent/20'
+                        : 'hover:bg-bg-hover'
+                    }`}
+                  >
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold">
+                      {(contact.display_name || contact.username)[0].toUpperCase()}
+                    </div>
+                    <div className="flex-1 text-left">
+                      <p className="text-sm font-medium text-text-primary">
+                        {contact.display_name || contact.username}
+                      </p>
+                      <p className="text-xs text-text-secondary">@{contact.username}</p>
+                    </div>
+                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                      selectedContacts.includes(contact.id)
+                        ? 'bg-accent border-accent'
+                        : 'border-text-secondary'
+                    }`}>
+                      {selectedContacts.includes(contact.id) && (
+                        <Check size={12} className="text-white" />
+                      )}
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-bg-hover flex gap-2">
+              <button
+                onClick={() => setShowAddMemberModal(false)}
+                className="flex-1 py-2 bg-bg-hover text-text-primary rounded-xl text-sm font-medium hover:bg-bg-hover/80 transition-colors"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={handleAddMembers}
+                disabled={selectedContacts.length === 0 || addingMembers}
+                className="flex-1 py-2 bg-accent text-white rounded-xl text-sm font-medium hover:bg-[#5a5ec9] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {addingMembers ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    Ajout...
+                  </>
+                ) : (
+                  `Ajouter (${selectedContacts.length})`
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
