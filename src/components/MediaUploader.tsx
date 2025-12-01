@@ -9,6 +9,7 @@ const TENOR_CLIENT_KEY = 'nephtys_app';
 interface MediaUploaderProps {
   onMediaSelect: (selectedFile: globalThis.File, type: 'image' | 'video' | 'file') => void;
   onUploadComplete: (url: string, type: 'image' | 'video' | 'file', fileName: string, fileSize: number) => void;
+  onMultipleUploadComplete?: (files: Array<{ url: string; type: 'image' | 'video' | 'file'; fileName: string; fileSize: number }>) => void;
   onCancel: () => void;
   onEmojiSelect?: (emoji: string) => void;
   onGifStickerSend?: (url: string, type: 'gif' | 'sticker', caption?: string) => void;
@@ -17,12 +18,17 @@ interface MediaUploaderProps {
 export const MediaUploader: React.FC<MediaUploaderProps> = ({
   onMediaSelect,
   onUploadComplete,
+  onMultipleUploadComplete,
   onCancel,
   onEmojiSelect,
   onGifStickerSend,
 }) => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
+  // Multiple files selection state
+  const [selectedFiles, setSelectedFiles] = useState<Array<{ file: File; preview: string; type: 'image' | 'video' | 'file' }>>([]);
+  const [multipleSelectionMode, setMultipleSelectionMode] = useState(false);
+  const [multipleCaption, setMultipleCaption] = useState('');
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [activeTab, setActiveTab] = useState<'attach' | 'emoji' | 'sticker' | 'gif'>('attach');
@@ -53,8 +59,16 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    // Check if multiple files selected (for images)
+    if (files.length > 1) {
+      handleMultipleFileSelect(files);
+      return;
+    }
+
+    const file = files[0];
 
     // Vérifier la taille (max 50MB)
     if (file.size > 50 * 1024 * 1024) {
@@ -73,6 +87,128 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
         setPreview(reader.result as string);
       };
       reader.readAsDataURL(file);
+    }
+  };
+
+  // Handle multiple file selection (WhatsApp-like)
+  const handleMultipleFileSelect = async (files: FileList) => {
+    const newFiles: Array<{ file: File; preview: string; type: 'image' | 'video' | 'file' }> = [];
+    
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      
+      // Vérifier la taille (max 50MB per file)
+      if (file.size > 50 * 1024 * 1024) {
+        alert(`Le fichier "${file.name}" est trop volumineux (max 50MB)`);
+        continue;
+      }
+
+      const type = getFileType(file);
+      
+      // Create preview
+      const preview = await new Promise<string>((resolve) => {
+        if (type === 'image' || type === 'video') {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.readAsDataURL(file);
+        } else {
+          resolve('');
+        }
+      });
+
+      newFiles.push({ file, preview, type });
+    }
+
+    if (newFiles.length > 0) {
+      setSelectedFiles(prev => [...prev, ...newFiles]);
+      setMultipleSelectionMode(true);
+    }
+  };
+
+  // Add more files to selection
+  const handleAddMoreFiles = () => {
+    imageInputRef.current?.click();
+  };
+
+  // Remove file from selection
+  const handleRemoveFile = (index: number) => {
+    setSelectedFiles(prev => {
+      const newFiles = prev.filter((_, i) => i !== index);
+      if (newFiles.length === 0) {
+        setMultipleSelectionMode(false);
+      }
+      return newFiles;
+    });
+  };
+
+  // Upload multiple files
+  const handleMultipleUpload = async () => {
+    if (selectedFiles.length === 0) return;
+
+    setUploading(true);
+    setUploadProgress(0);
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('User not authenticated');
+
+      const uploadedFiles: Array<{ url: string; type: 'image' | 'video' | 'file'; fileName: string; fileSize: number }> = [];
+      const totalFiles = selectedFiles.length;
+
+      for (let i = 0; i < selectedFiles.length; i++) {
+        const { file, type } = selectedFiles[i];
+        
+        const folder = type === 'image' ? 'images' : type === 'video' ? 'videos' : 'documents';
+        const fileName = `${user.id}/${folder}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+
+        const { data, error } = await supabase.storage
+          .from('media')
+          .upload(fileName, file, {
+            cacheControl: '3600',
+            upsert: false,
+            contentType: file.type || 'application/octet-stream',
+          });
+
+        if (error) {
+          console.error('Upload error:', error);
+          continue;
+        }
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('media')
+          .getPublicUrl(fileName);
+
+        uploadedFiles.push({
+          url: publicUrl,
+          type,
+          fileName: file.name,
+          fileSize: file.size,
+        });
+
+        // Update progress
+        setUploadProgress(Math.round(((i + 1) / totalFiles) * 100));
+      }
+
+      // If we have a callback for multiple uploads, use it
+      if (onMultipleUploadComplete && uploadedFiles.length > 0) {
+        onMultipleUploadComplete(uploadedFiles);
+      } else {
+        // Fallback: send files one by one
+        for (const uploadedFile of uploadedFiles) {
+          onUploadComplete(uploadedFile.url, uploadedFile.type, uploadedFile.fileName, uploadedFile.fileSize);
+        }
+      }
+
+      // Reset
+      setSelectedFiles([]);
+      setMultipleSelectionMode(false);
+      setMultipleCaption('');
+      onCancel();
+    } catch (error: any) {
+      console.error('Error uploading files:', error);
+      alert(`Erreur lors de l'upload: ${error?.message || 'Erreur inconnue'}`);
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -208,6 +344,9 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
     stopCamera();
     setSelectedFile(null);
     setPreview(null);
+    setSelectedFiles([]);
+    setMultipleSelectionMode(false);
+    setMultipleCaption('');
     setActiveTab('attach');
     onCancel();
   };
@@ -456,8 +595,150 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
         </div>
       )}
 
+      {/* Multiple Images Selection Mode - WhatsApp-like */}
+      {multipleSelectionMode && selectedFiles.length > 0 && (
+        <div className="fixed inset-0 bg-bg-primary z-[110] flex flex-col">
+          {/* Header */}
+          <div className="flex items-center justify-between p-4 safe-area-top border-b border-bg-hover">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleCancel}
+                className="p-2 rounded-full hover:bg-bg-hover transition-colors text-text-primary"
+              >
+                <X size={24} />
+              </button>
+              <span className="text-lg font-medium text-text-primary">
+                {selectedFiles.length} sélectionné{selectedFiles.length > 1 ? 's' : ''}
+              </span>
+            </div>
+          </div>
+
+          {/* Main preview area - shows the first/selected image large */}
+          <div className="flex-1 flex items-center justify-center p-4 overflow-hidden bg-black/20">
+            <div className="max-w-full max-h-full flex items-center justify-center">
+              {selectedFiles[0]?.type === 'image' && selectedFiles[0]?.preview && (
+                <img
+                  src={selectedFiles[0].preview}
+                  alt="Preview"
+                  className="max-w-[90%] max-h-[50vh] md:max-h-[60vh] object-contain rounded-lg"
+                />
+              )}
+              {selectedFiles[0]?.type === 'video' && selectedFiles[0]?.preview && (
+                <video
+                  src={selectedFiles[0].preview}
+                  controls
+                  className="max-w-[90%] max-h-[50vh] md:max-h-[60vh] object-contain rounded-lg"
+                />
+              )}
+            </div>
+          </div>
+
+          {/* Bottom bar with thumbnails, input and send */}
+          <div className="p-3 md:p-4 border-t border-bg-hover bg-bg-primary safe-area-bottom">
+            <div className="flex flex-col gap-3">
+              {/* Thumbnails row - scrollable */}
+              <div className="flex items-center gap-2 overflow-x-auto pb-2">
+                {selectedFiles.map((item, index) => (
+                  <div key={index} className="relative flex-shrink-0">
+                    <div className={`w-14 h-14 md:w-16 md:h-16 rounded-lg overflow-hidden border-2 ${index === 0 ? 'border-accent' : 'border-transparent'}`}>
+                      {item.type === 'image' && item.preview && (
+                        <img
+                          src={item.preview}
+                          alt={`Preview ${index + 1}`}
+                          className="w-full h-full object-cover"
+                        />
+                      )}
+                      {item.type === 'video' && item.preview && (
+                        <div className="w-full h-full bg-bg-surface flex items-center justify-center">
+                          <Video size={20} className="text-text-secondary" />
+                        </div>
+                      )}
+                    </div>
+                    {/* Remove button */}
+                    <button
+                      onClick={() => handleRemoveFile(index)}
+                      className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center"
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                ))}
+                
+                {/* Add more button */}
+                <button
+                  onClick={handleAddMoreFiles}
+                  className="w-14 h-14 md:w-16 md:h-16 rounded-lg border-2 border-dashed border-bg-hover flex items-center justify-center text-text-secondary hover:bg-bg-hover transition-colors flex-shrink-0"
+                >
+                  <Plus size={24} />
+                </button>
+              </div>
+
+              {/* Input and send row */}
+              <div className="flex items-center gap-2">
+                {/* Caption input */}
+                <div className="flex-1">
+                  <input
+                    type="text"
+                    value={multipleCaption}
+                    onChange={(e) => setMultipleCaption(e.target.value)}
+                    placeholder="Ajouter une légende..."
+                    className="w-full px-4 py-2.5 md:py-3 rounded-full bg-bg-surface text-text-primary placeholder:text-text-secondary outline-none text-sm md:text-base"
+                  />
+                </div>
+
+                {/* Send button with count badge */}
+                <button
+                  onClick={handleMultipleUpload}
+                  disabled={uploading}
+                  className="relative w-12 h-12 md:w-14 md:h-14 rounded-full bg-accent hover:bg-[#5a5ec9] flex items-center justify-center transition-colors flex-shrink-0 disabled:opacity-50"
+                >
+                  {uploading ? (
+                    <Loader2 size={20} className="text-white animate-spin" />
+                  ) : (
+                    <>
+                      <Send size={20} className="text-white" />
+                      {selectedFiles.length > 1 && (
+                        <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-white text-accent text-xs font-bold flex items-center justify-center">
+                          {selectedFiles.length}
+                        </span>
+                      )}
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Upload progress */}
+              {uploading && (
+                <div className="mt-2">
+                  <div className="flex items-center justify-between text-sm mb-1 text-text-primary">
+                    <span>Envoi en cours...</span>
+                    <span>{uploadProgress}%</span>
+                  </div>
+                  <div className="h-1.5 bg-bg-surface rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-accent transition-all duration-300"
+                      style={{ width: `${uploadProgress}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Hidden input for adding more files */}
+          <input
+            ref={imageInputRef}
+            type="file"
+            onChange={handleFileSelect}
+            accept="image/*"
+            multiple
+            className="hidden"
+          />
+        </div>
+      )}
+
       {/* Normal mode */}
-      {!selectedGifSticker && (
+      {!selectedGifSticker && !multipleSelectionMode && (
       <div className="bg-bg-secondary backdrop-blur-[30px] border border-glass-border rounded-t-3xl md:rounded-2xl w-full md:max-w-lg md:mx-4 shadow-2xl max-h-[85vh] flex flex-col">
         {/* Camera mode */}
         {cameraMode && (
@@ -758,6 +1039,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
               type="file"
               onChange={handleFileSelect}
               accept="image/*"
+              multiple
               className="hidden"
             />
             <input

@@ -1322,6 +1322,12 @@ export function ChatViewPage() {
                     onTouchStart={() => handleTouchStart(message)}
                     onTouchEnd={handleTouchEnd}
                     onTouchMove={handleTouchMove}
+                    onClick={() => {
+                      // In selection mode, clicking anywhere on the message row selects/deselects it
+                      if (isSelectionMode) {
+                        handleSelectMessage(message.id)
+                      }
+                    }}
                   >
                     {/* Quick action buttons - LEFT of sent messages (isOwn) */}
                     {isOwn && hoveredMessageId === message.id && !isSelectionMode && (
@@ -1731,6 +1737,34 @@ export function ChatViewPage() {
         <MediaUploader
           onMediaSelect={(file, type) => console.log('Media selected:', file.name, type)}
           onUploadComplete={handleMediaUploadComplete}
+          onMultipleUploadComplete={async (files) => {
+            if (!user) return
+            setSending(true)
+            try {
+              // Send each file as a separate message
+              for (const file of files) {
+                const messageData: any = {
+                  conversation_id: conversationId!,
+                  sender_id: user.id,
+                  content: '',
+                  type: file.type,
+                  status: 'sent',
+                  reply_to_id: replyToMessage?.id || null,
+                  media_url: file.url,
+                  media_type: file.type,
+                  file_name: file.fileName,
+                  file_size: file.fileSize,
+                }
+                await supabase.from('messages').insert(messageData)
+              }
+              setNewMessage('')
+              setReplyToMessage(null)
+              setShowMediaUploader(false)
+              await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conversationId!)
+            } finally {
+              setSending(false)
+            }
+          }}
           onCancel={() => setShowMediaUploader(false)}
           onEmojiSelect={(emoji) => {
             setNewMessage(prev => prev + emoji)
