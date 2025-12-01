@@ -116,11 +116,8 @@ export function ContactsPage() {
         return
       }
 
-      if (profileData.id === user.id) {
-        setError('Vous ne pouvez pas vous ajouter vous-même')
-        setLoading(false)
-        return
-      }
+      // Allow adding yourself (like "Saved Messages" in Telegram)
+      // This creates a conversation with yourself for notes/saved messages
 
       // Vérifier si déjà en contact
       const { data: existingContact } = await supabase

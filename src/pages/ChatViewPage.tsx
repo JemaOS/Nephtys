@@ -1087,7 +1087,7 @@ export function ChatViewPage() {
 
         {/* Messages avec fond personnalisable */}
         <div
-          className="flex-1 overflow-y-auto p-2 sm:p-3 md:p-4 space-y-2 pb-24 md:pb-4"
+          className="flex-1 overflow-y-auto p-2 sm:p-3 md:p-4 space-y-2 pb-36 md:pb-4"
           style={getWallpaperStyle()}
           onContextMenu={handleBackgroundContextMenu}
         >
