@@ -152,6 +152,55 @@ export function ContactsPage() {
         return
       }
 
+      // Créer automatiquement une conversation avec ce contact
+      // Vérifier d'abord si une conversation existe déjà
+      const { data: existingMembers } = await supabase
+        .from('conversation_members')
+        .select('conversation_id')
+        .eq('user_id', user.id)
+
+      let conversationExists = false
+      if (existingMembers) {
+        for (const member of existingMembers) {
+          const { data: otherMember } = await supabase
+            .from('conversation_members')
+            .select('*')
+            .eq('conversation_id', member.conversation_id)
+            .eq('user_id', profileData.id)
+            .maybeSingle()
+
+          if (otherMember) {
+            conversationExists = true
+            break
+          }
+        }
+      }
+
+      // Si pas de conversation existante, en créer une nouvelle
+      if (!conversationExists) {
+        const { data: conversation, error: convError } = await supabase
+          .from('conversations')
+          .insert({
+            type: 'direct',
+            created_by: user.id,
+            is_encrypted: true,
+            last_message_at: new Date().toISOString(),
+          })
+          .select()
+          .maybeSingle()
+
+        if (!convError && conversation) {
+          await supabase
+            .from('conversation_members')
+            .insert([
+              { conversation_id: conversation.id, user_id: user.id, role: 'admin', is_active: true },
+              { conversation_id: conversation.id, user_id: profileData.id, role: 'member', is_active: true }
+            ])
+          
+          console.log('Conversation créée automatiquement:', conversation.id)
+        }
+      }
+
       // Recharger la liste
       await loadContacts()
       setShowAddModal(false)

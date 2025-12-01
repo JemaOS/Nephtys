@@ -83,7 +83,7 @@ export function ChatViewPage() {
   const emojiPickerRef = useRef<HTMLDivElement>(null)
   
   const { reactions, addReaction, removeReaction } = useMessageReactions(conversationId || '')
-  const { startCall } = useCall()
+  const { startCall, startGroupCall } = useCall()
   const { permission, requestPermission, sendNotification, subscribeToConversation, unsubscribeFromConversation } = useNotifications()
   const { wallpaper } = useTheme()
   const isMobile = useIsMobile()
@@ -347,9 +347,30 @@ export function ChatViewPage() {
   const handleStartVideoCall = async () => {
     if (!conversationId) return
     
-    // For group conversations, show a message that group calls are not yet supported
+    // For group conversations, use group call
     if (conversation?.type === 'group') {
-      alert('📹 Appels de groupe\n\nLes appels vidéo de groupe ne sont pas encore disponibles. Cette fonctionnalité sera bientôt ajoutée!')
+      try {
+        // Request permissions before starting the call
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true })
+        
+        // Stop test stream
+        stream.getTracks().forEach(track => track.stop())
+        
+        // Start group video call
+        await startGroupCall(conversationId, { audio: true, video: true })
+      } catch (error: any) {
+        console.error('Error starting group video call:', error)
+        
+        if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+          alert('❌ Permissions refusées\n\nVeuillez autoriser l\'accès à votre caméra et microphone dans les paramètres de votre navigateur pour passer des appels vidéo.')
+        } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+          alert('❌ Aucun appareil trouvé\n\nAucune caméra ou microphone n\'a été détecté sur votre appareil.')
+        } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
+          alert('❌ Appareil occupé\n\nVotre caméra ou microphone est déjà utilisé par une autre application.')
+        } else {
+          alert('❌ Erreur\n\nImpossible de démarrer l\'appel vidéo de groupe. Vérifiez vos permissions et réessayez.')
+        }
+      }
       return
     }
     
@@ -382,9 +403,30 @@ export function ChatViewPage() {
   const handleStartAudioCall = async () => {
     if (!conversationId) return
     
-    // For group conversations, show a message that group calls are not yet supported
+    // For group conversations, use group call
     if (conversation?.type === 'group') {
-      alert('📞 Appels de groupe\n\nLes appels audio de groupe ne sont pas encore disponibles. Cette fonctionnalité sera bientôt ajoutée!')
+      try {
+        // Request permissions before starting the call
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+        
+        // Stop test stream
+        stream.getTracks().forEach(track => track.stop())
+        
+        // Start group audio call
+        await startGroupCall(conversationId, { audio: true, video: false })
+      } catch (error: any) {
+        console.error('Error starting group audio call:', error)
+        
+        if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+          alert('❌ Permission refusée\n\nVeuillez autoriser l\'accès à votre microphone dans les paramètres de votre navigateur pour passer des appels audio.')
+        } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+          alert('❌ Aucun microphone trouvé\n\nAucun microphone n\'a été détecté sur votre appareil.')
+        } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
+          alert('❌ Microphone occupé\n\nVotre microphone est déjà utilisé par une autre application.')
+        } else {
+          alert('❌ Erreur\n\nImpossible de démarrer l\'appel audio de groupe. Vérifiez vos permissions et réessayez.')
+        }
+      }
       return
     }
     

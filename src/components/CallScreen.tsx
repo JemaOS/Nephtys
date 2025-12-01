@@ -1,5 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Phone, Video, Mic, MicOff, VideoOff, PhoneOff } from 'lucide-react';
+import { Phone, Video, Mic, MicOff, VideoOff, PhoneOff, Users } from 'lucide-react';
+
+interface GroupParticipant {
+  id: string;
+  name: string;
+  avatar?: string;
+  stream?: MediaStream;
+  audioEnabled: boolean;
+  videoEnabled: boolean;
+}
 
 interface CallScreenProps {
   isInCall: boolean;
@@ -12,12 +21,81 @@ interface CallScreenProps {
   callerName: string;
   callerAvatar?: string;
   isVideoCall: boolean;
+  // Group call props
+  isGroupCall?: boolean;
+  groupParticipants?: GroupParticipant[];
   onAnswer: () => Promise<void>;
   onReject: () => void;
   onEnd: () => void;
   onToggleAudio: () => void;
   onToggleVideo: () => void;
 }
+
+// Component for rendering a single participant's video tile
+const ParticipantTile: React.FC<{
+  participant: GroupParticipant;
+  isLarge?: boolean;
+}> = ({ participant, isLarge = false }) => {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    if (videoRef.current && participant.stream) {
+      videoRef.current.srcObject = participant.stream;
+    }
+  }, [participant.stream]);
+
+  const sizeClasses = isLarge
+    ? 'w-full h-full'
+    : 'w-full h-full min-h-[120px]';
+
+  return (
+    <div className={`relative ${sizeClasses} bg-gray-800 rounded-xl overflow-hidden`}>
+      {participant.stream && participant.videoEnabled ? (
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted={false}
+          className="w-full h-full object-cover"
+        />
+      ) : (
+        <div className="w-full h-full flex flex-col items-center justify-center">
+          {participant.avatar ? (
+            <img
+              src={participant.avatar}
+              alt={participant.name}
+              className="w-16 h-16 rounded-full object-cover border-2 border-white/20"
+            />
+          ) : (
+            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-2xl">
+              {participant.name[0]?.toUpperCase() || '?'}
+            </div>
+          )}
+          <span className="mt-2 text-white text-sm font-medium">{participant.name}</span>
+        </div>
+      )}
+      
+      {/* Participant info overlay */}
+      <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between">
+        <span className="text-white text-xs bg-black/50 px-2 py-1 rounded-full truncate max-w-[70%]">
+          {participant.name}
+        </span>
+        <div className="flex gap-1">
+          {!participant.audioEnabled && (
+            <div className="w-6 h-6 rounded-full bg-red-500/80 flex items-center justify-center">
+              <MicOff size={12} className="text-white" />
+            </div>
+          )}
+          {!participant.videoEnabled && (
+            <div className="w-6 h-6 rounded-full bg-red-500/80 flex items-center justify-center">
+              <VideoOff size={12} className="text-white" />
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export const CallScreen: React.FC<CallScreenProps> = ({
   isInCall,
@@ -30,6 +108,8 @@ export const CallScreen: React.FC<CallScreenProps> = ({
   callerName,
   callerAvatar,
   isVideoCall,
+  isGroupCall = false,
+  groupParticipants = [],
   onAnswer,
   onReject,
   onEnd,
@@ -157,17 +237,86 @@ export const CallScreen: React.FC<CallScreenProps> = ({
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  return (
-    <div className="fixed inset-0 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 z-[100] flex flex-col">
-      {/* Audio element caché pour le stream distant (appels audio) */}
-      <audio
-        ref={remoteAudioRef}
-        autoPlay
-        playsInline
-        style={{ display: 'none' }}
-      />
-      
-      {/* Remote Video (or avatar) */}
+  // Calculate grid layout based on participant count
+  const getGridLayout = (count: number) => {
+    if (count <= 1) return 'grid-cols-1';
+    if (count === 2) return 'grid-cols-2';
+    if (count <= 4) return 'grid-cols-2 grid-rows-2';
+    if (count <= 6) return 'grid-cols-3 grid-rows-2';
+    if (count <= 9) return 'grid-cols-3 grid-rows-3';
+    return 'grid-cols-4 grid-rows-3'; // Max 12 participants visible
+  };
+
+  // Render group call UI
+  const renderGroupCallUI = () => {
+    const totalParticipants = groupParticipants.length + 1; // +1 for self
+    const gridLayout = getGridLayout(totalParticipants);
+
+    return (
+      <div className="flex-1 relative p-2">
+        {/* Participant count badge */}
+        <div className="absolute top-4 left-4 z-10 flex items-center gap-2 bg-black/50 px-3 py-1.5 rounded-full">
+          <Users size={16} className="text-white" />
+          <span className="text-white text-sm font-medium">{totalParticipants} participants</span>
+        </div>
+
+        {/* Participants grid */}
+        <div className={`grid ${gridLayout} gap-2 h-full`}>
+          {/* Local video (self) */}
+          <div className="relative bg-gray-800 rounded-xl overflow-hidden">
+            {localStream && videoEnabled ? (
+              <video
+                ref={localVideoRef}
+                autoPlay
+                playsInline
+                muted
+                className="w-full h-full object-cover transform scale-x-[-1]"
+              />
+            ) : (
+              <div className="w-full h-full flex flex-col items-center justify-center">
+                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-2xl">
+                  Vous
+                </div>
+              </div>
+            )}
+            <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between">
+              <span className="text-white text-xs bg-black/50 px-2 py-1 rounded-full">
+                Vous
+              </span>
+              <div className="flex gap-1">
+                {!audioEnabled && (
+                  <div className="w-6 h-6 rounded-full bg-red-500/80 flex items-center justify-center">
+                    <MicOff size={12} className="text-white" />
+                  </div>
+                )}
+                {!videoEnabled && (
+                  <div className="w-6 h-6 rounded-full bg-red-500/80 flex items-center justify-center">
+                    <VideoOff size={12} className="text-white" />
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Other participants */}
+          {groupParticipants.map((participant) => (
+            <ParticipantTile key={participant.id} participant={participant} />
+          ))}
+        </div>
+
+        {/* Call duration */}
+        {isInCall && (
+          <div className="absolute top-4 right-4 bg-black/50 px-3 py-1.5 rounded-full">
+            <span className="text-white text-sm font-medium">{formatDuration(callDuration)}</span>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Render 1-to-1 call UI
+  const renderOneToOneCallUI = () => {
+    return (
       <div className="flex-1 relative">
         {isVideoCall && remoteStream ? (
           <>
@@ -219,6 +368,21 @@ export const CallScreen: React.FC<CallScreenProps> = ({
           </div>
         )}
       </div>
+    );
+  };
+
+  return (
+    <div className="fixed inset-0 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 z-[100] flex flex-col">
+      {/* Audio element caché pour le stream distant (appels audio) */}
+      <audio
+        ref={remoteAudioRef}
+        autoPlay
+        playsInline
+        style={{ display: 'none' }}
+      />
+      
+      {/* Main content - Group or 1-to-1 */}
+      {isGroupCall ? renderGroupCallUI() : renderOneToOneCallUI()}
 
       {/* Controls */}
       <div className="p-4 sm:p-8 pb-safe bg-gradient-to-t from-black/50 to-transparent">
@@ -294,9 +458,14 @@ export const CallScreen: React.FC<CallScreenProps> = ({
         )}
 
         {/* Call info */}
-        {isInCall && (
+        {isInCall && !isGroupCall && (
           <div className="text-center mt-4 text-white/70 text-sm">
             {isVideoCall ? 'Appel vidéo' : 'Appel audio'} • {formatDuration(callDuration)}
+          </div>
+        )}
+        {isInCall && isGroupCall && (
+          <div className="text-center mt-4 text-white/70 text-sm">
+            {isVideoCall ? 'Appel vidéo de groupe' : 'Appel audio de groupe'} • {groupParticipants.length + 1} participants
           </div>
         )}
       </div>

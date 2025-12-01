@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, useRef, ReactNode } from 'react'
 import { supabase } from '@/lib/supabase'
 import { webrtcManager, CallConfig } from '@/lib/webrtc'
+import { groupCallManager, Participant, GroupCallConfig } from '@/lib/groupWebRTC'
 import { useAuth } from './AuthContext'
 
 interface CallSignal {
@@ -22,6 +23,16 @@ interface IncomingCall {
   isVideo: boolean
   callerName: string
   callerAvatar?: string
+  isGroupCall?: boolean
+}
+
+interface GroupCallParticipant {
+  id: string
+  name: string
+  avatar?: string
+  stream?: MediaStream
+  audioEnabled: boolean
+  videoEnabled: boolean
 }
 
 interface CallContextType {
@@ -33,7 +44,12 @@ interface CallContextType {
   audioEnabled: boolean
   videoEnabled: boolean
   incomingCall: IncomingCall | null
+  // Group call specific
+  isGroupCall: boolean
+  groupParticipants: GroupCallParticipant[]
+  // Methods
   startCall: (userId: string, conversationId: string, config: CallConfig) => Promise<void>
+  startGroupCall: (conversationId: string, config: GroupCallConfig) => Promise<void>
   answerCall: () => Promise<void>
   endCall: () => void
   toggleAudio: () => void
@@ -59,6 +75,10 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const [channelRef, setChannelRef] = useState<any>(null)
   const iceCandidateQueueRef = useRef<QueuedIceCandidate[]>([])
   const [isPeerConnectionReady, setIsPeerConnectionReady] = useState(false)
+  
+  // Group call state
+  const [isGroupCall, setIsGroupCall] = useState(false)
+  const [groupParticipants, setGroupParticipants] = useState<GroupCallParticipant[]>([])
 
   // Subscribe to call signals globally
   useEffect(() => {
@@ -414,22 +434,159 @@ export function CallProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const endCall = () => {
-    const otherUserId = incomingCallSignal?.from || currentCallUserId
-    const conversationId = incomingCallSignal?.conversation_id || currentCallConversationId
-    
-    if (otherUserId && conversationId) {
-      sendSignal({
-        type: 'call-end',
-        from: user!.id,
-        to: otherUserId,
-        data: { reason: 'ended' },
-        conversation_id: conversationId,
+  const toggleAudio = () => {
+    const newState = !audioEnabled
+    if (isGroupCall) {
+      groupCallManager.toggleAudio(newState)
+    } else {
+      webrtcManager.toggleAudio(newState)
+    }
+    setAudioEnabled(newState)
+  }
+
+  const toggleVideo = () => {
+    const newState = !videoEnabled
+    if (isGroupCall) {
+      groupCallManager.toggleVideo(newState)
+    } else {
+      webrtcManager.toggleVideo(newState)
+    }
+    setVideoEnabled(newState)
+  }
+
+  // Start a group call
+  const startGroupCall = async (conversationId: string, config: GroupCallConfig) => {
+    try {
+      console.log('📞 Starting group call for conversation:', conversationId)
+      
+      // Request permissions explicitly on mobile
+      if (typeof window !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
+        try {
+          console.log('📱 Mobile: Requesting permissions explicitly...')
+          const testStream = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+            video: config.video
+          })
+          
+          // Stop test stream immediately
+          testStream.getTracks().forEach(track => track.stop())
+          console.log('✅ Permissions granted')
+        } catch (permError: any) {
+          console.error('❌ Permission denied:', permError.name, permError.message)
+          
+          let errorMsg = '❌ Permissions requises\n\nPour appeler, vous devez autoriser :\n'
+          
+          if (permError.name === 'NotAllowedError') {
+            errorMsg += '• Caméra et Microphone\n\nSur Chrome Mobile :\n1. Appuyez sur 🔒 à côté de l\'URL\n2. Activez "Caméra" et "Microphone"'
+          } else {
+            errorMsg += '• Caméra et/ou Microphone\n\nAutorisez l\'accès dans les paramètres de votre navigateur.'
+          }
+          
+          alert(errorMsg)
+          setIsCalling(false)
+          return
+        }
+      }
+      
+      setIsCalling(true)
+      setIsGroupCall(true)
+      setCurrentCallConversationId(conversationId)
+
+      // Get conversation info for the call
+      const { data: conversation } = await supabase
+        .from('conversations')
+        .select('name, avatar_url')
+        .eq('id', conversationId)
+        .maybeSingle()
+
+      setIncomingCall({
+        from: conversationId,
+        conversationId: conversationId,
+        isVideo: config.video,
+        callerName: conversation?.name || 'Appel de groupe',
+        callerAvatar: conversation?.avatar_url,
+        isGroupCall: true
       })
+
+      // Initialize group call
+      const stream = await groupCallManager.initializeGroupCall(
+        user!.id,
+        conversationId,
+        config
+      )
+      
+      setLocalStream(stream)
+      setAudioEnabled(config.audio)
+      setVideoEnabled(config.video)
+
+      // Set up callbacks
+      groupCallManager.onParticipantUpdate((participants) => {
+        const participantArray: GroupCallParticipant[] = []
+        participants.forEach((p) => {
+          participantArray.push({
+            id: p.id,
+            name: p.name,
+            avatar: p.avatar,
+            stream: p.stream,
+            audioEnabled: p.audioEnabled,
+            videoEnabled: p.videoEnabled,
+          })
+        })
+        setGroupParticipants(participantArray)
+      })
+
+      groupCallManager.onCallEnd(() => {
+        endCall()
+      })
+
+      // Join the group call
+      await groupCallManager.joinGroupCall()
+      
+      setIsCalling(false)
+      setIsInCall(true)
+
+      // Log the call
+      await supabase.from('call_logs').insert({
+        conversation_id: conversationId,
+        caller_id: user!.id,
+        type: config.video ? 'video' : 'audio',
+        status: 'initiated',
+        is_group_call: true,
+      })
+    } catch (error) {
+      console.error('Error starting group call:', error)
+      setIsCalling(false)
+      setIsGroupCall(false)
+      throw error
+    }
+  }
+
+  // End call - handles both group and 1-to-1 calls
+  const endCall = () => {
+    if (isGroupCall) {
+      // End group call
+      groupCallManager.leaveCall()
+      setGroupParticipants([])
+      setIsGroupCall(false)
+    } else {
+      // End 1-to-1 call
+      const otherUserId = incomingCallSignal?.from || currentCallUserId
+      const conversationId = incomingCallSignal?.conversation_id || currentCallConversationId
+      
+      if (otherUserId && conversationId) {
+        sendSignal({
+          type: 'call-end',
+          from: user!.id,
+          to: otherUserId,
+          data: { reason: 'ended' },
+          conversation_id: conversationId,
+        })
+      }
+
+      webrtcManager.endCall()
     }
 
-    webrtcManager.endCall()
-
+    // Reset common state
     setIsInCall(false)
     setIsCalling(false)
     setIsRinging(false)
@@ -443,18 +600,6 @@ export function CallProvider({ children }: { children: ReactNode }) {
     iceCandidateQueueRef.current = []
   }
 
-  const toggleAudio = () => {
-    const newState = !audioEnabled
-    webrtcManager.toggleAudio(newState)
-    setAudioEnabled(newState)
-  }
-
-  const toggleVideo = () => {
-    const newState = !videoEnabled
-    webrtcManager.toggleVideo(newState)
-    setVideoEnabled(newState)
-  }
-
   return (
     <CallContext.Provider value={{
       isInCall,
@@ -465,7 +610,10 @@ export function CallProvider({ children }: { children: ReactNode }) {
       audioEnabled,
       videoEnabled,
       incomingCall,
+      isGroupCall,
+      groupParticipants,
       startCall,
+      startGroupCall,
       answerCall,
       endCall,
       toggleAudio,

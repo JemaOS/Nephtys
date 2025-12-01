@@ -12,6 +12,8 @@ export const GlobalCallScreen = memo(function GlobalCallScreen() {
     audioEnabled,
     videoEnabled,
     incomingCall,
+    isGroupCall,
+    groupParticipants,
     answerCall,
     rejectCall,
     endCall,
@@ -69,6 +71,8 @@ export const GlobalCallScreen = memo(function GlobalCallScreen() {
       callerName={callerName}
       callerAvatar={callerAvatar}
       isVideoCall={isVideoCall}
+      isGroupCall={isGroupCall}
+      groupParticipants={groupParticipants}
       onAnswer={answerCall}
       onReject={rejectCall}
       onEnd={endCall}
