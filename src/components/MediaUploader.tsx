@@ -819,7 +819,16 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
                   <div className="grid grid-cols-4 gap-3">
                     {/* Camera */}
                     <button
-                      onClick={() => cameraInputRef.current?.click()}
+                      onClick={() => {
+                        // On mobile, use native camera input
+                        // On desktop, use getUserMedia
+                        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+                        if (isMobile) {
+                          cameraInputRef.current?.click();
+                        } else {
+                          startCamera('photo');
+                        }
+                      }}
                       className="flex flex-col items-center gap-2 p-3 rounded-xl bg-bg-surface hover:bg-bg-hover transition-colors"
                     >
                       <div className="w-12 h-12 rounded-full bg-accent flex items-center justify-center">
@@ -1053,7 +1062,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
               ref={cameraInputRef}
               type="file"
               onChange={handleCameraCapture}
-              accept="image/*,video/*"
+              accept="image/*"
               capture="environment"
               className="hidden"
             />
