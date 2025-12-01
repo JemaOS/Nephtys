@@ -218,37 +218,38 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
       onClick={() => setShowControls(true)}
     >
       {/* Header */}
-      <div 
+      <div
         className={`absolute top-0 left-0 right-0 z-10 transition-opacity duration-300 ${
           showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
       >
         <div className="flex items-center justify-between p-3 md:p-4 bg-gradient-to-b from-black/80 to-transparent">
           {/* Left side - Sender info */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 md:gap-3 flex-1 min-w-0">
             {senderAvatar ? (
               <img
                 src={senderAvatar}
                 alt={senderName}
-                className="w-10 h-10 rounded-full object-cover"
+                className="w-8 h-8 md:w-10 md:h-10 rounded-full object-cover flex-shrink-0"
               />
             ) : (
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold">
+              <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold text-sm md:text-base flex-shrink-0">
                 {senderName[0]?.toUpperCase()}
               </div>
             )}
-            <div>
-              <p className="text-white font-medium text-sm md:text-base">{senderName}</p>
-              <p className="text-white/60 text-xs md:text-sm">{formatTimestamp(timestamp)}</p>
+            <div className="min-w-0 flex-1">
+              <p className="text-white font-medium text-sm md:text-base truncate">{senderName}</p>
+              <p className="text-white/60 text-xs md:text-sm truncate">{formatTimestamp(timestamp)}</p>
             </div>
           </div>
 
           {/* Right side - Action buttons */}
-          <div className="flex items-center gap-1 md:gap-2">
+          <div className="flex items-center gap-0.5 md:gap-2 flex-shrink-0">
+            {/* Desktop only buttons */}
             {onForward && (
               <button
                 onClick={(e) => { e.stopPropagation(); onForward(); }}
-                className="w-10 h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
+                className="hidden md:flex w-10 h-10 rounded-full hover:bg-white/10 items-center justify-center transition-colors"
                 title="Transférer"
               >
                 <Forward size={20} className="text-white" />
@@ -257,7 +258,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
             {onStar && (
               <button
                 onClick={(e) => { e.stopPropagation(); onStar(); }}
-                className="w-10 h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
+                className="hidden md:flex w-10 h-10 rounded-full hover:bg-white/10 items-center justify-center transition-colors"
                 title="Favoris"
               >
                 <Star size={20} className="text-white" />
@@ -266,14 +267,14 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
             {onPin && (
               <button
                 onClick={(e) => { e.stopPropagation(); onPin(); }}
-                className="w-10 h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
+                className="hidden md:flex w-10 h-10 rounded-full hover:bg-white/10 items-center justify-center transition-colors"
                 title="Épingler"
               >
                 <Pin size={20} className="text-white" />
               </button>
             )}
             {onReaction && (
-              <div className="relative">
+              <div className="relative hidden md:block">
                 <button
                   onClick={(e) => { e.stopPropagation(); setShowEmojiPicker(!showEmojiPicker); }}
                   className="w-10 h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
@@ -300,33 +301,40 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
                 )}
               </div>
             )}
+            {/* Share - visible on mobile */}
             <button
               onClick={(e) => { e.stopPropagation(); handleShare(); }}
-              className="w-10 h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
+              className="w-9 h-9 md:w-10 md:h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
               title="Partager"
             >
-              <Share2 size={20} className="text-white" />
+              <Share2 size={18} className="md:hidden text-white" />
+              <Share2 size={20} className="hidden md:block text-white" />
             </button>
+            {/* Download - visible on mobile */}
             <button
               onClick={(e) => { e.stopPropagation(); handleDownload(); }}
-              className="w-10 h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
+              className="w-9 h-9 md:w-10 md:h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
               title="Télécharger"
             >
-              <Download size={20} className="text-white" />
+              <Download size={18} className="md:hidden text-white" />
+              <Download size={20} className="hidden md:block text-white" />
             </button>
+            {/* External link - desktop only */}
             <button
               onClick={(e) => { e.stopPropagation(); handleOpenExternal(); }}
-              className="w-10 h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
+              className="hidden md:flex w-10 h-10 rounded-full hover:bg-white/10 items-center justify-center transition-colors"
               title="Ouvrir dans le navigateur"
             >
               <ExternalLink size={20} className="text-white" />
             </button>
+            {/* Close button - always visible */}
             <button
               onClick={(e) => { e.stopPropagation(); onClose(); }}
-              className="w-10 h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
+              className="w-9 h-9 md:w-10 md:h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
               title="Fermer"
             >
-              <X size={24} className="text-white" />
+              <X size={22} className="md:hidden text-white" />
+              <X size={24} className="hidden md:block text-white" />
             </button>
           </div>
         </div>
