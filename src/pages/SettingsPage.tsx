@@ -25,7 +25,7 @@ export function SettingsPage() {
   const [editingName, setEditingName] = useState(false)
   const [newDisplayName, setNewDisplayName] = useState(profile?.display_name || '')
   const [editingBio, setEditingBio] = useState(false)
-  const [newBio, setNewBio] = useState('')
+  const [newBio, setNewBio] = useState(profile?.bio || '')
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const [showLastSeen, setShowLastSeen] = useState(true)
   const [showProfilePhoto, setShowProfilePhoto] = useState(true)
@@ -161,6 +161,9 @@ export function SettingsPage() {
           <div className="flex-1">
             <h2 className="text-xl font-medium text-text-primary">{profile?.display_name || profile?.username}</h2>
             <p className="text-sm text-text-secondary">@{profile?.username}</p>
+            {profile?.bio && (
+              <p className="text-sm text-text-secondary mt-1 italic">"{profile.bio}"</p>
+            )}
           </div>
           <ChevronRight size={20} className="text-text-secondary" />
         </div>
@@ -230,9 +233,26 @@ export function SettingsPage() {
         <div className="space-y-2">
           <label className="text-sm text-accent">Info</label>
           <div className="flex items-center gap-3 p-4 bg-bg-surface rounded-2xl">
-            <input type="text" placeholder="Ajouter une info..." value={editingBio ? newBio : ''} onChange={(e) => setNewBio(e.target.value)} onFocus={() => setEditingBio(true)} className="flex-1 bg-transparent text-text-primary outline-none placeholder:text-text-secondary" />
-            {editingBio ? <button onClick={handleUpdateBio} className="text-accent"><Check size={18} /></button> : <Edit2 size={18} className="text-text-secondary" />}
+            <input
+              type="text"
+              placeholder="Ajouter une info..."
+              value={editingBio ? newBio : (profile?.bio || '')}
+              onChange={(e) => setNewBio(e.target.value)}
+              onFocus={() => {
+                setEditingBio(true)
+                setNewBio(profile?.bio || '')
+              }}
+              className="flex-1 bg-transparent text-text-primary outline-none placeholder:text-text-secondary"
+            />
+            {editingBio ? (
+              <button onClick={handleUpdateBio} className="text-accent"><Check size={18} /></button>
+            ) : (
+              <Edit2 size={18} className="text-text-secondary" />
+            )}
           </div>
+          {profile?.bio && !editingBio && (
+            <p className="text-xs text-text-secondary px-1">Votre info actuelle : "{profile.bio}"</p>
+          )}
         </div>
       </div>
     </div>

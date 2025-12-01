@@ -51,6 +51,7 @@ export function ChatViewPage() {
   const [showVoiceRecorder, setShowVoiceRecorder] = useState(false)
   const [showConversationMenu, setShowConversationMenu] = useState(false)
   const [showConversationInfo, setShowConversationInfo] = useState(false)
+  const [showAddMemberModal, setShowAddMemberModal] = useState(false)
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
   const [contextMenu, setContextMenu] = useState<{
     isOpen: boolean;
@@ -990,15 +991,18 @@ export function ChatViewPage() {
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setShowConversationMenu(false)} />
                   <div className="absolute right-0 top-12 z-50 min-w-[240px] bg-bg-surface rounded-2xl shadow-2xl py-2 border border-bg-hover">
+                    {/* Only show "Add to group" for group conversations or to convert direct to group */}
                     <button
                       onClick={() => {
-                        navigate('/contacts')
                         setShowConversationMenu(false)
+                        // Open conversation info to add members
+                        setShowConversationInfo(true)
+                        setShowAddMemberModal(true)
                       }}
                       className="w-full px-4 py-3 text-left hover:bg-bg-hover transition-colors text-text-primary text-sm flex items-center gap-3"
                     >
                       <UserPlus size={18} />
-                      <span>Ajouter au groupe</span>
+                      <span>{conversation?.type === 'group' ? 'Ajouter des membres' : 'Créer un groupe'}</span>
                     </button>
                     <button
                       onClick={async () => {
@@ -1411,10 +1415,13 @@ export function ChatViewPage() {
           isAdmin={conversation?.type === 'group' ? true : false}
           onClose={() => {
             setShowConversationInfo(false)
+            setShowAddMemberModal(false)
             refreshConversation()
           }}
           onStartVideoCall={handleStartVideoCall}
           onStartAudioCall={handleStartAudioCall}
+          initialTab={showAddMemberModal ? 'members' : 'overview'}
+          openAddMemberModal={showAddMemberModal}
         />
       )}
 

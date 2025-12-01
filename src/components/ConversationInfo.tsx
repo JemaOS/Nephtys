@@ -18,6 +18,8 @@ interface ConversationInfoProps {
   onClose: () => void;
   onStartVideoCall?: () => void;
   onStartAudioCall?: () => void;
+  initialTab?: 'overview' | 'members' | 'media' | 'files' | 'links';
+  openAddMemberModal?: boolean;
 }
 
 interface GroupMember {
@@ -25,6 +27,7 @@ interface GroupMember {
   user_id: string;
   username: string;
   display_name: string | null;
+  avatar_url: string | null;
   role: 'admin' | 'member';
 }
 
@@ -40,8 +43,10 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
   onClose,
   onStartVideoCall,
   onStartAudioCall,
+  initialTab = 'overview',
+  openAddMemberModal = false,
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'members' | 'media' | 'files' | 'links'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'members' | 'media' | 'files' | 'links'>(initialTab);
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [isEditingDescription, setIsEditingDescription] = useState(false);
   const [newDescription, setNewDescription] = useState(conversationDescription || '');
@@ -85,6 +90,13 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
       setCurrentAvatar(otherUser.avatar_url);
     }
   }, [conversationId, otherUser?.avatar_url, conversationType]);
+
+  // Open add member modal if requested via prop
+  useEffect(() => {
+    if (openAddMemberModal && conversationType === 'group' && isAdmin) {
+      handleOpenAddMemberModal();
+    }
+  }, [openAddMemberModal, conversationType, isAdmin]);
 
   // Load participants for direct conversations
   const loadDirectParticipants = async () => {
@@ -134,7 +146,7 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
         memberData.map(async (member) => {
           const { data: profile } = await supabase
             .from('profiles')
-            .select('username, display_name')
+            .select('username, display_name, avatar_url')
             .eq('id', member.user_id)
             .single();
 
@@ -142,6 +154,7 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
             ...member,
             username: profile?.username || 'Unknown',
             display_name: profile?.display_name || null,
+            avatar_url: profile?.avatar_url || null,
           };
         })
       );
@@ -699,9 +712,17 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
                       key={member.id}
                       className="bg-bg-surface rounded-xl p-4 flex items-center gap-3"
                     >
-                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold">
-                        {(member.display_name || member.username)[0].toUpperCase()}
-                      </div>
+                      {member.avatar_url ? (
+                        <img
+                          src={member.avatar_url}
+                          alt={member.display_name || member.username}
+                          className="w-12 h-12 rounded-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold">
+                          {(member.display_name || member.username)[0].toUpperCase()}
+                        </div>
+                      )}
                       <div className="flex-1">
                         <div className="font-medium text-text-primary">
                           {member.display_name || member.username}
