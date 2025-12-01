@@ -1983,6 +1983,12 @@ export function ChatViewPage() {
           if (quickReactionBar.message) {
             addReaction(quickReactionBar.message.id, emoji)
           }
+          // On mobile, exit selection mode after adding a reaction (like WhatsApp)
+          if (isMobile && isSelectionMode) {
+            exitSelectionMode()
+          }
+          // Close the reaction bar
+          setQuickReactionBar({ isOpen: false, position: { x: 0, y: 0 }, message: null })
         }}
         onMoreOptions={() => {
           if (quickReactionBar.message) {
@@ -1992,8 +1998,16 @@ export function ChatViewPage() {
               message: quickReactionBar.message,
             })
           }
+          // Close the reaction bar when opening more options
+          setQuickReactionBar({ isOpen: false, position: { x: 0, y: 0 }, message: null })
         }}
-        onClose={() => setQuickReactionBar({ isOpen: false, position: { x: 0, y: 0 }, message: null })}
+        onClose={() => {
+          setQuickReactionBar({ isOpen: false, position: { x: 0, y: 0 }, message: null })
+          // On mobile, also exit selection mode when closing the reaction bar
+          if (isMobile && isSelectionMode) {
+            exitSelectionMode()
+          }
+        }}
       />
     </MainLayout>
   )
