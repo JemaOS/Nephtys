@@ -845,9 +845,17 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
                         : 'hover:bg-bg-hover'
                     }`}
                   >
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold">
-                      {(contact.display_name || contact.username)[0].toUpperCase()}
-                    </div>
+                    {contact.avatar_url ? (
+                      <img
+                        src={contact.avatar_url}
+                        alt={contact.display_name || contact.username}
+                        className="w-10 h-10 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold">
+                        {(contact.display_name || contact.username)[0].toUpperCase()}
+                      </div>
+                    )}
                     <div className="flex-1 text-left">
                       <p className="text-sm font-medium text-text-primary">
                         {contact.display_name || contact.username}
