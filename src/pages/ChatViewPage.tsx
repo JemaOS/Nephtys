@@ -1296,10 +1296,35 @@ export function ChatViewPage() {
                           )}
                           <span>{formatTime(message.created_at)}</span>
                           {isOwn && (
-                            <svg width="16" height="11" viewBox="0 0 16 11" fill="none">
-                              <path d="M11.071.653a.75.75 0 0 0-1.06 1.06l3.182 3.183-3.182 3.182a.75.75 0 1 0 1.06 1.061l3.712-3.712a.75.75 0 0 0 0-1.06L11.071.653Z" fill={message.status === 'read' ? '#6b6fdb' : '#8696a0'}/>
-                              <path d="M6.071.653a.75.75 0 0 0-1.06 1.06l3.182 3.183-3.182 3.182a.75.75 0 1 0 1.06 1.061l3.712-3.712a.75.75 0 0 0 0-1.06L6.071.653Z" fill={message.status === 'read' ? '#6b6fdb' : '#8696a0'}/>
-                            </svg>
+                            <>
+                              {/* Message status indicators like WhatsApp */}
+                              {message.status === 'sent' && (
+                                /* Single gray check - sent */
+                                <svg width="16" height="11" viewBox="0 0 16 11" fill="none">
+                                  <path d="M10.5 1L4.5 7L2 4.5" stroke="#8696a0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                              )}
+                              {message.status === 'delivered' && (
+                                /* Double gray checks - delivered */
+                                <svg width="16" height="11" viewBox="0 0 16 11" fill="none">
+                                  <path d="M1.5 5.5L4.5 8.5L10.5 2.5" stroke="#8696a0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                  <path d="M5.5 5.5L8.5 8.5L14.5 2.5" stroke="#8696a0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                              )}
+                              {message.status === 'read' && (
+                                /* Double blue checks - read */
+                                <svg width="16" height="11" viewBox="0 0 16 11" fill="none">
+                                  <path d="M1.5 5.5L4.5 8.5L10.5 2.5" stroke="#53bdeb" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                  <path d="M5.5 5.5L8.5 8.5L14.5 2.5" stroke="#53bdeb" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                              )}
+                              {!message.status && (
+                                /* Default: single gray check */
+                                <svg width="16" height="11" viewBox="0 0 16 11" fill="none">
+                                  <path d="M10.5 1L4.5 7L2 4.5" stroke="#8696a0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                              )}
+                            </>
                           )}
                         </div>
                       </div>
