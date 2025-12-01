@@ -770,8 +770,8 @@ export function CallsPage() {
       {/* Modal de sélection de contact */}
       {showContactsModal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="w-full max-w-md bg-bg-surface rounded-3xl flex flex-col max-h-[80vh]">
-            <div className="px-6 py-4 border-b border-bg-hover flex items-center justify-between">
+          <div className="w-full max-w-md bg-bg-surface rounded-3xl flex flex-col max-h-[80vh] overflow-hidden">
+            <div className="px-6 py-4 border-b border-bg-hover flex items-center justify-between flex-shrink-0">
               <h2 className="text-xl font-semibold text-text-primary">Appeler un contact</h2>
               <button
                 onClick={() => setShowContactsModal(false)}
@@ -781,7 +781,7 @@ export function CallsPage() {
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 overflow-y-auto overflow-x-hidden">
               {contacts.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 px-6 text-center">
                   <Phone size={48} className="text-[#3b4a54] mb-3" />
@@ -857,8 +857,8 @@ export function CallsPage() {
       {/* Modal d'ajout aux favoris */}
       {showFavoritesModal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="w-full max-w-md bg-bg-surface rounded-3xl flex flex-col max-h-[80vh]">
-            <div className="px-6 py-4 border-b border-bg-hover flex items-center justify-between">
+          <div className="w-full max-w-md bg-bg-surface rounded-3xl flex flex-col max-h-[80vh] overflow-hidden">
+            <div className="px-6 py-4 border-b border-bg-hover flex items-center justify-between flex-shrink-0">
               <h2 className="text-xl font-semibold text-text-primary">Ajouter aux favoris</h2>
               <button
                 onClick={() => setShowFavoritesModal(false)}
@@ -868,7 +868,7 @@ export function CallsPage() {
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 overflow-y-auto overflow-x-hidden">
               {contacts.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 px-6 text-center">
                   <Star size={48} className="text-[#3b4a54] mb-3" />
