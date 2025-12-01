@@ -2002,11 +2002,9 @@ export function ChatViewPage() {
           setQuickReactionBar({ isOpen: false, position: { x: 0, y: 0 }, message: null })
         }}
         onClose={() => {
+          // Just close the reaction bar, don't exit selection mode
+          // This allows users to select multiple messages after long press
           setQuickReactionBar({ isOpen: false, position: { x: 0, y: 0 }, message: null })
-          // On mobile, also exit selection mode when closing the reaction bar
-          if (isMobile && isSelectionMode) {
-            exitSelectionMode()
-          }
         }}
       />
     </MainLayout>
