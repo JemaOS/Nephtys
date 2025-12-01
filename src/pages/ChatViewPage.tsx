@@ -1003,9 +1003,9 @@ export function ChatViewPage() {
                           // For direct conversations, navigate to groups page to create a new group
                           // Pass the other user's ID as a query parameter to pre-select them
                           if (otherUser) {
-                            navigate(`/groups?createWith=${otherUser.id}`)
+                            navigate(`/groups/new?createWith=${otherUser.id}`)
                           } else {
-                            navigate('/groups')
+                            navigate('/groups/new')
                           }
                         }
                       }}
