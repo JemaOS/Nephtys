@@ -361,14 +361,12 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
 
       {/* Media content */}
       <div className="flex-1 flex items-center justify-center p-4 md:p-8">
-        {/* Image */}
+        {/* Image, GIF, Sticker - all displayed fullscreen */}
         {(mediaType === 'image' || mediaType === 'gif' || mediaType === 'sticker') && (
           <img
             src={mediaUrl}
             alt="Media"
-            className={`max-w-full max-h-full object-contain ${
-              mediaType === 'sticker' ? 'max-w-[300px] max-h-[300px]' : ''
-            }`}
+            className="max-w-full max-h-full object-contain"
             onClick={(e) => e.stopPropagation()}
           />
         )}

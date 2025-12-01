@@ -12,6 +12,7 @@ import { MessageSearch } from '@/components/MessageSearch'
 import { EphemeralMessageToggle } from '@/components/EphemeralMessageToggle'
 import { MediaUploader } from '@/components/MediaUploader'
 import { MediaMessage } from '@/components/MediaMessage'
+import { MediaViewer } from '@/components/MediaViewer'
 import { VoiceRecorder } from '@/components/VoiceRecorder'
 import { VoiceMessage } from '@/components/VoiceMessage'
 import { CallScreen } from '@/components/CallScreen'
@@ -81,6 +82,15 @@ export function ChatViewPage() {
     position: { x: number; y: number };
     message: Message | null;
   }>({ isOpen: false, position: { x: 0, y: 0 }, message: null })
+  const [gifStickerViewer, setGifStickerViewer] = useState<{
+    isOpen: boolean;
+    url: string;
+    type: 'gif' | 'sticker';
+    senderName: string;
+    senderAvatar?: string;
+    timestamp: string;
+    isOwn: boolean;
+  } | null>(null)
   const [pinnedMessage, setPinnedMessage] = useState<{
     id: string;
     content: string;
@@ -1496,7 +1506,28 @@ export function ChatViewPage() {
                           return null
                         })()}
                         {message.media_url && message.media_type && message.type !== 'audio' && (
-                          <MediaMessage url={message.media_url} type={message.media_type as 'image' | 'video' | 'file'} fileName={message.file_name} fileSize={message.file_size} caption={message.content} />
+                          <MediaMessage
+                            url={message.media_url}
+                            type={message.media_type as 'image' | 'video' | 'file'}
+                            fileName={message.file_name}
+                            fileSize={message.file_size}
+                            caption={message.content}
+                            senderName={message.sender_id === user?.id
+                              ? (profile?.display_name || profile?.username || 'Vous')
+                              : (otherUser?.display_name || otherUser?.username || 'Utilisateur')
+                            }
+                            senderAvatar={message.sender_id === user?.id
+                              ? profile?.avatar_url
+                              : otherUser?.avatar_url
+                            }
+                            timestamp={message.created_at}
+                            isOwn={message.sender_id === user?.id}
+                            messageId={message.id}
+                            onForward={() => handleForwardMessage(message)}
+                            onStar={() => handleStarMessage(message.id)}
+                            onPin={() => handlePinMessage(message.id)}
+                            onReaction={(emoji) => addReaction(message.id, emoji)}
+                          />
                         )}
                         {message.type === 'audio' && message.media_url && (
                           <VoiceMessage url={message.media_url} duration={message.ephemeral_duration || 0} isOwn={isOwn} />
@@ -1509,12 +1540,41 @@ export function ChatViewPage() {
                               const gifMatch = message.content.match(/^(?:([\s\S]*?)\n)?\[GIF\]\((https?:\/\/[^\)]+)\)$/)
                               const stickerMatch = message.content.match(/^(?:([\s\S]*?)\n)?\[STICKER\]\((https?:\/\/[^\)]+)\)$/)
                               
+                              // Get sender info for the viewer
+                              const getSenderInfo = () => {
+                                if (message.sender_id === user?.id) {
+                                  return {
+                                    name: profile?.display_name || profile?.username || 'Vous',
+                                    avatar: profile?.avatar_url
+                                  }
+                                }
+                                return {
+                                  name: otherUser?.display_name || otherUser?.username || 'Utilisateur',
+                                  avatar: otherUser?.avatar_url
+                                }
+                              }
+                              
                               if (gifMatch) {
                                 const caption = gifMatch[1]
                                 const gifUrl = gifMatch[2]
+                                const senderInfo = getSenderInfo()
                                 return (
                                   <div className="space-y-1 max-w-[200px] sm:max-w-[240px]">
-                                    <div className="rounded-lg overflow-hidden">
+                                    <div
+                                      className="rounded-lg overflow-hidden cursor-pointer"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        setGifStickerViewer({
+                                          isOpen: true,
+                                          url: gifUrl,
+                                          type: 'gif',
+                                          senderName: senderInfo.name,
+                                          senderAvatar: senderInfo.avatar,
+                                          timestamp: message.created_at,
+                                          isOwn: message.sender_id === user?.id
+                                        })
+                                      }}
+                                    >
                                       <img
                                         src={gifUrl}
                                         alt="GIF"
@@ -1532,9 +1592,24 @@ export function ChatViewPage() {
                               if (stickerMatch) {
                                 const caption = stickerMatch[1]
                                 const stickerUrl = stickerMatch[2]
+                                const senderInfo = getSenderInfo()
                                 return (
                                   <div className="space-y-1">
-                                    <div className="max-w-[100px] sm:max-w-[120px]">
+                                    <div
+                                      className="max-w-[100px] sm:max-w-[120px] cursor-pointer"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        setGifStickerViewer({
+                                          isOpen: true,
+                                          url: stickerUrl,
+                                          type: 'sticker',
+                                          senderName: senderInfo.name,
+                                          senderAvatar: senderInfo.avatar,
+                                          timestamp: message.created_at,
+                                          isOwn: message.sender_id === user?.id
+                                        })
+                                      }}
+                                    >
                                       <img
                                         src={stickerUrl}
                                         alt="Sticker"
@@ -2007,6 +2082,20 @@ export function ChatViewPage() {
           setQuickReactionBar({ isOpen: false, position: { x: 0, y: 0 }, message: null })
         }}
       />
+
+      {/* GIF/Sticker Fullscreen Viewer */}
+      {gifStickerViewer && (
+        <MediaViewer
+          isOpen={gifStickerViewer.isOpen}
+          mediaUrl={gifStickerViewer.url}
+          mediaType={gifStickerViewer.type}
+          senderName={gifStickerViewer.senderName}
+          senderAvatar={gifStickerViewer.senderAvatar}
+          timestamp={gifStickerViewer.timestamp}
+          isOwn={gifStickerViewer.isOwn}
+          onClose={() => setGifStickerViewer(null)}
+        />
+      )}
     </MainLayout>
   )
 }
