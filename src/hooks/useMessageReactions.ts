@@ -80,7 +80,13 @@ export const useMessageReactions = (conversationId: string): UseMessageReactions
         },
         (payload) => {
           if (payload.eventType === 'INSERT') {
-            setReactions(prev => [...prev, payload.new as Reaction]);
+            const newReaction = payload.new as Reaction;
+            // Éviter les doublons - vérifier si la réaction existe déjà
+            setReactions(prev => {
+              const exists = prev.some(r => r.id === newReaction.id);
+              if (exists) return prev;
+              return [...prev, newReaction];
+            });
           } else if (payload.eventType === 'DELETE') {
             setReactions(prev => prev.filter(r => r.id !== payload.old.id));
           }
@@ -125,15 +131,13 @@ export const useMessageReactions = (conversationId: string): UseMessageReactions
       }
 
       // Ajouter la nouvelle réaction
-      const { data, error: insertError } = await supabase
+      const { error: insertError } = await supabase
         .from('message_reactions')
         .insert({
           message_id: messageId,
           user_id: user.id,
           emoji,
-        })
-        .select()
-        .single();
+        });
 
       if (insertError) {
         // Si l'erreur est due à une contrainte unique (réaction déjà existante), on l'ignore
@@ -141,11 +145,8 @@ export const useMessageReactions = (conversationId: string): UseMessageReactions
           throw insertError;
         }
       }
-
-      // Mettre à jour l'état local immédiatement
-      if (data) {
-        setReactions(prev => [...prev, data]);
-      }
+      // Note: La mise à jour de l'état local est gérée par le realtime subscription
+      // pour éviter les doublons
     } catch (err) {
       console.error('Error adding reaction:', err);
       setError(err instanceof Error ? err.message : 'Failed to add reaction');
