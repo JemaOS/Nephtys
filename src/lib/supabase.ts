@@ -97,3 +97,10 @@ export interface Device {
   created_at: string
   is_verified: boolean
 }
+
+export interface DeletedMessage {
+  id: string
+  message_id: string
+  user_id: string
+  deleted_at: string
+}

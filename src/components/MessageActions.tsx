@@ -1,13 +1,17 @@
 import React, { useState } from 'react';
 import { Star, Trash2, Edit, Copy, Forward, MoreVertical } from 'lucide-react';
+import { DeleteMessageDialog } from './DeleteMessageDialog';
 
 interface MessageActionsProps {
   messageId: string;
   content: string;
   isOwn: boolean;
   isPinned: boolean;
+  hasMedia?: boolean;
   onEdit?: () => void;
-  onDelete?: () => void;
+  onDeleteForEveryone?: () => void;
+  onDeleteForMe?: () => void;
+  onDelete?: () => void; // Legacy support
   onPin?: () => void;
   onForward?: () => void;
   onCopy?: () => void;
@@ -18,13 +22,17 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
   content,
   isOwn,
   isPinned,
+  hasMedia = false,
   onEdit,
+  onDeleteForEveryone,
+  onDeleteForMe,
   onDelete,
   onPin,
   onForward,
   onCopy,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(content);
@@ -38,10 +46,24 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
   };
 
   const handleDelete = () => {
-    if (confirm('Supprimer ce message?')) {
+    setIsOpen(false);
+    // If new delete handlers are provided, show the dialog
+    if (onDeleteForEveryone || onDeleteForMe) {
+      setShowDeleteDialog(true);
+    } else {
+      // Legacy behavior
       onDelete?.();
     }
-    setIsOpen(false);
+  };
+
+  const handleDeleteForEveryone = () => {
+    onDeleteForEveryone?.();
+    setShowDeleteDialog(false);
+  };
+
+  const handleDeleteForMe = () => {
+    onDeleteForMe?.();
+    setShowDeleteDialog(false);
   };
 
   const handlePin = () => {
@@ -122,6 +144,16 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
           </div>
         </>
       )}
+
+      {/* Delete Message Dialog */}
+      <DeleteMessageDialog
+        isOpen={showDeleteDialog}
+        onClose={() => setShowDeleteDialog(false)}
+        onDeleteForEveryone={handleDeleteForEveryone}
+        onDeleteForMe={handleDeleteForMe}
+        isOwn={isOwn}
+        hasMedia={hasMedia}
+      />
     </div>
   );
 };

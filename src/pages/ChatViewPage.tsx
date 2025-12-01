@@ -28,6 +28,7 @@ import { LinkPreview, LinkPreviewSkeleton } from '@/components/LinkPreview'
 import { LinkPreviewData, getFirstPreviewUrl, fetchLinkPreview, debounce } from '@/lib/linkPreview'
 import { PinMessageDialog } from '@/components/PinMessageDialog'
 import { PinnedMessageBanner } from '@/components/PinnedMessageBanner'
+import { DeleteMessageDialog } from '@/components/DeleteMessageDialog'
 
 export function ChatViewPage() {
   const { conversationId } = useParams()
@@ -65,6 +66,9 @@ export function ChatViewPage() {
   const [dismissedPreviewUrl, setDismissedPreviewUrl] = useState<string | null>(null)
   const [showPinDialog, setShowPinDialog] = useState(false)
   const [messageToPin, setMessageToPin] = useState<Message | null>(null)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [messageToDelete, setMessageToDelete] = useState<Message | null>(null)
+  const [deletedForMeIds, setDeletedForMeIds] = useState<Set<string>>(new Set())
   const [pinnedMessage, setPinnedMessage] = useState<{
     id: string;
     content: string;
@@ -456,11 +460,93 @@ export function ChatViewPage() {
     })
   }, [])
 
-  const handleDeleteMessage = async (messageId: string) => {
-    if (confirm('Voulez-vous vraiment supprimer ce message ?')) {
-      await supabase.from('messages').update({ deleted_at: new Date().toISOString() }).eq('id', messageId)
-      setMessages(prev => prev.filter(m => m.id !== messageId))
+  // Open delete dialog instead of direct deletion
+  const handleDeleteMessage = (messageId: string) => {
+    const message = messages.find(m => m.id === messageId)
+    if (message) {
+      setMessageToDelete(message)
+      setShowDeleteDialog(true)
     }
+  }
+
+  // Delete for everyone - removes from database and storage
+  const handleDeleteForEveryone = async () => {
+    if (!messageToDelete) return
+
+    try {
+      // If message has media, delete from storage first
+      if (messageToDelete.media_url) {
+        // Extract the file path from the URL
+        const url = new URL(messageToDelete.media_url)
+        const pathParts = url.pathname.split('/storage/v1/object/public/media/')
+        if (pathParts.length > 1) {
+          const filePath = pathParts[1]
+          const { error: storageError } = await supabase.storage
+            .from('media')
+            .remove([filePath])
+          
+          if (storageError) {
+            console.error('Error deleting file from storage:', storageError)
+          }
+        }
+      }
+
+      // Soft delete the message (set deleted_at)
+      const { error } = await supabase
+        .from('messages')
+        .update({
+          deleted_at: new Date().toISOString(),
+          content: '', // Clear content
+          media_url: null, // Clear media URL
+          file_name: null,
+          file_size: null,
+        })
+        .eq('id', messageToDelete.id)
+
+      if (!error) {
+        // Remove from local state
+        setMessages(prev => prev.filter(m => m.id !== messageToDelete.id))
+      }
+    } catch (error) {
+      console.error('Error deleting message for everyone:', error)
+    }
+
+    setMessageToDelete(null)
+    setShowDeleteDialog(false)
+  }
+
+  // Delete for me - only hides locally
+  const handleDeleteForMe = async () => {
+    if (!messageToDelete || !user) return
+
+    try {
+      // Try to insert into deleted_messages table
+      // If the table doesn't exist, we'll use local state
+      const { error } = await supabase
+        .from('deleted_messages')
+        .insert({
+          message_id: messageToDelete.id,
+          user_id: user.id,
+          deleted_at: new Date().toISOString(),
+        })
+
+      if (error) {
+        // If table doesn't exist or other error, use local state
+        console.log('Using local state for delete for me:', error.message)
+      }
+
+      // Always update local state to hide the message
+      setDeletedForMeIds(prev => new Set([...prev, messageToDelete.id]))
+      setMessages(prev => prev.filter(m => m.id !== messageToDelete.id))
+    } catch (error) {
+      console.error('Error deleting message for me:', error)
+      // Still hide locally even if database fails
+      setDeletedForMeIds(prev => new Set([...prev, messageToDelete.id]))
+      setMessages(prev => prev.filter(m => m.id !== messageToDelete.id))
+    }
+
+    setMessageToDelete(null)
+    setShowDeleteDialog(false)
   }
 
   const handleForwardMessage = (message: Message) => {
@@ -1135,6 +1221,19 @@ export function ChatViewPage() {
           setMessageToPin(null)
         }}
         onPin={handleConfirmPin}
+      />
+
+      {/* Delete Message Dialog */}
+      <DeleteMessageDialog
+        isOpen={showDeleteDialog}
+        onClose={() => {
+          setShowDeleteDialog(false)
+          setMessageToDelete(null)
+        }}
+        onDeleteForEveryone={handleDeleteForEveryone}
+        onDeleteForMe={handleDeleteForMe}
+        isOwn={messageToDelete?.sender_id === user?.id}
+        hasMedia={!!messageToDelete?.media_url}
       />
     </MainLayout>
   )
