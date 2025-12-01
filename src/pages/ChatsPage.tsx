@@ -640,17 +640,43 @@ export function ChatsPage() {
                 : conversation.otherUserProfile?.display_name || conversation.otherUserProfile?.username || 'Utilisateur'
 
             // Déterminer l'aperçu du dernier message
-            const lastMessagePreview = conversation.lastMessage
-              ? conversation.lastMessage.type === 'text'
-                ? conversation.lastMessage.content
-                : conversation.lastMessage.type === 'image'
-                ? '📷 Photo'
-                : conversation.lastMessage.type === 'video'
-                ? '🎥 Vidéo'
-                : conversation.lastMessage.type === 'audio'
-                ? '🎤 Message vocal'
-                : '📎 Fichier'
-              : 'Aucun message'
+            const getLastMessagePreview = () => {
+              if (!conversation.lastMessage) return 'Aucun message'
+              
+              const msg = conversation.lastMessage
+              
+              // Check for GIF pattern: [GIF](url) or caption\n[GIF](url)
+              if (msg.type === 'text' && msg.content) {
+                const gifMatch = msg.content.match(/^(?:[\s\S]*?\n)?\[GIF\]\(https?:\/\/[^\)]+\)$/)
+                if (gifMatch) {
+                  // Extract caption if present
+                  const captionMatch = msg.content.match(/^([\s\S]*?)\n\[GIF\]/)
+                  const caption = captionMatch ? captionMatch[1].trim() : ''
+                  return caption ? `GIF • ${caption}` : 'GIF'
+                }
+                
+                // Check for STICKER pattern: [STICKER](url) or caption\n[STICKER](url)
+                const stickerMatch = msg.content.match(/^(?:[\s\S]*?\n)?\[STICKER\]\(https?:\/\/[^\)]+\)$/)
+                if (stickerMatch) {
+                  const captionMatch = msg.content.match(/^([\s\S]*?)\n\[STICKER\]/)
+                  const caption = captionMatch ? captionMatch[1].trim() : ''
+                  return caption ? `Sticker • ${caption}` : 'Sticker'
+                }
+                
+                // Regular text message
+                return msg.content
+              }
+              
+              // Media types
+              if (msg.type === 'image') return '📷 Photo'
+              if (msg.type === 'video') return '🎬 Vidéo'
+              if (msg.type === 'audio') return '🎤 Message vocal'
+              if (msg.type === 'file') return `📎 ${msg.file_name || 'Document'}`
+              
+              return msg.content || '📎 Fichier'
+            }
+            
+            const lastMessagePreview = getLastMessagePreview()
 
               const hasUnread = (conversation.unreadCount || 0) > 0
 
