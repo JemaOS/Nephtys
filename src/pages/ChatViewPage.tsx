@@ -4,7 +4,7 @@ import { useAuth } from '@/context/AuthContext'
 import { useTheme } from '@/context/ThemeContext'
 import { MainLayout } from '@/components/MainLayout'
 import { supabase, Message, Conversation, Profile } from '@/lib/supabase'
-import { ArrowLeft, Send, Phone, Video, MoreVertical, Search, Smile, Mic, Plus, Reply, UserPlus, Archive, Trash2, Bell, BellOff, Lock, Star, Forward } from 'lucide-react'
+import { ArrowLeft, Send, Phone, Video, MoreVertical, Search, Smile, Mic, Plus, Reply, UserPlus, Archive, Trash2, Bell, BellOff, Lock, Star, Forward, Pin, Info, Share2, Copy } from 'lucide-react'
 import { EmojiPicker } from '@/components/EmojiPicker'
 import { MessageReactions } from '@/components/MessageReactions'
 import { MessageReply } from '@/components/MessageReply'
@@ -60,6 +60,7 @@ export function ChatViewPage() {
   }>({ isOpen: false, position: { x: 0, y: 0 }, message: null })
   const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set())
   const [isSelectionMode, setIsSelectionMode] = useState(false)
+  const [showSelectionMenu, setShowSelectionMenu] = useState(false)
   const [backgroundContextMenu, setBackgroundContextMenu] = useState<{
     isOpen: boolean;
     position: { x: number; y: number };
@@ -995,12 +996,105 @@ export function ChatViewPage() {
               >
                 <Forward size={20} />
               </button>
-              <button
-                onClick={() => setShowConversationMenu(!showConversationMenu)}
-                className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1]"
-              >
-                <MoreVertical size={20} />
-              </button>
+              <div className="relative">
+                <button
+                  onClick={() => setShowSelectionMenu(!showSelectionMenu)}
+                  className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1]"
+                >
+                  <MoreVertical size={20} />
+                </button>
+                
+                {/* Selection mode dropdown menu */}
+                {showSelectionMenu && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setShowSelectionMenu(false)} />
+                    <div className="absolute right-0 top-12 z-50 min-w-[200px] bg-bg-surface rounded-2xl shadow-2xl py-2 border border-bg-hover">
+                      <button
+                        onClick={() => {
+                          handleBulkStar()
+                          setShowSelectionMenu(false)
+                        }}
+                        disabled={selectedMessages.size === 0}
+                        className="w-full px-4 py-3 text-left hover:bg-bg-hover transition-colors text-text-primary text-sm flex items-center gap-3 disabled:opacity-50"
+                      >
+                        <Star size={18} />
+                        <span>Important</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          // Show info about selected message
+                          if (selectedMessages.size === 1) {
+                            const msgId = Array.from(selectedMessages)[0]
+                            const msg = messages.find(m => m.id === msgId)
+                            if (msg) {
+                              alert(`Infos du message:\n\nEnvoyé le: ${new Date(msg.created_at).toLocaleString('fr-FR')}\nType: ${msg.type}\nStatut: ${msg.status || 'envoyé'}`)
+                            }
+                          }
+                          setShowSelectionMenu(false)
+                        }}
+                        disabled={selectedMessages.size !== 1}
+                        className="w-full px-4 py-3 text-left hover:bg-bg-hover transition-colors text-text-primary text-sm flex items-center gap-3 disabled:opacity-50"
+                      >
+                        <Info size={18} />
+                        <span>Infos</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          // Share selected messages
+                          const selectedMsgs = messages.filter(m => selectedMessages.has(m.id))
+                          const textContent = selectedMsgs
+                            .filter(m => m.type === 'text' && m.content)
+                            .map(m => m.content)
+                            .join('\n')
+                          
+                          if (navigator.share && textContent) {
+                            navigator.share({
+                              title: 'Message partagé',
+                              text: textContent,
+                            }).catch(() => {})
+                          } else if (textContent) {
+                            navigator.clipboard.writeText(textContent)
+                            alert('Contenu copié!')
+                          }
+                          setShowSelectionMenu(false)
+                          exitSelectionMode()
+                        }}
+                        disabled={selectedMessages.size === 0}
+                        className="w-full px-4 py-3 text-left hover:bg-bg-hover transition-colors text-text-primary text-sm flex items-center gap-3 disabled:opacity-50"
+                      >
+                        <Share2 size={18} />
+                        <span>Partager</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          // Pin selected message
+                          if (selectedMessages.size === 1) {
+                            const msgId = Array.from(selectedMessages)[0]
+                            handlePinMessage(msgId)
+                          }
+                          setShowSelectionMenu(false)
+                        }}
+                        disabled={selectedMessages.size !== 1}
+                        className="w-full px-4 py-3 text-left hover:bg-bg-hover transition-colors text-text-primary text-sm flex items-center gap-3 disabled:opacity-50"
+                      >
+                        <Pin size={18} />
+                        <span>Épingler</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          handleBulkCopy()
+                          setShowSelectionMenu(false)
+                        }}
+                        disabled={selectedMessages.size === 0}
+                        className="w-full px-4 py-3 text-left hover:bg-bg-hover transition-colors text-text-primary text-sm flex items-center gap-3 disabled:opacity-50"
+                      >
+                        <Copy size={18} />
+                        <span>Copier</span>
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           </div>
         ) : (
