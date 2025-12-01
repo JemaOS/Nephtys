@@ -46,26 +46,15 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
   if (type === 'image') {
     return (
       <>
-        <div className="relative group cursor-pointer" onClick={() => setIsFullscreen(true)}>
+        <div className="relative cursor-pointer max-w-[240px] sm:max-w-[280px]" onClick={() => setIsFullscreen(true)}>
           <img
             src={url}
             alt="Image"
-            className="max-w-full h-auto rounded-lg max-h-96 object-cover"
+            className="w-full h-auto rounded-lg max-h-[200px] sm:max-h-[240px] object-cover"
             loading="lazy"
           />
-          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors rounded-lg flex items-center justify-center">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                handleDownload();
-              }}
-              className="opacity-0 group-hover:opacity-100 transition-opacity p-2 rounded-full bg-black/50 backdrop-blur-sm"
-            >
-              <Download size={20} className="text-white" />
-            </button>
-          </div>
           {caption && (
-            <p className="mt-2 text-sm">{caption}</p>
+            <p className="mt-1.5 text-sm">{caption}</p>
           )}
         </div>
 
@@ -95,16 +84,16 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
 
   if (type === 'video') {
     return (
-      <div className="relative">
+      <div className="relative max-w-[240px] sm:max-w-[280px]">
         <video
           src={url}
           controls
-          className="max-w-full h-auto rounded-lg max-h-96"
+          className="w-full h-auto rounded-lg max-h-[200px] sm:max-h-[240px]"
           onPlay={() => setIsPlaying(true)}
           onPause={() => setIsPlaying(false)}
         />
         {caption && (
-          <p className="mt-2 text-sm">{caption}</p>
+          <p className="mt-1.5 text-sm">{caption}</p>
         )}
       </div>
     );
@@ -112,7 +101,7 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
 
   // File type
   return (
-    <div className="flex items-center gap-3 p-3 rounded-lg bg-glass-surface-medium border border-glass-border max-w-sm">
+    <div className="flex items-center gap-3 p-3 rounded-lg bg-glass-surface-medium border border-glass-border max-w-[240px] sm:max-w-[280px]">
       <div className="w-10 h-10 rounded-lg bg-primary-500/20 flex items-center justify-center flex-shrink-0">
         <File size={20} className="text-primary-500" />
       </div>

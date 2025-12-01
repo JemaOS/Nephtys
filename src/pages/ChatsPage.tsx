@@ -663,6 +663,54 @@ export function ChatsPage() {
                   return caption ? `Sticker • ${caption}` : 'Sticker'
                 }
                 
+                // Check for URLs and shorten them like WhatsApp
+                const urlRegex = /https?:\/\/[^\s]+/gi
+                const urls = msg.content.match(urlRegex)
+                if (urls && urls.length > 0) {
+                  const url = urls[0]
+                  try {
+                    const urlObj = new URL(url)
+                    const hostname = urlObj.hostname.replace('www.', '')
+                    
+                    // YouTube special handling
+                    if (hostname.includes('youtube.com') || hostname.includes('youtu.be')) {
+                      return '📹 youtube.com'
+                    }
+                    // Instagram
+                    if (hostname.includes('instagram.com')) {
+                      return '📷 instagram.com'
+                    }
+                    // Twitter/X
+                    if (hostname.includes('twitter.com') || hostname.includes('x.com')) {
+                      return '🐦 x.com'
+                    }
+                    // Facebook
+                    if (hostname.includes('facebook.com') || hostname.includes('fb.com')) {
+                      return '📘 facebook.com'
+                    }
+                    // TikTok
+                    if (hostname.includes('tiktok.com')) {
+                      return '🎵 tiktok.com'
+                    }
+                    // Spotify
+                    if (hostname.includes('spotify.com')) {
+                      return '🎧 spotify.com'
+                    }
+                    // LinkedIn
+                    if (hostname.includes('linkedin.com')) {
+                      return '💼 linkedin.com'
+                    }
+                    // GitHub
+                    if (hostname.includes('github.com')) {
+                      return '💻 github.com'
+                    }
+                    // Generic link with domain
+                    return `🔗 ${hostname}`
+                  } catch {
+                    return '🔗 Lien'
+                  }
+                }
+                
                 // Regular text message
                 return msg.content
               }

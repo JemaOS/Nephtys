@@ -1134,13 +1134,13 @@ export function ChatViewPage() {
                   <div
                     key={message.id}
                     id={`message-${message.id}`}
-                    className={`flex ${isOwn ? 'justify-end' : 'justify-start'} items-end gap-2 mb-1 ${isSelected ? 'bg-[#00a884]/10' : ''} transition-colors duration-500`}
+                    className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-1 ${isSelected ? 'bg-[#00a884]/10' : ''} transition-colors duration-500`}
                     onMouseEnter={() => setHoveredMessageId(message.id)}
                     onMouseLeave={() => setHoveredMessageId(null)}
                   >
-                    {/* Quick action buttons - LEFT of sent messages */}
-                    {isOwn && hoveredMessageId === message.id && !isSelectionMode && (
-                      <div className="flex items-center gap-1 pb-4">
+                    {/* Quick action buttons - LEFT of sent messages (isOwn) - Hidden on mobile */}
+                    {isOwn && hoveredMessageId === message.id && !isSelectionMode && !isMobile && (
+                      <div className="hidden md:flex items-center gap-1 mr-2">
                         <button
                           onClick={() => handleForwardMessage(message)}
                           className="w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] flex items-center justify-center transition-colors shadow-md"
@@ -1249,12 +1249,12 @@ export function ChatViewPage() {
                                 const caption = gifMatch[1]
                                 const gifUrl = gifMatch[2]
                                 return (
-                                  <div className="space-y-1">
+                                  <div className="space-y-1 max-w-[200px] sm:max-w-[240px]">
                                     <div className="rounded-lg overflow-hidden">
                                       <img
                                         src={gifUrl}
                                         alt="GIF"
-                                        className="w-full h-auto max-h-[300px] object-contain"
+                                        className="w-full h-auto max-h-[160px] sm:max-h-[180px] object-contain"
                                         loading="lazy"
                                       />
                                     </div>
@@ -1270,11 +1270,11 @@ export function ChatViewPage() {
                                 const stickerUrl = stickerMatch[2]
                                 return (
                                   <div className="space-y-1">
-                                    <div className="max-w-[180px]">
+                                    <div className="max-w-[100px] sm:max-w-[120px]">
                                       <img
                                         src={stickerUrl}
                                         alt="Sticker"
-                                        className="w-full h-auto max-h-[180px] object-contain"
+                                        className="w-full h-auto max-h-[100px] sm:max-h-[120px] object-contain"
                                         loading="lazy"
                                       />
                                     </div>
@@ -1387,9 +1387,9 @@ export function ChatViewPage() {
                         <MessageReactions reactions={messageReactions} currentUserId={user?.id || ''} onReactionClick={(emoji) => addReaction(message.id, emoji)} onReactionRemove={(emoji) => removeReaction(message.id, emoji)} />
                       )}
                     </div>
-                    {/* Quick action buttons - RIGHT of received messages */}
-                    {!isOwn && hoveredMessageId === message.id && !isSelectionMode && (
-                      <div className="flex items-center gap-1 pb-4">
+                    {/* Quick action buttons - RIGHT of received messages - Hidden on mobile */}
+                    {!isOwn && hoveredMessageId === message.id && !isSelectionMode && !isMobile && (
+                      <div className="hidden md:flex items-center gap-1 pb-4 ml-2">
                         <button
                           onClick={() => setReplyToMessage(message)}
                           className="w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] flex items-center justify-center transition-colors shadow-md"

@@ -111,70 +111,78 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({
     );
   }
 
-  // In-message preview style - WhatsApp-like design
+  // Truncate URL for display (keep domain + short path)
+  const truncateUrl = (fullUrl: string, maxLength: number = 50): string => {
+    if (fullUrl.length <= maxLength) return fullUrl;
+    try {
+      const urlObj = new URL(fullUrl);
+      const base = urlObj.hostname + urlObj.pathname;
+      if (base.length <= maxLength) return base;
+      return base.substring(0, maxLength - 3) + '...';
+    } catch {
+      return fullUrl.substring(0, maxLength - 3) + '...';
+    }
+  };
+
+  // In-message preview style - WhatsApp-like compact design
   return (
     <>
-      <div className="mt-2 mb-1">
+      <div className="mt-1.5 max-w-[240px] sm:max-w-[280px]">
         {/* Preview Card */}
         <div
-          className={`rounded-xl overflow-hidden cursor-pointer transition-colors relative ${
+          className={`rounded-lg overflow-hidden cursor-pointer relative ${
             isOwn
               ? 'bg-[#025144]'
               : 'bg-bg-hover'
           }`}
           onClick={handleClick}
         >
-          {/* YouTube Play Overlay */}
+          {/* YouTube Play Overlay - smaller and more subtle */}
           {isYouTube && image && (
             <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
-              <div className="w-14 h-14 rounded-full bg-black/60 flex items-center justify-center">
-                <Play size={28} className="text-white ml-1" fill="white" />
+              <div className="w-10 h-10 rounded-full bg-red-600/90 flex items-center justify-center shadow-lg">
+                <Play size={18} className="text-white ml-0.5" fill="white" />
               </div>
             </div>
           )}
           
-          {/* For YouTube, show larger thumbnail with play button overlay */}
+          {/* For YouTube, show compact thumbnail with play button overlay */}
           {isYouTube && image ? (
             <div className="relative">
               <img
                 src={image}
                 alt={title || 'YouTube video'}
-                className="w-full aspect-video object-cover"
+                className="w-full h-auto max-h-[140px] object-cover"
                 onError={(e) => {
                   (e.target as HTMLImageElement).style.display = 'none';
                 }}
               />
-              {/* PiP indicator */}
-              <div className="absolute bottom-2 left-2 px-2 py-1 rounded bg-black/70 text-white text-[10px] flex items-center gap-1">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
-                  <rect x="12" y="10" width="8" height="6" rx="1" ry="1"/>
-                </svg>
-                <span>PiP disponible</span>
+              {/* Duration/PiP badge - more subtle */}
+              <div className="absolute bottom-1 right-1 px-1 py-0.5 rounded text-[8px] bg-black/80 text-white/90">
+                PiP
               </div>
-              {/* Title and domain below image */}
-              <div className={`p-2.5 ${isOwn ? 'bg-[#025144]' : 'bg-bg-hover'}`}>
+              {/* Title and domain below image - compact */}
+              <div className={`px-2 py-1.5 ${isOwn ? 'bg-[#025144]' : 'bg-bg-hover'}`}>
                 {title && (
-                  <h4 className={`text-sm font-semibold line-clamp-1 mb-0.5 ${
+                  <h4 className={`text-[12px] font-medium line-clamp-1 ${
                     isOwn ? 'text-white' : 'text-text-primary'
                   }`}>
                     {title}
                   </h4>
                 )}
-                <div className={`flex items-center gap-1.5 text-[11px] ${
+                <p className={`text-[10px] mt-0.5 ${
                   isOwn ? 'text-[#8eb8b3]' : 'text-text-tertiary'
                 }`}>
-                  <ExternalLink size={12} />
-                  <span>{domain}</span>
-                </div>
+                  youtube.com
+                </p>
               </div>
             </div>
           ) : (
-            /* Regular link preview layout */
+            /* Regular link preview layout - compact */
             <div className="flex">
               {/* Thumbnail - Square on the left */}
               {image && (
-                <div className="w-[72px] h-[72px] sm:w-[80px] sm:h-[80px] flex-shrink-0">
+                <div className="w-[50px] h-[50px] flex-shrink-0">
                   <img
                     src={image}
                     alt={title || 'Link preview'}
@@ -187,19 +195,19 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({
               )}
 
               {/* Content */}
-              <div className="flex-1 p-2.5 min-w-0 flex flex-col justify-center">
+              <div className="flex-1 px-2 py-1.5 min-w-0 flex flex-col justify-center">
                 {/* Title - Bold at top */}
                 {title && (
-                  <h4 className={`text-sm font-semibold line-clamp-1 mb-0.5 ${
+                  <h4 className={`text-[11px] font-medium line-clamp-1 ${
                     isOwn ? 'text-white' : 'text-text-primary'
                   }`}>
                     {title}
                   </h4>
                 )}
 
-                {/* Description */}
+                {/* Description - shorter */}
                 {truncatedDescription && (
-                  <p className={`text-xs line-clamp-2 mb-1 ${
+                  <p className={`text-[10px] line-clamp-1 mt-0.5 ${
                     isOwn ? 'text-[#d1e7e4]' : 'text-text-secondary'
                   }`}>
                     {truncatedDescription}
@@ -207,7 +215,7 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({
                 )}
 
                 {/* Domain at bottom */}
-                <p className={`text-[11px] ${
+                <p className={`text-[9px] mt-0.5 ${
                   isOwn ? 'text-[#8eb8b3]' : 'text-text-tertiary'
                 }`}>
                   {domain}
@@ -217,12 +225,12 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({
           )}
         </div>
 
-        {/* Full clickable URL below the card - underlined like WhatsApp */}
+        {/* Truncated clickable URL below the card */}
         <a
           href={url}
           target="_blank"
           rel="noopener noreferrer"
-          className={`block text-sm mt-1.5 underline break-all ${
+          className={`inline-block text-[11px] mt-1 underline truncate max-w-full ${
             isOwn ? 'text-[#53bdeb]' : 'text-accent'
           }`}
           onClick={(e) => {
@@ -234,7 +242,7 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({
             }
           }}
         >
-          {url}
+          {truncateUrl(url, 35)}
         </a>
       </div>
 
