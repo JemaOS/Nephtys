@@ -62,3 +62,20 @@
 img {
   object-position: top;
 }
+
+/* Highlight animation for scrolling to messages */
+.highlight-message {
+  animation: highlight-pulse 2s ease-out;
+}
+
+@keyframes highlight-pulse {
+  0% {
+    background-color: rgba(107, 111, 219, 0.4);
+  }
+  50% {
+    background-color: rgba(107, 111, 219, 0.2);
+  }
+  100% {
+    background-color: transparent;
+  }
+}

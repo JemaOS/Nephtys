@@ -706,6 +706,19 @@ export function ChatViewPage() {
     }
   }
 
+  // Scroll to original message when clicking on reply quote
+  const scrollToMessage = useCallback((messageId: string) => {
+    const messageElement = document.getElementById(`message-${messageId}`)
+    if (messageElement) {
+      messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      // Add a highlight effect
+      messageElement.classList.add('highlight-message')
+      setTimeout(() => {
+        messageElement.classList.remove('highlight-message')
+      }, 2000)
+    }
+  }, [])
+
   // Load pinned message on mount
   useEffect(() => {
     const loadPinnedMessage = async () => {
@@ -1025,7 +1038,8 @@ export function ChatViewPage() {
                 return (
                   <div
                     key={message.id}
-                    className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-1 ${isSelected ? 'bg-[#00a884]/10' : ''}`}
+                    id={`message-${message.id}`}
+                    className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-1 ${isSelected ? 'bg-[#00a884]/10' : ''} transition-colors duration-500`}
                   >
                     <div
                       className={`max-w-[85%] md:max-w-[65%] relative group`}
@@ -1048,7 +1062,7 @@ export function ChatViewPage() {
                             });
                           }}
                         />
-                        {/* Reply quote inside message */}
+                        {/* Reply quote inside message - clickable to scroll to original */}
                         {message.reply_to_id && (() => {
                           const replyMessage = messages.find(m => m.id === message.reply_to_id)
                           if (replyMessage) {
@@ -1056,7 +1070,22 @@ export function ChatViewPage() {
                               ? 'Vous'
                               : otherUser?.display_name || otherUser?.username || 'Utilisateur'
                             return (
-                              <div className={`mb-2 rounded-lg overflow-hidden ${isOwn ? 'bg-[#004438]' : 'bg-bg-hover'}`}>
+                              <div
+                                className={`mb-2 rounded-lg overflow-hidden cursor-pointer hover:opacity-80 transition-opacity ${isOwn ? 'bg-[#004438]' : 'bg-bg-hover'}`}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  scrollToMessage(replyMessage.id)
+                                }}
+                                role="button"
+                                tabIndex={0}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault()
+                                    scrollToMessage(replyMessage.id)
+                                  }
+                                }}
+                                aria-label={`Aller au message de ${replySenderName}`}
+                              >
                                 <div className="flex items-stretch">
                                   <div className="w-1 bg-accent flex-shrink-0" />
                                   <div className="flex-1 min-w-0 px-3 py-2">
