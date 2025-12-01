@@ -264,17 +264,22 @@ export function ContactsPage() {
   }, [filteredContacts, selectedContacts.size])
 
   const deleteSelectedContacts = useCallback(async () => {
-    if (selectedContacts.size === 0) return
+    if (selectedContacts.size === 0 || !user) return
     
     const confirmMessage = selectedContacts.size === 1
-      ? 'Voulez-vous vraiment supprimer ce contact ?'
-      : `Voulez-vous vraiment supprimer ces ${selectedContacts.size} contacts ?`
+      ? 'Voulez-vous vraiment supprimer ce contact ? La conversation associée sera également supprimée.'
+      : `Voulez-vous vraiment supprimer ces ${selectedContacts.size} contacts ? Les conversations associées seront également supprimées.`
     
     if (!confirm(confirmMessage)) return
 
     try {
       // Get the contact_user_ids for the selected contacts
       const contactsToDelete = contacts.filter(c => selectedContacts.has(c.id))
+      
+      // Get all contact_user_ids (both explicit and chat contacts)
+      const contactUserIds = contactsToDelete.map(c => c.contact_user_id)
+      
+      // Delete explicit contacts from contacts table
       const realContactIds = contactsToDelete
         .filter(c => !c.id.startsWith('chat-'))
         .map(c => c.id)
@@ -287,8 +292,57 @@ export function ContactsPage() {
 
         if (error) {
           console.error('Error deleting contacts:', error)
-          alert('Erreur lors de la suppression des contacts')
-          return
+        }
+      }
+
+      // Find and delete associated direct conversations
+      for (const contactUserId of contactUserIds) {
+        // Find conversations where both users are members
+        const { data: myConversations } = await supabase
+          .from('conversation_members')
+          .select('conversation_id')
+          .eq('user_id', user.id)
+
+        if (myConversations) {
+          for (const conv of myConversations) {
+            // Check if this is a direct conversation with the contact
+            const { data: otherMember } = await supabase
+              .from('conversation_members')
+              .select('*')
+              .eq('conversation_id', conv.conversation_id)
+              .eq('user_id', contactUserId)
+              .maybeSingle()
+
+            if (otherMember) {
+              // Check if it's a direct conversation (only 2 members)
+              const { data: allMembers } = await supabase
+                .from('conversation_members')
+                .select('id')
+                .eq('conversation_id', conv.conversation_id)
+
+              if (allMembers && allMembers.length === 2) {
+                // Delete the conversation members first
+                await supabase
+                  .from('conversation_members')
+                  .delete()
+                  .eq('conversation_id', conv.conversation_id)
+
+                // Delete messages in the conversation
+                await supabase
+                  .from('messages')
+                  .delete()
+                  .eq('conversation_id', conv.conversation_id)
+
+                // Delete the conversation
+                await supabase
+                  .from('conversations')
+                  .delete()
+                  .eq('id', conv.conversation_id)
+
+                console.log('Deleted conversation:', conv.conversation_id)
+              }
+            }
+          }
         }
       }
 
@@ -300,7 +354,7 @@ export function ContactsPage() {
       console.error('Error deleting contacts:', err)
       alert('Erreur lors de la suppression des contacts')
     }
-  }, [selectedContacts, contacts])
+  }, [selectedContacts, contacts, user])
 
   return (
     <MainLayout>
