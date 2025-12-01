@@ -29,19 +29,19 @@ module.exports = {
 				
 				// Mapping des anciennes couleurs hardcodées vers les variables
 				// Fond principal sombre (#0b141a) -> bg-primary
-				'whatsapp-dark': 'var(--bg-primary)',
+				'jemaos-dark': 'var(--bg-primary)',
 				// Fond secondaire sombre (#111b21) -> bg-secondary
-				'whatsapp-darker': 'var(--bg-secondary)',
+				'jemaos-darker': 'var(--bg-secondary)',
 				// Surfaces (#202c33) -> bg-surface
-				'whatsapp-surface': 'var(--bg-surface)',
+				'jemaos-surface': 'var(--bg-surface)',
 				// Hover (#2a3942) -> bg-hover
-				'whatsapp-hover': 'var(--bg-hover)',
+				'jemaos-hover': 'var(--bg-hover)',
 				// Texte clair (#e9edef) -> text-primary
-				'whatsapp-text': 'var(--text-primary)',
+				'jemaos-text': 'var(--text-primary)',
 				// Texte secondaire (#8696a0) -> text-secondary
-				'whatsapp-text-secondary': 'var(--text-secondary)',
+				'jemaos-text-secondary': 'var(--text-secondary)',
 				// Accent violet
-				'whatsapp-accent': 'var(--accent)',
+				'jemaos-accent': 'var(--accent)',
 				
 				// Primary - Violet Anu (conservé pour compatibilité)
 				primary: {

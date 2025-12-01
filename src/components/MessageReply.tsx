@@ -19,45 +19,60 @@ export const MessageReply: React.FC<MessageReplyProps> = ({
 }) => {
   if (!replyToMessage) return null;
 
-  const truncateText = (text: string, maxLength: number = 50) => {
+  const truncateText = (text: string, maxLength: number = 100) => {
     if (text.length <= maxLength) return text;
     return text.substring(0, maxLength) + '...';
   };
 
   if (isPreview) {
-    // Affichage dans la barre d'input (avant d'envoyer)
+    // Affichage dans la barre d'input (avant d'envoyer) - Style JemaOS
     return (
-      <div className="bg-bg-surface border-t border-bg-hover p-3 flex items-start gap-3">
-        <div className="w-1 h-full bg-accent rounded-full" />
-        <div className="flex-1 min-w-0">
-          <div className="text-xs font-semibold text-accent mb-1">
-            Répondre à {replyToMessage.senderName || 'Utilisateur'}
+      <div className="mb-2 mx-1 bg-bg-hover rounded-xl overflow-hidden">
+        <div className="flex items-stretch">
+          {/* Left accent border */}
+          <div className="w-1 bg-accent flex-shrink-0" />
+          
+          {/* Content */}
+          <div className="flex-1 min-w-0 px-3 py-2">
+            <div className="text-sm font-medium text-accent mb-0.5">
+              {replyToMessage.senderName || 'Utilisateur'}
+            </div>
+            <div className="text-sm text-text-secondary truncate">
+              {truncateText(replyToMessage.content)}
+            </div>
           </div>
-          <div className="text-sm text-text-primary truncate">
-            {truncateText(replyToMessage.content)}
-          </div>
+          
+          {/* Close button */}
+          {onCancel && (
+            <button
+              onClick={onCancel}
+              className="px-3 flex items-center justify-center hover:bg-bg-surface/50 transition-colors flex-shrink-0"
+              aria-label="Annuler la réponse"
+            >
+              <X size={20} className="text-text-secondary" />
+            </button>
+          )}
         </div>
-        {onCancel && (
-          <button
-            onClick={onCancel}
-            className="p-1 rounded-full hover:bg-bg-hover transition-colors flex-shrink-0"
-            aria-label="Annuler la réponse"
-          >
-            <X size={16} className="text-text-secondary" />
-          </button>
-        )}
       </div>
     );
   }
 
-  // Affichage dans le message (citation)
+  // Affichage dans le message (citation) - Style JemaOS
   return (
-    <div className="mb-2 pl-3 border-l-4 border-accent bg-bg-hover/30 rounded-r-xl p-2.5">
-      <div className="text-xs font-semibold text-accent mb-1">
-        {replyToMessage.senderName || 'Utilisateur'}
-      </div>
-      <div className="text-sm text-text-primary truncate">
-        {truncateText(replyToMessage.content, 100)}
+    <div className="mb-2 rounded-lg overflow-hidden bg-black/10">
+      <div className="flex items-stretch">
+        {/* Left accent border */}
+        <div className="w-1 bg-accent flex-shrink-0" />
+        
+        {/* Content */}
+        <div className="flex-1 min-w-0 px-3 py-2">
+          <div className="text-xs font-semibold text-accent mb-0.5">
+            {replyToMessage.senderName || 'Utilisateur'}
+          </div>
+          <div className="text-sm text-text-primary/80 truncate">
+            {truncateText(replyToMessage.content, 150)}
+          </div>
+        </div>
       </div>
     </div>
   );

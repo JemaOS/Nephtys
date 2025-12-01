@@ -16,7 +16,7 @@ Analyser les protocoles peer-to-peer les plus adaptés pour la messagerie instan
    - [x] Sécurité et encryption
    - [x] Capacités NAT traversal (STUN, TURN, ICE)
    - [x] Scalabilité
-   - [x] Avantages/inconvénients pour WhatsApp-style app
+   - [x] Avantages/inconvénients pour JemaOS-style app
 
 2. **libp2p**
    - [x] Architecture et fonctionnement
@@ -24,7 +24,7 @@ Analyser les protocoles peer-to-peer les plus adaptés pour la messagerie instan
    - [x] Sécurité et encryption
    - [x] Capacités NAT traversal
    - [x] Scalabilité
-   - [x] Avantages/inconvénients pour WhatsApp-style app
+   - [x] Avantages/inconvénients pour JemaOS-style app
 
 3. **Matrix**
    - [x] Architecture et fonctionnement
@@ -32,7 +32,7 @@ Analyser les protocoles peer-to-peer les plus adaptés pour la messagerie instan
    - [x] Sécurité et encryption (Olm/Megolm)
    - [x] Capacités NAT traversal
    - [x] Scalabilité
-   - [x] Avantages/inconvénients pour WhatsApp-style app
+   - [x] Avantages/inconvénients pour JemaOS-style app
 
 4. **Signal Protocol**
    - [x] Architecture et fonctionnement
@@ -40,7 +40,7 @@ Analyser les protocoles peer-to-peer les plus adaptés pour la messagerie instan
    - [x] Sécurité et encryption (Double Ratchet)
    - [x] Capacités NAT traversal
    - [x] Scalabilité
-   - [x] Avantages/inconvénients pour WhatsApp-style app
+   - [x] Avantages/inconvénients pour JemaOS-style app
 
 ## Analyse Comparative
 - [x] Tableau comparatif des caractéristiques

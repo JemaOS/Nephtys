@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document outlines the design and implementation plan for a WhatsApp-like right-click context menu feature on the chat background in the anu messaging app. This feature is specifically for the laptop/desktop version.
+This document outlines the design and implementation plan for a JemaOS-like right-click context menu feature on the chat background in the anu messaging app. This feature is specifically for the laptop/desktop version.
 
 ## Current Architecture Analysis
 
@@ -56,7 +56,7 @@ This document outlines the design and implementation plan for a WhatsApp-like ri
 
 ### Feature Requirements
 
-Based on the WhatsApp reference screenshots:
+Based on the JemaOS reference screenshots:
 
 1. **Right-click on chat background** (not on messages) → Show context menu with:
    - "Sélectionner des messages" (Select messages)
@@ -120,7 +120,7 @@ interface ChatBackgroundContextMenuProps {
 - Position adjustment to stay within viewport
 - Click outside to close
 - Escape key to close
-- WhatsApp-style dark theme styling
+- JemaOS-style dark theme styling
 
 **Menu Items**:
 | Icon | Label | Action |
@@ -596,7 +596,7 @@ const handleBulkDownload = useCallback(async () => {
 ## CSS/Styling Considerations
 
 ### Theme Consistency
-All new components use the existing WhatsApp-style dark theme:
+All new components use the existing JemaOS-style dark theme:
 - Background: `#233138` (bg-surface)
 - Hover: `#3b4a54` (bg-hover)
 - Border: `#3b4a54`

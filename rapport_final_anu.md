@@ -1,4 +1,4 @@
-# Rapport Final du Projet Anu : Clone WhatsApp P2P Sécurisé
+# Rapport Final du Projet Anu : Clone JemaOS P2P Sécurisé
 
 **Auteur :** MiniMax Agent  
 **Date :** 2025-11-30  
@@ -10,7 +10,7 @@
 
 ### 1.1 Description et Objectifs
 
-Anu est une application de messagerie instantanée conçue comme une alternative sécurisée et respectueuse de la vie privée à des services centralisés comme WhatsApp. Le projet a pour principal objectif de développer un clone fonctionnel de WhatsApp reposant sur une **architecture P2P (Pair-à-Pair) hybride, sécurisée par un chiffrement de bout en bout (E2EE)**.
+Anu est une application de messagerie instantanée conçue comme une alternative sécurisée et respectueuse de la vie privée à des services centralisés comme JemaOS. Le projet a pour principal objectif de développer un clone fonctionnel de JemaOS reposant sur une **architecture P2P (Pair-à-Pair) hybride, sécurisée par un chiffrement de bout en bout (E2EE)**.
 
 Les objectifs fondamentaux du projet sont :
 
@@ -81,7 +81,7 @@ La stack technologique a été sélectionnée pour sa modernité, sa performance
 
 L'implémentation suit le blueprint architectural détaillé dans `docs/anu_research/architecture_anu_hybride.md`.
 
-- **Authentification :** Le processus d'inscription se fait via un couple **pseudo + mot de passe**, géré par Supabase. Contrairement à WhatsApp, aucun numéro de téléphone n'est requis.
+- **Authentification :** Le processus d'inscription se fait via un couple **pseudo + mot de passe**, géré par Supabase. Contrairement à JemaOS, aucun numéro de téléphone n'est requis.
 - **Démarrage d'une conversation :**
     1.  Le client initiateur contacte un service de signalisation anonymisé.
     2.  Le service relaie la demande au client destinataire sans révéler les adresses IP.

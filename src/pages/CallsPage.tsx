@@ -424,7 +424,7 @@ export function CallsPage() {
 
   return (
     <MainLayout>
-      {/* Liste des appels - Style WhatsApp */}
+      {/* Liste des appels - Style JemaOS */}
       <div className="w-full md:w-[420px] bg-bg-secondary flex flex-col md:border-r border-bg-hover pb-14 md:pb-0">
         {/* Header */}
         <div className="bg-bg-surface px-4 py-3">

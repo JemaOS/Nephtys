@@ -1,4 +1,4 @@
-# Design Specification - Anu (Clone WhatsApp P2P Sécurisé)
+# Design Specification - Anu (Clone JemaOS P2P Sécurisé)
 
 ## 1. Direction & Rationale
 
@@ -14,7 +14,7 @@ Interface moderne exploitant les effets de matérialité verre dépoli (backdrop
 - Microsoft Fluent Design System
 
 **Alignement avec Anu :**  
-La matérialité verre dépoli renforce psychologiquement la perception de transparence technique (architecture P2P ouverte) tout en créant une barrière visuelle élégante (privacy-first). Le violet #6b6fdb sur fond glassmorphism apporte sophistication sans agressivité, parfait pour une audience jeune/premium 18-30 ans qui refuse les clones visuels de WhatsApp/Telegram.
+La matérialité verre dépoli renforce psychologiquement la perception de transparence technique (architecture P2P ouverte) tout en créant une barrière visuelle élégante (privacy-first). Le violet #6b6fdb sur fond glassmorphism apporte sophistication sans agressivité, parfait pour une audience jeune/premium 18-30 ans qui refuse les clones visuels de JemaOS/Telegram.
 
 ---
 

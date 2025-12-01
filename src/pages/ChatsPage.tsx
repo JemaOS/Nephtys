@@ -463,7 +463,7 @@ export function ChatsPage() {
 
   return (
     <MainLayout>
-      {/* Liste des conversations - Style WhatsApp */}
+      {/* Liste des conversations - Style JemaOS */}
       <div className="w-full md:w-[420px] bg-bg-secondary flex flex-col md:border-r border-bg-hover pb-20 md:pb-0">
         {/* Header */}
         <div className="bg-bg-surface p-4">
@@ -687,7 +687,7 @@ export function ChatsPage() {
         </div>
       </div>
 
-      {/* Zone de chat vide - Style WhatsApp - Desktop only */}
+      {/* Zone de chat vide - Style JemaOS - Desktop only */}
       <div className="hidden md:flex flex-1 bg-bg-primary flex-col items-center justify-center">
         <div className="text-center">
           <h2 className="text-3xl font-light text-text-secondary mb-4">Anu pour JemaOS</h2>

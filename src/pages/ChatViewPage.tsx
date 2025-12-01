@@ -29,6 +29,7 @@ import { LinkPreviewData, getFirstPreviewUrl, fetchLinkPreview, debounce } from 
 import { PinMessageDialog } from '@/components/PinMessageDialog'
 import { PinnedMessageBanner } from '@/components/PinnedMessageBanner'
 import { DeleteMessageDialog } from '@/components/DeleteMessageDialog'
+import { ForwardMessageModal } from '@/components/ForwardMessageModal'
 
 export function ChatViewPage() {
   const { conversationId } = useParams()
@@ -69,6 +70,8 @@ export function ChatViewPage() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [messageToDelete, setMessageToDelete] = useState<Message | null>(null)
   const [deletedForMeIds, setDeletedForMeIds] = useState<Set<string>>(new Set())
+  const [showForwardModal, setShowForwardModal] = useState(false)
+  const [messageToForward, setMessageToForward] = useState<Message | null>(null)
   const [pinnedMessage, setPinnedMessage] = useState<{
     id: string;
     content: string;
@@ -550,8 +553,40 @@ export function ChatViewPage() {
   }
 
   const handleForwardMessage = (message: Message) => {
-    // TODO: Implement forward functionality
-    alert('Fonctionnalité de transfert à venir')
+    setMessageToForward(message)
+    setShowForwardModal(true)
+  }
+
+  const handleForwardToConversations = async (conversationIds: string[]) => {
+    if (!messageToForward || !user) return
+
+    try {
+      for (const targetConversationId of conversationIds) {
+        const messageData: any = {
+          conversation_id: targetConversationId,
+          sender_id: user.id,
+          content: messageToForward.content || '',
+          type: messageToForward.type,
+          status: 'sent',
+          media_url: messageToForward.media_url,
+          media_type: messageToForward.media_type,
+          file_name: messageToForward.file_name,
+          file_size: messageToForward.file_size,
+          is_forwarded: true,
+        }
+
+        await supabase.from('messages').insert(messageData)
+        await supabase
+          .from('conversations')
+          .update({ last_message_at: new Date().toISOString() })
+          .eq('id', targetConversationId)
+      }
+    } catch (error) {
+      console.error('Error forwarding message:', error)
+    }
+
+    setMessageToForward(null)
+    setShowForwardModal(false)
   }
 
   const handlePinMessage = async (messageId: string) => {
@@ -749,10 +784,14 @@ export function ChatViewPage() {
   }, [selectedMessages, exitSelectionMode])
 
   const handleBulkForward = useCallback(() => {
-    // TODO: Implement bulk forward
-    alert(`Transférer ${selectedMessages.size} message(s)`)
+    // Get the first selected message to forward
+    const selectedMsgs = messages.filter(m => selectedMessages.has(m.id))
+    if (selectedMsgs.length > 0) {
+      setMessageToForward(selectedMsgs[0])
+      setShowForwardModal(true)
+    }
     exitSelectionMode()
-  }, [selectedMessages, exitSelectionMode])
+  }, [messages, selectedMessages, exitSelectionMode])
 
   const handleBulkDownload = useCallback(async () => {
     const selectedMsgs = messages.filter(m => selectedMessages.has(m.id))
@@ -791,7 +830,7 @@ export function ChatViewPage() {
   return (
     <MainLayout>
       <div className="flex-1 flex flex-col bg-bg-primary h-full overflow-hidden">
-        {/* Header WhatsApp */}
+        {/* Header JemaOS */}
         <div className="bg-bg-surface px-2 sm:px-4 py-2 sm:py-3 flex items-center gap-2 sm:gap-4">
           <button onClick={() => navigate('/chats')} className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1]">
             <ArrowLeft size={20} />
@@ -1013,8 +1052,8 @@ export function ChatViewPage() {
                           <span>{formatTime(message.created_at)}</span>
                           {isOwn && (
                             <svg width="16" height="11" viewBox="0 0 16 11" fill="none">
-                              <path d="M11.071.653a.75.75 0 0 0-1.06 1.06l3.182 3.183-3.182 3.182a.75.75 0 1 0 1.06 1.061l3.712-3.712a.75.75 0 0 0 0-1.06L11.071.653Z" fill={message.status === 'read' ? '#53bdeb' : '#8696a0'}/>
-                              <path d="M6.071.653a.75.75 0 0 0-1.06 1.06l3.182 3.183-3.182 3.182a.75.75 0 1 0 1.06 1.061l3.712-3.712a.75.75 0 0 0 0-1.06L6.071.653Z" fill={message.status === 'read' ? '#53bdeb' : '#8696a0'}/>
+                              <path d="M11.071.653a.75.75 0 0 0-1.06 1.06l3.182 3.183-3.182 3.182a.75.75 0 1 0 1.06 1.061l3.712-3.712a.75.75 0 0 0 0-1.06L11.071.653Z" fill={message.status === 'read' ? '#6b6fdb' : '#8696a0'}/>
+                              <path d="M6.071.653a.75.75 0 0 0-1.06 1.06l3.182 3.183-3.182 3.182a.75.75 0 1 0 1.06 1.061l3.712-3.712a.75.75 0 0 0 0-1.06L6.071.653Z" fill={message.status === 'read' ? '#6b6fdb' : '#8696a0'}/>
                             </svg>
                           )}
                         </div>
@@ -1061,7 +1100,7 @@ export function ChatViewPage() {
           )}
         </div>
 
-        {/* Input Bar WhatsApp - Fixed at bottom on mobile, above nav bar - Hidden in selection mode */}
+        {/* Input Bar JemaOS - Fixed at bottom on mobile, above nav bar - Hidden in selection mode */}
         {!isSelectionMode && (
         <div className="fixed md:relative bottom-14 md:bottom-0 left-0 right-0 bg-bg-surface px-2 sm:px-3 md:px-4 py-2 md:py-3 border-t border-bg-hover md:border-t-0 z-40">
           {/* Link Preview above input */}
@@ -1234,6 +1273,19 @@ export function ChatViewPage() {
         onDeleteForMe={handleDeleteForMe}
         isOwn={messageToDelete?.sender_id === user?.id}
         hasMedia={!!messageToDelete?.media_url}
+      />
+
+      {/* Forward Message Modal */}
+      <ForwardMessageModal
+        isOpen={showForwardModal}
+        messageContent={messageToForward?.content || ''}
+        messageType={(messageToForward?.type as 'text' | 'image' | 'video' | 'file' | 'audio') || 'text'}
+        mediaUrl={messageToForward?.media_url || undefined}
+        onClose={() => {
+          setShowForwardModal(false)
+          setMessageToForward(null)
+        }}
+        onForward={handleForwardToConversations}
       />
     </MainLayout>
   )

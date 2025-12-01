@@ -1,4 +1,4 @@
-# Content Structure Plan - Anu (Clone WhatsApp P2P Sécurisé)
+# Content Structure Plan - Anu (Clone JemaOS P2P Sécurisé)
 
 ## 1. Material Inventory
 

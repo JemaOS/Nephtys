@@ -8,7 +8,7 @@
 
 ## Vue d'ensemble
 
-Anu est une application de messagerie sécurisée avec design Glassmorphism inspirée de WhatsApp. L'application met l'accent sur la simplicité d'utilisation et la confidentialité.
+Anu est une application de messagerie sécurisée avec design Glassmorphism inspirée de JemaOS. L'application met l'accent sur la simplicité d'utilisation et la confidentialité.
 
 ---
 
