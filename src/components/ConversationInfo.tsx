@@ -52,21 +52,18 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
   const [newDescription, setNewDescription] = useState(conversationDescription || '');
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
-  // For direct conversations, use otherUser's avatar; for groups, use conversation avatar
   const [currentAvatar, setCurrentAvatar] = useState(
     conversationType === 'direct' && otherUser?.avatar_url
       ? otherUser.avatar_url
       : conversationAvatar
   );
   
-  // Add member modal state
   const [showAddMemberModal, setShowAddMemberModal] = useState(false);
   const [availableContacts, setAvailableContacts] = useState<Profile[]>([]);
   const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
   const [addingMembers, setAddingMembers] = useState(false);
   const [contactSearchQuery, setContactSearchQuery] = useState('');
   
-  // Media/Files/Links state
   const [mediaMessages, setMediaMessages] = useState<Message[]>([]);
   const [fileMessages, setFileMessages] = useState<Message[]>([]);
   const [linkMessages, setLinkMessages] = useState<{message: Message, urls: string[]}[]>([]);
@@ -74,7 +71,6 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
   const [loadingFiles, setLoadingFiles] = useState(false);
   const [loadingLinks, setLoadingLinks] = useState(false);
 
-  // State for direct conversation participants
   const [directParticipants, setDirectParticipants] = useState<{user: Profile, isCurrentUser: boolean}[]>([]);
 
   useEffect(() => {
@@ -85,23 +81,19 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
     }
     loadMuteStatus();
     
-    // Update avatar when otherUser changes (for direct conversations)
     if (conversationType === 'direct' && otherUser?.avatar_url) {
       setCurrentAvatar(otherUser.avatar_url);
     }
   }, [conversationId, otherUser?.avatar_url, conversationType]);
 
-  // Open add member modal if requested via prop
   useEffect(() => {
     if (openAddMemberModal && conversationType === 'group' && isAdmin) {
       handleOpenAddMemberModal();
     }
   }, [openAddMemberModal, conversationType, isAdmin]);
 
-  // Load participants for direct conversations
   const loadDirectParticipants = async () => {
     try {
-      // Get current user profile
       const { data: currentUserProfile } = await supabase
         .from('profiles')
         .select('*')
@@ -124,7 +116,6 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
     }
   };
 
-  // Load media/files/links when tab changes
   useEffect(() => {
     if (activeTab === 'media' && mediaMessages.length === 0) {
       loadMedia();
@@ -175,12 +166,9 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
     }
   };
 
-  // Load available contacts for adding to group
   const loadAvailableContacts = async () => {
-    // Get current member user IDs
     const memberUserIds = members.map(m => m.user_id);
     
-    // Get user's contacts
     const { data: contacts } = await supabase
       .from('contacts')
       .select('contact_user_id')
@@ -189,7 +177,6 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
     
     if (contacts && contacts.length > 0) {
       const contactIds = contacts.map(c => c.contact_user_id);
-      // Filter out users already in the group
       const availableIds = contactIds.filter(id => !memberUserIds.includes(id));
       
       if (availableIds.length > 0) {
@@ -207,7 +194,6 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
     }
   };
 
-  // Handle opening add member modal
   const handleOpenAddMemberModal = () => {
     setShowAddMemberModal(true);
     setSelectedContacts([]);
@@ -215,7 +201,6 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
     loadAvailableContacts();
   };
 
-  // Handle adding selected members to group
   const handleAddMembers = async () => {
     if (selectedContacts.length === 0) return;
     
@@ -233,7 +218,6 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
       
       if (error) throw error;
       
-      // Reload members list
       await loadMembers();
       setShowAddMemberModal(false);
       setSelectedContacts([]);
@@ -246,7 +230,6 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
     }
   };
 
-  // Toggle contact selection
   const toggleContactSelection = (userId: string) => {
     setSelectedContacts(prev =>
       prev.includes(userId)
@@ -255,7 +238,6 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
     );
   };
 
-  // Load media messages
   const loadMedia = async () => {
     setLoadingMedia(true);
     try {
@@ -274,7 +256,6 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
     }
   };
 
-  // Load file messages
   const loadFiles = async () => {
     setLoadingFiles(true);
     try {
@@ -293,7 +274,6 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
     }
   };
 
-  // Load messages with links
   const loadLinks = async () => {
     setLoadingLinks(true);
     try {
@@ -322,7 +302,6 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
     }
   };
 
-  // Format file size
   const formatFileSize = (bytes: number | null): string => {
     if (!bytes) return 'Taille inconnue';
     if (bytes < 1024) return `${bytes} B`;
@@ -330,7 +309,6 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
-  // Format date
   const formatDate = (dateString: string): string => {
     const date = new Date(dateString);
     return date.toLocaleDateString('fr-FR', {
@@ -340,7 +318,6 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
     });
   };
 
-  // Filter contacts by search query
   const filteredContacts = availableContacts.filter(contact =>
     contact.username.toLowerCase().includes(contactSearchQuery.toLowerCase()) ||
     (contact.display_name?.toLowerCase().includes(contactSearchQuery.toLowerCase()))
@@ -386,10 +363,7 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
       
       if (updateError) throw updateError;
       
-      // Mettre à jour l'avatar localement
       setCurrentAvatar(publicUrl);
-      
-      // Forcer le rechargement de la page pour mettre à jour partout
       alert('✅ Photo mise à jour !');
       window.location.reload();
     } catch (err) {
@@ -462,13 +436,342 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
     }
   };
 
+  // Render tab content - extracted to avoid duplication
+  const renderTabContent = () => (
+    <>
+      {activeTab === 'overview' && (
+        <div className="p-4 space-y-2">
+          {/* Description */}
+          <div className="bg-bg-surface rounded-xl p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex-1">
+                <h4 className="text-sm font-medium text-text-primary mb-1">Description</h4>
+                {isEditingDescription ? (
+                  <div className="space-y-3 mt-2">
+                    <textarea
+                      value={newDescription}
+                      onChange={(e) => setNewDescription(e.target.value)}
+                      className="w-full px-3 py-2 bg-bg-hover text-text-primary rounded-lg outline-none resize-none text-sm"
+                      rows={3}
+                      placeholder="Ajouter une description..."
+                    />
+                    <button
+                      onClick={handleUpdateDescription}
+                      className="w-full py-2 bg-accent hover:bg-[#5a5ec9] text-white rounded-lg text-sm font-medium transition-colors"
+                    >
+                      Enregistrer
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-sm text-text-secondary">
+                    {conversationDescription || 'Aucune description'}
+                  </p>
+                )}
+              </div>
+              {(conversationType === 'group' ? isAdmin : true) && !isEditingDescription && (
+                <button
+                  onClick={() => setIsEditingDescription(!isEditingDescription)}
+                  className="text-accent hover:text-accent/80 transition-colors ml-3"
+                >
+                  <Edit2 size={18} />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Chiffrement */}
+          <div className="bg-bg-surface rounded-xl p-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center">
+                <Lock size={20} className="text-accent" />
+              </div>
+              <div className="flex-1">
+                <h4 className="text-sm font-medium text-text-primary">Chiffrement</h4>
+                <p className="text-xs text-text-secondary">Messages chiffrés de bout en bout</p>
+              </div>
+              <Check size={18} className="text-accent" />
+            </div>
+          </div>
+
+          {/* Messages éphémères */}
+          <div className="bg-bg-surface rounded-xl p-4 cursor-pointer hover:bg-bg-hover transition-colors">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-bg-hover flex items-center justify-center">
+                <Calendar size={20} className="text-text-secondary" />
+              </div>
+              <div className="flex-1">
+                <h4 className="text-sm font-medium text-text-primary">Messages éphémères</h4>
+                <p className="text-xs text-text-secondary">Désactivés</p>
+              </div>
+              <ChevronRight size={18} className="text-text-secondary" />
+            </div>
+          </div>
+
+          {/* Notifications */}
+          <div
+            onClick={handleToggleMute}
+            className="bg-bg-surface rounded-xl p-4 cursor-pointer hover:bg-bg-hover transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-bg-hover flex items-center justify-center">
+                {isMuted ? <BellOff size={20} className="text-text-secondary" /> : <Bell size={20} className="text-text-secondary" />}
+              </div>
+              <span className="text-sm text-text-primary flex-1">
+                {isMuted ? 'Activer les notifications' : 'Désactiver les notifications'}
+              </span>
+            </div>
+          </div>
+
+          {/* Archiver */}
+          <div
+            onClick={handleArchive}
+            className="bg-bg-surface rounded-xl p-4 cursor-pointer hover:bg-bg-hover transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-bg-hover flex items-center justify-center">
+                <Archive size={20} className="text-text-secondary" />
+              </div>
+              <span className="text-sm text-text-primary">Archiver la conversation</span>
+            </div>
+          </div>
+
+          {/* Supprimer */}
+          <div
+            onClick={handleDelete}
+            className="bg-bg-surface rounded-xl p-4 cursor-pointer hover:bg-red-500/10 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center">
+                <Trash2 size={20} className="text-red-500" />
+              </div>
+              <span className="text-sm text-red-500">Supprimer la conversation</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'members' && (
+        <div className="p-4 space-y-2">
+          {conversationType === 'group' && (
+            <>
+              {isAdmin && (
+                <button
+                  onClick={handleOpenAddMemberModal}
+                  className="w-full bg-bg-surface rounded-xl p-4 flex items-center gap-3 hover:bg-bg-hover transition-colors mb-4"
+                >
+                  <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center">
+                    <UserPlus size={20} className="text-accent" />
+                  </div>
+                  <span className="text-sm text-text-primary">Ajouter des membres</span>
+                </button>
+              )}
+              
+              {members.map((member) => (
+                <div
+                  key={member.id}
+                  className="bg-bg-surface rounded-xl p-4 flex items-center gap-3"
+                >
+                  {member.avatar_url ? (
+                    <img
+                      src={member.avatar_url}
+                      alt={member.display_name || member.username}
+                      className="w-12 h-12 rounded-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold">
+                      {(member.display_name || member.username)[0].toUpperCase()}
+                    </div>
+                  )}
+                  <div className="flex-1">
+                    <div className="font-medium text-text-primary">
+                      {member.display_name || member.username}
+                      {member.user_id === currentUserId && ' (Vous)'}
+                    </div>
+                    {member.role === 'admin' && (
+                      <div className="flex items-center gap-1 text-xs text-accent">
+                        <Crown size={12} />
+                        <span>Administrateur</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+
+          {conversationType === 'direct' && (
+            <>
+              <p className="text-xs text-text-secondary mb-3 px-1">2 participants</p>
+              {directParticipants.map((participant) => (
+                <div
+                  key={participant.user.id}
+                  className="bg-bg-surface rounded-xl p-4 flex items-center gap-3"
+                >
+                  {participant.user.avatar_url ? (
+                    <img
+                      src={participant.user.avatar_url}
+                      alt={participant.user.display_name || participant.user.username}
+                      className="w-12 h-12 rounded-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold">
+                      {(participant.user.display_name || participant.user.username)[0].toUpperCase()}
+                    </div>
+                  )}
+                  <div className="flex-1">
+                    <div className="font-medium text-text-primary">
+                      {participant.user.display_name || participant.user.username}
+                      {participant.isCurrentUser && ' (Vous)'}
+                    </div>
+                    <p className="text-xs text-text-secondary">@{participant.user.username}</p>
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'media' && (
+        <div className="p-4">
+          {loadingMedia ? (
+            <div className="text-center py-12">
+              <Loader2 size={32} className="mx-auto mb-2 animate-spin text-accent" />
+              <p className="text-sm text-text-secondary">Chargement des médias...</p>
+            </div>
+          ) : mediaMessages.length === 0 ? (
+            <div className="text-center py-12 text-text-secondary">
+              <Image size={48} className="mx-auto mb-2 opacity-50" />
+              <p className="text-sm">Aucun média partagé</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-3 gap-2">
+              {mediaMessages.map((media) => (
+                <a
+                  key={media.id}
+                  href={media.media_url || media.file_url || '#'}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="aspect-square rounded-lg overflow-hidden bg-bg-hover hover:opacity-80 transition-opacity"
+                >
+                  {(media.type === 'video' || media.media_type === 'video') ? (
+                    <div className="w-full h-full flex items-center justify-center bg-bg-surface">
+                      <Video size={32} className="text-text-secondary" />
+                    </div>
+                  ) : (
+                    <img
+                      src={media.media_url || media.file_url || ''}
+                      alt="Media"
+                      className="w-full h-full object-cover"
+                    />
+                  )}
+                </a>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'files' && (
+        <div className="p-4">
+          {loadingFiles ? (
+            <div className="text-center py-12">
+              <Loader2 size={32} className="mx-auto mb-2 animate-spin text-accent" />
+              <p className="text-sm text-text-secondary">Chargement des fichiers...</p>
+            </div>
+          ) : fileMessages.length === 0 ? (
+            <div className="text-center py-12 text-text-secondary">
+              <FileText size={48} className="mx-auto mb-2 opacity-50" />
+              <p className="text-sm">Aucun fichier partagé</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {fileMessages.map((file) => (
+                <div
+                  key={file.id}
+                  className="bg-bg-surface rounded-xl p-3 flex items-center gap-3"
+                >
+                  <div className="w-10 h-10 rounded-lg bg-accent/20 flex items-center justify-center">
+                    <FileText size={20} className="text-accent" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-text-primary truncate">
+                      {file.file_name || 'Fichier'}
+                    </p>
+                    <p className="text-xs text-text-secondary">
+                      {formatFileSize(file.file_size)} • {formatDate(file.created_at)}
+                    </p>
+                  </div>
+                  <a
+                    href={file.media_url || file.file_url || '#'}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-8 h-8 rounded-full bg-bg-hover flex items-center justify-center hover:bg-accent/20 transition-colors"
+                  >
+                    <Download size={16} className="text-text-secondary" />
+                  </a>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'links' && (
+        <div className="p-4">
+          {loadingLinks ? (
+            <div className="text-center py-12">
+              <Loader2 size={32} className="mx-auto mb-2 animate-spin text-accent" />
+              <p className="text-sm text-text-secondary">Chargement des liens...</p>
+            </div>
+          ) : linkMessages.length === 0 ? (
+            <div className="text-center py-12 text-text-secondary">
+              <LinkIcon size={48} className="mx-auto mb-2 opacity-50" />
+              <p className="text-sm">Aucun lien partagé</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {linkMessages.map(({ message, urls }) => (
+                <div
+                  key={message.id}
+                  className="bg-bg-surface rounded-xl p-3"
+                >
+                  <p className="text-xs text-text-secondary mb-2">
+                    {formatDate(message.created_at)}
+                  </p>
+                  {urls.map((url, index) => (
+                    <a
+                      key={index}
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 text-accent hover:underline text-sm mb-1"
+                    >
+                      <ExternalLink size={14} />
+                      <span className="truncate">{url}</span>
+                    </a>
+                  ))}
+                  {message.content && (
+                    <p className="text-xs text-text-secondary mt-2 line-clamp-2">
+                      {message.content}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </>
+  );
+
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
       <div className="bg-bg-surface w-full max-w-6xl rounded-2xl max-h-[90vh] flex flex-col md:flex-row overflow-hidden shadow-2xl">
         {/* Left Column - Avatar & Actions */}
-        <div className="md:w-80 bg-bg-surface border-b md:border-b-0 md:border-r border-bg-hover flex-shrink-0">
+        <div className="md:w-80 bg-bg-surface border-b md:border-b-0 md:border-r border-bg-hover flex-shrink-0 flex flex-col max-h-[90vh] md:max-h-none overflow-hidden">
           {/* Header - Mobile only */}
-          <div className="md:hidden bg-bg-surface px-4 py-3 flex items-center justify-between border-b border-bg-hover">
+          <div className="md:hidden bg-bg-surface px-4 py-3 flex items-center justify-between border-b border-bg-hover flex-shrink-0">
             <h2 className="text-lg font-medium text-text-primary">Informations</h2>
             <button
               onClick={onClose}
@@ -478,90 +781,98 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
             </button>
           </div>
 
-          {/* Avatar & Name */}
-          <div className="px-6 py-6 text-center">
-          <div className="relative inline-block mb-3">
-            {currentAvatar ? (
-              <img
-                src={currentAvatar}
-                alt={conversationName}
-                className="w-32 h-32 rounded-full object-cover"
-              />
-            ) : (
-              <div className="w-32 h-32 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-5xl">
-                {conversationName[0]?.toUpperCase()}
+          {/* Scrollable content on mobile */}
+          <div className="flex-1 overflow-y-auto">
+            {/* Avatar & Name */}
+            <div className="px-6 py-4 text-center">
+              <div className="relative inline-block mb-3">
+                {currentAvatar ? (
+                  <img
+                    src={currentAvatar}
+                    alt={conversationName}
+                    className="w-32 h-32 rounded-full object-cover"
+                  />
+                ) : (
+                  <div className="w-32 h-32 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-5xl">
+                    {conversationName[0]?.toUpperCase()}
+                  </div>
+                )}
+                {(conversationType === 'group' ? isAdmin : true) && (
+                  <label className="absolute bottom-2 right-2 w-10 h-10 rounded-full bg-accent flex items-center justify-center cursor-pointer hover:bg-[#5a5ec9] transition-colors shadow-lg">
+                    <Camera size={20} className="text-white" />
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      onChange={handleUploadPhoto} 
+                      className="hidden" 
+                      disabled={uploadingPhoto} 
+                    />
+                  </label>
+                )}
               </div>
-            )}
-            {(conversationType === 'group' ? isAdmin : true) && (
-              <label className="absolute bottom-2 right-2 w-10 h-10 rounded-full bg-accent flex items-center justify-center cursor-pointer hover:bg-[#5a5ec9] transition-colors shadow-lg">
-                <Camera size={20} className="text-white" />
-                <input 
-                  type="file" 
-                  accept="image/*" 
-                  onChange={handleUploadPhoto} 
-                  className="hidden" 
-                  disabled={uploadingPhoto} 
-                />
-              </label>
-            )}
-          </div>
-          <h3 className="text-2xl font-semibold text-text-primary mb-1">{conversationName}</h3>
-          {conversationType === 'group' && (
-            <p className="text-sm text-text-secondary">Groupe • {members.length} membres</p>
-          )}
-          {conversationType === 'direct' && otherUser && (
-            <p className="text-sm text-text-secondary">@{otherUser.username}</p>
-          )}
-          </div>
+              <h3 className="text-2xl font-semibold text-text-primary mb-1">{conversationName}</h3>
+              {conversationType === 'group' && (
+                <p className="text-sm text-text-secondary">Groupe • {members.length} membres</p>
+              )}
+              {conversationType === 'direct' && otherUser && (
+                <p className="text-sm text-text-secondary">@{otherUser.username}</p>
+              )}
+            </div>
 
-          {/* Quick Actions */}
-          <div className="px-4 py-3 flex gap-3 justify-center border-b border-bg-hover">
-            <button
-              onClick={onStartVideoCall}
-              className="flex flex-col items-center gap-1 p-2 rounded-xl hover:bg-bg-hover transition-colors"
-            >
-              <div className="w-12 h-12 rounded-full bg-accent flex items-center justify-center">
-                <Video size={20} className="text-white" />
-              </div>
-              <span className="text-xs text-text-secondary">Vidéo</span>
-            </button>
-            <button
-              onClick={onStartAudioCall}
-              className="flex flex-col items-center gap-1 p-2 rounded-xl hover:bg-bg-hover transition-colors"
-            >
-              <div className="w-12 h-12 rounded-full bg-accent flex items-center justify-center">
-                <Phone size={20} className="text-white" />
-              </div>
-              <span className="text-xs text-text-secondary">Vocal</span>
-            </button>
-          </div>
-
-          {/* Tabs - Vertical on desktop */}
-          <div className="px-4 py-3 space-y-1">
-            {['overview', 'members', 'media', 'files', 'links'].map((tab) => (
+            {/* Quick Actions */}
+            <div className="px-4 py-3 flex gap-3 justify-center border-b border-bg-hover">
               <button
-                key={tab}
-                onClick={() => setActiveTab(tab as any)}
-                className={`w-full px-3 py-2 rounded-lg text-sm font-medium transition-colors text-left ${
-                  activeTab === tab
-                    ? 'bg-accent text-white'
-                    : 'text-text-secondary hover:bg-bg-hover'
-                }`}
+                onClick={onStartVideoCall}
+                className="flex flex-col items-center gap-1 p-2 rounded-xl hover:bg-bg-hover transition-colors"
               >
-                {tab === 'overview' ? 'Vue d\'ensemble' :
-                 tab === 'members' ? 'Membres' :
-                 tab === 'media' ? 'Médias' :
-                 tab === 'files' ? 'Fichiers' :
-                 'Liens'}
+                <div className="w-12 h-12 rounded-full bg-accent flex items-center justify-center">
+                  <Video size={20} className="text-white" />
+                </div>
+                <span className="text-xs text-text-secondary">Vidéo</span>
               </button>
-            ))}
+              <button
+                onClick={onStartAudioCall}
+                className="flex flex-col items-center gap-1 p-2 rounded-xl hover:bg-bg-hover transition-colors"
+              >
+                <div className="w-12 h-12 rounded-full bg-accent flex items-center justify-center">
+                  <Phone size={20} className="text-white" />
+                </div>
+                <span className="text-xs text-text-secondary">Vocal</span>
+              </button>
+            </div>
+
+            {/* Tabs */}
+            <div className="px-4 py-3 space-y-1">
+              {['overview', 'members', 'media', 'files', 'links'].map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab as any)}
+                  className={`w-full px-3 py-2 rounded-lg text-sm font-medium transition-colors text-left ${
+                    activeTab === tab
+                      ? 'bg-accent text-white'
+                      : 'text-text-secondary hover:bg-bg-hover'
+                  }`}
+                >
+                  {tab === 'overview' ? 'Vue d\'ensemble' :
+                   tab === 'members' ? 'Membres' :
+                   tab === 'media' ? 'Médias' :
+                   tab === 'files' ? 'Fichiers' :
+                   'Liens'}
+                </button>
+              ))}
+            </div>
+
+            {/* Mobile Content - Show content below tabs on mobile */}
+            <div className="md:hidden bg-bg-primary">
+              {renderTabContent()}
+            </div>
           </div>
         </div>
 
-        {/* Right Column - Content */}
-        <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Right Column - Content (Desktop only) */}
+        <div className="hidden md:flex flex-1 flex-col overflow-hidden">
           {/* Header - Desktop only */}
-          <div className="hidden md:flex bg-bg-surface px-4 py-3 items-center justify-between border-b border-bg-hover">
+          <div className="bg-bg-surface px-4 py-3 flex items-center justify-between border-b border-bg-hover">
             <h2 className="text-lg font-medium text-text-primary">
               {activeTab === 'overview' ? 'Vue d\'ensemble' :
                activeTab === 'members' ? 'Membres' :
@@ -579,331 +890,7 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
 
           {/* Content */}
           <div className="flex-1 overflow-y-auto bg-bg-primary p-4">
-          {activeTab === 'overview' && (
-            <div className="p-4 space-y-2">
-              {/* Description */}
-              <div className="bg-bg-surface rounded-xl p-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <h4 className="text-sm font-medium text-text-primary mb-1">Description</h4>
-                    {isEditingDescription ? (
-                      <div className="space-y-3 mt-2">
-                        <textarea
-                          value={newDescription}
-                          onChange={(e) => setNewDescription(e.target.value)}
-                          className="w-full px-3 py-2 bg-bg-hover text-text-primary rounded-lg outline-none resize-none text-sm"
-                          rows={3}
-                          placeholder="Ajouter une description..."
-                        />
-                        <button
-                          onClick={handleUpdateDescription}
-                          className="w-full py-2 bg-accent hover:bg-[#5a5ec9] text-white rounded-lg text-sm font-medium transition-colors"
-                        >
-                          Enregistrer
-                        </button>
-                      </div>
-                    ) : (
-                      <p className="text-sm text-text-secondary">
-                        {conversationDescription || 'Aucune description'}
-                      </p>
-                    )}
-                  </div>
-                  {(conversationType === 'group' ? isAdmin : true) && !isEditingDescription && (
-                    <button
-                      onClick={() => setIsEditingDescription(!isEditingDescription)}
-                      className="text-accent hover:text-accent/80 transition-colors ml-3"
-                    >
-                      <Edit2 size={18} />
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Chiffrement */}
-              <div className="bg-bg-surface rounded-xl p-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center">
-                    <Lock size={20} className="text-accent" />
-                  </div>
-                  <div className="flex-1">
-                    <h4 className="text-sm font-medium text-text-primary">Chiffrement</h4>
-                    <p className="text-xs text-text-secondary">Messages chiffrés de bout en bout</p>
-                  </div>
-                  <Check size={18} className="text-accent" />
-                </div>
-              </div>
-
-              {/* Messages éphémères */}
-              <div className="bg-bg-surface rounded-xl p-4 cursor-pointer hover:bg-bg-hover transition-colors">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-bg-hover flex items-center justify-center">
-                    <Calendar size={20} className="text-text-secondary" />
-                  </div>
-                  <div className="flex-1">
-                    <h4 className="text-sm font-medium text-text-primary">Messages éphémères</h4>
-                    <p className="text-xs text-text-secondary">Désactivés</p>
-                  </div>
-                  <ChevronRight size={18} className="text-text-secondary" />
-                </div>
-              </div>
-
-              {/* Notifications */}
-              <div
-                onClick={handleToggleMute}
-                className="bg-bg-surface rounded-xl p-4 cursor-pointer hover:bg-bg-hover transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-bg-hover flex items-center justify-center">
-                    {isMuted ? <BellOff size={20} className="text-text-secondary" /> : <Bell size={20} className="text-text-secondary" />}
-                  </div>
-                  <span className="text-sm text-text-primary flex-1">
-                    {isMuted ? 'Activer les notifications' : 'Désactiver les notifications'}
-                  </span>
-                </div>
-              </div>
-
-              {/* Archiver */}
-              <div
-                onClick={handleArchive}
-                className="bg-bg-surface rounded-xl p-4 cursor-pointer hover:bg-bg-hover transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-bg-hover flex items-center justify-center">
-                    <Archive size={20} className="text-text-secondary" />
-                  </div>
-                  <span className="text-sm text-text-primary">Archiver la conversation</span>
-                </div>
-              </div>
-
-              {/* Supprimer */}
-              <div
-                onClick={handleDelete}
-                className="bg-bg-surface rounded-xl p-4 cursor-pointer hover:bg-red-500/10 transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center">
-                    <Trash2 size={20} className="text-red-500" />
-                  </div>
-                  <span className="text-sm text-red-500">Supprimer la conversation</span>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'members' && (
-            <div className="p-4 space-y-2">
-              {/* For group conversations */}
-              {conversationType === 'group' && (
-                <>
-                  {isAdmin && (
-                    <button
-                      onClick={handleOpenAddMemberModal}
-                      className="w-full bg-bg-surface rounded-xl p-4 flex items-center gap-3 hover:bg-bg-hover transition-colors mb-4"
-                    >
-                      <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center">
-                        <UserPlus size={20} className="text-accent" />
-                      </div>
-                      <span className="text-sm text-text-primary">Ajouter des membres</span>
-                    </button>
-                  )}
-                  
-                  {members.map((member) => (
-                    <div
-                      key={member.id}
-                      className="bg-bg-surface rounded-xl p-4 flex items-center gap-3"
-                    >
-                      {member.avatar_url ? (
-                        <img
-                          src={member.avatar_url}
-                          alt={member.display_name || member.username}
-                          className="w-12 h-12 rounded-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold">
-                          {(member.display_name || member.username)[0].toUpperCase()}
-                        </div>
-                      )}
-                      <div className="flex-1">
-                        <div className="font-medium text-text-primary">
-                          {member.display_name || member.username}
-                          {member.user_id === currentUserId && ' (Vous)'}
-                        </div>
-                        {member.role === 'admin' && (
-                          <div className="flex items-center gap-1 text-xs text-accent">
-                            <Crown size={12} />
-                            <span>Administrateur</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </>
-              )}
-
-              {/* For direct conversations - show both participants */}
-              {conversationType === 'direct' && (
-                <>
-                  <p className="text-xs text-text-secondary mb-3 px-1">2 participants</p>
-                  {directParticipants.map((participant) => (
-                    <div
-                      key={participant.user.id}
-                      className="bg-bg-surface rounded-xl p-4 flex items-center gap-3"
-                    >
-                      {participant.user.avatar_url ? (
-                        <img
-                          src={participant.user.avatar_url}
-                          alt={participant.user.display_name || participant.user.username}
-                          className="w-12 h-12 rounded-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold">
-                          {(participant.user.display_name || participant.user.username)[0].toUpperCase()}
-                        </div>
-                      )}
-                      <div className="flex-1">
-                        <div className="font-medium text-text-primary">
-                          {participant.user.display_name || participant.user.username}
-                          {participant.isCurrentUser && ' (Vous)'}
-                        </div>
-                        <p className="text-xs text-text-secondary">@{participant.user.username}</p>
-                      </div>
-                    </div>
-                  ))}
-                </>
-              )}
-            </div>
-          )}
-
-          {activeTab === 'media' && (
-            <div className="p-4">
-              {loadingMedia ? (
-                <div className="text-center py-12">
-                  <Loader2 size={32} className="mx-auto mb-2 animate-spin text-accent" />
-                  <p className="text-sm text-text-secondary">Chargement des médias...</p>
-                </div>
-              ) : mediaMessages.length === 0 ? (
-                <div className="text-center py-12 text-text-secondary">
-                  <Image size={48} className="mx-auto mb-2 opacity-50" />
-                  <p className="text-sm">Aucun média partagé</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-3 gap-2">
-                  {mediaMessages.map((media) => (
-                    <a
-                      key={media.id}
-                      href={media.media_url || media.file_url || '#'}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="aspect-square rounded-lg overflow-hidden bg-bg-hover hover:opacity-80 transition-opacity"
-                    >
-                      {(media.type === 'video' || media.media_type === 'video') ? (
-                        <div className="w-full h-full flex items-center justify-center bg-bg-surface">
-                          <Video size={32} className="text-text-secondary" />
-                        </div>
-                      ) : (
-                        <img
-                          src={media.media_url || media.file_url || ''}
-                          alt="Media"
-                          className="w-full h-full object-cover"
-                        />
-                      )}
-                    </a>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {activeTab === 'files' && (
-            <div className="p-4">
-              {loadingFiles ? (
-                <div className="text-center py-12">
-                  <Loader2 size={32} className="mx-auto mb-2 animate-spin text-accent" />
-                  <p className="text-sm text-text-secondary">Chargement des fichiers...</p>
-                </div>
-              ) : fileMessages.length === 0 ? (
-                <div className="text-center py-12 text-text-secondary">
-                  <FileText size={48} className="mx-auto mb-2 opacity-50" />
-                  <p className="text-sm">Aucun fichier partagé</p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {fileMessages.map((file) => (
-                    <div
-                      key={file.id}
-                      className="bg-bg-surface rounded-xl p-3 flex items-center gap-3"
-                    >
-                      <div className="w-10 h-10 rounded-lg bg-accent/20 flex items-center justify-center">
-                        <FileText size={20} className="text-accent" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-text-primary truncate">
-                          {file.file_name || 'Fichier'}
-                        </p>
-                        <p className="text-xs text-text-secondary">
-                          {formatFileSize(file.file_size)} • {formatDate(file.created_at)}
-                        </p>
-                      </div>
-                      <a
-                        href={file.media_url || file.file_url || '#'}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="w-8 h-8 rounded-full bg-bg-hover flex items-center justify-center hover:bg-accent/20 transition-colors"
-                      >
-                        <Download size={16} className="text-text-secondary" />
-                      </a>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {activeTab === 'links' && (
-            <div className="p-4">
-              {loadingLinks ? (
-                <div className="text-center py-12">
-                  <Loader2 size={32} className="mx-auto mb-2 animate-spin text-accent" />
-                  <p className="text-sm text-text-secondary">Chargement des liens...</p>
-                </div>
-              ) : linkMessages.length === 0 ? (
-                <div className="text-center py-12 text-text-secondary">
-                  <LinkIcon size={48} className="mx-auto mb-2 opacity-50" />
-                  <p className="text-sm">Aucun lien partagé</p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {linkMessages.map(({ message, urls }) => (
-                    <div
-                      key={message.id}
-                      className="bg-bg-surface rounded-xl p-3"
-                    >
-                      <p className="text-xs text-text-secondary mb-2">
-                        {formatDate(message.created_at)}
-                      </p>
-                      {urls.map((url, index) => (
-                        <a
-                          key={index}
-                          href={url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center gap-2 text-accent hover:underline text-sm mb-1"
-                        >
-                          <ExternalLink size={14} />
-                          <span className="truncate">{url}</span>
-                        </a>
-                      ))}
-                      {message.content && (
-                        <p className="text-xs text-text-secondary mt-2 line-clamp-2">
-                          {message.content}
-                        </p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+            {renderTabContent()}
           </div>
         </div>
       </div>
