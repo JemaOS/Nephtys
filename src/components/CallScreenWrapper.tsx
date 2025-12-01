@@ -35,8 +35,9 @@ export function CallScreenWrapper() {
   console.log(`📹 CallScreenWrapper render #${renderCountRef.current}`)
 
   const callerName = callContext.incomingCall?.callerName || 'Utilisateur'
-  const isVideoCall = 
-    callContext.incomingCall?.isVideo || 
+  const callerAvatar = callContext.incomingCall?.callerAvatar
+  const isVideoCall =
+    callContext.incomingCall?.isVideo ||
     (localStreamState?.getVideoTracks().length ?? 0) > 0 ||
     (remoteStreamState?.getVideoTracks().length ?? 0) > 0
 
@@ -50,6 +51,7 @@ export function CallScreenWrapper() {
       audioEnabled={callContext.audioEnabled}
       videoEnabled={callContext.videoEnabled}
       callerName={callerName}
+      callerAvatar={callerAvatar}
       isVideoCall={isVideoCall}
       onAnswer={callContext.answerCall}
       onReject={callContext.rejectCall}

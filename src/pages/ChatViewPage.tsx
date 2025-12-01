@@ -560,29 +560,60 @@ export function ChatViewPage() {
   const handleForwardToConversations = async (conversationIds: string[]) => {
     if (!messageToForward || !user) return
 
+    let successCount = 0
+    let errorCount = 0
+
     try {
       for (const targetConversationId of conversationIds) {
+        // Build message data - only include fields that exist in the database
         const messageData: any = {
           conversation_id: targetConversationId,
           sender_id: user.id,
-          content: messageToForward.content || '',
+          content: messageToForward.content ? `[Transféré] ${messageToForward.content}` : '[Message transféré]',
           type: messageToForward.type,
           status: 'sent',
-          media_url: messageToForward.media_url,
-          media_type: messageToForward.media_type,
-          file_name: messageToForward.file_name,
-          file_size: messageToForward.file_size,
-          is_forwarded: true,
         }
 
-        await supabase.from('messages').insert(messageData)
-        await supabase
-          .from('conversations')
-          .update({ last_message_at: new Date().toISOString() })
-          .eq('id', targetConversationId)
+        // Add media fields if present
+        if (messageToForward.media_url) {
+          messageData.media_url = messageToForward.media_url
+        }
+        if (messageToForward.media_type) {
+          messageData.media_type = messageToForward.media_type
+        }
+        if (messageToForward.file_name) {
+          messageData.file_name = messageToForward.file_name
+        }
+        if (messageToForward.file_size) {
+          messageData.file_size = messageToForward.file_size
+        }
+
+        console.log('Forwarding message to conversation:', targetConversationId, messageData)
+
+        const { error: insertError } = await supabase.from('messages').insert(messageData)
+        
+        if (insertError) {
+          console.error('Error inserting forwarded message:', insertError)
+          errorCount++
+        } else {
+          successCount++
+          // Update conversation's last_message_at
+          await supabase
+            .from('conversations')
+            .update({ last_message_at: new Date().toISOString() })
+            .eq('id', targetConversationId)
+        }
+      }
+
+      // Show feedback to user
+      if (successCount > 0 && errorCount === 0) {
+        console.log(`Message transféré à ${successCount} conversation(s)`)
+      } else if (errorCount > 0) {
+        alert(`Erreur: ${errorCount} transfert(s) échoué(s) sur ${conversationIds.length}`)
       }
     } catch (error) {
       console.error('Error forwarding message:', error)
+      alert('Erreur lors du transfert du message')
     }
 
     setMessageToForward(null)
@@ -1017,6 +1048,32 @@ export function ChatViewPage() {
                             });
                           }}
                         />
+                        {/* Reply quote inside message */}
+                        {message.reply_to_id && (() => {
+                          const replyMessage = messages.find(m => m.id === message.reply_to_id)
+                          if (replyMessage) {
+                            const replySenderName = replyMessage.sender_id === user?.id
+                              ? 'Vous'
+                              : otherUser?.display_name || otherUser?.username || 'Utilisateur'
+                            return (
+                              <div className={`mb-2 rounded-lg overflow-hidden ${isOwn ? 'bg-[#004438]' : 'bg-bg-hover'}`}>
+                                <div className="flex items-stretch">
+                                  <div className="w-1 bg-accent flex-shrink-0" />
+                                  <div className="flex-1 min-w-0 px-3 py-2">
+                                    <div className="text-xs font-semibold text-accent mb-0.5">
+                                      {replySenderName}
+                                    </div>
+                                    <div className={`text-sm truncate ${isOwn ? 'text-white/70' : 'text-text-secondary'}`}>
+                                      {replyMessage.content?.substring(0, 100) || '[Média]'}
+                                      {replyMessage.content && replyMessage.content.length > 100 ? '...' : ''}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            )
+                          }
+                          return null
+                        })()}
                         {message.media_url && message.media_type && message.type !== 'audio' && (
                           <MediaMessage url={message.media_url} type={message.media_type as 'image' | 'video' | 'file'} fileName={message.file_name} fileSize={message.file_size} caption={message.content} />
                         )}

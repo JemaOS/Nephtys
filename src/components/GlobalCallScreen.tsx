@@ -42,6 +42,7 @@ export const GlobalCallScreen = memo(function GlobalCallScreen() {
   }
 
   const callerName = incomingCall?.callerName || 'Utilisateur'
+  const callerAvatar = incomingCall?.callerAvatar
 
   console.log('📹 GlobalCallScreen render:', {
     isInCall,
@@ -66,6 +67,7 @@ export const GlobalCallScreen = memo(function GlobalCallScreen() {
       audioEnabled={audioEnabled}
       videoEnabled={videoEnabled}
       callerName={callerName}
+      callerAvatar={callerAvatar}
       isVideoCall={isVideoCall}
       onAnswer={answerCall}
       onReject={rejectCall}

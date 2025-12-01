@@ -12,8 +12,9 @@ export function StableCallScreen() {
   }
 
   const callerName = callContext.incomingCall?.callerName || 'Utilisateur'
-  const isVideoCall = 
-    callContext.incomingCall?.isVideo || 
+  const callerAvatar = callContext.incomingCall?.callerAvatar
+  const isVideoCall =
+    callContext.incomingCall?.isVideo ||
     (callContext.localStream?.getVideoTracks().length ?? 0) > 0 ||
     (callContext.remoteStream?.getVideoTracks().length ?? 0) > 0
 
@@ -22,6 +23,7 @@ export function StableCallScreen() {
     isRinging: callContext.isRinging,
     isCalling: callContext.isCalling,
     callerName,
+    callerAvatar,
     isVideoCall,
     hasLocalStream: !!callContext.localStream,
     hasRemoteStream: !!callContext.remoteStream,
@@ -39,6 +41,7 @@ export function StableCallScreen() {
         audioEnabled={callContext.audioEnabled}
         videoEnabled={callContext.videoEnabled}
         callerName={callerName}
+        callerAvatar={callerAvatar}
         isVideoCall={isVideoCall}
         onAnswer={callContext.answerCall}
         onReject={callContext.rejectCall}

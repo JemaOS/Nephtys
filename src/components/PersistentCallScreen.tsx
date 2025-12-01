@@ -56,12 +56,13 @@ export function PersistentCallScreen() {
   }
 
   const callerName = incomingCall?.callerName || 'Utilisateur'
-  const isVideoCall = 
-    incomingCall?.isVideo || 
+  const callerAvatar = incomingCall?.callerAvatar
+  const isVideoCall =
+    incomingCall?.isVideo ||
     (localStream?.getVideoTracks().length ?? 0) > 0 ||
     (remoteStream?.getVideoTracks().length ?? 0) > 0
 
-  console.log('📹 PersistentCallScreen render - isInCall:', isInCall, 'isRinging:', isRinging, 'isCalling:', isCalling, 'isVideoCall:', isVideoCall, 'hasRemoteStream:', !!remoteStream, 'incomingCall:', !!incomingCall)
+  console.log('📹 PersistentCallScreen render - isInCall:', isInCall, 'isRinging:', isRinging, 'isCalling:', isCalling, 'isVideoCall:', isVideoCall, 'hasRemoteStream:', !!remoteStream, 'incomingCall:', !!incomingCall, 'callerAvatar:', callerAvatar)
 
   return (
     <div ref={containerRef} className="fixed inset-0 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 z-[100] flex flex-col">
@@ -85,9 +86,17 @@ export function PersistentCallScreen() {
           />
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center">
-            <div className="w-32 h-32 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-5xl mb-6">
-              {callerName[0]?.toUpperCase()}
-            </div>
+            {callerAvatar ? (
+              <img
+                src={callerAvatar}
+                alt={callerName}
+                className="w-32 h-32 rounded-full object-cover mb-6 border-4 border-white/20 shadow-2xl"
+              />
+            ) : (
+              <div className="w-32 h-32 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-5xl mb-6">
+                {callerName[0]?.toUpperCase() || '?'}
+              </div>
+            )}
             <h2 className="text-3xl font-bold text-white mb-2">{callerName}</h2>
             <p className="text-lg text-white/70">
               {isRinging ? 'Appel entrant...' : isCalling ? 'Appel en cours...' : 'En appel'}

@@ -21,6 +21,7 @@ interface IncomingCall {
   conversationId: string
   isVideo: boolean
   callerName: string
+  callerAvatar?: string
 }
 
 interface CallContextType {
@@ -109,21 +110,23 @@ export function CallProvider({ children }: { children: ReactNode }) {
         setIncomingCallSignal(signal)
         setIsRinging(true)
         
-        // Récupérer le nom de l'appelant
+        // Récupérer le nom et l'avatar de l'appelant
         const { data: profile } = await supabase
           .from('profiles')
-          .select('display_name, username')
+          .select('display_name, username, avatar_url')
           .eq('id', signal.from)
           .maybeSingle()
 
         const callerName = profile?.display_name || profile?.username || 'Quelqu\'un'
+        const callerAvatar = profile?.avatar_url || undefined
         const isVideo = signal.data?.video || false
 
         setIncomingCall({
           from: signal.from,
           conversationId: signal.conversation_id,
           isVideo,
-          callerName
+          callerName,
+          callerAvatar
         })
 
         // Envoyer une notification
@@ -252,20 +255,22 @@ export function CallProvider({ children }: { children: ReactNode }) {
       setCurrentCallUserId(userId)
       setCurrentCallConversationId(conversationId)
 
-      // Récupérer le nom de la personne qu'on appelle
+      // Récupérer le nom et l'avatar de la personne qu'on appelle
       const { data: profile } = await supabase
         .from('profiles')
-        .select('display_name, username')
+        .select('display_name, username, avatar_url')
         .eq('id', userId)
         .maybeSingle()
 
       const calleeName = profile?.display_name || profile?.username || 'Utilisateur'
+      const calleeAvatar = profile?.avatar_url || undefined
 
       setIncomingCall({
         from: userId,
         conversationId: conversationId,
         isVideo: config.video,
-        callerName: calleeName
+        callerName: calleeName,
+        callerAvatar: calleeAvatar
       })
 
       const stream = await webrtcManager.initializeCall(config)
