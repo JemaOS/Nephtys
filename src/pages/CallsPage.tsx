@@ -32,6 +32,7 @@ export function CallsPage() {
   const [contextMenuCall, setContextMenuCall] = useState<CallLog | null>(null)
   const [contextMenuPosition, setContextMenuPosition] = useState<{ x: number; y: number } | null>(null)
   const [callerName, setCallerName] = useState<string>('')
+  const [callerAvatar, setCallerAvatar] = useState<string | undefined>(undefined)
   const { user } = useAuth()
   const navigate = useNavigate()
   const {
@@ -225,15 +226,16 @@ export function CallsPage() {
   }
 
   const handleCallContact = async (contactId: string, isVideo: boolean = false) => {
-    // Récupérer le nom du contact AVANT de démarrer l'appel
+    // Récupérer le nom et l'avatar du contact AVANT de démarrer l'appel
     const { data: profile } = await supabase
       .from('profiles')
-      .select('display_name, username')
+      .select('display_name, username, avatar_url')
       .eq('id', contactId)
       .single()
 
     if (profile) {
       setCallerName(profile.display_name || profile.username || 'Utilisateur')
+      setCallerAvatar(profile.avatar_url || undefined)
     }
 
     // Trouver ou créer une conversation avec ce contact
@@ -317,15 +319,16 @@ export function CallsPage() {
     if (members && members.length > 0) {
       const otherUserId = members[0].user_id
       
-      // Récupérer le nom du contact
+      // Récupérer le nom et l'avatar du contact
       const { data: profile } = await supabase
         .from('profiles')
-        .select('display_name, username')
+        .select('display_name, username, avatar_url')
         .eq('id', otherUserId)
         .single()
 
       if (profile) {
         setCallerName(profile.display_name || profile.username || 'Utilisateur')
+        setCallerAvatar(profile.avatar_url || undefined)
       }
 
       console.log('🔍 DEBUG: Recall button clicked')
@@ -387,14 +390,15 @@ export function CallsPage() {
     if (members && members.length > 0) {
       const otherUserId = members[0].user_id
       
-      // Récupérer le nom du contact
+      // Récupérer le nom et l'avatar du contact
       const { data: profile } = await supabase
         .from('profiles')
-        .select('display_name, username')
+        .select('display_name, username, avatar_url')
         .eq('id', otherUserId)
         .single()
 
       setCallerName(profile?.display_name || profile?.username || 'Utilisateur')
+      setCallerAvatar(profile?.avatar_url || undefined)
       
       try {
         await startCall(otherUserId, contextMenuCall.conversation_id, {
@@ -827,6 +831,7 @@ export function CallsPage() {
           audioEnabled={audioEnabled}
           videoEnabled={videoEnabled}
           callerName={callerName}
+          callerAvatar={callerAvatar}
           isVideoCall={localStream?.getVideoTracks().length > 0 || false}
           onAnswer={answerCall}
           onReject={rejectCall}

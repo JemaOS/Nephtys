@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { MainLayout } from '@/components/MainLayout'
 import { supabase, Contact, Profile } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
-import { Search, UserPlus, MessageCircle, X, Check } from 'lucide-react'
+import { Search, UserPlus, MessageCircle, X, Check, Trash2, CheckSquare, Square } from 'lucide-react'
 
 export function ContactsPage() {
   const [contacts, setContacts] = useState<(Contact & { profile: Profile })[]>([])
@@ -12,6 +12,8 @@ export function ContactsPage() {
   const [usernameToAdd, setUsernameToAdd] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [isSelectionMode, setIsSelectionMode] = useState(false)
+  const [selectedContacts, setSelectedContacts] = useState<Set<string>>(new Set())
   const { user } = useAuth()
   const navigate = useNavigate()
 
@@ -235,19 +237,134 @@ export function ContactsPage() {
     contact.profile.display_name?.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
+  // Selection mode handlers
+  const toggleSelectionMode = useCallback(() => {
+    setIsSelectionMode(prev => !prev)
+    setSelectedContacts(new Set())
+  }, [])
+
+  const toggleContactSelection = useCallback((contactId: string) => {
+    setSelectedContacts(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(contactId)) {
+        newSet.delete(contactId)
+      } else {
+        newSet.add(contactId)
+      }
+      return newSet
+    })
+  }, [])
+
+  const selectAllContacts = useCallback(() => {
+    if (selectedContacts.size === filteredContacts.length) {
+      setSelectedContacts(new Set())
+    } else {
+      setSelectedContacts(new Set(filteredContacts.map(c => c.id)))
+    }
+  }, [filteredContacts, selectedContacts.size])
+
+  const deleteSelectedContacts = useCallback(async () => {
+    if (selectedContacts.size === 0) return
+    
+    const confirmMessage = selectedContacts.size === 1
+      ? 'Voulez-vous vraiment supprimer ce contact ?'
+      : `Voulez-vous vraiment supprimer ces ${selectedContacts.size} contacts ?`
+    
+    if (!confirm(confirmMessage)) return
+
+    try {
+      // Get the contact_user_ids for the selected contacts
+      const contactsToDelete = contacts.filter(c => selectedContacts.has(c.id))
+      const realContactIds = contactsToDelete
+        .filter(c => !c.id.startsWith('chat-'))
+        .map(c => c.id)
+
+      if (realContactIds.length > 0) {
+        const { error } = await supabase
+          .from('contacts')
+          .delete()
+          .in('id', realContactIds)
+
+        if (error) {
+          console.error('Error deleting contacts:', error)
+          alert('Erreur lors de la suppression des contacts')
+          return
+        }
+      }
+
+      // Reload contacts
+      await loadContacts()
+      setSelectedContacts(new Set())
+      setIsSelectionMode(false)
+    } catch (err) {
+      console.error('Error deleting contacts:', err)
+      alert('Erreur lors de la suppression des contacts')
+    }
+  }, [selectedContacts, contacts])
+
   return (
     <MainLayout>
       <div className="flex-1 flex flex-col bg-bg-primary pb-14 md:pb-0">
         {/* Header */}
         <div className="bg-bg-surface px-4 py-3">
           <div className="flex items-center justify-between mb-4">
-            <h1 className="text-xl font-semibold text-text-primary">Contacts</h1>
-            <button
-              onClick={() => setShowAddModal(true)}
-              className="w-10 h-10 rounded-full bg-accent hover:bg-[#5a5ec9] flex items-center justify-center transition-colors"
-            >
-              <UserPlus size={20} className="text-white" />
-            </button>
+            {isSelectionMode ? (
+              <>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={toggleSelectionMode}
+                    className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-text-secondary"
+                  >
+                    <X size={20} />
+                  </button>
+                  <span className="text-text-primary font-medium">
+                    {selectedContacts.size} sélectionné{selectedContacts.size > 1 ? 's' : ''}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={selectAllContacts}
+                    className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-text-secondary"
+                    title={selectedContacts.size === filteredContacts.length ? 'Tout désélectionner' : 'Tout sélectionner'}
+                  >
+                    {selectedContacts.size === filteredContacts.length ? (
+                      <CheckSquare size={20} className="text-accent" />
+                    ) : (
+                      <Square size={20} />
+                    )}
+                  </button>
+                  <button
+                    onClick={deleteSelectedContacts}
+                    disabled={selectedContacts.size === 0}
+                    className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#ea4335] disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Supprimer"
+                  >
+                    <Trash2 size={20} />
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h1 className="text-xl font-semibold text-text-primary">Contacts</h1>
+                <div className="flex items-center gap-2">
+                  {contacts.length > 0 && (
+                    <button
+                      onClick={toggleSelectionMode}
+                      className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-text-secondary"
+                      title="Sélectionner"
+                    >
+                      <CheckSquare size={20} />
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setShowAddModal(true)}
+                    className="w-10 h-10 rounded-full bg-accent hover:bg-[#5a5ec9] flex items-center justify-center transition-colors"
+                  >
+                    <UserPlus size={20} className="text-white" />
+                  </button>
+                </div>
+              </>
+            )}
           </div>
           
           <div className="relative">
@@ -278,11 +395,47 @@ export function ContactsPage() {
             </div>
           ) : (
             filteredContacts.map((contact) => (
-              <div key={contact.id} className="px-4 py-3 hover:bg-bg-surface transition-colors">
+              <div
+                key={contact.id}
+                className={`px-4 py-3 hover:bg-bg-surface transition-colors cursor-pointer ${
+                  selectedContacts.has(contact.id) ? 'bg-accent/10' : ''
+                }`}
+                onClick={() => {
+                  if (isSelectionMode) {
+                    toggleContactSelection(contact.id)
+                  }
+                }}
+              >
                 <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold text-lg">
-                    {contact.profile.username[0].toUpperCase()}
-                  </div>
+                  {/* Selection checkbox */}
+                  {isSelectionMode && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        toggleContactSelection(contact.id)
+                      }}
+                      className={`w-6 h-6 rounded-full flex items-center justify-center transition-all flex-shrink-0 ${
+                        selectedContacts.has(contact.id)
+                          ? 'bg-accent text-white'
+                          : 'bg-bg-hover text-text-tertiary border border-bg-hover'
+                      }`}
+                    >
+                      <Check size={14} />
+                    </button>
+                  )}
+                  
+                  {/* Avatar with profile photo */}
+                  {contact.profile.avatar_url ? (
+                    <img
+                      src={contact.profile.avatar_url}
+                      alt={contact.profile.display_name || contact.profile.username}
+                      className="w-12 h-12 rounded-full object-cover flex-shrink-0"
+                    />
+                  ) : (
+                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold text-lg flex-shrink-0">
+                      {(contact.profile.display_name || contact.profile.username)[0].toUpperCase()}
+                    </div>
+                  )}
                   
                   <div className="flex-1 min-w-0 border-b border-bg-hover pb-3">
                     <h3 className="text-text-primary font-normal truncate">
@@ -293,12 +446,17 @@ export function ContactsPage() {
                     </p>
                   </div>
 
-                  <button
-                    onClick={() => createConversation(contact.contact_user_id)}
-                    className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors flex-shrink-0"
-                  >
-                    <MessageCircle size={20} className="text-[#00a884]" />
-                  </button>
+                  {!isSelectionMode && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        createConversation(contact.contact_user_id)
+                      }}
+                      className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors flex-shrink-0"
+                    >
+                      <MessageCircle size={20} className="text-[#00a884]" />
+                    </button>
+                  )}
                 </div>
               </div>
             ))

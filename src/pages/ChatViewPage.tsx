@@ -345,7 +345,15 @@ export function ChatViewPage() {
   }
 
   const handleStartVideoCall = async () => {
-    if (!otherUser || !conversationId) return
+    if (!conversationId) return
+    
+    // For group conversations, show a message that group calls are not yet supported
+    if (conversation?.type === 'group') {
+      alert('📹 Appels de groupe\n\nLes appels vidéo de groupe ne sont pas encore disponibles. Cette fonctionnalité sera bientôt ajoutée!')
+      return
+    }
+    
+    if (!otherUser) return
     
     try {
       // Demander les permissions avant de démarrer l'appel
@@ -372,7 +380,15 @@ export function ChatViewPage() {
   }
 
   const handleStartAudioCall = async () => {
-    if (!otherUser || !conversationId) return
+    if (!conversationId) return
+    
+    // For group conversations, show a message that group calls are not yet supported
+    if (conversation?.type === 'group') {
+      alert('📞 Appels de groupe\n\nLes appels audio de groupe ne sont pas encore disponibles. Cette fonctionnalité sera bientôt ajoutée!')
+      return
+    }
+    
+    if (!otherUser) return
     
     try {
       // Demander les permissions avant de démarrer l'appel
