@@ -1285,8 +1285,24 @@ export function ChatViewPage() {
                                 )
                               }
                               
-                              // Regular text message
-                              return <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
+                              // Regular text message - if there's a link preview, don't show the URL in text
+                              let displayContent = message.content
+                              if ((message as any).link_preview) {
+                                try {
+                                  const previewData = typeof (message as any).link_preview === 'string'
+                                    ? JSON.parse((message as any).link_preview)
+                                    : (message as any).link_preview
+                                  // Remove the URL from the message content since it will be shown in the preview
+                                  if (previewData.url) {
+                                    displayContent = message.content.replace(previewData.url, '').trim()
+                                  }
+                                } catch {
+                                  // Keep original content if parsing fails
+                                }
+                              }
+                              
+                              // Only show text if there's content after removing the URL
+                              return displayContent ? <p className="text-sm whitespace-pre-wrap break-words">{displayContent}</p> : null
                             })()}
                             {/* Link Preview in message */}
                             {(message as any).link_preview && (() => {
