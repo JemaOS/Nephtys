@@ -70,15 +70,15 @@ export const PinMessageDialog: React.FC<PinMessageDialogProps> = ({
                     onChange={() => setSelectedDuration(duration.value)}
                     className="sr-only"
                   />
-                  <div 
+                  <div
                     className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
                       selectedDuration === duration.value
-                        ? 'border-[#00a884] bg-transparent'
+                        ? 'border-[#5a5ec9] bg-transparent'
                         : 'border-text-tertiary bg-transparent'
                     }`}
                   >
                     {selectedDuration === duration.value && (
-                      <div className="w-2.5 h-2.5 rounded-full bg-[#00a884]" />
+                      <div className="w-2.5 h-2.5 rounded-full bg-[#5a5ec9]" />
                     )}
                   </div>
                 </div>
@@ -93,13 +93,13 @@ export const PinMessageDialog: React.FC<PinMessageDialogProps> = ({
           <div className="px-6 py-4 flex items-center justify-end gap-4">
             <button
               onClick={onClose}
-              className="px-6 py-2.5 text-[#00a884] hover:bg-bg-hover rounded-full transition-colors font-medium"
+              className="px-6 py-2.5 text-[#5a5ec9] hover:bg-bg-hover rounded-full transition-colors font-medium"
             >
               Annuler
             </button>
             <button
               onClick={handlePin}
-              className="px-6 py-2.5 bg-[#00a884] hover:bg-[#00a884]/90 text-white rounded-full transition-colors font-medium"
+              className="px-6 py-2.5 bg-[#5a5ec9] hover:bg-[#5a5ec9]/90 text-white rounded-full transition-colors font-medium"
             >
               Épingler
             </button>

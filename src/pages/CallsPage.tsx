@@ -537,9 +537,17 @@ export function CallsPage() {
                 >
                   <div className="flex items-center gap-3">
                     {/* Avatar */}
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold text-lg flex-shrink-0">
-                      {displayName[0]?.toUpperCase()}
-                    </div>
+                    {otherProfile?.avatar_url ? (
+                      <img
+                        src={otherProfile.avatar_url}
+                        alt={displayName}
+                        className="w-12 h-12 rounded-full object-cover flex-shrink-0"
+                      />
+                    ) : (
+                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold text-lg flex-shrink-0">
+                        {displayName[0]?.toUpperCase()}
+                      </div>
+                    )}
                     
                     {/* Info */}
                     <div className="flex-1 min-w-0 border-b border-bg-hover pb-3">
@@ -599,14 +607,24 @@ export function CallsPage() {
             {/* Contact */}
             <div className="bg-bg-surface rounded-2xl p-6 mb-4">
               <div className="flex flex-col items-center gap-4">
-                <div className="w-24 h-24 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-3xl">
-                  {(() => {
-                    const isOutgoing = selectedCall.caller_id === user?.id
-                    const otherProfile = isOutgoing ? selectedCall.callee_profile : selectedCall.caller_profile
-                    const displayName = otherProfile?.display_name || otherProfile?.username || 'U'
-                    return displayName[0]?.toUpperCase()
-                  })()}
-                </div>
+                {(() => {
+                  const isOutgoing = selectedCall.caller_id === user?.id
+                  const otherProfile = isOutgoing ? selectedCall.callee_profile : selectedCall.caller_profile
+                  const displayName = otherProfile?.display_name || otherProfile?.username || 'U'
+                  const avatarUrl = otherProfile?.avatar_url
+                  
+                  return avatarUrl ? (
+                    <img
+                      src={avatarUrl}
+                      alt={displayName}
+                      className="w-24 h-24 rounded-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-24 h-24 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-3xl">
+                      {displayName[0]?.toUpperCase()}
+                    </div>
+                  )
+                })()}
                 <div className="text-center">
                   <h3 className="text-xl font-medium text-text-primary mb-1">
                     {(() => {
