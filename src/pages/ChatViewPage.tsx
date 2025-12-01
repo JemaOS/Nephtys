@@ -991,13 +991,23 @@ export function ChatViewPage() {
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setShowConversationMenu(false)} />
                   <div className="absolute right-0 top-12 z-50 min-w-[240px] bg-bg-surface rounded-2xl shadow-2xl py-2 border border-bg-hover">
-                    {/* Only show "Add to group" for group conversations or to convert direct to group */}
+                    {/* For group conversations: add members. For direct: create new group */}
                     <button
                       onClick={() => {
                         setShowConversationMenu(false)
-                        // Open conversation info to add members
-                        setShowConversationInfo(true)
-                        setShowAddMemberModal(true)
+                        if (conversation?.type === 'group') {
+                          // Open conversation info to add members
+                          setShowConversationInfo(true)
+                          setShowAddMemberModal(true)
+                        } else {
+                          // For direct conversations, navigate to groups page to create a new group
+                          // Pass the other user's ID as a query parameter to pre-select them
+                          if (otherUser) {
+                            navigate(`/groups?createWith=${otherUser.id}`)
+                          } else {
+                            navigate('/groups')
+                          }
+                        }
                       }}
                       className="w-full px-4 py-3 text-left hover:bg-bg-hover transition-colors text-text-primary text-sm flex items-center gap-3"
                     >

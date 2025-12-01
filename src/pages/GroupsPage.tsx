@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { MainLayout } from '@/components/MainLayout'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
@@ -7,6 +7,7 @@ import { ArrowLeft, Users, X, Check } from 'lucide-react'
 
 export function GroupsPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { user } = useAuth()
   const [showContactsModal, setShowContactsModal] = useState(false)
   const [groupName, setGroupName] = useState('')
@@ -15,9 +16,23 @@ export function GroupsPage() {
   const [contacts, setContacts] = useState<any[]>([])
   const [creating, setCreating] = useState(false)
 
+  // Get the createWith parameter from URL (user ID to pre-select)
+  const createWithUserId = searchParams.get('createWith')
+
   useEffect(() => {
     loadContacts()
   }, [user])
+
+  // Pre-select user from URL parameter when contacts are loaded
+  useEffect(() => {
+    if (createWithUserId && contacts.length > 0) {
+      // Check if this user is in our contacts
+      const contactExists = contacts.some(c => c.contact_user_id === createWithUserId)
+      if (contactExists && !selectedContacts.includes(createWithUserId)) {
+        setSelectedContacts(prev => [...prev, createWithUserId])
+      }
+    }
+  }, [createWithUserId, contacts])
 
   const loadContacts = async () => {
     if (!user) return
