@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Download, File, Play, X } from 'lucide-react';
+import { MediaViewer } from './MediaViewer';
 
 interface MediaMessageProps {
   url: string;
@@ -7,6 +8,16 @@ interface MediaMessageProps {
   fileName?: string;
   fileSize?: number;
   caption?: string;
+  // Optional props for MediaViewer
+  senderName?: string;
+  senderAvatar?: string;
+  timestamp?: string;
+  isOwn?: boolean;
+  messageId?: string;
+  onForward?: () => void;
+  onStar?: () => void;
+  onPin?: () => void;
+  onReaction?: (emoji: string) => void;
 }
 
 export const MediaMessage: React.FC<MediaMessageProps> = ({
@@ -15,6 +26,15 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
   fileName,
   fileSize,
   caption,
+  senderName = 'Utilisateur',
+  senderAvatar,
+  timestamp = new Date().toISOString(),
+  isOwn = false,
+  messageId,
+  onForward,
+  onStar,
+  onPin,
+  onReaction,
 }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -43,6 +63,19 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
     }
   };
 
+  // Determine media type for viewer (handle GIF detection)
+  const getViewerMediaType = (): 'image' | 'video' | 'audio' | 'gif' | 'sticker' => {
+    if (type === 'video') return 'video';
+    if (type === 'image') {
+      // Check if it's a GIF
+      if (url.toLowerCase().includes('.gif') || url.toLowerCase().includes('gif')) {
+        return 'gif';
+      }
+      return 'image';
+    }
+    return 'image';
+  };
+
   if (type === 'image') {
     return (
       <>
@@ -58,44 +91,66 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
           )}
         </div>
 
-        {/* Fullscreen modal */}
-        {isFullscreen && (
-          <div
-            className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4"
-            onClick={() => setIsFullscreen(false)}
-          >
-            <button
-              onClick={() => setIsFullscreen(false)}
-              className="absolute top-4 right-4 p-2 rounded-full bg-white/10 backdrop-blur-sm hover:bg-white/20 transition-colors"
-            >
-              <X size={24} className="text-white" />
-            </button>
-            <img
-              src={url}
-              alt="Image"
-              className="max-w-full max-h-full object-contain"
-              onClick={(e) => e.stopPropagation()}
-            />
-          </div>
-        )}
+        {/* MediaViewer for fullscreen */}
+        <MediaViewer
+          isOpen={isFullscreen}
+          mediaUrl={url}
+          mediaType={getViewerMediaType()}
+          senderName={senderName}
+          senderAvatar={senderAvatar}
+          timestamp={timestamp}
+          isOwn={isOwn}
+          onClose={() => setIsFullscreen(false)}
+          onForward={onForward}
+          onStar={onStar}
+          onPin={onPin}
+          onReaction={onReaction}
+        />
       </>
     );
   }
 
   if (type === 'video') {
     return (
-      <div className="relative max-w-[240px] sm:max-w-[280px]">
-        <video
-          src={url}
-          controls
-          className="w-full h-auto rounded-lg max-h-[200px] sm:max-h-[240px]"
-          onPlay={() => setIsPlaying(true)}
-          onPause={() => setIsPlaying(false)}
+      <>
+        <div className="relative max-w-[240px] sm:max-w-[280px] cursor-pointer" onClick={() => setIsFullscreen(true)}>
+          {/* Video thumbnail with play button overlay */}
+          <div className="relative">
+            <video
+              src={url}
+              className="w-full h-auto rounded-lg max-h-[200px] sm:max-h-[240px] object-cover"
+              muted
+              playsInline
+              preload="metadata"
+            />
+            {/* Play button overlay */}
+            <div className="absolute inset-0 flex items-center justify-center bg-black/20 rounded-lg">
+              <div className="w-12 h-12 rounded-full bg-black/50 flex items-center justify-center">
+                <Play size={24} className="text-white ml-1" />
+              </div>
+            </div>
+          </div>
+          {caption && (
+            <p className="mt-1.5 text-sm">{caption}</p>
+          )}
+        </div>
+
+        {/* MediaViewer for fullscreen video */}
+        <MediaViewer
+          isOpen={isFullscreen}
+          mediaUrl={url}
+          mediaType="video"
+          senderName={senderName}
+          senderAvatar={senderAvatar}
+          timestamp={timestamp}
+          isOwn={isOwn}
+          onClose={() => setIsFullscreen(false)}
+          onForward={onForward}
+          onStar={onStar}
+          onPin={onPin}
+          onReaction={onReaction}
         />
-        {caption && (
-          <p className="mt-1.5 text-sm">{caption}</p>
-        )}
-      </div>
+      </>
     );
   }
 
