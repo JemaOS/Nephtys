@@ -93,25 +93,58 @@ export const useMessageReactions = (conversationId: string): UseMessageReactions
     };
   }, [conversationId]);
 
-  // Ajouter une réaction
+  // Ajouter une réaction (une seule réaction par utilisateur par message)
   const addReaction = async (messageId: string, emoji: string) => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('User not authenticated');
 
-      const { error: insertError } = await supabase
+      // Vérifier si l'utilisateur a déjà une réaction sur ce message
+      const existingReaction = reactions.find(
+        r => r.message_id === messageId && r.user_id === user.id
+      );
+
+      if (existingReaction) {
+        // Si c'est le même emoji, on le retire (toggle)
+        if (existingReaction.emoji === emoji) {
+          await removeReaction(messageId, emoji);
+          return;
+        }
+        
+        // Sinon, on supprime l'ancienne réaction d'abord
+        await supabase
+          .from('message_reactions')
+          .delete()
+          .eq('message_id', messageId)
+          .eq('user_id', user.id);
+        
+        // Mettre à jour l'état local immédiatement
+        setReactions(prev => prev.filter(
+          r => !(r.message_id === messageId && r.user_id === user.id)
+        ));
+      }
+
+      // Ajouter la nouvelle réaction
+      const { data, error: insertError } = await supabase
         .from('message_reactions')
         .insert({
           message_id: messageId,
           user_id: user.id,
           emoji,
-        });
+        })
+        .select()
+        .single();
 
       if (insertError) {
         // Si l'erreur est due à une contrainte unique (réaction déjà existante), on l'ignore
         if (!insertError.message.includes('duplicate key')) {
           throw insertError;
         }
+      }
+
+      // Mettre à jour l'état local immédiatement
+      if (data) {
+        setReactions(prev => [...prev, data]);
       }
     } catch (err) {
       console.error('Error adding reaction:', err);

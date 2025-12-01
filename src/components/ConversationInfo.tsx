@@ -69,9 +69,14 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
   const [loadingFiles, setLoadingFiles] = useState(false);
   const [loadingLinks, setLoadingLinks] = useState(false);
 
+  // State for direct conversation participants
+  const [directParticipants, setDirectParticipants] = useState<{user: Profile, isCurrentUser: boolean}[]>([]);
+
   useEffect(() => {
     if (conversationType === 'group') {
       loadMembers();
+    } else if (conversationType === 'direct') {
+      loadDirectParticipants();
     }
     loadMuteStatus();
     
@@ -80,6 +85,32 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
       setCurrentAvatar(otherUser.avatar_url);
     }
   }, [conversationId, otherUser?.avatar_url, conversationType]);
+
+  // Load participants for direct conversations
+  const loadDirectParticipants = async () => {
+    try {
+      // Get current user profile
+      const { data: currentUserProfile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', currentUserId)
+        .single();
+
+      const participants: {user: Profile, isCurrentUser: boolean}[] = [];
+      
+      if (currentUserProfile) {
+        participants.push({ user: currentUserProfile, isCurrentUser: true });
+      }
+      
+      if (otherUser) {
+        participants.push({ user: otherUser, isCurrentUser: false });
+      }
+      
+      setDirectParticipants(participants);
+    } catch (err) {
+      console.error('Error loading direct participants:', err);
+    }
+  };
 
   // Load media/files/links when tab changes
   useEffect(() => {
@@ -536,131 +567,189 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
           {/* Content */}
           <div className="flex-1 overflow-y-auto bg-bg-primary p-4">
           {activeTab === 'overview' && (
-            <div className="p-4 space-y-3">
+            <div className="p-4 space-y-2">
               {/* Description */}
-              <div className="bg-bg-surface rounded-2xl p-3">
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="text-sm font-medium text-text-secondary">Description</h4>
-                  {(conversationType === 'group' ? isAdmin : true) && (
+              <div className="bg-bg-surface rounded-xl p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <h4 className="text-sm font-medium text-text-primary mb-1">Description</h4>
+                    {isEditingDescription ? (
+                      <div className="space-y-3 mt-2">
+                        <textarea
+                          value={newDescription}
+                          onChange={(e) => setNewDescription(e.target.value)}
+                          className="w-full px-3 py-2 bg-bg-hover text-text-primary rounded-lg outline-none resize-none text-sm"
+                          rows={3}
+                          placeholder="Ajouter une description..."
+                        />
+                        <button
+                          onClick={handleUpdateDescription}
+                          className="w-full py-2 bg-accent hover:bg-[#5a5ec9] text-white rounded-lg text-sm font-medium transition-colors"
+                        >
+                          Enregistrer
+                        </button>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-text-secondary">
+                        {conversationDescription || 'Aucune description'}
+                      </p>
+                    )}
+                  </div>
+                  {(conversationType === 'group' ? isAdmin : true) && !isEditingDescription && (
                     <button
                       onClick={() => setIsEditingDescription(!isEditingDescription)}
-                      className="text-accent"
+                      className="text-accent hover:text-accent/80 transition-colors ml-3"
                     >
-                      {isEditingDescription ? <Check size={16} /> : <Edit2 size={16} />}
+                      <Edit2 size={18} />
                     </button>
                   )}
                 </div>
-                {isEditingDescription ? (
-                  <div className="space-y-2">
-                    <textarea
-                      value={newDescription}
-                      onChange={(e) => setNewDescription(e.target.value)}
-                      className="w-full px-3 py-2 bg-bg-hover text-text-primary rounded-xl outline-none resize-none"
-                      rows={3}
-                      placeholder="Ajouter une description..."
-                    />
-                    <button
-                      onClick={handleUpdateDescription}
-                      className="w-full py-2 bg-accent hover:bg-[#5a5ec9] text-white rounded-xl text-sm font-medium"
-                    >
-                      Enregistrer
-                    </button>
-                  </div>
-                ) : (
-                  <p className="text-sm text-text-primary">
-                    {conversationDescription || 'Aucune description'}
-                  </p>
-                )}
               </div>
 
               {/* Chiffrement */}
-              <div className="bg-bg-surface rounded-2xl p-3">
+              <div className="bg-bg-surface rounded-xl p-4">
                 <div className="flex items-center gap-3">
-                  <Lock size={20} className="text-accent" />
+                  <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center">
+                    <Lock size={20} className="text-accent" />
+                  </div>
                   <div className="flex-1">
                     <h4 className="text-sm font-medium text-text-primary">Chiffrement</h4>
                     <p className="text-xs text-text-secondary">Messages chiffrés de bout en bout</p>
                   </div>
-                  <Check size={16} className="text-accent" />
+                  <Check size={18} className="text-accent" />
                 </div>
               </div>
 
               {/* Messages éphémères */}
-              <div className="bg-bg-surface rounded-2xl p-3">
-                <div className="flex items-center justify-between">
-                  <div>
+              <div className="bg-bg-surface rounded-xl p-4 cursor-pointer hover:bg-bg-hover transition-colors">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-bg-hover flex items-center justify-center">
+                    <Calendar size={20} className="text-text-secondary" />
+                  </div>
+                  <div className="flex-1">
                     <h4 className="text-sm font-medium text-text-primary">Messages éphémères</h4>
                     <p className="text-xs text-text-secondary">Désactivés</p>
                   </div>
-                  <ChevronRight size={16} className="text-text-secondary" />
+                  <ChevronRight size={18} className="text-text-secondary" />
                 </div>
               </div>
 
-              {/* Actions */}
-              <div className="space-y-2">
-                <button
-                  onClick={handleToggleMute}
-                  className="w-full bg-bg-surface rounded-2xl p-3 flex items-center gap-3 hover:bg-bg-hover transition-colors"
-                >
-                  {isMuted ? <Bell size={20} className="text-text-secondary" /> : <BellOff size={20} className="text-text-secondary" />}
-                  <span className="text-sm text-text-primary">
+              {/* Notifications */}
+              <div
+                onClick={handleToggleMute}
+                className="bg-bg-surface rounded-xl p-4 cursor-pointer hover:bg-bg-hover transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-bg-hover flex items-center justify-center">
+                    {isMuted ? <BellOff size={20} className="text-text-secondary" /> : <Bell size={20} className="text-text-secondary" />}
+                  </div>
+                  <span className="text-sm text-text-primary flex-1">
                     {isMuted ? 'Activer les notifications' : 'Désactiver les notifications'}
                   </span>
-                </button>
+                </div>
+              </div>
 
-                <button
-                  onClick={handleArchive}
-                  className="w-full bg-bg-surface rounded-2xl p-3 flex items-center gap-3 hover:bg-bg-hover transition-colors"
-                >
-                  <Archive size={20} className="text-text-secondary" />
+              {/* Archiver */}
+              <div
+                onClick={handleArchive}
+                className="bg-bg-surface rounded-xl p-4 cursor-pointer hover:bg-bg-hover transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-bg-hover flex items-center justify-center">
+                    <Archive size={20} className="text-text-secondary" />
+                  </div>
                   <span className="text-sm text-text-primary">Archiver la conversation</span>
-                </button>
+                </div>
+              </div>
 
-                <button
-                  onClick={handleDelete}
-                  className="w-full bg-bg-surface rounded-2xl p-3 flex items-center gap-3 hover:bg-bg-hover transition-colors"
-                >
-                  <Trash2 size={20} className="text-red-500" />
+              {/* Supprimer */}
+              <div
+                onClick={handleDelete}
+                className="bg-bg-surface rounded-xl p-4 cursor-pointer hover:bg-red-500/10 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center">
+                    <Trash2 size={20} className="text-red-500" />
+                  </div>
                   <span className="text-sm text-red-500">Supprimer la conversation</span>
-                </button>
+                </div>
               </div>
             </div>
           )}
 
-          {activeTab === 'members' && conversationType === 'group' && (
+          {activeTab === 'members' && (
             <div className="p-4 space-y-2">
-              {isAdmin && (
-                <button
-                  onClick={handleOpenAddMemberModal}
-                  className="w-full bg-bg-surface rounded-2xl p-4 flex items-center gap-3 hover:bg-bg-hover transition-colors mb-4"
-                >
-                  <UserPlus size={20} className="text-accent" />
-                  <span className="text-sm text-text-primary">Ajouter des membres</span>
-                </button>
-              )}
-              
-              {members.map((member) => (
-                <div
-                  key={member.id}
-                  className="bg-bg-surface rounded-2xl p-4 flex items-center gap-3"
-                >
-                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold">
-                    {(member.display_name || member.username)[0].toUpperCase()}
-                  </div>
-                  <div className="flex-1">
-                    <div className="font-medium text-text-primary">
-                      {member.display_name || member.username}
-                      {member.user_id === currentUserId && ' (Vous)'}
-                    </div>
-                    {member.role === 'admin' && (
-                      <div className="flex items-center gap-1 text-xs text-accent">
-                        <Crown size={12} />
-                        <span>Administrateur</span>
+              {/* For group conversations */}
+              {conversationType === 'group' && (
+                <>
+                  {isAdmin && (
+                    <button
+                      onClick={handleOpenAddMemberModal}
+                      className="w-full bg-bg-surface rounded-xl p-4 flex items-center gap-3 hover:bg-bg-hover transition-colors mb-4"
+                    >
+                      <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center">
+                        <UserPlus size={20} className="text-accent" />
                       </div>
-                    )}
-                  </div>
-                </div>
-              ))}
+                      <span className="text-sm text-text-primary">Ajouter des membres</span>
+                    </button>
+                  )}
+                  
+                  {members.map((member) => (
+                    <div
+                      key={member.id}
+                      className="bg-bg-surface rounded-xl p-4 flex items-center gap-3"
+                    >
+                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold">
+                        {(member.display_name || member.username)[0].toUpperCase()}
+                      </div>
+                      <div className="flex-1">
+                        <div className="font-medium text-text-primary">
+                          {member.display_name || member.username}
+                          {member.user_id === currentUserId && ' (Vous)'}
+                        </div>
+                        {member.role === 'admin' && (
+                          <div className="flex items-center gap-1 text-xs text-accent">
+                            <Crown size={12} />
+                            <span>Administrateur</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
+
+              {/* For direct conversations - show both participants */}
+              {conversationType === 'direct' && (
+                <>
+                  <p className="text-xs text-text-secondary mb-3 px-1">2 participants</p>
+                  {directParticipants.map((participant) => (
+                    <div
+                      key={participant.user.id}
+                      className="bg-bg-surface rounded-xl p-4 flex items-center gap-3"
+                    >
+                      {participant.user.avatar_url ? (
+                        <img
+                          src={participant.user.avatar_url}
+                          alt={participant.user.display_name || participant.user.username}
+                          className="w-12 h-12 rounded-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold">
+                          {(participant.user.display_name || participant.user.username)[0].toUpperCase()}
+                        </div>
+                      )}
+                      <div className="flex-1">
+                        <div className="font-medium text-text-primary">
+                          {participant.user.display_name || participant.user.username}
+                          {participant.isCurrentUser && ' (Vous)'}
+                        </div>
+                        <p className="text-xs text-text-secondary">@{participant.user.username}</p>
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
             </div>
           )}
 

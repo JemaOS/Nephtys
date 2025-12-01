@@ -4,7 +4,7 @@ import { useAuth } from '@/context/AuthContext'
 import { useTheme } from '@/context/ThemeContext'
 import { MainLayout } from '@/components/MainLayout'
 import { supabase, Message, Conversation, Profile } from '@/lib/supabase'
-import { ArrowLeft, Send, Phone, Video, MoreVertical, Search, Smile, Mic, Plus, Reply, UserPlus, Archive, Trash2, Bell, BellOff, Lock, Star } from 'lucide-react'
+import { ArrowLeft, Send, Phone, Video, MoreVertical, Search, Smile, Mic, Plus, Reply, UserPlus, Archive, Trash2, Bell, BellOff, Lock, Star, Forward } from 'lucide-react'
 import { EmojiPicker } from '@/components/EmojiPicker'
 import { MessageReactions } from '@/components/MessageReactions'
 import { MessageReply } from '@/components/MessageReply'
@@ -30,6 +30,7 @@ import { PinMessageDialog } from '@/components/PinMessageDialog'
 import { PinnedMessageBanner } from '@/components/PinnedMessageBanner'
 import { DeleteMessageDialog } from '@/components/DeleteMessageDialog'
 import { ForwardMessageModal } from '@/components/ForwardMessageModal'
+import { QuickReactionBar } from '@/components/QuickReactionBar'
 
 export function ChatViewPage() {
   const { conversationId } = useParams()
@@ -72,6 +73,11 @@ export function ChatViewPage() {
   const [deletedForMeIds, setDeletedForMeIds] = useState<Set<string>>(new Set())
   const [showForwardModal, setShowForwardModal] = useState(false)
   const [messageToForward, setMessageToForward] = useState<Message | null>(null)
+  const [quickReactionBar, setQuickReactionBar] = useState<{
+    isOpen: boolean;
+    position: { x: number; y: number };
+    message: Message | null;
+  }>({ isOpen: false, position: { x: 0, y: 0 }, message: null })
   const [pinnedMessage, setPinnedMessage] = useState<{
     id: string;
     content: string;
@@ -1097,13 +1103,46 @@ export function ChatViewPage() {
                   <div
                     key={message.id}
                     id={`message-${message.id}`}
-                    className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-1 ${isSelected ? 'bg-[#00a884]/10' : ''} transition-colors duration-500`}
+                    className={`flex ${isOwn ? 'justify-end' : 'justify-start'} items-end gap-2 mb-1 ${isSelected ? 'bg-[#00a884]/10' : ''} transition-colors duration-500`}
+                    onMouseEnter={() => setHoveredMessageId(message.id)}
+                    onMouseLeave={() => setHoveredMessageId(null)}
                   >
+                    {/* Quick action buttons - LEFT of sent messages */}
+                    {isOwn && hoveredMessageId === message.id && !isSelectionMode && (
+                      <div className="flex items-center gap-1 pb-4">
+                        <button
+                          onClick={() => handleForwardMessage(message)}
+                          className="w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] flex items-center justify-center transition-colors shadow-md"
+                          title="Transférer"
+                        >
+                          <Forward size={16} className="text-[#8696a0]" />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            setQuickReactionBar({
+                              isOpen: true,
+                              position: { x: rect.left + rect.width / 2, y: rect.top },
+                              message,
+                            });
+                          }}
+                          className="w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] flex items-center justify-center transition-colors shadow-md"
+                          title="Réagir"
+                        >
+                          <Smile size={16} className="text-[#8696a0]" />
+                        </button>
+                        <button
+                          onClick={() => setReplyToMessage(message)}
+                          className="w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] flex items-center justify-center transition-colors shadow-md"
+                          title="Répondre"
+                        >
+                          <Reply size={16} className="text-[#8696a0]" />
+                        </button>
+                      </div>
+                    )}
                     <div
                       className={`max-w-[85%] md:max-w-[65%] relative group`}
                       data-message-id={message.id}
-                      onMouseEnter={() => setHoveredMessageId(message.id)}
-                      onMouseLeave={() => setHoveredMessageId(null)}
                       onContextMenu={(e) => handleContextMenu(e, message)}
                     >
                       <div className={`relative px-3 py-2 rounded-2xl ${isOwn ? 'bg-[#005c4b] text-white rounded-br-none' : 'bg-bg-surface text-text-primary rounded-bl-none'}`}>
@@ -1227,15 +1266,40 @@ export function ChatViewPage() {
                       {messageReactions.length > 0 && (
                         <MessageReactions reactions={messageReactions} currentUserId={user?.id || ''} onReactionClick={(emoji) => addReaction(message.id, emoji)} onReactionRemove={(emoji) => removeReaction(message.id, emoji)} />
                       )}
-                      {hoveredMessageId === message.id && (
-                        <div className={`absolute -bottom-2 ${isOwn ? 'left-2' : 'right-2'} opacity-0 group-hover:opacity-100 transition-opacity flex gap-1`}>
-                          <button onClick={() => setReplyToMessage(message)} className="p-2 rounded-full bg-bg-surface hover:bg-bg-hover transition-colors" aria-label="Répondre">
-                            <Reply size={16} className="text-text-secondary" />
-                          </button>
-                          <EmojiPicker onEmojiSelect={(emoji) => addReaction(message.id, emoji)} />
-                        </div>
-                      )}
                     </div>
+                    {/* Quick action buttons - RIGHT of received messages */}
+                    {!isOwn && hoveredMessageId === message.id && !isSelectionMode && (
+                      <div className="flex items-center gap-1 pb-4">
+                        <button
+                          onClick={() => setReplyToMessage(message)}
+                          className="w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] flex items-center justify-center transition-colors shadow-md"
+                          title="Répondre"
+                        >
+                          <Reply size={16} className="text-[#8696a0]" />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            setQuickReactionBar({
+                              isOpen: true,
+                              position: { x: rect.left + rect.width / 2, y: rect.top },
+                              message,
+                            });
+                          }}
+                          className="w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] flex items-center justify-center transition-colors shadow-md"
+                          title="Réagir"
+                        >
+                          <Smile size={16} className="text-[#8696a0]" />
+                        </button>
+                        <button
+                          onClick={() => handleForwardMessage(message)}
+                          className="w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] flex items-center justify-center transition-colors shadow-md"
+                          title="Transférer"
+                        >
+                          <Forward size={16} className="text-[#8696a0]" />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )
               })}
@@ -1430,6 +1494,27 @@ export function ChatViewPage() {
           setMessageToForward(null)
         }}
         onForward={handleForwardToConversations}
+      />
+
+      {/* Quick Reaction Bar */}
+      <QuickReactionBar
+        isOpen={quickReactionBar.isOpen}
+        position={quickReactionBar.position}
+        onReaction={(emoji) => {
+          if (quickReactionBar.message) {
+            addReaction(quickReactionBar.message.id, emoji)
+          }
+        }}
+        onMoreOptions={() => {
+          if (quickReactionBar.message) {
+            setContextMenu({
+              isOpen: true,
+              position: quickReactionBar.position,
+              message: quickReactionBar.message,
+            })
+          }
+        }}
+        onClose={() => setQuickReactionBar({ isOpen: false, position: { x: 0, y: 0 }, message: null })}
       />
     </MainLayout>
   )
