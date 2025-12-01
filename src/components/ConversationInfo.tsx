@@ -47,7 +47,12 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
   const [newDescription, setNewDescription] = useState(conversationDescription || '');
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
-  const [currentAvatar, setCurrentAvatar] = useState(conversationAvatar);
+  // For direct conversations, use otherUser's avatar; for groups, use conversation avatar
+  const [currentAvatar, setCurrentAvatar] = useState(
+    conversationType === 'direct' && otherUser?.avatar_url
+      ? otherUser.avatar_url
+      : conversationAvatar
+  );
   
   // Add member modal state
   const [showAddMemberModal, setShowAddMemberModal] = useState(false);
@@ -69,7 +74,12 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
       loadMembers();
     }
     loadMuteStatus();
-  }, [conversationId]);
+    
+    // Update avatar when otherUser changes (for direct conversations)
+    if (conversationType === 'direct' && otherUser?.avatar_url) {
+      setCurrentAvatar(otherUser.avatar_url);
+    }
+  }, [conversationId, otherUser?.avatar_url, conversationType]);
 
   // Load media/files/links when tab changes
   useEffect(() => {
