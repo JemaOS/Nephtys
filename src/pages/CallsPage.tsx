@@ -26,6 +26,7 @@ export function CallsPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [loading, setLoading] = useState(true)
   const [showContactsModal, setShowContactsModal] = useState(false)
+  const [showFavoritesModal, setShowFavoritesModal] = useState(false)
   const [contacts, setContacts] = useState<any[]>([])
   const [selectedCall, setSelectedCall] = useState<CallLog | null>(null)
   const [favorites, setFavorites] = useState<string[]>([])
@@ -457,17 +458,16 @@ export function CallsPage() {
         {/* Favoris Section */}
         <div className="px-4 py-3 bg-bg-secondary">
           <p className="text-xs text-text-secondary uppercase tracking-wide mb-2">Favoris</p>
-          {favorites.length === 0 ? (
-            <button
-              onClick={handleStartCall}
-              className="w-full px-4 py-3 flex items-center gap-3 hover:bg-bg-surface transition-colors rounded-lg"
-            >
-              <div className="w-12 h-12 rounded-full bg-bg-surface flex items-center justify-center">
-                <Star size={20} className="text-text-secondary" />
-              </div>
-              <span className="text-text-primary">Ajouter aux favoris</span>
-            </button>
-          ) : (
+          <button
+            onClick={() => setShowFavoritesModal(true)}
+            className="w-full px-4 py-3 flex items-center gap-3 hover:bg-bg-surface transition-colors rounded-lg"
+          >
+            <div className="w-12 h-12 rounded-full bg-bg-surface flex items-center justify-center">
+              <Star size={20} className="text-text-secondary" />
+            </div>
+            <span className="text-text-primary">Ajouter aux favoris</span>
+          </button>
+          {favorites.length > 0 && (
             <div className="space-y-1">
               {favorites.map(favId => {
                 const contact = contacts.find(c => c.contact_user_id === favId)
@@ -849,6 +849,93 @@ export function CallsPage() {
                   </div>
                 ))
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal d'ajout aux favoris */}
+      {showFavoritesModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="w-full max-w-md bg-bg-surface rounded-3xl flex flex-col max-h-[80vh]">
+            <div className="px-6 py-4 border-b border-bg-hover flex items-center justify-between">
+              <h2 className="text-xl font-semibold text-text-primary">Ajouter aux favoris</h2>
+              <button
+                onClick={() => setShowFavoritesModal(false)}
+                className="w-8 h-8 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-text-secondary"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto">
+              {contacts.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 px-6 text-center">
+                  <Star size={48} className="text-[#3b4a54] mb-3" />
+                  <p className="text-text-secondary mb-4">Aucun contact disponible</p>
+                  <button
+                    onClick={() => {
+                      setShowFavoritesModal(false)
+                      navigate('/contacts')
+                    }}
+                    className="px-6 py-2 rounded-2xl bg-accent hover:bg-[#5a5ec9] text-white font-medium transition-colors"
+                  >
+                    Ajouter des contacts
+                  </button>
+                </div>
+              ) : (
+                contacts.map((contact) => {
+                  const isFavorite = favorites.includes(contact.contact_user_id)
+                  return (
+                    <div
+                      key={contact.id}
+                      className="px-6 py-3 cursor-pointer hover:bg-bg-hover transition-colors"
+                      onClick={() => {
+                        toggleFavorite(contact.contact_user_id)
+                      }}
+                    >
+                      <div className="flex items-center gap-3">
+                        {contact.profile.avatar_url ? (
+                          <img
+                            src={contact.profile.avatar_url}
+                            alt={contact.profile.display_name || contact.profile.username}
+                            className="w-12 h-12 rounded-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold">
+                            {contact.profile.username[0].toUpperCase()}
+                          </div>
+                        )}
+                        
+                        <div className="flex-1 min-w-0">
+                          <h3 className="text-text-primary font-normal truncate">
+                            {contact.profile.display_name || contact.profile.username}
+                          </h3>
+                          <p className="text-sm text-text-secondary truncate">
+                            @{contact.profile.username}
+                          </p>
+                        </div>
+
+                        <div className="flex items-center">
+                          <Star
+                            size={24}
+                            className={isFavorite ? 'fill-[#6b6fdb] text-accent' : 'text-text-secondary'}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })
+              )}
+            </div>
+
+            <div className="px-6 py-4 border-t border-bg-hover">
+              <button
+                onClick={() => setShowFavoritesModal(false)}
+                className="w-full py-3 rounded-xl bg-accent hover:bg-[#5a5ec9] text-white font-medium transition-colors"
+              >
+                Terminé
+              </button>
             </div>
           </div>
         </div>
