@@ -1274,7 +1274,14 @@ export function ChatViewPage() {
                     <div
                       className={`max-w-[85%] md:max-w-[65%] relative group`}
                       data-message-id={message.id}
-                      onContextMenu={(e) => handleContextMenu(e, message)}
+                      onContextMenu={(e) => {
+                        // On mobile, prevent native context menu - use long press instead
+                        if (isMobile) {
+                          e.preventDefault()
+                          return
+                        }
+                        handleContextMenu(e, message)
+                      }}
                     >
                       <div className={`relative px-3 py-2 rounded-2xl ${isOwn ? 'bg-[#005c4b] text-white rounded-br-none' : 'bg-bg-surface text-text-primary rounded-bl-none'}`}>
                         {/* Hover Actions (Chevron dropdown) - Inside message bubble */}
