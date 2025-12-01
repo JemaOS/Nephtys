@@ -1018,7 +1018,7 @@ export function ChatViewPage() {
       <div className="flex-1 flex flex-col bg-bg-primary h-full overflow-hidden">
         {/* Header JemaOS - Selection mode header on mobile */}
         {isSelectionMode && isMobile ? (
-          <div className="bg-bg-surface px-2 sm:px-4 py-2 sm:py-3 flex items-center justify-between">
+          <div className="bg-bg-surface px-2 sm:px-4 py-2 sm:py-3 flex items-center justify-between sticky top-0 z-50">
             <div className="flex items-center gap-3">
               <button
                 onClick={exitSelectionMode}
