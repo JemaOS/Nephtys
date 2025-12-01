@@ -439,6 +439,9 @@ export function ContactsPage() {
 
       // Find and delete associated direct conversations
       for (const contactUserId of contactUserIds) {
+        // Special case: "Saved Messages" (self-contact)
+        const isSelfContact = contactUserId === user.id
+        
         // Find conversations where both users are members
         const { data: myConversations } = await supabase
           .from('conversation_members')
@@ -447,22 +450,43 @@ export function ContactsPage() {
 
         if (myConversations) {
           for (const conv of myConversations) {
-            // Check if this is a direct conversation with the contact
-            const { data: otherMember } = await supabase
+            // Check if it's a direct conversation
+            const { data: allMembers } = await supabase
               .from('conversation_members')
-              .select('*')
+              .select('user_id')
               .eq('conversation_id', conv.conversation_id)
-              .eq('user_id', contactUserId)
-              .maybeSingle()
 
-            if (otherMember) {
-              // Check if it's a direct conversation (only 2 members)
-              const { data: allMembers } = await supabase
+            if (!allMembers) continue
+
+            // For "Saved Messages": conversation with only 1 member (self)
+            if (isSelfContact && allMembers.length === 1 && allMembers[0].user_id === user.id) {
+              // Delete the conversation members first
+              await supabase
                 .from('conversation_members')
-                .select('id')
+                .delete()
                 .eq('conversation_id', conv.conversation_id)
 
-              if (allMembers && allMembers.length === 2) {
+              // Delete messages in the conversation
+              await supabase
+                .from('messages')
+                .delete()
+                .eq('conversation_id', conv.conversation_id)
+
+              // Delete the conversation
+              await supabase
+                .from('conversations')
+                .delete()
+                .eq('id', conv.conversation_id)
+
+              console.log('Deleted Saved Messages conversation:', conv.conversation_id)
+              continue
+            }
+
+            // For normal contacts: check if this is a direct conversation with the contact
+            if (!isSelfContact) {
+              const hasOtherMember = allMembers.some(m => m.user_id === contactUserId)
+
+              if (hasOtherMember && allMembers.length === 2) {
                 // Delete the conversation members first
                 await supabase
                   .from('conversation_members')
