@@ -72,6 +72,7 @@ export function ChatViewPage() {
   const [messageToPin, setMessageToPin] = useState<Message | null>(null)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [messageToDelete, setMessageToDelete] = useState<Message | null>(null)
+  const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false)
   const [deletedForMeIds, setDeletedForMeIds] = useState<Set<string>>(new Set())
   const [showForwardModal, setShowForwardModal] = useState(false)
   const [messageToForward, setMessageToForward] = useState<Message | null>(null)
@@ -893,18 +894,74 @@ export function ChatViewPage() {
     exitSelectionMode()
   }, [selectedMessages, exitSelectionMode])
 
-  const handleBulkDelete = useCallback(async () => {
-    if (confirm(`Supprimer ${selectedMessages.size} message(s)?`)) {
-      const ids = Array.from(selectedMessages)
-      await supabase
-        .from('messages')
-        .update({ deleted_at: new Date().toISOString() })
-        .in('id', ids)
-      
-      setMessages(prev => prev.filter(m => !selectedMessages.has(m.id)))
-      exitSelectionMode()
+  const handleBulkDelete = useCallback(() => {
+    // Show the bulk delete dialog instead of confirm
+    setShowBulkDeleteDialog(true)
+  }, [])
+
+  const handleBulkDeleteForEveryone = useCallback(async () => {
+    const ids = Array.from(selectedMessages)
+    
+    // Delete media files from storage for messages that have them
+    const selectedMsgs = messages.filter(m => selectedMessages.has(m.id))
+    for (const msg of selectedMsgs) {
+      if (msg.media_url) {
+        try {
+          const url = new URL(msg.media_url)
+          const pathParts = url.pathname.split('/storage/v1/object/public/media/')
+          if (pathParts.length > 1) {
+            const filePath = pathParts[1]
+            await supabase.storage.from('media').remove([filePath])
+          }
+        } catch (error) {
+          console.error('Error deleting file from storage:', error)
+        }
+      }
     }
-  }, [selectedMessages, exitSelectionMode])
+    
+    // Soft delete all selected messages
+    await supabase
+      .from('messages')
+      .update({
+        deleted_at: new Date().toISOString(),
+        content: '',
+        media_url: null,
+        file_name: null,
+        file_size: null,
+      })
+      .in('id', ids)
+    
+    setMessages(prev => prev.filter(m => !selectedMessages.has(m.id)))
+    setShowBulkDeleteDialog(false)
+    exitSelectionMode()
+  }, [selectedMessages, messages, exitSelectionMode])
+
+  const handleBulkDeleteForMe = useCallback(async () => {
+    const ids = Array.from(selectedMessages)
+    
+    // Try to insert into deleted_messages table for each message
+    if (user) {
+      for (const id of ids) {
+        try {
+          await supabase
+            .from('deleted_messages')
+            .insert({
+              message_id: id,
+              user_id: user.id,
+              deleted_at: new Date().toISOString(),
+            })
+        } catch (error) {
+          console.log('Using local state for delete for me:', error)
+        }
+      }
+    }
+    
+    // Update local state to hide the messages
+    setDeletedForMeIds(prev => new Set([...prev, ...ids]))
+    setMessages(prev => prev.filter(m => !selectedMessages.has(m.id)))
+    setShowBulkDeleteDialog(false)
+    exitSelectionMode()
+  }, [selectedMessages, user, exitSelectionMode])
 
   const handleBulkForward = useCallback(() => {
     // Get the first selected message to forward
@@ -1884,6 +1941,25 @@ export function ChatViewPage() {
         onDeleteForMe={handleDeleteForMe}
         isOwn={messageToDelete?.sender_id === user?.id}
         hasMedia={!!messageToDelete?.media_url}
+      />
+
+      {/* Bulk Delete Dialog */}
+      <DeleteMessageDialog
+        isOpen={showBulkDeleteDialog}
+        onClose={() => {
+          setShowBulkDeleteDialog(false)
+        }}
+        onDeleteForEveryone={handleBulkDeleteForEveryone}
+        onDeleteForMe={handleBulkDeleteForMe}
+        isOwn={Array.from(selectedMessages).every(id => {
+          const msg = messages.find(m => m.id === id)
+          return msg?.sender_id === user?.id
+        })}
+        hasMedia={Array.from(selectedMessages).some(id => {
+          const msg = messages.find(m => m.id === id)
+          return !!msg?.media_url
+        })}
+        messageCount={selectedMessages.size}
       />
 
       {/* Forward Message Modal */}

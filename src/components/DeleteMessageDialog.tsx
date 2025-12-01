@@ -7,6 +7,7 @@ interface DeleteMessageDialogProps {
   onDeleteForMe: () => void;
   isOwn: boolean;
   hasMedia?: boolean;
+  messageCount?: number;
 }
 
 export const DeleteMessageDialog: React.FC<DeleteMessageDialogProps> = ({
@@ -16,6 +17,7 @@ export const DeleteMessageDialog: React.FC<DeleteMessageDialogProps> = ({
   onDeleteForMe,
   isOwn,
   hasMedia = false,
+  messageCount = 1,
 }) => {
   const dialogRef = useRef<HTMLDivElement>(null);
 
@@ -71,11 +73,17 @@ export const DeleteMessageDialog: React.FC<DeleteMessageDialogProps> = ({
           {/* Title */}
           <div className="px-6 pt-6 pb-4">
             <h2 className="text-lg font-medium text-white text-center">
-              Supprimer le message ?
+              {messageCount > 1
+                ? `Supprimer ${messageCount} messages ?`
+                : 'Supprimer le message ?'
+              }
             </h2>
             {hasMedia && (
               <p className="text-sm text-[#8696a0] text-center mt-2">
-                Le fichier associé sera également supprimé.
+                {messageCount > 1
+                  ? 'Les fichiers associés seront également supprimés.'
+                  : 'Le fichier associé sera également supprimé.'
+                }
               </p>
             )}
           </div>
