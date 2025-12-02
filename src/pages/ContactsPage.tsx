@@ -1,8 +1,9 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { MainLayout } from '@/components/MainLayout'
 import { supabase, Contact, Profile } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
+import { offlineStorage } from '@/lib/offlineStorage'
 import { Search, UserPlus, MessageCircle, X, Check, Trash2, CheckSquare, Square } from 'lucide-react'
 
 export function ContactsPage() {
@@ -273,8 +274,17 @@ export function ContactsPage() {
     }
   }
 
+  // Track ongoing conversation creation to prevent duplicates
+  const creatingConversationRef = useRef<Set<string>>(new Set())
+
   const createConversation = async (contactId: string) => {
     if (!user) return
+
+    // Prevent duplicate creation attempts
+    if (creatingConversationRef.current.has(contactId)) {
+      console.log('Already creating conversation with:', contactId)
+      return
+    }
 
     console.log('Creating conversation with contact:', contactId)
     
@@ -282,70 +292,87 @@ export function ContactsPage() {
     const isSelfContact = contactId === user.id
 
     try {
-      // Check if conversation already exists
+      // OPTIMIZATION 1: Check IndexedDB cache first for instant navigation
+      const cachedConversations = await offlineStorage.getConversations()
+      
+      if (cachedConversations.length > 0) {
+        let cachedConv = null
+        
+        if (isSelfContact) {
+          // For "Saved Messages", find conversation with only self as member
+          cachedConv = cachedConversations.find(c =>
+            c.type === 'direct' &&
+            c.created_by === user.id &&
+            c.name === 'Messages enregistrés'
+          )
+        } else {
+          // For normal contacts, find direct conversation with this user
+          cachedConv = cachedConversations.find(c =>
+            c.type === 'direct' &&
+            c.otherUserProfile?.id === contactId
+          )
+        }
+        
+        if (cachedConv) {
+          console.log('Found conversation in cache, navigating immediately:', cachedConv.id)
+          navigate(`/chat/${cachedConv.id}`)
+          return
+        }
+      }
+
+      // Mark as creating to prevent duplicates
+      creatingConversationRef.current.add(contactId)
+
+      // OPTIMIZATION 2: Single optimized query to find existing conversation
       if (isSelfContact) {
         // Pour "Saved Messages", chercher une conversation où l'utilisateur est le seul membre
-        const { data: myConversations } = await supabase
+        const { data: savedMessagesConv } = await supabase
           .from('conversations')
           .select('id')
           .eq('type', 'direct')
           .eq('created_by', user.id)
+          .eq('name', 'Messages enregistrés')
+          .maybeSingle()
         
-        if (myConversations) {
-          for (const conv of myConversations) {
-            const { data: members } = await supabase
-              .from('conversation_members')
-              .select('user_id')
-              .eq('conversation_id', conv.id)
-            
-            // Si la conversation n'a qu'un seul membre et c'est nous, c'est "Saved Messages"
-            if (members && members.length === 1 && members[0].user_id === user.id) {
-              console.log('Saved Messages conversation already exists:', conv.id)
-              navigate(`/chat/${conv.id}`)
-              return
-            }
-          }
+        if (savedMessagesConv) {
+          console.log('Saved Messages conversation found:', savedMessagesConv.id)
+          creatingConversationRef.current.delete(contactId)
+          navigate(`/chat/${savedMessagesConv.id}`)
+          return
         }
       } else {
-        // Cas normal: chercher une conversation DIRECTE avec l'autre utilisateur
-        // On doit vérifier que c'est bien une conversation de type 'direct' et non un groupe
-        const { data: existingMembers } = await supabase
+        // Optimized: Use a single query with join to find direct conversation
+        const { data: existingConv } = await supabase
           .from('conversation_members')
-          .select('conversation_id')
-          .eq('user_id', user.id)
-
-        if (existingMembers) {
-          for (const member of existingMembers) {
-            // Vérifier d'abord que c'est une conversation directe (pas un groupe)
-            const { data: conversationData } = await supabase
-              .from('conversations')
-              .select('type')
-              .eq('id', member.conversation_id)
-              .maybeSingle()
-            
-            // Si ce n'est pas une conversation directe, passer à la suivante
-            if (!conversationData || conversationData.type !== 'direct') {
-              continue
-            }
-
-            // Vérifier que l'autre utilisateur est membre de cette conversation directe
-            const { data: otherMember } = await supabase
-              .from('conversation_members')
-              .select('*')
-              .eq('conversation_id', member.conversation_id)
-              .eq('user_id', contactId)
-              .maybeSingle()
-
-            if (otherMember) {
-              console.log('Direct conversation already exists:', member.conversation_id)
-              navigate(`/chat/${member.conversation_id}`)
-              return
-            }
+          .select(`
+            conversation_id,
+            conversations!inner(id, type)
+          `)
+          .eq('user_id', contactId)
+          .eq('conversations.type', 'direct')
+        
+        if (existingConv && existingConv.length > 0) {
+          // Check if user is also a member of any of these conversations
+          const convIds = existingConv.map(c => c.conversation_id)
+          const { data: userMembership } = await supabase
+            .from('conversation_members')
+            .select('conversation_id')
+            .eq('user_id', user.id)
+            .in('conversation_id', convIds)
+            .limit(1)
+            .maybeSingle()
+          
+          if (userMembership) {
+            console.log('Direct conversation found:', userMembership.conversation_id)
+            creatingConversationRef.current.delete(contactId)
+            navigate(`/chat/${userMembership.conversation_id}`)
+            return
           }
         }
       }
 
-      // Create new conversation
+      // OPTIMIZATION 3: Create conversation and navigate optimistically
+      // Generate a temporary ID for optimistic navigation
       const { data: conversation, error: convError } = await supabase
         .from('conversations')
         .insert({
@@ -360,44 +387,48 @@ export function ContactsPage() {
 
       if (convError) {
         console.error('Error creating conversation:', convError)
+        creatingConversationRef.current.delete(contactId)
         return
       }
 
-      console.log('Conversation created:', conversation)
-
       if (conversation) {
-        if (isSelfContact) {
-          // Pour "Saved Messages", un seul membre (soi-même)
-          const { error: membersError } = await supabase
-            .from('conversation_members')
-            .insert([
-              { conversation_id: conversation.id, user_id: user.id, role: 'admin', is_active: true }
-            ])
+        // Navigate immediately (optimistic)
+        console.log('Conversation created, navigating immediately:', conversation.id)
+        navigate(`/chat/${conversation.id}`)
 
-          if (membersError) {
-            console.error('Error adding member:', membersError)
-            return
-          }
-        } else {
-          // Cas normal: deux membres
-          const { error: membersError } = await supabase
-            .from('conversation_members')
-            .insert([
-              { conversation_id: conversation.id, user_id: user.id, role: 'admin', is_active: true },
-              { conversation_id: conversation.id, user_id: contactId, role: 'member', is_active: true }
-            ])
-
-          if (membersError) {
-            console.error('Error adding members:', membersError)
-            return
+        // Add members in background (non-blocking)
+        const addMembers = async () => {
+          try {
+            if (isSelfContact) {
+              await supabase
+                .from('conversation_members')
+                .insert([
+                  { conversation_id: conversation.id, user_id: user.id, role: 'admin', is_active: true }
+                ])
+            } else {
+              await supabase
+                .from('conversation_members')
+                .insert([
+                  { conversation_id: conversation.id, user_id: user.id, role: 'admin', is_active: true },
+                  { conversation_id: conversation.id, user_id: contactId, role: 'member', is_active: true }
+                ])
+            }
+            console.log('Members added successfully')
+          } catch (err) {
+            console.error('Error adding members:', err)
+          } finally {
+            creatingConversationRef.current.delete(contactId)
           }
         }
-
-        console.log('Members added, navigating to chat')
-        navigate(`/chat/${conversation.id}`)
+        
+        // Execute in background without awaiting
+        addMembers()
+      } else {
+        creatingConversationRef.current.delete(contactId)
       }
     } catch (err) {
       console.error('Error in createConversation:', err)
+      creatingConversationRef.current.delete(contactId)
     }
   }
 
