@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
+import { useEffect, useLayoutEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { useTheme } from '@/context/ThemeContext'
@@ -292,21 +292,27 @@ export function ChatViewPage() {
   // Track previous message count to detect new messages
   const prevMessageCountRef = useRef(0)
   const hasScrolledInitially = useRef(false)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
   
-  // Scroll to bottom instantly when conversation loads (initial load)
-  // Only scroll smoothly for NEW messages after initial load
+  // Scroll to bottom INSTANTLY when conversation loads (initial load)
+  // useLayoutEffect runs synchronously BEFORE the browser paints
+  // This ensures the user never sees the scroll animation
+  useLayoutEffect(() => {
+    if (!loading && messages.length > 0 && !hasScrolledInitially.current) {
+      // Initial load - scroll instantly without animation using scrollTop
+      // This is synchronous and happens before the browser paints
+      if (messagesContainerRef.current) {
+        messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
+      }
+      hasScrolledInitially.current = true
+      prevMessageCountRef.current = messages.length
+    }
+  }, [loading, messages.length])
+  
+  // Handle new messages with smooth scroll (after initial load)
   useEffect(() => {
-    if (!loading && messages.length > 0) {
-      if (!hasScrolledInitially.current) {
-        // Initial load - scroll instantly without animation
-        // Use setTimeout to ensure DOM is fully rendered
-        const timer = setTimeout(() => {
-          messagesEndRef.current?.scrollIntoView({ behavior: 'instant' })
-          hasScrolledInitially.current = true
-          prevMessageCountRef.current = messages.length
-        }, 50)
-        return () => clearTimeout(timer)
-      } else if (messages.length > prevMessageCountRef.current) {
+    if (!loading && messages.length > 0 && hasScrolledInitially.current) {
+      if (messages.length > prevMessageCountRef.current) {
         // New message added - scroll smoothly
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
         prevMessageCountRef.current = messages.length
@@ -1475,6 +1481,7 @@ export function ChatViewPage() {
 
         {/* Messages avec fond personnalisable */}
         <div
+          ref={messagesContainerRef}
           className="flex-1 overflow-y-auto p-2 sm:p-3 md:p-4 space-y-2 pb-40 md:pb-4 messages-container-mobile md:messages-container-mobile-reset"
           style={getWallpaperStyle()}
           onContextMenu={handleBackgroundContextMenu}
