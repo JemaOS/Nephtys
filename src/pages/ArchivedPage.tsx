@@ -165,16 +165,32 @@ export function ArchivedPage() {
                   className="px-4 py-3 hover:bg-bg-surface transition-colors"
                 >
                   <div className="flex items-center gap-3">
-                    {(conversation.type === 'direct' && conversation.otherUserProfile?.avatar_url) || conversation.avatar_url ? (
-                      <img
-                        src={conversation.type === 'direct' ? conversation.otherUserProfile?.avatar_url! : conversation.avatar_url!}
-                        alt={displayName}
-                        className="w-12 h-12 rounded-full object-cover flex-shrink-0"
-                      />
+                    {/* For direct conversations, show the other user's avatar if available */}
+                    {/* For group conversations, show the group avatar if available */}
+                    {conversation.type === 'direct' ? (
+                      conversation.otherUserProfile?.avatar_url ? (
+                        <img
+                          src={conversation.otherUserProfile.avatar_url}
+                          alt={displayName}
+                          className="w-12 h-12 rounded-full object-cover flex-shrink-0"
+                        />
+                      ) : (
+                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold text-lg flex-shrink-0">
+                          {displayName[0]?.toUpperCase()}
+                        </div>
+                      )
                     ) : (
-                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold text-lg flex-shrink-0">
-                        {displayName[0]?.toUpperCase()}
-                      </div>
+                      conversation.avatar_url ? (
+                        <img
+                          src={conversation.avatar_url}
+                          alt={displayName}
+                          className="w-12 h-12 rounded-full object-cover flex-shrink-0"
+                        />
+                      ) : (
+                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold text-lg flex-shrink-0">
+                          {displayName[0]?.toUpperCase()}
+                        </div>
+                      )
                     )}
                     
                     <div className="flex-1 min-w-0 border-b border-bg-hover pb-3" onClick={() => navigate(`/chat/${conversation.id}`)}>

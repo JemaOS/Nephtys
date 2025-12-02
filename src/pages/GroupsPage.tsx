@@ -37,14 +37,21 @@ export function GroupsPage() {
   const loadContacts = async () => {
     if (!user) return
 
-    // 1. Load explicit contacts
+    // 1. Load explicit contacts (contacts I added)
     const { data: contactsData } = await supabase
       .from('contacts')
       .select('*')
       .eq('user_id', user.id)
       .eq('is_blocked', false)
 
-    // 2. Load users from existing conversations (chat contacts)
+    // 2. Load reverse contacts (users who added me as a contact)
+    const { data: reverseContactsData } = await supabase
+      .from('contacts')
+      .select('*')
+      .eq('contact_user_id', user.id)
+      .eq('is_blocked', false)
+
+    // 3. Load users from existing conversations (chat contacts)
     const { data: myConversations } = await supabase
       .from('conversation_members')
       .select('conversation_id')
@@ -64,11 +71,14 @@ export function GroupsPage() {
       chatUserIds = [...new Set(otherMembers?.map(m => m.user_id) || [])]
     }
 
-    // Get explicit contact user IDs
+    // Get explicit contact user IDs (contacts I added)
     const explicitContactIds = contactsData?.map(c => c.contact_user_id) || []
     
-    // Combine and deduplicate
-    const allContactIds = [...new Set([...explicitContactIds, ...chatUserIds])]
+    // Get reverse contact user IDs (users who added me)
+    const reverseContactIds = reverseContactsData?.map(c => c.user_id) || []
+    
+    // Combine and deduplicate all contact IDs
+    const allContactIds = [...new Set([...explicitContactIds, ...reverseContactIds, ...chatUserIds])]
 
     if (allContactIds.length > 0) {
       // Fetch all profiles at once
@@ -79,11 +89,26 @@ export function GroupsPage() {
 
       if (profiles) {
         const contactsWithProfiles = profiles.map(profile => {
-          // Check if this is an explicit contact
+          // Check if this is an explicit contact (I added them)
           const explicitContact = contactsData?.find(c => c.contact_user_id === profile.id)
+          
+          // Check if this is a reverse contact (they added me)
+          const reverseContact = reverseContactsData?.find(c => c.user_id === profile.id)
           
           if (explicitContact) {
             return { ...explicitContact, profile }
+          } else if (reverseContact) {
+            // Create a contact entry for reverse contacts (they added me)
+            return {
+              id: `reverse-${profile.id}`,
+              user_id: user.id,
+              contact_user_id: profile.id,
+              nickname: null,
+              is_blocked: false,
+              is_favorite: false,
+              created_at: reverseContact.added_at,
+              profile
+            }
           } else {
             // Create a virtual contact entry for chat contacts
             return {
