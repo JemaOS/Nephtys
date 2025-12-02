@@ -304,8 +304,28 @@ export function ChatViewPage() {
       if (messagesContainerRef.current) {
         messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
       }
+      
+      // Re-scroll after a short delay to account for images/media loading
+      // This ensures we scroll to the very bottom even after lazy-loaded content appears
+      const timeouts = [50, 150, 300, 500].map(delay =>
+        setTimeout(() => {
+          if (messagesContainerRef.current) {
+            messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
+          }
+          // Also use scrollIntoView on the end ref as a backup
+          if (messagesEndRef.current) {
+            messagesEndRef.current.scrollIntoView({ behavior: 'instant', block: 'end' })
+          }
+        }, delay)
+      )
+      
       hasScrolledInitially.current = true
       prevMessageCountRef.current = messages.length
+      
+      // Cleanup timeouts
+      return () => {
+        timeouts.forEach(t => clearTimeout(t))
+      }
     }
   }, [loading, messages.length])
   
