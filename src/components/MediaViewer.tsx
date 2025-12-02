@@ -59,6 +59,18 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  
+  // Touch/swipe state for navigation
+  const [touchStart, setTouchStart] = useState<{ x: number; y: number } | null>(null);
+  const [touchEnd, setTouchEnd] = useState<{ x: number; y: number } | null>(null);
+  const [swipeOffset, setSwipeOffset] = useState(0);
+  const [isSwipeTransitioning, setIsSwipeTransitioning] = useState(false);
+  
+  // Pinch-to-zoom state
+  const [initialPinchDistance, setInitialPinchDistance] = useState<number | null>(null);
+  const [initialZoom, setInitialZoom] = useState(1);
+  const [pinchCenter, setPinchCenter] = useState<{ x: number; y: number } | null>(null);
+  
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const imageContainerRef = useRef<HTMLDivElement>(null);
@@ -67,6 +79,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   const MIN_ZOOM = 0.5;
   const MAX_ZOOM = 5;
   const ZOOM_STEP = 0.25;
+  const SWIPE_THRESHOLD = 50; // Minimum swipe distance to trigger navigation
 
   // Format timestamp
   const formatTimestamp = (ts: string) => {
@@ -125,10 +138,13 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, currentIndex, allMedia]);
 
-  // Reset zoom when media changes or viewer closes
+  // Reset zoom and swipe state when media changes or viewer closes
   useEffect(() => {
     setZoom(1);
     setPosition({ x: 0, y: 0 });
+    setSwipeOffset(0);
+    setTouchStart(null);
+    setTouchEnd(null);
   }, [mediaUrl, isOpen]);
 
   // Handle mouse wheel zoom
@@ -198,6 +214,125 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
     setZoom(1);
     setPosition({ x: 0, y: 0 });
   }, []);
+
+  // Calculate distance between two touch points
+  const getTouchDistance = (touches: React.TouchList): number => {
+    if (touches.length < 2) return 0;
+    const dx = touches[0].clientX - touches[1].clientX;
+    const dy = touches[0].clientY - touches[1].clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+  };
+
+  // Get center point between two touches
+  const getTouchCenter = (touches: React.TouchList): { x: number; y: number } => {
+    if (touches.length < 2) return { x: 0, y: 0 };
+    return {
+      x: (touches[0].clientX + touches[1].clientX) / 2,
+      y: (touches[0].clientY + touches[1].clientY) / 2,
+    };
+  };
+
+  // Handle touch start for pinch-to-zoom and swipe navigation
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      // Pinch gesture started
+      e.preventDefault();
+      const distance = getTouchDistance(e.touches);
+      setInitialPinchDistance(distance);
+      setInitialZoom(zoom);
+      setPinchCenter(getTouchCenter(e.touches));
+    } else if (e.touches.length === 1 && zoom <= 1) {
+      // Single touch - potential swipe for navigation
+      setTouchStart({
+        x: e.touches[0].clientX,
+        y: e.touches[0].clientY,
+      });
+      setTouchEnd(null);
+    }
+  }, [zoom]);
+
+  // Handle touch move for pinch-to-zoom and swipe navigation
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length === 2 && initialPinchDistance !== null) {
+      // Pinch gesture in progress
+      e.preventDefault();
+      const currentDistance = getTouchDistance(e.touches);
+      const scale = currentDistance / initialPinchDistance;
+      const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, initialZoom * scale));
+      setZoom(newZoom);
+      
+      // Update position based on pinch center
+      if (pinchCenter && newZoom > 1) {
+        const center = getTouchCenter(e.touches);
+        setPosition({
+          x: (center.x - pinchCenter.x) * (newZoom - 1),
+          y: (center.y - pinchCenter.y) * (newZoom - 1),
+        });
+      }
+    } else if (e.touches.length === 1 && touchStart && zoom <= 1 && allMedia && allMedia.length > 1) {
+      // Single touch swipe for navigation
+      const currentX = e.touches[0].clientX;
+      const currentY = e.touches[0].clientY;
+      const diffX = currentX - touchStart.x;
+      const diffY = currentY - touchStart.y;
+      
+      // Only allow horizontal swipe if it's more horizontal than vertical
+      if (Math.abs(diffX) > Math.abs(diffY)) {
+        e.preventDefault();
+        setSwipeOffset(diffX);
+        setTouchEnd({ x: currentX, y: currentY });
+      }
+    }
+  }, [initialPinchDistance, initialZoom, pinchCenter, touchStart, zoom, allMedia]);
+
+  // Handle touch end for pinch-to-zoom and swipe navigation
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    // Reset pinch state
+    if (initialPinchDistance !== null) {
+      setInitialPinchDistance(null);
+      setPinchCenter(null);
+      
+      // Reset position if zoom is back to 1 or below
+      if (zoom <= 1) {
+        setPosition({ x: 0, y: 0 });
+      }
+    }
+    
+    // Handle swipe navigation
+    if (touchStart && touchEnd && zoom <= 1 && allMedia && allMedia.length > 1) {
+      const diffX = touchEnd.x - touchStart.x;
+      
+      if (Math.abs(diffX) > SWIPE_THRESHOLD) {
+        setIsSwipeTransitioning(true);
+        
+        if (diffX > 0 && currentIndex > 0) {
+          // Swipe right - go to previous
+          onNavigate?.(currentIndex - 1);
+        } else if (diffX < 0 && currentIndex < allMedia.length - 1) {
+          // Swipe left - go to next
+          onNavigate?.(currentIndex + 1);
+        }
+        
+        // Reset after transition
+        setTimeout(() => {
+          setSwipeOffset(0);
+          setIsSwipeTransitioning(false);
+        }, 300);
+      } else {
+        // Not enough swipe distance, animate back
+        setIsSwipeTransitioning(true);
+        setSwipeOffset(0);
+        setTimeout(() => {
+          setIsSwipeTransitioning(false);
+        }, 300);
+      }
+    } else {
+      setSwipeOffset(0);
+    }
+    
+    setTouchStart(null);
+    setTouchEnd(null);
+  }, [initialPinchDistance, touchStart, touchEnd, zoom, allMedia, currentIndex, onNavigate]);
 
   // Prevent body scroll when viewer is open
   useEffect(() => {
@@ -481,8 +616,12 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
         className="flex-1 flex items-center justify-center p-4 md:p-8 overflow-hidden"
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        style={{ touchAction: zoom > 1 ? 'none' : 'pan-y' }}
       >
-        {/* Image, GIF, Sticker - all displayed fullscreen with zoom */}
+        {/* Image, GIF, Sticker - all displayed fullscreen with zoom and swipe */}
         {(mediaType === 'image' || mediaType === 'gif' || mediaType === 'sticker') && (
           <div
             ref={imageContainerRef}
@@ -491,6 +630,10 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
             } ${isDragging ? 'cursor-grabbing' : ''}`}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
+            style={{
+              transform: zoom <= 1 ? `translateX(${swipeOffset}px)` : 'none',
+              transition: isSwipeTransitioning ? 'transform 0.3s ease-out' : 'none',
+            }}
           >
             <img
               src={mediaUrl}
@@ -499,10 +642,11 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
               style={{
                 transform: `scale(${zoom}) translate(${position.x / zoom}px, ${position.y / zoom}px)`,
                 transition: isDragging ? 'none' : 'transform 0.1s ease-out',
+                touchAction: 'manipulation',
               }}
               onClick={(e) => {
                 e.stopPropagation();
-                // Double-click to reset zoom
+                // Double-click/tap to reset zoom
                 if (e.detail === 2) {
                   handleResetZoom();
                 }
@@ -514,7 +658,15 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
             {zoom !== 1 && (
               <div className="absolute bottom-4 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full bg-black/60 text-white text-sm flex items-center gap-2">
                 <span>Zoom: {Math.round(zoom * 100)}%</span>
-                <span className="text-white/60 text-xs">• Molette pour zoomer • Double-clic pour réinitialiser</span>
+                <span className="text-white/60 text-xs hidden md:inline">• Molette pour zoomer • Double-clic pour réinitialiser</span>
+                <span className="text-white/60 text-xs md:hidden">• Pincez pour zoomer</span>
+              </div>
+            )}
+            
+            {/* Swipe hint for mobile when there are multiple media */}
+            {allMedia && allMedia.length > 1 && zoom <= 1 && (
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full bg-black/60 text-white text-xs md:hidden">
+                Glissez pour naviguer
               </div>
             )}
           </div>

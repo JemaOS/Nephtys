@@ -217,8 +217,33 @@ export function ChatViewPage() {
     }
   }, [conversationId, user?.id, permission, otherUser?.id])
 
-  useEffect(() => { scrollToBottom() }, [messages])
-  const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  // Scroll to bottom when messages change (smooth for new messages)
+  useEffect(() => {
+    if (messages.length > 0) {
+      scrollToBottom('smooth')
+    }
+  }, [messages])
+  
+  // Scroll to bottom instantly when conversation loads (initial load)
+  const hasScrolledInitially = useRef(false)
+  useEffect(() => {
+    if (!loading && messages.length > 0 && !hasScrolledInitially.current) {
+      // Use requestAnimationFrame to ensure DOM is ready
+      requestAnimationFrame(() => {
+        scrollToBottom('instant')
+        hasScrolledInitially.current = true
+      })
+    }
+  }, [loading, messages.length])
+  
+  // Reset initial scroll flag when conversation changes
+  useEffect(() => {
+    hasScrolledInitially.current = false
+  }, [conversationId])
+  
+  const scrollToBottom = (behavior: 'smooth' | 'instant' = 'smooth') => {
+    messagesEndRef.current?.scrollIntoView({ behavior })
+  }
 
   // Fermer l'emoji picker si on clique en dehors
   useEffect(() => {
