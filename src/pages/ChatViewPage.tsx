@@ -1634,6 +1634,8 @@ export function ChatViewPage() {
                                   // Remove the URL from the message content since it will be shown in the preview
                                   if (previewData.url) {
                                     displayContent = message.content.replace(previewData.url, '').trim()
+                                    // Also clean up any trailing/leading hyphens, dashes, or common separators
+                                    displayContent = displayContent.replace(/^[\s\-–—:]+|[\s\-–—:]+$/g, '').trim()
                                   }
                                 } catch {
                                   // Keep original content if parsing fails
