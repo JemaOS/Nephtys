@@ -120,10 +120,10 @@ img {
   padding-bottom: calc(56px + 56px + env(safe-area-inset-bottom, 0px) + 16px);
 }
 
-/* Ensure images in messages are fully visible */
+/* Ensure images in messages stay within bounds */
 .message-media-container {
   max-height: calc(100dvh - 200px); /* Leave room for header, input, and nav */
-  overflow: visible;
+  overflow: hidden;
 }
 
 /* Fix for foldable phones where 100vh doesn't account for fold */

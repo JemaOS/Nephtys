@@ -96,6 +96,19 @@ export function ChatsPage() {
         )
         .subscribe()
 
+      // Subscribe to conversation_members changes (for when members are added/removed)
+      const membersChannel = supabase
+        .channel('conversation-members')
+        .on('postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'conversation_members'
+          },
+          () => debouncedReload()
+        )
+        .subscribe()
+
       // Subscribe to profile changes for real-time avatar updates with debounced reload
       const profilesChannel = supabase
         .channel('profiles-updates')
@@ -111,6 +124,7 @@ export function ChatsPage() {
 
       return () => {
         supabase.removeChannel(conversationsChannel)
+        supabase.removeChannel(membersChannel)
         supabase.removeChannel(profilesChannel)
       }
     }
@@ -190,9 +204,26 @@ export function ChatsPage() {
       // Step 4: Get unique user IDs and batch fetch all profiles (single query)
       // Include current user's profile for "Saved Messages" conversations
       const otherUserIds = [...new Set(allMembers?.map(m => m.user_id) || [])]
-      const userIdsToFetch = savedMessagesConvIds.size > 0
-        ? [...new Set([...otherUserIds, user.id])]
-        : otherUserIds
+      
+      // For direct conversations, we need to ensure we have all other user profiles
+      // Get all direct conversation IDs
+      const directConvIds = conversationsData
+        .filter(c => c.type === 'direct')
+        .map(c => c.id)
+      
+      // Get all user IDs from direct conversations (excluding self)
+      const directConvOtherUserIds = allMembers
+        .filter(m => directConvIds.includes(m.conversation_id))
+        .map(m => m.user_id)
+      
+      // Combine all user IDs we need to fetch
+      const userIdsToFetch = [
+        ...new Set([
+          ...otherUserIds,
+          ...directConvOtherUserIds,
+          ...(savedMessagesConvIds.size > 0 ? [user.id] : [])
+        ])
+      ]
       
       const { data: profiles } = userIdsToFetch.length > 0
         ? await supabase
@@ -257,8 +288,25 @@ export function ChatsPage() {
           if (isSavedMessages) {
             // Use current user's profile for "Saved Messages"
             otherProfile = profileMap.get(user.id)
-          } else {
-            otherProfile = otherUserIdsForConv.length > 0 ? profileMap.get(otherUserIdsForConv[0]) : undefined
+          } else if (otherUserIdsForConv.length > 0) {
+            // Normal direct conversation - get the other user's profile
+            otherProfile = profileMap.get(otherUserIdsForConv[0])
+            
+            // If profile not found in map, try to find any other member's profile
+            if (!otherProfile) {
+              for (const userId of otherUserIdsForConv) {
+                const profile = profileMap.get(userId)
+                if (profile) {
+                  otherProfile = profile
+                  break
+                }
+              }
+            }
+          }
+          
+          // Log warning if we couldn't find a profile for a direct conversation
+          if (!otherProfile && !isSavedMessages) {
+            console.warn(`[ChatsPage] Could not find profile for direct conversation ${conv.id}, other user IDs:`, otherUserIdsForConv)
           }
         }
 
@@ -470,14 +518,24 @@ export function ChatsPage() {
   const filteredConversations = useMemo(() => {
     return conversations.filter(conv => {
       // Filtre par recherche
-      if (searchQuery.trim() && !conv.name?.toLowerCase().includes(searchQuery.toLowerCase())) {
-        // Also check other user profile name for direct conversations
-        if (conv.type === 'direct' && conv.otherUserProfile) {
-          const profileName = conv.otherUserProfile.display_name || conv.otherUserProfile.username || ''
-          if (!profileName.toLowerCase().includes(searchQuery.toLowerCase())) {
-            return false
+      if (searchQuery.trim()) {
+        const query = searchQuery.toLowerCase()
+        
+        // Check conversation name first
+        if (conv.name?.toLowerCase().includes(query)) {
+          // Name matches, continue to other filters
+        } else if (conv.type === 'direct') {
+          // For direct conversations, check the other user's profile
+          if (conv.otherUserProfile) {
+            const profileName = conv.otherUserProfile.display_name || conv.otherUserProfile.username || ''
+            if (!profileName.toLowerCase().includes(query)) {
+              return false
+            }
           }
+          // If no otherUserProfile, still show the conversation (don't filter it out)
+          // This prevents conversations from disappearing due to missing profile data
         } else {
+          // Group conversation without matching name
           return false
         }
       }

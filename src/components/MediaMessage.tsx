@@ -163,18 +163,21 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
     // If we have dimensions (from props or loaded), calculate display size
     if (imageDimensions) {
       const displayDims = calculateDisplayDimensions(imageDimensions);
+      const aspectRatio = imageDimensions.width / imageDimensions.height;
       return {
-        width: `${displayDims.width}px`,
-        height: `${displayDims.height}px`,
-        maxWidth: '100%',
+        width: '100%',
+        maxWidth: `${displayDims.width}px`,
+        aspectRatio: `${aspectRatio}`,
+        maxHeight: '400px',
       };
     }
     
     // Default fallback for unknown dimensions
     return {
-      width: '200px',
-      height: '200px',
-      maxWidth: '100%',
+      width: '100%',
+      maxWidth: '200px',
+      aspectRatio: '1',
+      maxHeight: '400px',
     };
   };
 
@@ -208,7 +211,7 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
       <>
         <div
           className="relative cursor-pointer overflow-hidden rounded-xl border-[3px] border-[#787add] group message-media-container"
-          style={{ ...containerStyle }}
+          style={{ ...containerStyle, boxSizing: 'border-box' }}
           onClick={() => !imageError && setIsFullscreen(true)}
         >
           {/* Hover Actions Button */}
