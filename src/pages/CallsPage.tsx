@@ -864,26 +864,26 @@ export function CallsPage() {
                   <span className="text-text-secondary">Type</span>
                   <div className="flex items-center gap-2">
                     {selectedCall.type === 'video' ? <Video size={16} className="text-accent" /> : <Phone size={16} className="text-accent" />}
-                    <span className="text-white">{selectedCall.type === 'video' ? 'Appel vidéo' : 'Appel vocal'}</span>
+                    <span className="text-gray-800 dark:text-white">{selectedCall.type === 'video' ? 'Appel vidéo' : 'Appel vocal'}</span>
                   </div>
                 </div>
 
                 <div className="flex items-center justify-between">
                   <span className="text-text-secondary">Date</span>
-                  <span className="text-white text-sm">{new Date(selectedCall.started_at).toLocaleString('fr-FR')}</span>
+                  <span className="text-gray-800 dark:text-white text-sm">{new Date(selectedCall.started_at).toLocaleString('fr-FR')}</span>
                 </div>
 
                 {selectedCall.duration && (
                   <div className="flex items-center justify-between">
                     <span className="text-text-secondary">Durée</span>
-                    <span className="text-white">{formatDuration(selectedCall.duration)}</span>
+                    <span className="text-gray-800 dark:text-white">{formatDuration(selectedCall.duration)}</span>
                   </div>
                 )}
 
                 <div className="flex items-center justify-between">
                   <span className="text-text-secondary">Statut</span>
                   <span className={`${
-                    selectedCall.status === 'missed' || selectedCall.status === 'rejected' ? 'text-[#ea4335]' : 'text-[#787add]'
+                    selectedCall.status === 'missed' || selectedCall.status === 'rejected' ? 'text-[#ea4335]' : 'text-primary-600 dark:text-primary-400'
                   }`}>
                     {selectedCall.status === 'answered' ? 'Répondu' :
                      selectedCall.status === 'missed' ? 'Manqué' :
@@ -994,26 +994,26 @@ export function CallsPage() {
                 <span className="text-text-secondary">Type</span>
                 <div className="flex items-center gap-2">
                   {selectedCall.type === 'video' ? <Video size={16} className="text-accent" /> : <Phone size={16} className="text-accent" />}
-                  <span className="text-white">{selectedCall.type === 'video' ? 'Appel vidéo' : 'Appel vocal'}</span>
+                  <span className="text-gray-800 dark:text-white">{selectedCall.type === 'video' ? 'Appel vidéo' : 'Appel vocal'}</span>
                 </div>
               </div>
 
               <div className="flex items-center justify-between">
                 <span className="text-text-secondary">Date</span>
-                <span className="text-white">{new Date(selectedCall.started_at).toLocaleString('fr-FR')}</span>
+                <span className="text-gray-800 dark:text-white">{new Date(selectedCall.started_at).toLocaleString('fr-FR')}</span>
               </div>
 
               {selectedCall.duration && (
                 <div className="flex items-center justify-between">
                   <span className="text-text-secondary">Durée</span>
-                  <span className="text-white">{formatDuration(selectedCall.duration)}</span>
+                  <span className="text-gray-800 dark:text-white">{formatDuration(selectedCall.duration)}</span>
                 </div>
               )}
 
               <div className="flex items-center justify-between">
                 <span className="text-text-secondary">Statut</span>
                 <span className={`${
-                  selectedCall.status === 'missed' || selectedCall.status === 'rejected' ? 'text-[#ea4335]' : 'text-[#787add]'
+                  selectedCall.status === 'missed' || selectedCall.status === 'rejected' ? 'text-[#ea4335]' : 'text-primary-600 dark:text-primary-400'
                 }`}>
                   {selectedCall.status === 'answered' ? 'Répondu' :
                    selectedCall.status === 'missed' ? 'Manqué' :
