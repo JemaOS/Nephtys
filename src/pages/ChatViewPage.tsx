@@ -297,37 +297,32 @@ export function ChatViewPage() {
   // Scroll to bottom INSTANTLY when conversation loads (initial load)
   // useLayoutEffect runs synchronously BEFORE the browser paints
   // This ensures the user never sees the scroll animation
-  useLayoutEffect(() => {
-    if (!loading && messages.length > 0 && !hasScrolledInitially.current) {
-      // Initial load - scroll instantly without animation using scrollTop
-      // This is synchronous and happens before the browser paints
-      if (messagesContainerRef.current) {
-        messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
+  // Simple and reliable scroll to bottom
+  useEffect(() => {
+    // Scroll to bottom when messages are loaded for the first time
+    if (!loading && messages.length > 0 && !hasScrolledInitially.current && conversationId) {
+      const scrollToBottom = () => {
+        if (messagesEndRef.current) {
+          messagesEndRef.current.scrollIntoView({ behavior: 'instant', block: 'end' })
+        }
       }
       
-      // Re-scroll after a short delay to account for images/media loading
-      // This ensures we scroll to the very bottom even after lazy-loaded content appears
-      const timeouts = [50, 150, 300, 500].map(delay =>
-        setTimeout(() => {
-          if (messagesContainerRef.current) {
-            messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
-          }
-          // Also use scrollIntoView on the end ref as a backup
-          if (messagesEndRef.current) {
-            messagesEndRef.current.scrollIntoView({ behavior: 'instant', block: 'end' })
-          }
-        }, delay)
+      // Immediate scroll
+      scrollToBottom()
+      
+      // Re-scroll after delays to handle lazy-loaded images
+      const timeouts = [100, 300, 600, 1000, 2000].map(delay =>
+        setTimeout(scrollToBottom, delay)
       )
       
       hasScrolledInitially.current = true
       prevMessageCountRef.current = messages.length
       
-      // Cleanup timeouts
       return () => {
         timeouts.forEach(t => clearTimeout(t))
       }
     }
-  }, [loading, messages.length])
+  }, [loading, messages.length, conversationId])
   
   // Handle new messages with smooth scroll (after initial load)
   useEffect(() => {
