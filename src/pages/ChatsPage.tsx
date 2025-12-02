@@ -5,6 +5,7 @@ import { ConversationContextMenu } from '@/components/ConversationContextMenu'
 import { supabase, Conversation, Profile, Message } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { offlineStorage } from '@/lib/offlineStorage'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { MessageCircle, Search, Plus, MoreVertical, Check, UserPlus, Users, Pin, BellOff, ArrowLeft, Trash2, Archive, VolumeX, Volume2 } from 'lucide-react'
 
 // Memoized formatDate function outside component to prevent recreation on every render
@@ -81,6 +82,10 @@ export function ChatsPage() {
   })
   const { user } = useAuth()
   const navigate = useNavigate()
+  const isMobile = useIsMobile()
+  
+  // Hover state for desktop checkbox
+  const [hoveredConversationId, setHoveredConversationId] = useState<string | null>(null)
   
   // Ref for debouncing real-time subscription reloads
   const reloadTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -1254,6 +1259,10 @@ export function ChatsPage() {
 
               const hasUnread = (conversation.unreadCount || 0) > 0
               const isSelected = selectedConversations.has(conversation.id)
+              const isHovered = hoveredConversationId === conversation.id
+              
+              // Show checkbox on desktop: when hovered OR in selection mode
+              const showCheckbox = !isMobile && (isSelectionMode || isHovered)
 
               return (
                 <div
@@ -1275,17 +1284,46 @@ export function ChatsPage() {
                   onTouchEnd={handleTouchEnd}
                   onTouchMove={handleTouchMove}
                   onMouseDown={(e) => {
-                    // Desktop long press support
-                    if (e.button === 0) { // Left click only
+                    // Desktop long press support - only on mobile or when not clicking checkbox area
+                    if (isMobile && e.button === 0) {
                       handleTouchStart(conversation.id)
                     }
                   }}
                   onMouseUp={handleTouchEnd}
-                  onMouseLeave={handleTouchEnd}
+                  onMouseLeave={() => {
+                    handleTouchEnd()
+                    setHoveredConversationId(null)
+                  }}
+                  onMouseEnter={() => setHoveredConversationId(conversation.id)}
                 >
                   <div className="flex items-center gap-3">
-                    {/* Selection Checkbox - WhatsApp style */}
-                    {isSelectionMode && (
+                    {/* Desktop Hover Checkbox - WhatsApp Web style */}
+                    {!isMobile && (
+                      <div
+                        className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all duration-200 cursor-pointer ${
+                          isSelected
+                            ? 'bg-[#25D366] border-[#25D366] opacity-100'
+                            : showCheckbox
+                              ? 'border-text-secondary opacity-100 hover:border-[#25D366]'
+                              : 'border-transparent opacity-0'
+                        }`}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          if (!isSelectionMode) {
+                            enterSelectionMode(conversation.id)
+                          } else {
+                            toggleConversationSelection(conversation.id)
+                          }
+                        }}
+                      >
+                        {isSelected && (
+                          <Check size={14} className="text-white" strokeWidth={3} />
+                        )}
+                      </div>
+                    )}
+                    
+                    {/* Mobile Selection Checkbox - Only in selection mode */}
+                    {isMobile && isSelectionMode && (
                       <div
                         className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
                           isSelected
