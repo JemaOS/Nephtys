@@ -1,11 +1,20 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
-import { User } from '@supabase/supabase-js'
+import { User, Session } from '@supabase/supabase-js'
 import { supabase, Profile } from '@/lib/supabase'
+
+// Timeout for auth operations (in milliseconds)
+const AUTH_TIMEOUT = 5000;
+const PROFILE_TIMEOUT = 3000;
+
+// Local storage keys for offline support
+const CACHED_USER_KEY = 'anu_cached_user';
+const CACHED_PROFILE_KEY = 'anu_cached_profile';
 
 interface AuthContextType {
   user: User | null
   profile: Profile | null
   loading: boolean
+  isOffline: boolean
   signIn: (username: string, password: string) => Promise<void>
   signUp: (username: string, password: string) => Promise<void>
   signInAsGuest: (username: string) => Promise<void>
@@ -14,28 +23,151 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
+// Helper: Promise with timeout
+function withTimeout<T>(promise: Promise<T> | PromiseLike<T>, ms: number, fallback?: T): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      if (fallback !== undefined) {
+        resolve(fallback);
+      } else {
+        reject(new Error('Operation timed out'));
+      }
+    }, ms);
+
+    Promise.resolve(promise)
+      .then((result) => {
+        clearTimeout(timeoutId);
+        resolve(result);
+      })
+      .catch((error) => {
+        clearTimeout(timeoutId);
+        reject(error);
+      });
+  });
+}
+
+// Helper: Get cached user from localStorage
+function getCachedUser(): User | null {
+  try {
+    const cached = localStorage.getItem(CACHED_USER_KEY);
+    return cached ? JSON.parse(cached) : null;
+  } catch {
+    return null;
+  }
+}
+
+// Helper: Get cached profile from localStorage
+function getCachedProfile(): Profile | null {
+  try {
+    const cached = localStorage.getItem(CACHED_PROFILE_KEY);
+    return cached ? JSON.parse(cached) : null;
+  } catch {
+    return null;
+  }
+}
+
+// Helper: Cache user to localStorage
+function cacheUser(user: User | null): void {
+  try {
+    if (user) {
+      localStorage.setItem(CACHED_USER_KEY, JSON.stringify(user));
+    } else {
+      localStorage.removeItem(CACHED_USER_KEY);
+    }
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+// Helper: Cache profile to localStorage
+function cacheProfile(profile: Profile | null): void {
+  try {
+    if (profile) {
+      localStorage.setItem(CACHED_PROFILE_KEY, JSON.stringify(profile));
+    } else {
+      localStorage.removeItem(CACHED_PROFILE_KEY);
+    }
+  } catch {
+    // Ignore storage errors
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
+  const [isOffline, setIsOffline] = useState(!navigator.onLine)
+
+  // Monitor online/offline status
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+    
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null)
-      if (session?.user) {
-        loadProfile(session.user.id)
+    // Get initial session with timeout and offline fallback
+    const initAuth = async () => {
+      // First, try to load cached data for immediate display
+      const cachedUser = getCachedUser();
+      const cachedProfile = getCachedProfile();
+      
+      if (cachedUser) {
+        setUser(cachedUser);
+        if (cachedProfile) {
+          setProfile(cachedProfile);
+        }
+        // Don't block on loading if we have cached data
+        setLoading(false);
       }
-      setLoading(false)
-    })
+
+      // Then try to get fresh session from network
+      try {
+        const sessionPromise = supabase.auth.getSession();
+        const { data: { session } } = await withTimeout(
+          sessionPromise,
+          AUTH_TIMEOUT,
+          { data: { session: null } } as any
+        );
+        
+        if (session?.user) {
+          setUser(session.user);
+          cacheUser(session.user);
+          // Load profile in background, don't block
+          loadProfile(session.user.id);
+        } else if (!cachedUser) {
+          // No session and no cache - user needs to login
+          setUser(null);
+          setProfile(null);
+        }
+      } catch (error) {
+        console.warn('[Auth] Session fetch timed out or failed, using cached data');
+        // Keep using cached data if available
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    initAuth();
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null)
+      const newUser = session?.user ?? null;
+      setUser(newUser);
+      cacheUser(newUser);
+      
       if (session?.user) {
-        loadProfile(session.user.id)
+        loadProfile(session.user.id);
       } else {
-        setProfile(null)
+        setProfile(null);
+        cacheProfile(null);
       }
     })
 
@@ -69,14 +201,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user])
 
   const loadProfile = async (userId: string) => {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .maybeSingle()
+    try {
+      const profilePromise = supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle();
 
-    if (!error && data) {
-      setProfile(data)
+      const { data, error } = await withTimeout(
+        Promise.resolve(profilePromise),
+        PROFILE_TIMEOUT,
+        { data: null, error: null } as any
+      );
+
+      if (!error && data) {
+        setProfile(data);
+        cacheProfile(data);
+      }
+    } catch (error) {
+      console.warn('[Auth] Profile fetch timed out, using cached profile');
+      // Keep using cached profile if available
     }
   }
 
@@ -267,7 +411,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, signIn, signUp, signInAsGuest, signOut }}>
+    <AuthContext.Provider value={{ user, profile, loading, isOffline, signIn, signUp, signInAsGuest, signOut }}>
       {children}
     </AuthContext.Provider>
   )

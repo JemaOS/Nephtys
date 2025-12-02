@@ -1,6 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { offlineStorage } from '@/lib/offlineStorage';
+
+// Timeout for sync operations
+const SYNC_TIMEOUT = 10000;
+const SYNC_RETRY_DELAY = 5000;
 
 interface UseOfflineSyncReturn {
   isOnline: boolean;
@@ -9,54 +13,66 @@ interface UseOfflineSyncReturn {
   syncNow: () => Promise<void>;
 }
 
+// Helper: Promise with timeout
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      reject(new Error('Operation timed out'));
+    }, ms);
+
+    promise
+      .then((result) => {
+        clearTimeout(timeoutId);
+        resolve(result);
+      })
+      .catch((error) => {
+        clearTimeout(timeoutId);
+        reject(error);
+      });
+  });
+}
+
 export const useOfflineSync = (conversationId?: string): UseOfflineSyncReturn => {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isSyncing, setIsSyncing] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
+  const syncInProgress = useRef(false);
+  const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  useEffect(() => {
-    // Écouter les changements de connexion
-    const handleOnline = () => {
-      setIsOnline(true);
-      syncPendingMessages();
-    };
-
-    const handleOffline = () => {
-      setIsOnline(false);
-    };
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    // Charger le nombre de messages en attente
-    loadPendingCount();
-
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
-
-  const loadPendingCount = async () => {
+  // Load pending count - non-blocking
+  const loadPendingCount = useCallback(async () => {
     try {
       const pending = await offlineStorage.getPendingMessages();
       setPendingCount(pending.length);
     } catch (error) {
-      console.error('Error loading pending count:', error);
+      console.warn('[OfflineSync] Error loading pending count:', error);
+      // Don't throw, just log
     }
-  };
+  }, []);
 
-  const syncPendingMessages = async () => {
-    if (!isOnline || isSyncing) return;
+  // Sync pending messages with timeout and retry
+  const syncPendingMessages = useCallback(async () => {
+    // Prevent concurrent syncs
+    if (!navigator.onLine || syncInProgress.current) {
+      return;
+    }
 
+    syncInProgress.current = true;
     setIsSyncing(true);
+
     try {
       const pendingMessages = await offlineStorage.getPendingMessages();
       
+      if (pendingMessages.length === 0) {
+        return;
+      }
+
+      console.log(`[OfflineSync] Syncing ${pendingMessages.length} pending messages`);
+      
       for (const pending of pendingMessages) {
         try {
-          // Envoyer le message au serveur
-          const { error } = await supabase
+          // Add timeout to prevent hanging
+          const insertPromise = supabase
             .from('messages')
             .insert({
               conversation_id: pending.conversation_id,
@@ -68,49 +84,120 @@ export const useOfflineSync = (conversationId?: string): UseOfflineSyncReturn =>
               reply_to_id: pending.reply_to_id,
             });
 
+          const { error } = await withTimeout(
+            Promise.resolve(insertPromise),
+            SYNC_TIMEOUT
+          );
+
           if (!error) {
-            // Supprimer du stockage local
+            // Successfully sent, remove from local storage
             await offlineStorage.deletePendingMessage(pending.tempId);
+            console.log('[OfflineSync] Message synced successfully');
+          } else {
+            console.warn('[OfflineSync] Failed to sync message:', error);
           }
         } catch (error) {
-          console.error('Error syncing message:', error);
+          console.warn('[OfflineSync] Error syncing individual message:', error);
+          // Continue with next message, don't break the loop
         }
       }
 
       await loadPendingCount();
     } catch (error) {
-      console.error('Error syncing pending messages:', error);
+      console.warn('[OfflineSync] Error syncing pending messages:', error);
+      
+      // Schedule retry if still online
+      if (navigator.onLine && !retryTimeoutRef.current) {
+        retryTimeoutRef.current = setTimeout(() => {
+          retryTimeoutRef.current = null;
+          syncPendingMessages();
+        }, SYNC_RETRY_DELAY);
+      }
     } finally {
+      syncInProgress.current = false;
       setIsSyncing(false);
     }
-  };
+  }, [loadPendingCount]);
 
-  const syncNow = async () => {
+  // Handle online/offline events
+  useEffect(() => {
+    const handleOnline = () => {
+      console.log('[OfflineSync] Back online, starting sync');
+      setIsOnline(true);
+      // Delay sync slightly to ensure connection is stable
+      setTimeout(() => {
+        syncPendingMessages();
+      }, 1000);
+    };
+
+    const handleOffline = () => {
+      console.log('[OfflineSync] Gone offline');
+      setIsOnline(false);
+      // Clear any pending retry
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current);
+        retryTimeoutRef.current = null;
+      }
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    // Load pending count on mount (non-blocking)
+    loadPendingCount();
+
+    // Initial sync if online
+    if (navigator.onLine) {
+      // Delay initial sync to not block app startup
+      setTimeout(() => {
+        syncPendingMessages();
+      }, 2000);
+    }
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current);
+      }
+    };
+  }, [loadPendingCount, syncPendingMessages]);
+
+  // Manual sync function
+  const syncNow = useCallback(async () => {
     await syncPendingMessages();
-  };
+  }, [syncPendingMessages]);
 
-  // Sauvegarder les messages localement quand ils arrivent
+  // Subscribe to new messages for offline storage
   useEffect(() => {
     if (!conversationId || !isOnline) return;
 
-    const channel = supabase
-      .channel(`offline-sync:${conversationId}`)
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'messages',
-        filter: `conversation_id=eq.${conversationId}`,
-      }, async (payload) => {
-        try {
-          await offlineStorage.saveMessage(payload.new as any);
-        } catch (error) {
-          console.error('Error saving message offline:', error);
-        }
-      })
-      .subscribe();
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+
+    // Delay subscription to not block initial render
+    const subscribeTimeout = setTimeout(() => {
+      channel = supabase
+        .channel(`offline-sync:${conversationId}`)
+        .on('postgres_changes', {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+          filter: `conversation_id=eq.${conversationId}`,
+        }, async (payload) => {
+          try {
+            await offlineStorage.saveMessage(payload.new as any);
+          } catch (error) {
+            console.warn('[OfflineSync] Error saving message offline:', error);
+          }
+        })
+        .subscribe();
+    }, 500);
 
     return () => {
-      supabase.removeChannel(channel);
+      clearTimeout(subscribeTimeout);
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
     };
   }, [conversationId, isOnline]);
 

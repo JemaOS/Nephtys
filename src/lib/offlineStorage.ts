@@ -1,11 +1,15 @@
 // Offline Storage with IndexedDB
 // Permet de stocker les messages localement pour le mode hors ligne
+// Optimized for PWA performance with non-blocking initialization
 
 const DB_NAME = 'nephtys-offline-db';
 const DB_VERSION = 1;
 const MESSAGES_STORE = 'messages';
 const CONVERSATIONS_STORE = 'conversations';
 const PENDING_STORE = 'pending-messages';
+
+// Timeout for IndexedDB operations
+const DB_TIMEOUT = 3000;
 
 interface OfflineMessage {
   id: string;
@@ -38,180 +42,366 @@ interface PendingMessage {
 
 class OfflineStorage {
   private db: IDBDatabase | null = null;
+  private initPromise: Promise<void> | null = null;
+  private isInitialized = false;
+  private initFailed = false;
+
+  constructor() {
+    // Start initialization immediately but don't block
+    this.initPromise = this.init().catch((error) => {
+      console.warn('[OfflineStorage] Initialization failed:', error);
+      this.initFailed = true;
+    });
+  }
 
   async init(): Promise<void> {
+    // If already initialized, return immediately
+    if (this.isInitialized && this.db) {
+      return;
+    }
+
+    // Check if IndexedDB is available
+    if (!('indexedDB' in window)) {
+      console.warn('[OfflineStorage] IndexedDB not available');
+      this.initFailed = true;
+      return;
+    }
+
     return new Promise((resolve, reject) => {
-      const request = indexedDB.open(DB_NAME, DB_VERSION);
+      // Add timeout to prevent hanging
+      const timeoutId = setTimeout(() => {
+        console.warn('[OfflineStorage] Init timed out');
+        this.initFailed = true;
+        resolve(); // Don't reject, just mark as failed
+      }, DB_TIMEOUT);
 
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => {
-        this.db = request.result;
+      try {
+        const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+        request.onerror = () => {
+          clearTimeout(timeoutId);
+          console.error('[OfflineStorage] Failed to open database:', request.error);
+          this.initFailed = true;
+          resolve(); // Don't reject, just mark as failed
+        };
+
+        request.onsuccess = () => {
+          clearTimeout(timeoutId);
+          this.db = request.result;
+          this.isInitialized = true;
+          console.log('[OfflineStorage] Database initialized successfully');
+          resolve();
+        };
+
+        request.onupgradeneeded = (event) => {
+          const db = (event.target as IDBOpenDBRequest).result;
+
+          // Create messages store
+          if (!db.objectStoreNames.contains(MESSAGES_STORE)) {
+            const messagesStore = db.createObjectStore(MESSAGES_STORE, { keyPath: 'id' });
+            messagesStore.createIndex('conversation_id', 'conversation_id', { unique: false });
+            messagesStore.createIndex('created_at', 'created_at', { unique: false });
+          }
+
+          // Create conversations store
+          if (!db.objectStoreNames.contains(CONVERSATIONS_STORE)) {
+            db.createObjectStore(CONVERSATIONS_STORE, { keyPath: 'id' });
+          }
+
+          // Create pending messages store (for offline sending)
+          if (!db.objectStoreNames.contains(PENDING_STORE)) {
+            const pendingStore = db.createObjectStore(PENDING_STORE, { keyPath: 'tempId' });
+            pendingStore.createIndex('conversation_id', 'conversation_id', { unique: false });
+          }
+        };
+
+        // Handle blocked event (when another tab has the DB open with older version)
+        request.onblocked = () => {
+          clearTimeout(timeoutId);
+          console.warn('[OfflineStorage] Database blocked by another tab');
+          this.initFailed = true;
+          resolve();
+        };
+      } catch (error) {
+        clearTimeout(timeoutId);
+        console.error('[OfflineStorage] Exception during init:', error);
+        this.initFailed = true;
         resolve();
-      };
-
-      request.onupgradeneeded = (event) => {
-        const db = (event.target as IDBOpenDBRequest).result;
-
-        // Create messages store
-        if (!db.objectStoreNames.contains(MESSAGES_STORE)) {
-          const messagesStore = db.createObjectStore(MESSAGES_STORE, { keyPath: 'id' });
-          messagesStore.createIndex('conversation_id', 'conversation_id', { unique: false });
-          messagesStore.createIndex('created_at', 'created_at', { unique: false });
-        }
-
-        // Create conversations store
-        if (!db.objectStoreNames.contains(CONVERSATIONS_STORE)) {
-          db.createObjectStore(CONVERSATIONS_STORE, { keyPath: 'id' });
-        }
-
-        // Create pending messages store (for offline sending)
-        if (!db.objectStoreNames.contains(PENDING_STORE)) {
-          const pendingStore = db.createObjectStore(PENDING_STORE, { keyPath: 'tempId' });
-          pendingStore.createIndex('conversation_id', 'conversation_id', { unique: false });
-        }
-      };
+      }
     });
+  }
+
+  // Ensure DB is ready before operations
+  private async ensureReady(): Promise<boolean> {
+    if (this.initFailed) {
+      return false;
+    }
+    
+    if (this.initPromise) {
+      await this.initPromise;
+    }
+    
+    return this.isInitialized && this.db !== null;
   }
 
   // Messages operations
   async saveMessage(message: OfflineMessage): Promise<void> {
-    if (!this.db) await this.init();
+    const ready = await this.ensureReady();
+    if (!ready) {
+      console.warn('[OfflineStorage] Cannot save message - DB not ready');
+      return;
+    }
     
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([MESSAGES_STORE], 'readwrite');
-      const store = transaction.objectStore(MESSAGES_STORE);
-      const request = store.put(message);
+      try {
+        const transaction = this.db!.transaction([MESSAGES_STORE], 'readwrite');
+        const store = transaction.objectStore(MESSAGES_STORE);
+        const request = store.put(message);
 
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
+        request.onsuccess = () => resolve();
+        request.onerror = () => {
+          console.error('[OfflineStorage] Failed to save message:', request.error);
+          resolve(); // Don't reject, just log
+        };
+      } catch (error) {
+        console.error('[OfflineStorage] Exception saving message:', error);
+        resolve();
+      }
     });
   }
 
   async saveMessages(messages: OfflineMessage[]): Promise<void> {
-    if (!this.db) await this.init();
+    const ready = await this.ensureReady();
+    if (!ready) {
+      console.warn('[OfflineStorage] Cannot save messages - DB not ready');
+      return;
+    }
     
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([MESSAGES_STORE], 'readwrite');
-      const store = transaction.objectStore(MESSAGES_STORE);
+      try {
+        const transaction = this.db!.transaction([MESSAGES_STORE], 'readwrite');
+        const store = transaction.objectStore(MESSAGES_STORE);
 
-      messages.forEach(message => store.put(message));
+        messages.forEach(message => store.put(message));
 
-      transaction.oncomplete = () => resolve();
-      transaction.onerror = () => reject(transaction.error);
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => {
+          console.error('[OfflineStorage] Failed to save messages:', transaction.error);
+          resolve();
+        };
+      } catch (error) {
+        console.error('[OfflineStorage] Exception saving messages:', error);
+        resolve();
+      }
     });
   }
 
   async getMessages(conversationId: string): Promise<OfflineMessage[]> {
-    if (!this.db) await this.init();
+    const ready = await this.ensureReady();
+    if (!ready) {
+      console.warn('[OfflineStorage] Cannot get messages - DB not ready');
+      return [];
+    }
     
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([MESSAGES_STORE], 'readonly');
-      const store = transaction.objectStore(MESSAGES_STORE);
-      const index = store.index('conversation_id');
-      const request = index.getAll(conversationId);
+    return new Promise((resolve) => {
+      try {
+        const transaction = this.db!.transaction([MESSAGES_STORE], 'readonly');
+        const store = transaction.objectStore(MESSAGES_STORE);
+        const index = store.index('conversation_id');
+        const request = index.getAll(conversationId);
 
-      request.onsuccess = () => resolve(request.result || []);
-      request.onerror = () => reject(request.error);
+        request.onsuccess = () => resolve(request.result || []);
+        request.onerror = () => {
+          console.error('[OfflineStorage] Failed to get messages:', request.error);
+          resolve([]);
+        };
+      } catch (error) {
+        console.error('[OfflineStorage] Exception getting messages:', error);
+        resolve([]);
+      }
     });
   }
 
   async deleteMessage(messageId: string): Promise<void> {
-    if (!this.db) await this.init();
+    const ready = await this.ensureReady();
+    if (!ready) {
+      return;
+    }
     
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([MESSAGES_STORE], 'readwrite');
-      const store = transaction.objectStore(MESSAGES_STORE);
-      const request = store.delete(messageId);
+    return new Promise((resolve) => {
+      try {
+        const transaction = this.db!.transaction([MESSAGES_STORE], 'readwrite');
+        const store = transaction.objectStore(MESSAGES_STORE);
+        const request = store.delete(messageId);
 
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
+        request.onsuccess = () => resolve();
+        request.onerror = () => {
+          console.error('[OfflineStorage] Failed to delete message:', request.error);
+          resolve();
+        };
+      } catch (error) {
+        console.error('[OfflineStorage] Exception deleting message:', error);
+        resolve();
+      }
     });
   }
 
   // Pending messages operations (for offline sending)
   async savePendingMessage(message: PendingMessage): Promise<void> {
-    if (!this.db) await this.init();
+    const ready = await this.ensureReady();
+    if (!ready) {
+      console.warn('[OfflineStorage] Cannot save pending message - DB not ready');
+      return;
+    }
     
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([PENDING_STORE], 'readwrite');
-      const store = transaction.objectStore(PENDING_STORE);
-      const request = store.put(message);
+    return new Promise((resolve) => {
+      try {
+        const transaction = this.db!.transaction([PENDING_STORE], 'readwrite');
+        const store = transaction.objectStore(PENDING_STORE);
+        const request = store.put(message);
 
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
+        request.onsuccess = () => resolve();
+        request.onerror = () => {
+          console.error('[OfflineStorage] Failed to save pending message:', request.error);
+          resolve();
+        };
+      } catch (error) {
+        console.error('[OfflineStorage] Exception saving pending message:', error);
+        resolve();
+      }
     });
   }
 
   async getPendingMessages(): Promise<PendingMessage[]> {
-    if (!this.db) await this.init();
+    const ready = await this.ensureReady();
+    if (!ready) {
+      return [];
+    }
     
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([PENDING_STORE], 'readonly');
-      const store = transaction.objectStore(PENDING_STORE);
-      const request = store.getAll();
+    return new Promise((resolve) => {
+      try {
+        const transaction = this.db!.transaction([PENDING_STORE], 'readonly');
+        const store = transaction.objectStore(PENDING_STORE);
+        const request = store.getAll();
 
-      request.onsuccess = () => resolve(request.result || []);
-      request.onerror = () => reject(request.error);
+        request.onsuccess = () => resolve(request.result || []);
+        request.onerror = () => {
+          console.error('[OfflineStorage] Failed to get pending messages:', request.error);
+          resolve([]);
+        };
+      } catch (error) {
+        console.error('[OfflineStorage] Exception getting pending messages:', error);
+        resolve([]);
+      }
     });
   }
 
   async deletePendingMessage(tempId: string): Promise<void> {
-    if (!this.db) await this.init();
+    const ready = await this.ensureReady();
+    if (!ready) {
+      return;
+    }
     
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([PENDING_STORE], 'readwrite');
-      const store = transaction.objectStore(PENDING_STORE);
-      const request = store.delete(tempId);
+    return new Promise((resolve) => {
+      try {
+        const transaction = this.db!.transaction([PENDING_STORE], 'readwrite');
+        const store = transaction.objectStore(PENDING_STORE);
+        const request = store.delete(tempId);
 
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
+        request.onsuccess = () => resolve();
+        request.onerror = () => {
+          console.error('[OfflineStorage] Failed to delete pending message:', request.error);
+          resolve();
+        };
+      } catch (error) {
+        console.error('[OfflineStorage] Exception deleting pending message:', error);
+        resolve();
+      }
     });
   }
 
   // Conversations operations
   async saveConversation(conversation: any): Promise<void> {
-    if (!this.db) await this.init();
+    const ready = await this.ensureReady();
+    if (!ready) {
+      return;
+    }
     
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([CONVERSATIONS_STORE], 'readwrite');
-      const store = transaction.objectStore(CONVERSATIONS_STORE);
-      const request = store.put(conversation);
+    return new Promise((resolve) => {
+      try {
+        const transaction = this.db!.transaction([CONVERSATIONS_STORE], 'readwrite');
+        const store = transaction.objectStore(CONVERSATIONS_STORE);
+        const request = store.put(conversation);
 
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
+        request.onsuccess = () => resolve();
+        request.onerror = () => {
+          console.error('[OfflineStorage] Failed to save conversation:', request.error);
+          resolve();
+        };
+      } catch (error) {
+        console.error('[OfflineStorage] Exception saving conversation:', error);
+        resolve();
+      }
     });
   }
 
   async getConversations(): Promise<any[]> {
-    if (!this.db) await this.init();
+    const ready = await this.ensureReady();
+    if (!ready) {
+      return [];
+    }
     
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([CONVERSATIONS_STORE], 'readonly');
-      const store = transaction.objectStore(CONVERSATIONS_STORE);
-      const request = store.getAll();
+    return new Promise((resolve) => {
+      try {
+        const transaction = this.db!.transaction([CONVERSATIONS_STORE], 'readonly');
+        const store = transaction.objectStore(CONVERSATIONS_STORE);
+        const request = store.getAll();
 
-      request.onsuccess = () => resolve(request.result || []);
-      request.onerror = () => reject(request.error);
+        request.onsuccess = () => resolve(request.result || []);
+        request.onerror = () => {
+          console.error('[OfflineStorage] Failed to get conversations:', request.error);
+          resolve([]);
+        };
+      } catch (error) {
+        console.error('[OfflineStorage] Exception getting conversations:', error);
+        resolve([]);
+      }
     });
   }
 
   // Clear all data
   async clearAll(): Promise<void> {
-    if (!this.db) await this.init();
+    const ready = await this.ensureReady();
+    if (!ready) {
+      return;
+    }
     
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(
-        [MESSAGES_STORE, CONVERSATIONS_STORE, PENDING_STORE],
-        'readwrite'
-      );
+    return new Promise((resolve) => {
+      try {
+        const transaction = this.db!.transaction(
+          [MESSAGES_STORE, CONVERSATIONS_STORE, PENDING_STORE],
+          'readwrite'
+        );
 
-      transaction.objectStore(MESSAGES_STORE).clear();
-      transaction.objectStore(CONVERSATIONS_STORE).clear();
-      transaction.objectStore(PENDING_STORE).clear();
+        transaction.objectStore(MESSAGES_STORE).clear();
+        transaction.objectStore(CONVERSATIONS_STORE).clear();
+        transaction.objectStore(PENDING_STORE).clear();
 
-      transaction.oncomplete = () => resolve();
-      transaction.onerror = () => reject(transaction.error);
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => {
+          console.error('[OfflineStorage] Failed to clear all:', transaction.error);
+          resolve();
+        };
+      } catch (error) {
+        console.error('[OfflineStorage] Exception clearing all:', error);
+        resolve();
+      }
     });
+  }
+
+  // Check if storage is available
+  isAvailable(): boolean {
+    return this.isInitialized && !this.initFailed && this.db !== null;
   }
 }
 
