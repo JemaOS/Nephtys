@@ -1,15 +1,27 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Image, Video, File as FileIcon, X, Loader2, Camera, Smile, Sticker, FileImage, Search, Plus, Send } from 'lucide-react';
+import { Image, Video, File as FileIcon, X, Loader2, Camera, Smile, Sticker, FileImage, Search, Plus, Send, Edit3 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { ImageEditor } from './ImageEditor';
+import { processImageForUpload, ProcessedImage } from '@/lib/imageUtils';
 
 // Tenor GIF API (free tier)
 const TENOR_API_KEY = 'AIzaSyAyimkuYQYF_FXVALexPuGQctUWRURdCYQ'; // Public API key for demo
 const TENOR_CLIENT_KEY = 'nephtys_app';
 
+interface UploadedFileData {
+  url: string;
+  type: 'image' | 'video' | 'file';
+  fileName: string;
+  fileSize: number;
+  width?: number;
+  height?: number;
+  thumbnail?: string;
+}
+
 interface MediaUploaderProps {
   onMediaSelect: (selectedFile: globalThis.File, type: 'image' | 'video' | 'file') => void;
-  onUploadComplete: (url: string, type: 'image' | 'video' | 'file', fileName: string, fileSize: number) => void;
-  onMultipleUploadComplete?: (files: Array<{ url: string; type: 'image' | 'video' | 'file'; fileName: string; fileSize: number }>) => void;
+  onUploadComplete: (url: string, type: 'image' | 'video' | 'file', fileName: string, fileSize: number, width?: number, height?: number, thumbnail?: string) => void;
+  onMultipleUploadComplete?: (files: UploadedFileData[]) => void;
   onCancel: () => void;
   onEmojiSelect?: (emoji: string) => void;
   onGifStickerSend?: (url: string, type: 'gif' | 'sticker', caption?: string) => void;
@@ -45,6 +57,9 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
     type: 'gif' | 'sticker';
   } | null>(null);
   const [gifStickerCaption, setGifStickerCaption] = useState('');
+  // Image editor state
+  const [showImageEditor, setShowImageEditor] = useState(false);
+  const [imageToEdit, setImageToEdit] = useState<{ url: string; fileName: string; file: File } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
@@ -85,6 +100,15 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       const reader = new FileReader();
       reader.onloadend = () => {
         setPreview(reader.result as string);
+        // For images, show the editor
+        if (type === 'image') {
+          setImageToEdit({
+            url: reader.result as string,
+            fileName: file.name,
+            file: file,
+          });
+          setShowImageEditor(true);
+        }
       };
       reader.readAsDataURL(file);
     }
@@ -152,18 +176,31 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('User not authenticated');
 
-      const uploadedFiles: Array<{ url: string; type: 'image' | 'video' | 'file'; fileName: string; fileSize: number }> = [];
+      const uploadedFiles: UploadedFileData[] = [];
       const totalFiles = selectedFiles.length;
 
       for (let i = 0; i < selectedFiles.length; i++) {
         const { file, type } = selectedFiles[i];
+        
+        let fileToUpload: Blob = file;
+        let processedImage: ProcessedImage | null = null;
+        
+        // Compress images before upload
+        if (type === 'image') {
+          try {
+            processedImage = await processImageForUpload(file);
+            fileToUpload = processedImage.blob;
+          } catch (err) {
+            console.warn('Image compression failed, using original:', err);
+          }
+        }
         
         const folder = type === 'image' ? 'images' : type === 'video' ? 'videos' : 'documents';
         const fileName = `${user.id}/${folder}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
 
         const { data, error } = await supabase.storage
           .from('media')
-          .upload(fileName, file, {
+          .upload(fileName, fileToUpload, {
             cacheControl: '3600',
             upsert: false,
             contentType: file.type || 'application/octet-stream',
@@ -178,12 +215,21 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
           .from('media')
           .getPublicUrl(fileName);
 
-        uploadedFiles.push({
+        const uploadedFile: UploadedFileData = {
           url: publicUrl,
           type,
           fileName: file.name,
-          fileSize: file.size,
-        });
+          fileSize: fileToUpload instanceof Blob ? fileToUpload.size : file.size,
+        };
+        
+        // Add image dimensions if available
+        if (processedImage) {
+          uploadedFile.width = processedImage.dimensions.width;
+          uploadedFile.height = processedImage.dimensions.height;
+          uploadedFile.thumbnail = processedImage.thumbnailDataUrl;
+        }
+        
+        uploadedFiles.push(uploadedFile);
 
         // Update progress
         setUploadProgress(Math.round(((i + 1) / totalFiles) * 100));
@@ -195,7 +241,15 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       } else {
         // Fallback: send files one by one
         for (const uploadedFile of uploadedFiles) {
-          onUploadComplete(uploadedFile.url, uploadedFile.type, uploadedFile.fileName, uploadedFile.fileSize);
+          onUploadComplete(
+            uploadedFile.url,
+            uploadedFile.type,
+            uploadedFile.fileName,
+            uploadedFile.fileSize,
+            uploadedFile.width,
+            uploadedFile.height,
+            uploadedFile.thumbnail
+          );
         }
       }
 
@@ -286,6 +340,21 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       if (!user) throw new Error('User not authenticated');
 
       const fileType = getFileType(selectedFile);
+      let fileToUpload: Blob = selectedFile;
+      let processedImage: ProcessedImage | null = null;
+      
+      // Compress images before upload
+      if (fileType === 'image') {
+        try {
+          setUploadProgress(5); // Show some progress during compression
+          processedImage = await processImageForUpload(selectedFile);
+          fileToUpload = processedImage.blob;
+          setUploadProgress(15);
+        } catch (err) {
+          console.warn('Image compression failed, using original:', err);
+        }
+      }
+      
       const fileExt = selectedFile.name.split('.').pop() || 'bin';
       // Use 'media' bucket for all file types to ensure consistency
       const bucket = 'media';
@@ -307,7 +376,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       // Upload vers Supabase Storage
       const { data, error } = await supabase.storage
         .from(bucket)
-        .upload(fileName, selectedFile, {
+        .upload(fileName, fileToUpload, {
           cacheControl: '3600',
           upsert: false,
           contentType: selectedFile.type || 'application/octet-stream',
@@ -326,7 +395,17 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
         .getPublicUrl(fileName);
 
       setUploadProgress(100);
-      onUploadComplete(publicUrl, fileType, selectedFile.name, selectedFile.size);
+      
+      // Include image dimensions if available
+      onUploadComplete(
+        publicUrl,
+        fileType,
+        selectedFile.name,
+        fileToUpload instanceof Blob ? fileToUpload.size : selectedFile.size,
+        processedImage?.dimensions.width,
+        processedImage?.dimensions.height,
+        processedImage?.thumbnailDataUrl
+      );
       
       // Reset
       setSelectedFile(null);
@@ -348,7 +427,118 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
     setMultipleSelectionMode(false);
     setMultipleCaption('');
     setActiveTab('attach');
+    setShowImageEditor(false);
+    setImageToEdit(null);
     onCancel();
+  };
+
+  // Handle edited image from ImageEditor
+  const handleImageEditorSave = async (editedBlob: Blob, fileName: string) => {
+    // Create a File from the Blob
+    const editedFile = new File([editedBlob], fileName, { type: 'image/png' });
+    setSelectedFile(editedFile);
+    
+    // Create preview
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setPreview(reader.result as string);
+    };
+    reader.readAsDataURL(editedBlob);
+    
+    setShowImageEditor(false);
+    setImageToEdit(null);
+  };
+
+  // Handle send from ImageEditor
+  const handleImageEditorSend = async (editedBlob: Blob, fileName: string, caption: string) => {
+    setUploading(true);
+    setUploadProgress(0);
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('User not authenticated');
+
+      const editedFile = new File([editedBlob], fileName, { type: 'image/png' });
+      
+      // Process the edited image to get dimensions and thumbnail
+      let processedImage: ProcessedImage | null = null;
+      try {
+        setUploadProgress(5);
+        processedImage = await processImageForUpload(editedFile);
+        setUploadProgress(15);
+      } catch (err) {
+        console.warn('Image processing failed:', err);
+      }
+      
+      const fileToUpload = processedImage?.blob || editedFile;
+      const folder = 'images';
+      const uploadFileName = `${user.id}/${folder}/${Date.now()}_${fileName.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+
+      // Simulate progress for better UX
+      const progressInterval = setInterval(() => {
+        setUploadProgress(prev => {
+          if (prev >= 90) {
+            clearInterval(progressInterval);
+            return prev;
+          }
+          return prev + 10;
+        });
+      }, 200);
+
+      const { data, error } = await supabase.storage
+        .from('media')
+        .upload(uploadFileName, fileToUpload, {
+          cacheControl: '3600',
+          upsert: false,
+          contentType: 'image/png',
+        });
+
+      clearInterval(progressInterval);
+
+      if (error) {
+        console.error('Upload error details:', error);
+        throw new Error(error.message || 'Upload failed');
+      }
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('media')
+        .getPublicUrl(uploadFileName);
+
+      setUploadProgress(100);
+      onUploadComplete(
+        publicUrl,
+        'image',
+        fileName,
+        fileToUpload instanceof Blob ? fileToUpload.size : editedFile.size,
+        processedImage?.dimensions.width,
+        processedImage?.dimensions.height,
+        processedImage?.thumbnailDataUrl
+      );
+      
+      // Reset
+      setSelectedFile(null);
+      setPreview(null);
+      setShowImageEditor(false);
+      setImageToEdit(null);
+    } catch (error: any) {
+      console.error('Error uploading file:', error);
+      const errorMessage = error?.message || 'Erreur inconnue';
+      alert(`Erreur lors de l'upload du fichier: ${errorMessage}`);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // Open image editor for existing preview
+  const openImageEditor = () => {
+    if (preview && selectedFile && getFileType(selectedFile) === 'image') {
+      setImageToEdit({
+        url: preview,
+        fileName: selectedFile.name,
+        file: selectedFile,
+      });
+      setShowImageEditor(true);
+    }
   };
 
   const handleEmojiClick = (emoji: string) => {
@@ -518,6 +708,24 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-end md:items-center justify-center">
+      {/* Image Editor */}
+      {showImageEditor && imageToEdit && (
+        <ImageEditor
+          imageUrl={imageToEdit.url}
+          fileName={imageToEdit.fileName}
+          onSave={handleImageEditorSave}
+          onCancel={() => {
+            setShowImageEditor(false);
+            setImageToEdit(null);
+            // If no file was selected before, go back to attach tab
+            if (!selectedFile) {
+              setActiveTab('attach');
+            }
+          }}
+          onSend={handleImageEditorSend}
+        />
+      )}
+
       {/* GIF/Sticker Preview Mode - Full screen overlay */}
       {selectedGifSticker && (
         <div className="fixed inset-0 bg-bg-primary z-[110] flex flex-col">
@@ -1080,22 +1288,46 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
         )}
 
         {/* File preview */}
-        {!cameraMode && selectedFile && (
+        {!cameraMode && selectedFile && !showImageEditor && (
           <div className="p-4">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-text-primary">Aperçu</h3>
-              <button
-                onClick={handleCancel}
-                className="p-2 rounded-full hover:bg-bg-hover transition-colors text-text-primary"
-              >
-                <X size={20} />
-              </button>
+              <div className="flex items-center gap-2">
+                {/* Edit button for images */}
+                {preview && getFileType(selectedFile) === 'image' && (
+                  <button
+                    onClick={openImageEditor}
+                    className="p-2 rounded-full hover:bg-bg-hover transition-colors text-accent"
+                    title="Modifier l'image"
+                  >
+                    <Edit3 size={20} />
+                  </button>
+                )}
+                <button
+                  onClick={handleCancel}
+                  className="p-2 rounded-full hover:bg-bg-hover transition-colors text-text-primary"
+                >
+                  <X size={20} />
+                </button>
+              </div>
             </div>
 
             {/* Preview */}
-            <div className="mb-4 rounded-xl overflow-hidden bg-bg-surface">
+            <div className="mb-4 rounded-xl overflow-hidden bg-bg-surface relative group">
               {preview && getFileType(selectedFile) === 'image' && (
-                <img src={preview} alt="Preview" className="w-full h-auto max-h-96 object-contain" />
+                <>
+                  <img src={preview} alt="Preview" className="w-full h-auto max-h-96 object-contain" />
+                  {/* Edit overlay on hover */}
+                  <div
+                    onClick={openImageEditor}
+                    className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer"
+                  >
+                    <div className="flex flex-col items-center gap-2 text-white">
+                      <Edit3 size={32} />
+                      <span className="text-sm font-medium">Modifier</span>
+                    </div>
+                  </div>
+                </>
               )}
               {preview && getFileType(selectedFile) === 'video' && (
                 <video src={preview} controls className="w-full h-auto max-h-96" />

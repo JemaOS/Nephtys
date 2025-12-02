@@ -4,7 +4,7 @@ import { MainLayout } from '@/components/MainLayout'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { useWebRTCCall } from '../hooks/useWebRTCCall'
-import { Phone, Video, PhoneIncoming, PhoneOutgoing, PhoneMissed, Search, Star, Link2, Hash, Plus, MessageCircle, X, Trash2 } from 'lucide-react'
+import { Phone, Video, PhoneIncoming, PhoneOutgoing, PhoneMissed, Search, Star, Link2, Plus, MessageCircle, X, Trash2, UserPlus, Check } from 'lucide-react'
 import { CallScreen } from '@/components/CallScreen'
 
 interface CallLog {
@@ -27,6 +27,10 @@ export function CallsPage() {
   const [loading, setLoading] = useState(true)
   const [showContactsModal, setShowContactsModal] = useState(false)
   const [showFavoritesModal, setShowFavoritesModal] = useState(false)
+  const [showAddContactModal, setShowAddContactModal] = useState(false)
+  const [usernameToAdd, setUsernameToAdd] = useState('')
+  const [addContactLoading, setAddContactLoading] = useState(false)
+  const [addContactError, setAddContactError] = useState('')
   const [contacts, setContacts] = useState<any[]>([])
   const [selectedCall, setSelectedCall] = useState<CallLog | null>(null)
   const [favorites, setFavorites] = useState<string[]>([])
@@ -224,6 +228,172 @@ export function CallsPage() {
 
   const handleStartCall = () => {
     setShowContactsModal(true)
+  }
+
+  const handleAddContact = () => {
+    setShowAddContactModal(true)
+  }
+
+  const addContact = async () => {
+    if (!user || !usernameToAdd) return
+    
+    setAddContactLoading(true)
+    setAddContactError('')
+
+    try {
+      // Search for user by username
+      const { data: profileData, error: searchError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('username', usernameToAdd.trim())
+        .maybeSingle()
+
+      if (searchError || !profileData) {
+        setAddContactError('Utilisateur introuvable')
+        setAddContactLoading(false)
+        return
+      }
+
+      // Check if already a contact
+      const { data: existingContact } = await supabase
+        .from('contacts')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('contact_user_id', profileData.id)
+        .maybeSingle()
+
+      if (existingContact) {
+        setAddContactError('Contact déjà ajouté')
+        setAddContactLoading(false)
+        return
+      }
+
+      // Add the contact
+      const { error: insertError } = await supabase
+        .from('contacts')
+        .insert({
+          user_id: user.id,
+          contact_user_id: profileData.id,
+          is_blocked: false,
+          is_favorite: false
+        })
+
+      if (insertError) {
+        setAddContactError('Erreur lors de l\'ajout')
+        setAddContactLoading(false)
+        return
+      }
+
+      // Create a conversation with this contact
+      const isSelfContact = profileData.id === user.id
+      
+      // Check if conversation already exists
+      let conversationExists = false
+      let existingConversationId: string | null = null
+      
+      if (isSelfContact) {
+        const { data: myConversations } = await supabase
+          .from('conversations')
+          .select('id')
+          .eq('type', 'direct')
+          .eq('created_by', user.id)
+        
+        if (myConversations) {
+          for (const conv of myConversations) {
+            const { data: members } = await supabase
+              .from('conversation_members')
+              .select('user_id')
+              .eq('conversation_id', conv.id)
+            
+            if (members && members.length === 1 && members[0].user_id === user.id) {
+              conversationExists = true
+              existingConversationId = conv.id
+              break
+            }
+          }
+        }
+      } else {
+        const { data: existingMembers } = await supabase
+          .from('conversation_members')
+          .select('conversation_id')
+          .eq('user_id', user.id)
+
+        if (existingMembers) {
+          for (const member of existingMembers) {
+            const { data: conversationData } = await supabase
+              .from('conversations')
+              .select('type')
+              .eq('id', member.conversation_id)
+              .maybeSingle()
+            
+            if (!conversationData || conversationData.type !== 'direct') {
+              continue
+            }
+
+            const { data: otherMember } = await supabase
+              .from('conversation_members')
+              .select('*')
+              .eq('conversation_id', member.conversation_id)
+              .eq('user_id', profileData.id)
+              .maybeSingle()
+
+            if (otherMember) {
+              conversationExists = true
+              existingConversationId = member.conversation_id
+              break
+            }
+          }
+        }
+      }
+
+      // Create new conversation if needed
+      if (!conversationExists) {
+        const { data: conversation, error: convError } = await supabase
+          .from('conversations')
+          .insert({
+            type: 'direct',
+            created_by: user.id,
+            is_encrypted: true,
+            last_message_at: new Date().toISOString(),
+            name: isSelfContact ? 'Messages enregistrés' : null,
+          })
+          .select()
+          .maybeSingle()
+
+        if (!convError && conversation) {
+          if (isSelfContact) {
+            await supabase
+              .from('conversation_members')
+              .insert([
+                { conversation_id: conversation.id, user_id: user.id, role: 'admin', is_active: true }
+              ])
+          } else {
+            await supabase
+              .from('conversation_members')
+              .insert([
+                { conversation_id: conversation.id, user_id: user.id, role: 'admin', is_active: true },
+                { conversation_id: conversation.id, user_id: profileData.id, role: 'member', is_active: true }
+              ])
+          }
+          
+          existingConversationId = conversation.id
+        }
+      }
+      
+      // Navigate to the conversation
+      if (existingConversationId) {
+        navigate(`/chat/${existingConversationId}`)
+      }
+
+      // Reload contacts and close modal
+      await loadContacts()
+      setShowAddContactModal(false)
+      setUsernameToAdd('')
+    } catch (err) {
+      setAddContactError('Erreur inattendue')
+    } finally {
+      setAddContactLoading(false)
+    }
   }
 
   const handleCallContact = async (contactId: string, isVideo: boolean = false) => {
@@ -436,10 +606,11 @@ export function CallsPage() {
           <div className="flex items-center justify-between mb-4">
             <h1 className="text-xl font-semibold text-text-primary">Appels</h1>
             <button
-              onClick={handleStartCall}
+              onClick={handleAddContact}
               className="w-10 h-10 rounded-full bg-accent hover:bg-[#5a5ec9] flex items-center justify-center transition-colors"
+              title="Ajouter un contact"
             >
-              <Plus size={20} className="text-white" />
+              <UserPlus size={20} className="text-white" />
             </button>
           </div>
           
@@ -597,6 +768,136 @@ export function CallsPage() {
         </div>
       </div>
 
+      {/* Mobile Call Info Modal */}
+      {selectedCall && (
+        <div className="md:hidden fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="w-full max-w-md bg-bg-surface rounded-3xl flex flex-col max-h-[90vh] overflow-hidden">
+            <div className="px-6 py-4 border-b border-bg-hover flex items-center justify-between flex-shrink-0">
+              <h2 className="text-xl font-semibold text-text-primary">Infos de l'appel</h2>
+              <button
+                onClick={() => setSelectedCall(null)}
+                className="w-8 h-8 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-text-secondary"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {/* Contact */}
+              <div className="bg-bg-hover rounded-2xl p-6">
+                <div className="flex flex-col items-center gap-4">
+                  {(() => {
+                    const isOutgoing = selectedCall.caller_id === user?.id
+                    const otherProfile = isOutgoing ? selectedCall.callee_profile : selectedCall.caller_profile
+                    const displayName = otherProfile?.display_name || otherProfile?.username || 'U'
+                    const avatarUrl = otherProfile?.avatar_url
+                    
+                    return avatarUrl ? (
+                      <img
+                        src={avatarUrl}
+                        alt={displayName}
+                        className="w-20 h-20 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-20 h-20 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-2xl">
+                        {displayName[0]?.toUpperCase()}
+                      </div>
+                    )
+                  })()}
+                  <div className="text-center">
+                    <h3 className="text-lg font-medium text-text-primary mb-1">
+                      {(() => {
+                        const isOutgoing = selectedCall.caller_id === user?.id
+                        const otherProfile = isOutgoing ? selectedCall.callee_profile : selectedCall.caller_profile
+                        return otherProfile?.display_name || otherProfile?.username || 'Utilisateur'
+                      })()}
+                    </h3>
+                    <p className="text-sm text-text-secondary">
+                      {selectedCall.caller_id === user?.id ? 'Appel sortant' : 'Appel entrant'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Détails */}
+              <div className="bg-bg-hover rounded-2xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-text-secondary">Type</span>
+                  <div className="flex items-center gap-2">
+                    {selectedCall.type === 'video' ? <Video size={16} className="text-accent" /> : <Phone size={16} className="text-accent" />}
+                    <span className="text-white">{selectedCall.type === 'video' ? 'Appel vidéo' : 'Appel vocal'}</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <span className="text-text-secondary">Date</span>
+                  <span className="text-white text-sm">{new Date(selectedCall.started_at).toLocaleString('fr-FR')}</span>
+                </div>
+
+                {selectedCall.duration && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-text-secondary">Durée</span>
+                    <span className="text-white">{formatDuration(selectedCall.duration)}</span>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between">
+                  <span className="text-text-secondary">Statut</span>
+                  <span className={`${
+                    selectedCall.status === 'missed' || selectedCall.status === 'rejected' ? 'text-[#ea4335]' : 'text-[#787add]'
+                  }`}>
+                    {selectedCall.status === 'answered' ? 'Répondu' :
+                     selectedCall.status === 'missed' ? 'Manqué' :
+                     selectedCall.status === 'rejected' ? 'Refusé' :
+                     selectedCall.status === 'ended' ? 'Terminé' : 'Initié'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="space-y-3">
+                <button
+                  onClick={() => {
+                    const isOutgoing = selectedCall.caller_id === user?.id
+                    const otherProfile = isOutgoing ? selectedCall.callee_profile : selectedCall.caller_profile
+                    if (otherProfile) {
+                      toggleFavorite(otherProfile.id)
+                    }
+                  }}
+                  className="w-full py-3 rounded-xl bg-bg-hover hover:bg-bg-surface text-text-primary font-medium flex items-center justify-center gap-2"
+                >
+                  <Star size={20} className={favorites.includes(
+                    selectedCall.caller_id === user?.id ? selectedCall.callee_profile?.id : selectedCall.caller_profile?.id
+                  ) ? 'fill-[#6b6fdb] text-accent' : ''} />
+                  {favorites.includes(
+                    selectedCall.caller_id === user?.id ? selectedCall.callee_profile?.id : selectedCall.caller_profile?.id
+                  ) ? 'Retirer des favoris' : 'Ajouter aux favoris'}
+                </button>
+                <button
+                  onClick={() => {
+                    navigate(`/chat/${selectedCall.conversation_id}`)
+                    setSelectedCall(null)
+                  }}
+                  className="w-full py-3 rounded-xl bg-accent hover:bg-[#5a5ec9] text-white font-medium flex items-center justify-center gap-2"
+                >
+                  <MessageCircle size={20} />
+                  Ouvrir la conversation
+                </button>
+                <button
+                  onClick={() => {
+                    handleRecall()
+                  }}
+                  className="w-full py-3 rounded-xl bg-bg-hover hover:bg-bg-surface text-text-primary font-medium flex items-center justify-center gap-2"
+                >
+                  <Phone size={20} />
+                  Rappeler
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Zone d'info ou d'action - Desktop only */}
       <div className="hidden md:flex flex-1 bg-bg-primary flex-col p-8">
         {selectedCall ? (
@@ -673,7 +974,7 @@ export function CallsPage() {
               <div className="flex items-center justify-between">
                 <span className="text-text-secondary">Statut</span>
                 <span className={`${
-                  selectedCall.status === 'missed' || selectedCall.status === 'rejected' ? 'text-[#ea4335]' : 'text-[#00a884]'
+                  selectedCall.status === 'missed' || selectedCall.status === 'rejected' ? 'text-[#ea4335]' : 'text-[#787add]'
                 }`}>
                   {selectedCall.status === 'answered' ? 'Répondu' :
                    selectedCall.status === 'missed' ? 'Manqué' :
@@ -724,37 +1025,27 @@ export function CallsPage() {
             <div className="text-center space-y-8 max-w-md">
               <h2 className="text-2xl font-light text-text-secondary mb-6">Démarrer un appel</h2>
               
-              <div className="grid grid-cols-3 gap-4">
-            <button
-              onClick={handleStartCall}
-              className="flex flex-col items-center gap-3 p-6 bg-bg-surface rounded-2xl hover:bg-bg-hover transition-colors"
-            >
-              <div className="w-16 h-16 rounded-full bg-accent flex items-center justify-center">
-                <Video size={28} className="text-white" />
+              <div className="grid grid-cols-2 gap-4">
+                <button
+                  onClick={handleStartCall}
+                  className="flex flex-col items-center gap-3 p-6 bg-bg-surface rounded-2xl hover:bg-bg-hover transition-colors"
+                >
+                  <div className="w-16 h-16 rounded-full bg-accent flex items-center justify-center">
+                    <Video size={28} className="text-white" />
+                  </div>
+                  <span className="text-sm text-text-primary">Démarrer un appel</span>
+                </button>
+                
+                <button
+                  onClick={handleCreateCallLink}
+                  className="flex flex-col items-center gap-3 p-6 bg-bg-surface rounded-2xl hover:bg-bg-hover transition-colors"
+                >
+                  <div className="w-16 h-16 rounded-full bg-bg-surface flex items-center justify-center border-2 border-accent">
+                    <Link2 size={28} className="text-accent" />
+                  </div>
+                  <span className="text-sm text-text-primary">Nouveau lien d'appel</span>
+                </button>
               </div>
-              <span className="text-sm text-text-primary">Démarrer un appel</span>
-            </button>
-            
-            <button
-              onClick={handleCreateCallLink}
-              className="flex flex-col items-center gap-3 p-6 bg-bg-surface rounded-2xl hover:bg-bg-hover transition-colors"
-            >
-              <div className="w-16 h-16 rounded-full bg-bg-surface flex items-center justify-center border-2 border-accent">
-                <Link2 size={28} className="text-accent" />
-              </div>
-              <span className="text-sm text-text-primary">Nouveau lien d'appel</span>
-            </button>
-            
-            <button
-              onClick={handleStartCall}
-              className="flex flex-col items-center gap-3 p-6 bg-bg-surface rounded-2xl hover:bg-bg-hover transition-colors"
-            >
-              <div className="w-16 h-16 rounded-full bg-bg-surface flex items-center justify-center border-2 border-accent">
-                <Hash size={28} className="text-accent" />
-              </div>
-              <span className="text-sm text-text-primary">Appeler un contact</span>
-            </button>
-          </div>
 
           <div className="mt-8 flex items-center justify-center gap-2 text-text-secondary text-sm">
             <svg width="16" height="20" viewBox="0 0 16 20" fill="currentColor">
@@ -935,6 +1226,82 @@ export function CallsPage() {
                 className="w-full py-3 rounded-xl bg-accent hover:bg-[#5a5ec9] text-white font-medium transition-colors"
               >
                 Terminé
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal d'ajout de contact */}
+      {showAddContactModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="w-full max-w-md bg-bg-surface rounded-2xl p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-semibold text-text-primary">Ajouter un contact</h2>
+              <button
+                onClick={() => {
+                  setShowAddContactModal(false)
+                  setUsernameToAdd('')
+                  setAddContactError('')
+                }}
+                className="w-8 h-8 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-text-secondary"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm text-[#787add]">Nom d'utilisateur (pseudo)</label>
+              <div className="relative">
+                <UserPlus size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" />
+                <input
+                  type="text"
+                  placeholder="pseudo_utilisateur"
+                  value={usernameToAdd}
+                  onChange={(e) => {
+                    setUsernameToAdd(e.target.value)
+                    setAddContactError('')
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && usernameToAdd.trim()) {
+                      addContact()
+                    }
+                  }}
+                  className="w-full h-11 pl-10 pr-3 bg-bg-hover text-text-primary text-sm rounded-xl border-none outline-none placeholder:text-text-secondary"
+                  autoFocus
+                />
+              </div>
+              {addContactError && <p className="text-sm text-[#ea4335]">{addContactError}</p>}
+            </div>
+
+            <p className="text-xs text-text-secondary">
+              Entrez le pseudo de l'utilisateur que vous souhaitez ajouter à vos contacts.
+            </p>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowAddContactModal(false)
+                  setUsernameToAdd('')
+                  setAddContactError('')
+                }}
+                className="flex-1 py-2 rounded-xl bg-bg-hover hover:bg-[#3b4a54] text-white transition-colors"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={addContact}
+                disabled={!usernameToAdd.trim() || addContactLoading}
+                className="flex-1 py-2 rounded-xl bg-accent hover:bg-[#5a5ec9] text-white font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {addContactLoading ? (
+                  <div className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                ) : (
+                  <>
+                    <Check size={18} />
+                    Ajouter
+                  </>
+                )}
               </button>
             </div>
           </div>

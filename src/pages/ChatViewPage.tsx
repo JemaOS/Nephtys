@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { useTheme } from '@/context/ThemeContext'
@@ -32,6 +32,45 @@ import { PinnedMessageBanner } from '@/components/PinnedMessageBanner'
 import { DeleteMessageDialog } from '@/components/DeleteMessageDialog'
 import { ForwardMessageModal } from '@/components/ForwardMessageModal'
 import { QuickReactionBar } from '@/components/QuickReactionBar'
+
+// Utility function to detect emoji-only messages (1-3 emojis without other text)
+// Uses a comprehensive regex pattern to match emojis including compound emojis
+const isEmojiOnly = (text: string): { isEmoji: boolean; emojiCount: number } => {
+  if (!text || text.trim() === '') return { isEmoji: false, emojiCount: 0 }
+  
+  const trimmed = text.trim()
+  
+  // Comprehensive emoji regex that matches:
+  // - Basic emojis with optional variation selector
+  // - Emojis with skin tone modifiers
+  // - ZWJ sequences (family, profession emojis, etc.)
+  // - Flag emojis (regional indicators)
+  // - Keycap emojis
+  const emojiPattern = /(?:\p{Emoji_Presentation}|\p{Emoji}\uFE0F?|\p{Regional_Indicator}{2}|[\u0023\u002A\u0030-\u0039]\uFE0F?\u20E3)(?:\u200D(?:\p{Emoji_Presentation}|\p{Emoji}\uFE0F?))*(?:\p{Emoji_Modifier})?/gu
+  
+  // Find all emojis in the text
+  const emojis = trimmed.match(emojiPattern)
+  
+  if (!emojis) return { isEmoji: false, emojiCount: 0 }
+  
+  // Check if the entire string is just emojis (with optional whitespace between)
+  const emojiString = emojis.join('')
+  const textWithoutWhitespace = trimmed.replace(/\s/g, '')
+  
+  // If the text without whitespace equals the joined emojis, it's emoji-only
+  if (textWithoutWhitespace === emojiString && emojis.length >= 1 && emojis.length <= 3) {
+    return { isEmoji: true, emojiCount: emojis.length }
+  }
+  
+  return { isEmoji: false, emojiCount: 0 }
+}
+
+// Get emoji size class based on count
+const getEmojiSizeClass = (count: number): string => {
+  if (count === 1) return 'emoji-single' // Will be styled with CSS
+  if (count === 2) return 'emoji-double'
+  return 'emoji-triple'
+}
 
 export function ChatViewPage() {
   const { conversationId } = useParams()
@@ -90,6 +129,7 @@ export function ChatViewPage() {
     senderAvatar?: string;
     timestamp: string;
     isOwn: boolean;
+    messageId: string;
   } | null>(null)
   const [pinnedMessage, setPinnedMessage] = useState<{
     id: string;
@@ -333,7 +373,15 @@ export function ChatViewPage() {
     } finally { setSending(false) }
   }
 
-  const handleMediaUploadComplete = async (url: string, type: 'image' | 'video' | 'file', fileName: string, fileSize: number) => {
+  const handleMediaUploadComplete = async (
+    url: string,
+    type: 'image' | 'video' | 'file',
+    fileName: string,
+    fileSize: number,
+    width?: number,
+    height?: number,
+    thumbnail?: string
+  ) => {
     if (!user) return
     setSending(true)
     try {
@@ -342,6 +390,16 @@ export function ChatViewPage() {
         type, status: 'sent', reply_to_id: replyToMessage?.id || null,
         media_url: url, media_type: type, file_name: fileName, file_size: fileSize,
       }
+      
+      // Add image dimensions if available
+      if (width && height) {
+        messageData.media_width = width
+        messageData.media_height = height
+      }
+      if (thumbnail) {
+        messageData.media_thumbnail = thumbnail
+      }
+      
       const { error } = await supabase.from('messages').insert(messageData)
       if (!error) {
         setNewMessage('')
@@ -789,9 +847,9 @@ export function ChatViewPage() {
     if (messageElement) {
       messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
       // Add a highlight effect
-      messageElement.classList.add('bg-[#00a884]/20')
+      messageElement.classList.add('bg-[#787add]/20')
       setTimeout(() => {
-        messageElement.classList.remove('bg-[#00a884]/20')
+        messageElement.classList.remove('bg-[#787add]/20')
       }, 2000)
     }
   }
@@ -1319,7 +1377,7 @@ export function ChatViewPage() {
         >
           {loading ? (
             <div className="flex justify-center items-center h-full">
-              <div className="w-8 h-8 rounded-full border-4 border-[#00a884] border-t-transparent animate-spin" />
+              <div className="w-8 h-8 rounded-full border-4 border-[#787add] border-t-transparent animate-spin" />
             </div>
           ) : messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center space-y-3 px-8">
@@ -1339,6 +1397,27 @@ export function ChatViewPage() {
                 const isOwn = message.sender_id === user?.id
                 const messageReactions = reactions.filter(r => r.message_id === message.id)
                 const isSelected = selectedMessages.has(message.id)
+                
+                // Check if this is an emoji-only message (1-3 emojis, no other text)
+                const emojiCheck = message.type === 'text' && message.content && !message.media_url
+                  ? isEmojiOnly(message.content)
+                  : { isEmoji: false, emojiCount: 0 }
+                const isEmojiOnlyMessage = emojiCheck.isEmoji
+                const emojiCount = emojiCheck.emojiCount
+                
+                // Check if this is a GIF or Sticker message (should be rendered without bubble like WhatsApp)
+                const gifMatch = message.type === 'text' && message.content && !message.media_url
+                  ? message.content.match(/^(?:([\s\S]*?)\n)?\[GIF\]\((https?:\/\/[^\)]+)\)$/)
+                  : null
+                const stickerMatch = message.type === 'text' && message.content && !message.media_url
+                  ? message.content.match(/^(?:([\s\S]*?)\n)?\[STICKER\]\((https?:\/\/[^\)]+)\)$/)
+                  : null
+                const isGifMessage = !!gifMatch
+                const isStickerMessage = !!stickerMatch
+                const isGifOrStickerMessage = isGifMessage || isStickerMessage
+                
+                // Check if this is an image or video message (should be rendered without bubble like WhatsApp)
+                const isMediaMessage = message.media_url && message.media_type && (message.media_type === 'image' || message.media_type === 'video') && message.type !== 'audio'
                 // Long press handlers for mobile
                 const handleTouchStart = (msg: Message) => {
                   if (!isMobile) return
@@ -1383,7 +1462,7 @@ export function ChatViewPage() {
                   <div
                     key={message.id}
                     id={`message-${message.id}`}
-                    className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-1 ${isSelected ? 'bg-[#00a884]/10' : ''} transition-colors duration-500`}
+                    className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-1 ${isSelected ? 'bg-[#787add]/10' : ''} transition-colors duration-500`}
                     onMouseEnter={() => setHoveredMessageId(message.id)}
                     onMouseLeave={() => setHoveredMessageId(null)}
                     onTouchStart={() => handleTouchStart(message)}
@@ -1450,7 +1529,245 @@ export function ChatViewPage() {
                         handleContextMenu(e, message)
                       }}
                     >
-                      <div className={`relative px-3 py-2 rounded-2xl ${isOwn ? 'bg-[#005c4b] text-white rounded-br-none' : 'bg-bg-surface text-text-primary rounded-bl-none'}`}>
+                      {/* Emoji-only message - WhatsApp style: no bubble, large emoji */}
+                      {isEmojiOnlyMessage ? (
+                        <div className="relative">
+                          {/* Hover Actions for emoji messages */}
+                          <MessageHoverActions
+                            isVisible={hoveredMessageId === message.id}
+                            isOwn={isOwn}
+                            onOpenMenu={(e) => {
+                              const rect = e.currentTarget.getBoundingClientRect();
+                              setContextMenu({
+                                isOpen: true,
+                                position: { x: rect.left, y: rect.bottom + 5 },
+                                message,
+                              });
+                            }}
+                          />
+                          {/* Large emoji display */}
+                          <div className={`${
+                            emojiCount === 1 ? 'text-7xl' : emojiCount === 2 ? 'text-6xl' : 'text-5xl'
+                          } leading-none py-1`}>
+                            {message.content}
+                          </div>
+                          {/* Timestamp in small separate bubble - WhatsApp style */}
+                          <div className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mt-1`}>
+                            <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs ${
+                              isOwn ? 'bg-[#787add]/80' : 'bg-bg-surface/80'
+                            }`}>
+                              {message.is_starred && (
+                                <Star size={10} className="fill-current text-text-secondary" />
+                              )}
+                              <span className="text-text-secondary">{formatTime(message.created_at)}</span>
+                              {isOwn && (
+                                <>
+                                  {message.status === 'sent' && (
+                                    <svg width="14" height="9" viewBox="0 0 16 11" fill="none">
+                                      <path d="M10.5 1L4.5 7L2 4.5" stroke="#8696a0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                    </svg>
+                                  )}
+                                  {message.status === 'delivered' && (
+                                    <svg width="14" height="9" viewBox="0 0 16 11" fill="none">
+                                      <path d="M1.5 5.5L4.5 8.5L10.5 2.5" stroke="#8696a0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                      <path d="M5.5 5.5L8.5 8.5L14.5 2.5" stroke="#8696a0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                    </svg>
+                                  )}
+                                  {message.status === 'read' && (
+                                    <svg width="14" height="9" viewBox="0 0 16 11" fill="none">
+                                      <path d="M1.5 5.5L4.5 8.5L10.5 2.5" stroke="#53bdeb" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                      <path d="M5.5 5.5L8.5 8.5L14.5 2.5" stroke="#53bdeb" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                    </svg>
+                                  )}
+                                  {!message.status && (
+                                    <svg width="14" height="9" viewBox="0 0 16 11" fill="none">
+                                      <path d="M10.5 1L4.5 7L2 4.5" stroke="#8696a0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                    </svg>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ) : isGifOrStickerMessage ? (
+                        /* GIF/Sticker message - WhatsApp style: no bubble, floating on chat background */
+                        <div className="relative">
+                          {/* Hover Actions for GIF/Sticker messages */}
+                          <MessageHoverActions
+                            isVisible={hoveredMessageId === message.id}
+                            isOwn={isOwn}
+                            onOpenMenu={(e) => {
+                              const rect = e.currentTarget.getBoundingClientRect();
+                              setContextMenu({
+                                isOpen: true,
+                                position: { x: rect.left, y: rect.bottom + 5 },
+                                message,
+                              });
+                            }}
+                          />
+                          {/* GIF display - larger size, no background */}
+                          {isGifMessage && gifMatch && (() => {
+                            const caption = gifMatch[1]
+                            const gifUrl = gifMatch[2]
+                            const senderInfo = message.sender_id === user?.id
+                              ? { name: profile?.display_name || profile?.username || 'Vous', avatar: profile?.avatar_url }
+                              : { name: otherUser?.display_name || otherUser?.username || 'Utilisateur', avatar: otherUser?.avatar_url }
+                            return (
+                              <div className="space-y-1">
+                                <div
+                                    className="overflow-hidden cursor-pointer max-w-[240px] sm:max-w-[280px] rounded-xl border-[3px] border-[#787add]"
+                                    onClick={(e) => {
+                                    e.stopPropagation()
+                                    setGifStickerViewer({
+                                      isOpen: true,
+                                      url: gifUrl,
+                                      type: 'gif',
+                                      senderName: senderInfo.name,
+                                      senderAvatar: senderInfo.avatar,
+                                      timestamp: message.created_at,
+                                      isOwn: message.sender_id === user?.id,
+                                      messageId: message.id
+                                    })
+                                  }}
+                                >
+                                  <img
+                                    src={gifUrl}
+                                    alt="GIF"
+                                    className="w-full h-auto max-h-[200px] sm:max-h-[240px] object-contain"
+                                    loading="lazy"
+                                  />
+                                </div>
+                                {caption && (
+                                  <div className={`px-3 py-2 rounded-2xl ${isOwn ? 'bg-[#787add] text-white' : 'bg-bg-surface text-text-primary'}`}>
+                                    <p className="text-sm whitespace-pre-wrap break-words">{caption}</p>
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })()}
+                          {/* Sticker display - larger size, no background */}
+                          {isStickerMessage && stickerMatch && (() => {
+                            const caption = stickerMatch[1]
+                            const stickerUrl = stickerMatch[2]
+                            const senderInfo = message.sender_id === user?.id
+                              ? { name: profile?.display_name || profile?.username || 'Vous', avatar: profile?.avatar_url }
+                              : { name: otherUser?.display_name || otherUser?.username || 'Utilisateur', avatar: otherUser?.avatar_url }
+                            return (
+                              <div className="space-y-1">
+                                <div
+                                  className="cursor-pointer max-w-[160px] sm:max-w-[200px] overflow-hidden rounded-xl border-[3px] border-[#787add]"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setGifStickerViewer({
+                                      isOpen: true,
+                                      url: stickerUrl,
+                                      type: 'sticker',
+                                      senderName: senderInfo.name,
+                                      senderAvatar: senderInfo.avatar,
+                                      timestamp: message.created_at,
+                                      isOwn: message.sender_id === user?.id,
+                                      messageId: message.id
+                                    })
+                                  }}
+                                >
+                                  <img
+                                    src={stickerUrl}
+                                    alt="Sticker"
+                                    className="w-full h-auto max-h-[160px] sm:max-h-[200px] object-contain"
+                                    loading="lazy"
+                                  />
+                                </div>
+                                {caption && (
+                                  <div className={`px-3 py-2 rounded-2xl ${isOwn ? 'bg-[#787add] text-white' : 'bg-bg-surface text-text-primary'}`}>
+                                    <p className="text-sm whitespace-pre-wrap break-words">{caption}</p>
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })()}
+                          {/* Timestamp in small separate bubble - WhatsApp style */}
+                          <div className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mt-1`}>
+                            <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs ${
+                              isOwn ? 'bg-[#787add]/80' : 'bg-bg-surface/80'
+                            }`}>
+                              {message.is_starred && (
+                                <Star size={10} className="fill-current text-text-secondary" />
+                              )}
+                              <span className="text-text-secondary">{formatTime(message.created_at)}</span>
+                              {isOwn && (
+                                <>
+                                  {message.status === 'sent' && (
+                                    <svg width="14" height="9" viewBox="0 0 16 11" fill="none">
+                                      <path d="M10.5 1L4.5 7L2 4.5" stroke="#8696a0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                    </svg>
+                                  )}
+                                  {message.status === 'delivered' && (
+                                    <svg width="14" height="9" viewBox="0 0 16 11" fill="none">
+                                      <path d="M1.5 5.5L4.5 8.5L10.5 2.5" stroke="#8696a0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                      <path d="M5.5 5.5L8.5 8.5L14.5 2.5" stroke="#8696a0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                    </svg>
+                                  )}
+                                  {message.status === 'read' && (
+                                    <svg width="14" height="9" viewBox="0 0 16 11" fill="none">
+                                      <path d="M1.5 5.5L4.5 8.5L10.5 2.5" stroke="#53bdeb" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                      <path d="M5.5 5.5L8.5 8.5L14.5 2.5" stroke="#53bdeb" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                    </svg>
+                                  )}
+                                  {!message.status && (
+                                    <svg width="14" height="9" viewBox="0 0 16 11" fill="none">
+                                      <path d="M10.5 1L4.5 7L2 4.5" stroke="#8696a0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                    </svg>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ) : isMediaMessage ? (
+                        /* Image/Video message - WhatsApp style: no bubble, floating on chat background */
+                        <div className="relative">
+                          {/* Media display - no background bubble */}
+                          <div className="space-y-1">
+                            <MediaMessage
+                              url={message.media_url!}
+                              type={message.media_type as 'image' | 'video' | 'file'}
+                              fileName={message.file_name}
+                              fileSize={message.file_size}
+                              caption={message.content}
+                              width={message.media_width ?? undefined}
+                              height={message.media_height ?? undefined}
+                              thumbnail={message.media_thumbnail ?? undefined}
+                              senderName={message.sender_id === user?.id
+                                ? (profile?.display_name || profile?.username || 'Vous')
+                                : (otherUser?.display_name || otherUser?.username || 'Utilisateur')
+                              }
+                              senderAvatar={message.sender_id === user?.id
+                                ? profile?.avatar_url
+                                : otherUser?.avatar_url
+                              }
+                              timestamp={message.created_at}
+                              isOwn={message.sender_id === user?.id}
+                              isStarred={message.is_starred || false}
+                              messageId={message.id}
+                              status={message.status as 'sent' | 'delivered' | 'read' | undefined}
+                              onForward={() => handleForwardMessage(message)}
+                              onStar={() => handleStarMessage(message.id)}
+                              onPin={() => handlePinMessage(message.id)}
+                              onReaction={(emoji) => addReaction(message.id, emoji)}
+                              showHoverActions={hoveredMessageId === message.id}
+                              onOpenMenu={(e) => {
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                setContextMenu({
+                                  isOpen: true,
+                                  position: { x: rect.left, y: rect.bottom + 5 },
+                                  message,
+                                });
+                              }}
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                      <div className={`relative px-3 py-2 rounded-2xl ${isOwn ? 'bg-[#787add] text-white rounded-br-none' : 'bg-bg-surface text-text-primary rounded-bl-none'}`}>
                         {/* Hover Actions (Chevron dropdown) - Inside message bubble */}
                         <MessageHoverActions
                           isVisible={hoveredMessageId === message.id}
@@ -1473,7 +1790,7 @@ export function ChatViewPage() {
                               : otherUser?.display_name || otherUser?.username || 'Utilisateur'
                             return (
                               <div
-                                className={`mb-2 rounded-lg overflow-hidden cursor-pointer hover:opacity-80 transition-opacity ${isOwn ? 'bg-[#004438]' : 'bg-bg-hover'}`}
+                                className={`mb-2 rounded-lg overflow-hidden cursor-pointer hover:opacity-80 transition-opacity ${isOwn ? 'bg-[#5a5ab8]' : 'bg-bg-hover'}`}
                                 onClick={(e) => {
                                   e.stopPropagation()
                                   scrollToMessage(replyMessage.id)
@@ -1505,126 +1822,13 @@ export function ChatViewPage() {
                           }
                           return null
                         })()}
-                        {message.media_url && message.media_type && message.type !== 'audio' && (
-                          <MediaMessage
-                            url={message.media_url}
-                            type={message.media_type as 'image' | 'video' | 'file'}
-                            fileName={message.file_name}
-                            fileSize={message.file_size}
-                            caption={message.content}
-                            senderName={message.sender_id === user?.id
-                              ? (profile?.display_name || profile?.username || 'Vous')
-                              : (otherUser?.display_name || otherUser?.username || 'Utilisateur')
-                            }
-                            senderAvatar={message.sender_id === user?.id
-                              ? profile?.avatar_url
-                              : otherUser?.avatar_url
-                            }
-                            timestamp={message.created_at}
-                            isOwn={message.sender_id === user?.id}
-                            messageId={message.id}
-                            onForward={() => handleForwardMessage(message)}
-                            onStar={() => handleStarMessage(message.id)}
-                            onPin={() => handlePinMessage(message.id)}
-                            onReaction={(emoji) => addReaction(message.id, emoji)}
-                          />
-                        )}
                         {message.type === 'audio' && message.media_url && (
                           <VoiceMessage url={message.media_url} duration={message.ephemeral_duration || 0} isOwn={isOwn} />
                         )}
                         {(!message.media_url && message.content) && (
                           <>
-                            {/* Check for GIF or Sticker patterns */}
+                            {/* Regular text message - if there's a link preview, don't show the URL in text */}
                             {(() => {
-                              // Pattern with optional caption: "caption\n[GIF](url)" or just "[GIF](url)"
-                              const gifMatch = message.content.match(/^(?:([\s\S]*?)\n)?\[GIF\]\((https?:\/\/[^\)]+)\)$/)
-                              const stickerMatch = message.content.match(/^(?:([\s\S]*?)\n)?\[STICKER\]\((https?:\/\/[^\)]+)\)$/)
-                              
-                              // Get sender info for the viewer
-                              const getSenderInfo = () => {
-                                if (message.sender_id === user?.id) {
-                                  return {
-                                    name: profile?.display_name || profile?.username || 'Vous',
-                                    avatar: profile?.avatar_url
-                                  }
-                                }
-                                return {
-                                  name: otherUser?.display_name || otherUser?.username || 'Utilisateur',
-                                  avatar: otherUser?.avatar_url
-                                }
-                              }
-                              
-                              if (gifMatch) {
-                                const caption = gifMatch[1]
-                                const gifUrl = gifMatch[2]
-                                const senderInfo = getSenderInfo()
-                                return (
-                                  <div className="space-y-1 max-w-[200px] sm:max-w-[240px]">
-                                    <div
-                                      className="rounded-lg overflow-hidden cursor-pointer"
-                                      onClick={(e) => {
-                                        e.stopPropagation()
-                                        setGifStickerViewer({
-                                          isOpen: true,
-                                          url: gifUrl,
-                                          type: 'gif',
-                                          senderName: senderInfo.name,
-                                          senderAvatar: senderInfo.avatar,
-                                          timestamp: message.created_at,
-                                          isOwn: message.sender_id === user?.id
-                                        })
-                                      }}
-                                    >
-                                      <img
-                                        src={gifUrl}
-                                        alt="GIF"
-                                        className="w-full h-auto max-h-[160px] sm:max-h-[180px] object-contain"
-                                        loading="lazy"
-                                      />
-                                    </div>
-                                    {caption && (
-                                      <p className="text-sm whitespace-pre-wrap break-words pt-1">{caption}</p>
-                                    )}
-                                  </div>
-                                )
-                              }
-                              
-                              if (stickerMatch) {
-                                const caption = stickerMatch[1]
-                                const stickerUrl = stickerMatch[2]
-                                const senderInfo = getSenderInfo()
-                                return (
-                                  <div className="space-y-1">
-                                    <div
-                                      className="max-w-[100px] sm:max-w-[120px] cursor-pointer"
-                                      onClick={(e) => {
-                                        e.stopPropagation()
-                                        setGifStickerViewer({
-                                          isOpen: true,
-                                          url: stickerUrl,
-                                          type: 'sticker',
-                                          senderName: senderInfo.name,
-                                          senderAvatar: senderInfo.avatar,
-                                          timestamp: message.created_at,
-                                          isOwn: message.sender_id === user?.id
-                                        })
-                                      }}
-                                    >
-                                      <img
-                                        src={stickerUrl}
-                                        alt="Sticker"
-                                        className="w-full h-auto max-h-[100px] sm:max-h-[120px] object-contain"
-                                        loading="lazy"
-                                      />
-                                    </div>
-                                    {caption && (
-                                      <p className="text-sm whitespace-pre-wrap break-words pt-1">{caption}</p>
-                                    )}
-                                  </div>
-                                )
-                              }
-                              
-                              // Regular text message - if there's a link preview, don't show the URL in text
                               let displayContent = message.content
                               if ((message as any).link_preview) {
                                 try {
@@ -1664,6 +1868,8 @@ export function ChatViewPage() {
                             })()}
                           </>
                         )}
+                        {/* Only show timestamp in message bubble for non-media messages (media messages show timestamp via MediaTimestampOverlay) */}
+                        {!(message.media_url && message.media_type && message.type !== 'audio') && (
                         <div className={`flex items-center justify-end gap-1 mt-1 text-xs ${isOwn ? 'text-text-secondary' : 'text-text-secondary'}`}>
                           {message.is_starred && (
                             <Star size={12} className="fill-current" />
@@ -1701,7 +1907,9 @@ export function ChatViewPage() {
                             </>
                           )}
                         </div>
+                        )}
                       </div>
+                      )}
                       {/* Selection checkbox - shown in selection mode */}
                       {isSelectionMode && (
                         <button
@@ -1713,7 +1921,7 @@ export function ChatViewPage() {
                             isOwn ? '-left-10' : '-right-10'
                           } w-7 h-7 rounded-full flex items-center justify-center transition-all ${
                             isSelected
-                              ? 'bg-[#00a884] text-white'
+                              ? 'bg-[#787add] text-white'
                               : 'bg-bg-surface hover:bg-bg-hover text-text-tertiary border border-bg-hover'
                           }`}
                           type="button"
@@ -1889,6 +2097,16 @@ export function ChatViewPage() {
                   file_name: file.fileName,
                   file_size: file.fileSize,
                 }
+                
+                // Add image dimensions if available
+                if (file.width && file.height) {
+                  messageData.media_width = file.width
+                  messageData.media_height = file.height
+                }
+                if (file.thumbnail) {
+                  messageData.media_thumbnail = file.thumbnail
+                }
+                
                 await supabase.from('messages').insert(messageData)
               }
               setNewMessage('')
@@ -2095,7 +2313,15 @@ export function ChatViewPage() {
           senderAvatar={gifStickerViewer.senderAvatar}
           timestamp={gifStickerViewer.timestamp}
           isOwn={gifStickerViewer.isOwn}
+          isStarred={messages.find(m => m.id === gifStickerViewer.messageId)?.is_starred || false}
           onClose={() => setGifStickerViewer(null)}
+          onReaction={(emoji) => addReaction(gifStickerViewer.messageId, emoji)}
+          onForward={() => {
+            const message = messages.find(m => m.id === gifStickerViewer.messageId)
+            if (message) handleForwardMessage(message)
+          }}
+          onStar={() => handleStarMessage(gifStickerViewer.messageId)}
+          onPin={() => handlePinMessage(gifStickerViewer.messageId)}
         />
       )}
     </MainLayout>

@@ -35,8 +35,8 @@ export const PinMessageDialog: React.FC<PinMessageDialogProps> = ({
   return (
     <>
       {/* Backdrop */}
-      <div 
-        className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center"
+      <div
+        className="fixed inset-0 bg-black/50 z-[250] flex items-center justify-center"
         onClick={onClose}
       >
         {/* Dialog */}

@@ -553,21 +553,21 @@ export function ChatsPage() {
                         onClick={() => { setActiveFilter('all'); setShowFilterMenu(false) }}
                         className="w-full px-4 py-2 text-left hover:bg-bg-hover transition-colors text-text-primary text-sm flex items-center gap-3"
                       >
-                        {activeFilter === 'all' && <Check size={16} className="text-[#00a884]" />}
+                        {activeFilter === 'all' && <Check size={16} className="text-[#787add]" />}
                         <span className={activeFilter === 'all' ? 'ml-0' : 'ml-7'}>Toutes les discussions</span>
                       </button>
                       <button
                         onClick={() => { setActiveFilter('unread'); setShowFilterMenu(false) }}
                         className="w-full px-4 py-2 text-left hover:bg-bg-hover transition-colors text-text-primary text-sm flex items-center gap-3"
                       >
-                        {activeFilter === 'unread' && <Check size={16} className="text-[#00a884]" />}
+                        {activeFilter === 'unread' && <Check size={16} className="text-[#787add]" />}
                         <span className={activeFilter === 'unread' ? 'ml-0' : 'ml-7'}>Non lues</span>
                       </button>
                       <button
                         onClick={() => { setActiveFilter('groups'); setShowFilterMenu(false) }}
                         className="w-full px-4 py-2 text-left hover:bg-bg-hover transition-colors text-text-primary text-sm flex items-center gap-3"
                       >
-                        {activeFilter === 'groups' && <Check size={16} className="text-[#00a884]" />}
+                        {activeFilter === 'groups' && <Check size={16} className="text-[#787add]" />}
                         <span className={activeFilter === 'groups' ? 'ml-0' : 'ml-7'}>Groupes</span>
                       </button>
                     </div>
@@ -594,7 +594,7 @@ export function ChatsPage() {
             <button
               onClick={() => setActiveFilter('all')}
               className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                activeFilter === 'all' ? 'bg-[#00a884] text-white' : 'hover:bg-bg-hover text-text-secondary'
+                activeFilter === 'all' ? 'bg-[#787add] text-white' : 'hover:bg-bg-hover text-text-secondary'
               }`}
             >
               Tous
@@ -602,7 +602,7 @@ export function ChatsPage() {
             <button
               onClick={() => setActiveFilter('unread')}
               className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                activeFilter === 'unread' ? 'bg-[#00a884] text-white' : 'hover:bg-bg-hover text-text-secondary'
+                activeFilter === 'unread' ? 'bg-[#787add] text-white' : 'hover:bg-bg-hover text-text-secondary'
               }`}
             >
               Non lus
@@ -610,7 +610,7 @@ export function ChatsPage() {
             <button
               onClick={() => setActiveFilter('groups')}
               className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                activeFilter === 'groups' ? 'bg-[#00a884] text-white' : 'hover:bg-bg-hover text-text-secondary'
+                activeFilter === 'groups' ? 'bg-[#787add] text-white' : 'hover:bg-bg-hover text-text-secondary'
               }`}
             >
               Groupes
@@ -771,7 +771,7 @@ export function ChatsPage() {
                           {displayName}
                         </h3>
                         {conversation.last_message_at && (
-                          <span className={`text-xs flex-shrink-0 ${hasUnread ? 'text-[#00a884]' : 'text-text-secondary'}`}>
+                          <span className={`text-xs flex-shrink-0 ${hasUnread ? 'text-[#787add]' : 'text-text-secondary'}`}>
                             {formatDate(conversation.last_message_at)}
                           </span>
                         )}
@@ -782,7 +782,7 @@ export function ChatsPage() {
                           {lastMessagePreview}
                         </p>
                         {hasUnread && (
-                          <div className="min-w-[20px] h-5 px-1.5 rounded-full bg-[#00a884] flex items-center justify-center flex-shrink-0">
+                          <div className="min-w-[20px] h-5 px-1.5 rounded-full bg-[#787add] flex items-center justify-center flex-shrink-0">
                             <span className="text-xs font-semibold text-text-primary">
                               {conversation.unreadCount! > 99 ? '99+' : conversation.unreadCount}
                             </span>

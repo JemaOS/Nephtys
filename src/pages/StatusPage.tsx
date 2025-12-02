@@ -128,7 +128,7 @@ export function StatusPage() {
                 <div className="w-14 h-14 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-xl">
                   {profile?.username[0].toUpperCase()}
                 </div>
-                <div className="absolute bottom-0 right-0 w-6 h-6 rounded-full bg-[#00a884] border-2 border-[#111b21] flex items-center justify-center">
+                <div className="absolute bottom-0 right-0 w-6 h-6 rounded-full bg-[#787add] border-2 border-[#111b21] flex items-center justify-center">
                   <Plus size={14} className="text-white" />
                 </div>
               </div>
@@ -159,7 +159,7 @@ export function StatusPage() {
           {/* Contacts' Statuses */}
           {loading ? (
             <div className="flex justify-center py-8">
-              <div className="w-8 h-8 rounded-full border-4 border-[#00a884] border-t-transparent animate-spin" />
+              <div className="w-8 h-8 rounded-full border-4 border-[#787add] border-t-transparent animate-spin" />
             </div>
           ) : statuses.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 px-8 text-center">
@@ -174,7 +174,7 @@ export function StatusPage() {
               <div key={status.id} className="px-4 py-3 cursor-pointer hover:bg-bg-surface transition-colors">
                 <div className="flex items-center gap-3">
                   <div className="relative">
-                    <div className="w-14 h-14 rounded-full p-0.5 bg-gradient-to-r from-[#00a884] to-[#06cf9c]">
+                    <div className="w-14 h-14 rounded-full p-0.5 bg-gradient-to-r from-[#787add] to-[#9a9ae8]">
                       <div className="w-full h-full rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-xl">
                         {status.profile.username[0].toUpperCase()}
                       </div>
@@ -197,7 +197,7 @@ export function StatusPage() {
           {/* Info */}
           <div className="px-4 py-6 mt-4">
             <div className="flex items-start gap-3 p-4 bg-bg-surface rounded-lg">
-              <Info size={20} className="text-[#00a884] flex-shrink-0 mt-0.5" />
+              <Info size={20} className="text-[#787add] flex-shrink-0 mt-0.5" />
               <div className="flex-1">
                 <p className="text-sm text-text-primary mb-1">À propos des statuts</p>
                 <p className="text-xs text-text-secondary">

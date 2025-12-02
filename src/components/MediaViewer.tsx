@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { X, ChevronLeft, ChevronRight, Forward, Star, Pin, Smile, Share2, Download, ExternalLink, Play, Pause, Volume2, VolumeX } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { X, ChevronLeft, ChevronRight, Forward, Star, Pin, Smile, Share2, Download, Play, Pause, Volume2, VolumeX, ZoomIn, ZoomOut } from 'lucide-react';
 
 interface MediaViewerProps {
   isOpen: boolean;
@@ -9,6 +9,7 @@ interface MediaViewerProps {
   senderAvatar?: string;
   timestamp: string;
   isOwn: boolean;
+  isStarred?: boolean;
   onClose: () => void;
   onForward?: () => void;
   onStar?: () => void;
@@ -38,6 +39,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   senderAvatar,
   timestamp,
   isOwn,
+  isStarred = false,
   onClose,
   onForward,
   onStar,
@@ -53,9 +55,18 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const imageContainerRef = useRef<HTMLDivElement>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const MIN_ZOOM = 0.5;
+  const MAX_ZOOM = 5;
+  const ZOOM_STEP = 0.25;
 
   // Format timestamp
   const formatTimestamp = (ts: string) => {
@@ -113,6 +124,80 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, currentIndex, allMedia]);
+
+  // Reset zoom when media changes or viewer closes
+  useEffect(() => {
+    setZoom(1);
+    setPosition({ x: 0, y: 0 });
+  }, [mediaUrl, isOpen]);
+
+  // Handle mouse wheel zoom
+  const handleWheel = useCallback((e: WheelEvent) => {
+    if (mediaType !== 'image' && mediaType !== 'gif' && mediaType !== 'sticker') return;
+    
+    e.preventDefault();
+    
+    const delta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
+    setZoom(prevZoom => {
+      const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, prevZoom + delta));
+      
+      // Reset position if zooming back to 1 or below
+      if (newZoom <= 1) {
+        setPosition({ x: 0, y: 0 });
+      }
+      
+      return newZoom;
+    });
+  }, [mediaType]);
+
+  // Add wheel event listener
+  useEffect(() => {
+    const container = imageContainerRef.current;
+    if (!container || !isOpen) return;
+
+    container.addEventListener('wheel', handleWheel, { passive: false });
+    return () => container.removeEventListener('wheel', handleWheel);
+  }, [isOpen, handleWheel]);
+
+  // Handle drag to pan when zoomed
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (zoom <= 1) return;
+    e.preventDefault();
+    setIsDragging(true);
+    setDragStart({ x: e.clientX - position.x, y: e.clientY - position.y });
+  }, [zoom, position]);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!isDragging || zoom <= 1) return;
+    setPosition({
+      x: e.clientX - dragStart.x,
+      y: e.clientY - dragStart.y
+    });
+  }, [isDragging, dragStart, zoom]);
+
+  const handleMouseUp = useCallback(() => {
+    setIsDragging(false);
+  }, []);
+
+  // Zoom controls
+  const handleZoomIn = useCallback(() => {
+    setZoom(prev => Math.min(MAX_ZOOM, prev + ZOOM_STEP));
+  }, []);
+
+  const handleZoomOut = useCallback(() => {
+    setZoom(prev => {
+      const newZoom = Math.max(MIN_ZOOM, prev - ZOOM_STEP);
+      if (newZoom <= 1) {
+        setPosition({ x: 0, y: 0 });
+      }
+      return newZoom;
+    });
+  }, []);
+
+  const handleResetZoom = useCallback(() => {
+    setZoom(1);
+    setPosition({ x: 0, y: 0 });
+  }, []);
 
   // Prevent body scroll when viewer is open
   useEffect(() => {
@@ -204,10 +289,6 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
     }
   };
 
-  const handleOpenExternal = () => {
-    window.open(mediaUrl, '_blank');
-  };
-
   const quickEmojis = ['❤️', '😂', '😮', '😢', '🙏', '👍'];
 
   if (!isOpen) return null;
@@ -245,6 +326,39 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
 
           {/* Right side - Action buttons */}
           <div className="flex items-center gap-0.5 md:gap-2 flex-shrink-0">
+            {/* Zoom controls - only for images */}
+            {(mediaType === 'image' || mediaType === 'gif' || mediaType === 'sticker') && (
+              <>
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleZoomOut(); }}
+                  className="w-9 h-9 md:w-10 md:h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
+                  title="Zoom arrière"
+                  disabled={zoom <= MIN_ZOOM}
+                >
+                  <ZoomOut size={18} className="md:hidden text-white" />
+                  <ZoomOut size={20} className="hidden md:block text-white" />
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleZoomIn(); }}
+                  className="w-9 h-9 md:w-10 md:h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
+                  title="Zoom avant"
+                  disabled={zoom >= MAX_ZOOM}
+                >
+                  <ZoomIn size={18} className="md:hidden text-white" />
+                  <ZoomIn size={20} className="hidden md:block text-white" />
+                </button>
+                {zoom !== 1 && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleResetZoom(); }}
+                    className="px-2 h-9 md:h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors text-white text-xs md:text-sm"
+                    title="Réinitialiser le zoom"
+                  >
+                    {Math.round(zoom * 100)}%
+                  </button>
+                )}
+                <div className="w-px h-6 bg-white/20 mx-1" />
+              </>
+            )}
             {/* Desktop only buttons */}
             {onForward && (
               <button
@@ -259,9 +373,12 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
               <button
                 onClick={(e) => { e.stopPropagation(); onStar(); }}
                 className="hidden md:flex w-10 h-10 rounded-full hover:bg-white/10 items-center justify-center transition-colors"
-                title="Favoris"
+                title={isStarred ? "Retirer des favoris" : "Ajouter aux favoris"}
               >
-                <Star size={20} className="text-white" />
+                <Star
+                  size={20}
+                  className={isStarred ? "text-yellow-400 fill-yellow-400" : "text-white"}
+                />
               </button>
             )}
             {onPin && (
@@ -319,14 +436,6 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
               <Download size={18} className="md:hidden text-white" />
               <Download size={20} className="hidden md:block text-white" />
             </button>
-            {/* External link - desktop only */}
-            <button
-              onClick={(e) => { e.stopPropagation(); handleOpenExternal(); }}
-              className="hidden md:flex w-10 h-10 rounded-full hover:bg-white/10 items-center justify-center transition-colors"
-              title="Ouvrir dans le navigateur"
-            >
-              <ExternalLink size={20} className="text-white" />
-            </button>
             {/* Close button - always visible */}
             <button
               onClick={(e) => { e.stopPropagation(); onClose(); }}
@@ -368,15 +477,47 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
       )}
 
       {/* Media content */}
-      <div className="flex-1 flex items-center justify-center p-4 md:p-8">
-        {/* Image, GIF, Sticker - all displayed fullscreen */}
+      <div
+        className="flex-1 flex items-center justify-center p-4 md:p-8 overflow-hidden"
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+      >
+        {/* Image, GIF, Sticker - all displayed fullscreen with zoom */}
         {(mediaType === 'image' || mediaType === 'gif' || mediaType === 'sticker') && (
-          <img
-            src={mediaUrl}
-            alt="Media"
-            className="max-w-full max-h-full object-contain"
-            onClick={(e) => e.stopPropagation()}
-          />
+          <div
+            ref={imageContainerRef}
+            className={`relative flex items-center justify-center w-full h-full ${
+              zoom > 1 ? 'cursor-grab' : 'cursor-default'
+            } ${isDragging ? 'cursor-grabbing' : ''}`}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+          >
+            <img
+              src={mediaUrl}
+              alt="Media"
+              className="max-w-full max-h-full object-contain select-none"
+              style={{
+                transform: `scale(${zoom}) translate(${position.x / zoom}px, ${position.y / zoom}px)`,
+                transition: isDragging ? 'none' : 'transform 0.1s ease-out',
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                // Double-click to reset zoom
+                if (e.detail === 2) {
+                  handleResetZoom();
+                }
+              }}
+              draggable={false}
+            />
+            
+            {/* Zoom indicator */}
+            {zoom !== 1 && (
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full bg-black/60 text-white text-sm flex items-center gap-2">
+                <span>Zoom: {Math.round(zoom * 100)}%</span>
+                <span className="text-white/60 text-xs">• Molette pour zoomer • Double-clic pour réinitialiser</span>
+              </div>
+            )}
+          </div>
         )}
 
         {/* Video */}

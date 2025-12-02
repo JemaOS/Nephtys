@@ -79,3 +79,15 @@ img {
     background-color: transparent;
   }
 }
+
+/* WhatsApp-like media frame styling - no border, subtle rounded corners */
+.media-frame {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+/* Media timestamp overlay - WhatsApp style */
+.media-timestamp-overlay {
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.3));
+  border-radius: 0 0 6px 6px;
+}

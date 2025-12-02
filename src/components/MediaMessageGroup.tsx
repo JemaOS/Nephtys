@@ -50,21 +50,21 @@ export const MediaMessageGroup: React.FC<MediaMessageGroupProps> = ({
     const item = items[0];
     return (
       <>
-        <div 
-          className="relative cursor-pointer max-w-[240px] sm:max-w-[280px]" 
+        <div
+          className="relative cursor-pointer max-w-[240px] sm:max-w-[280px] rounded-xl overflow-hidden border-[3px] border-[#787add]"
           onClick={() => openFullscreen(0)}
         >
           {item.type === 'image' ? (
             <img
               src={item.url}
               alt="Image"
-              className="w-full h-auto rounded-lg max-h-[200px] sm:max-h-[240px] object-cover"
+              className="w-full h-auto max-h-[200px] sm:max-h-[240px] object-cover"
               loading="lazy"
             />
           ) : (
             <video
               src={item.url}
-              className="w-full h-auto rounded-lg max-h-[200px] sm:max-h-[240px]"
+              className="w-full h-auto max-h-[200px] sm:max-h-[240px]"
               controls
             />
           )}
@@ -81,10 +81,10 @@ export const MediaMessageGroup: React.FC<MediaMessageGroupProps> = ({
   if (items.length === 2) {
     return (
       <>
-        <div className="flex gap-0.5 max-w-[280px] sm:max-w-[320px] rounded-lg overflow-hidden">
+        <div className="flex gap-0.5 max-w-[280px] sm:max-w-[320px] rounded-xl overflow-hidden border-[3px] border-[#787add]">
           {items.map((item, index) => (
-            <div 
-              key={item.id} 
+            <div
+              key={item.id}
               className="flex-1 cursor-pointer relative"
               onClick={() => openFullscreen(index)}
             >
@@ -112,10 +112,10 @@ export const MediaMessageGroup: React.FC<MediaMessageGroupProps> = ({
   if (items.length <= 4) {
     return (
       <>
-        <div className="grid grid-cols-2 gap-0.5 max-w-[280px] sm:max-w-[320px] rounded-lg overflow-hidden">
+        <div className="grid grid-cols-2 gap-0.5 max-w-[280px] sm:max-w-[320px] rounded-xl overflow-hidden border-[3px] border-[#787add]">
           {visibleItems.map((item, index) => (
-            <div 
-              key={item.id} 
+            <div
+              key={item.id}
               className="cursor-pointer relative aspect-square"
               onClick={() => openFullscreen(index)}
             >
@@ -142,10 +142,10 @@ export const MediaMessageGroup: React.FC<MediaMessageGroupProps> = ({
   // More than 4 images - 2x2 grid with "+X" overlay on last item
   return (
     <>
-      <div className="grid grid-cols-2 gap-0.5 max-w-[280px] sm:max-w-[320px] rounded-lg overflow-hidden">
+      <div className="grid grid-cols-2 gap-0.5 max-w-[280px] sm:max-w-[320px] rounded-xl overflow-hidden border-[3px] border-[#787add]">
         {visibleItems.map((item, index) => (
-          <div 
-            key={item.id} 
+          <div
+            key={item.id}
             className="cursor-pointer relative aspect-square"
             onClick={() => openFullscreen(index)}
           >

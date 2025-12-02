@@ -181,10 +181,10 @@ export const ForwardMessageModal: React.FC<ForwardMessageModalProps> = ({
   return (
     <>
       {/* Backdrop */}
-      <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50" onClick={onClose} />
+      <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[250]" onClick={onClose} />
 
       {/* Modal */}
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="fixed inset-0 z-[250] flex items-center justify-center p-4">
         <div className="w-full max-w-md bg-bg-surface rounded-2xl shadow-2xl overflow-hidden max-h-[80vh] flex flex-col">
           {/* Header */}
           <div className="flex items-center gap-4 px-4 py-3 border-b border-bg-hover">

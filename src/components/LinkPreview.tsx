@@ -132,7 +132,7 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({
         <div
           className={`rounded-lg overflow-hidden cursor-pointer relative ${
             isOwn
-              ? 'bg-[#025144]'
+              ? 'bg-[#5a5ab8]'
               : 'bg-bg-hover'
           }`}
           onClick={handleClick}
@@ -162,7 +162,7 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({
                 PiP
               </div>
               {/* Title and domain below image - compact */}
-              <div className={`px-2 py-1.5 ${isOwn ? 'bg-[#025144]' : 'bg-bg-hover'}`}>
+              <div className={`px-2 py-1.5 ${isOwn ? 'bg-[#5a5ab8]' : 'bg-bg-hover'}`}>
                 {title && (
                   <h4 className={`text-[12px] font-medium line-clamp-1 ${
                     isOwn ? 'text-white' : 'text-text-primary'

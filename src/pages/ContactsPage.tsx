@@ -701,7 +701,7 @@ export function ContactsPage() {
                       }}
                       className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors flex-shrink-0"
                     >
-                      <MessageCircle size={20} className="text-[#00a884]" />
+                      <MessageCircle size={20} className="text-[#787add]" />
                     </button>
                   )}
                 </div>
@@ -730,7 +730,7 @@ export function ContactsPage() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm text-[#00a884]">Nom d'utilisateur</label>
+              <label className="text-sm text-[#787add]">Nom d'utilisateur</label>
               <div className="relative">
                 <UserPlus size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" />
                 <input

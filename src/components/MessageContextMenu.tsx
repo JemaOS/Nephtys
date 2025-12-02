@@ -279,7 +279,7 @@ export const MessageContextMenu: React.FC<MessageContextMenuProps> = ({
                 <span className="text-xs text-[#8696a0]">Toutes les réactions</span>
                 <button
                   onClick={() => setShowExtendedEmojis(false)}
-                  className="text-xs text-[#00a884] hover:underline"
+                  className="text-xs text-[#787add] hover:underline"
                   type="button"
                 >
                   Retour

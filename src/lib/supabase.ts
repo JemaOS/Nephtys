@@ -47,6 +47,9 @@ export interface Message {
   file_size: number | null
   media_url: string | null
   media_type: 'image' | 'video' | 'file' | null
+  media_width?: number | null // Image/video width in pixels
+  media_height?: number | null // Image/video height in pixels
+  media_thumbnail?: string | null // Base64 blur placeholder for images
   is_ephemeral: boolean
   ephemeral_duration: number | null
   ephemeral_expires_at: string | null
