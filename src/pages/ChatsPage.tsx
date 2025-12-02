@@ -5,7 +5,7 @@ import { ConversationContextMenu } from '@/components/ConversationContextMenu'
 import { supabase, Conversation, Profile, Message } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { offlineStorage } from '@/lib/offlineStorage'
-import { MessageCircle, Search, Plus, MoreVertical, Check, UserPlus, Users, Pin, BellOff } from 'lucide-react'
+import { MessageCircle, Search, Plus, MoreVertical, Check, UserPlus, Users, Pin, BellOff, ArrowLeft, Trash2, Archive, VolumeX, Volume2 } from 'lucide-react'
 
 // Memoized formatDate function outside component to prevent recreation on every render
 const formatDate = (dateStr: string): string => {
@@ -62,6 +62,14 @@ export function ChatsPage() {
   const [showFilterMenu, setShowFilterMenu] = useState(false)
   const [showNewMenu, setShowNewMenu] = useState(false)
   const [activeFilter, setActiveFilter] = useState<'all' | 'unread' | 'groups'>('all')
+  
+  // Selection mode state (WhatsApp-style)
+  const [isSelectionMode, setIsSelectionMode] = useState(false)
+  const [selectedConversations, setSelectedConversations] = useState<Set<string>>(new Set())
+  
+  // Long press detection refs
+  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const longPressTriggeredRef = useRef(false)
   // Don't show loading if we have cached data
   const [isLoading, setIsLoading] = useState(() => {
     const cached = offlineStorage.getConversationsSync()
@@ -79,6 +87,9 @@ export function ChatsPage() {
   // Ref to track if initial load is complete
   const initialLoadComplete = useRef(false)
   
+  // Long press duration (ms) - WhatsApp uses ~500ms
+  const LONG_PRESS_DURATION = 500
+  
   // Debounced reload function to prevent excessive reloads from real-time subscriptions
   const debouncedReload = useCallback(() => {
     if (reloadTimeoutRef.current) {
@@ -95,8 +106,233 @@ export function ChatsPage() {
       if (reloadTimeoutRef.current) {
         clearTimeout(reloadTimeoutRef.current)
       }
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current)
+      }
     }
   }, [])
+  
+  // Exit selection mode when pressing Escape
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isSelectionMode) {
+        exitSelectionMode()
+      }
+    }
+    document.addEventListener('keydown', handleEscape)
+    return () => document.removeEventListener('keydown', handleEscape)
+  }, [isSelectionMode])
+  
+  // Selection mode handlers
+  const enterSelectionMode = useCallback((conversationId: string) => {
+    setIsSelectionMode(true)
+    setSelectedConversations(new Set([conversationId]))
+  }, [])
+  
+  const exitSelectionMode = useCallback(() => {
+    setIsSelectionMode(false)
+    setSelectedConversations(new Set())
+  }, [])
+  
+  const toggleConversationSelection = useCallback((conversationId: string) => {
+    setSelectedConversations(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(conversationId)) {
+        newSet.delete(conversationId)
+        // Exit selection mode if no conversations selected
+        if (newSet.size === 0) {
+          setIsSelectionMode(false)
+        }
+      } else {
+        newSet.add(conversationId)
+      }
+      return newSet
+    })
+  }, [])
+  
+  // Long press handlers for touch devices
+  const handleTouchStart = useCallback((conversationId: string) => {
+    longPressTriggeredRef.current = false
+    longPressTimerRef.current = setTimeout(() => {
+      longPressTriggeredRef.current = true
+      if (!isSelectionMode) {
+        enterSelectionMode(conversationId)
+      } else {
+        toggleConversationSelection(conversationId)
+      }
+      // Vibrate on mobile if supported (WhatsApp-like feedback)
+      if (navigator.vibrate) {
+        navigator.vibrate(50)
+      }
+    }, LONG_PRESS_DURATION)
+  }, [isSelectionMode, enterSelectionMode, toggleConversationSelection])
+  
+  const handleTouchEnd = useCallback(() => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current)
+      longPressTimerRef.current = null
+    }
+  }, [])
+  
+  const handleTouchMove = useCallback(() => {
+    // Cancel long press if user moves finger
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current)
+      longPressTimerRef.current = null
+    }
+  }, [])
+  
+  // Click handler for conversations
+  const handleConversationClick = useCallback((conversationId: string) => {
+    // If long press was triggered, don't navigate
+    if (longPressTriggeredRef.current) {
+      longPressTriggeredRef.current = false
+      return
+    }
+    
+    if (isSelectionMode) {
+      toggleConversationSelection(conversationId)
+    } else {
+      navigate(`/chat/${conversationId}`)
+    }
+  }, [isSelectionMode, toggleConversationSelection, navigate])
+  
+  // Bulk actions for selected conversations
+  const handleBulkPin = async () => {
+    const selectedIds = Array.from(selectedConversations)
+    // Check if any selected conversation is not pinned
+    const anyUnpinned = selectedIds.some(id => {
+      const conv = conversations.find(c => c.id === id)
+      return conv && !conv.is_pinned
+    })
+    
+    // If any is unpinned, pin all. Otherwise, unpin all.
+    const newPinnedState = anyUnpinned
+    
+    // Optimistic update
+    setConversations(prev => {
+      const updated = prev.map(c =>
+        selectedConversations.has(c.id) ? { ...c, is_pinned: newPinnedState } : c
+      )
+      return updated.sort((a, b) => {
+        if (a.is_pinned && !b.is_pinned) return -1
+        if (!a.is_pinned && b.is_pinned) return 1
+        return new Date(b.last_message_at || 0).getTime() - new Date(a.last_message_at || 0).getTime()
+      })
+    })
+    
+    // Update database
+    for (const conversationId of selectedIds) {
+      await supabase
+        .from('conversation_members')
+        .update({ is_pinned: newPinnedState })
+        .eq('conversation_id', conversationId)
+        .eq('user_id', user!.id)
+    }
+    
+    exitSelectionMode()
+  }
+  
+  const handleBulkMute = async () => {
+    const selectedIds = Array.from(selectedConversations)
+    // Check if any selected conversation is not muted
+    const anyUnmuted = selectedIds.some(id => {
+      const conv = conversations.find(c => c.id === id)
+      return conv && !conv.is_muted
+    })
+    
+    // If any is unmuted, mute all. Otherwise, unmute all.
+    const newMutedState = anyUnmuted
+    
+    // Optimistic update
+    setConversations(prev => prev.map(c =>
+      selectedConversations.has(c.id) ? { ...c, is_muted: newMutedState } : c
+    ))
+    
+    // Update database
+    for (const conversationId of selectedIds) {
+      await supabase
+        .from('conversation_members')
+        .update({ is_muted: newMutedState })
+        .eq('conversation_id', conversationId)
+        .eq('user_id', user!.id)
+    }
+    
+    exitSelectionMode()
+  }
+  
+  const handleBulkArchive = async () => {
+    const selectedIds = Array.from(selectedConversations)
+    
+    // Optimistic update - remove from list
+    const archivedConvs = conversations.filter(c => selectedConversations.has(c.id))
+    setConversations(prev => prev.filter(c => !selectedConversations.has(c.id)))
+    
+    // Update database
+    let hasError = false
+    for (const conversationId of selectedIds) {
+      const { error } = await supabase
+        .from('conversation_members')
+        .update({ is_archived: true })
+        .eq('conversation_id', conversationId)
+        .eq('user_id', user!.id)
+      
+      if (error) hasError = true
+    }
+    
+    // Revert on error
+    if (hasError) {
+      setConversations(prev => {
+        const updated = [...prev, ...archivedConvs]
+        return updated.sort((a, b) => {
+          if (a.is_pinned && !b.is_pinned) return -1
+          if (!a.is_pinned && b.is_pinned) return 1
+          return new Date(b.last_message_at || 0).getTime() - new Date(a.last_message_at || 0).getTime()
+        })
+      })
+    }
+    
+    exitSelectionMode()
+  }
+  
+  const handleBulkDelete = async () => {
+    const selectedIds = Array.from(selectedConversations)
+    const count = selectedIds.length
+    
+    if (!confirm(`Voulez-vous vraiment supprimer ${count} conversation${count > 1 ? 's' : ''} ?`)) {
+      return
+    }
+    
+    // Optimistic update - remove from list
+    const deletedConvs = conversations.filter(c => selectedConversations.has(c.id))
+    setConversations(prev => prev.filter(c => !selectedConversations.has(c.id)))
+    
+    // Update database
+    let hasError = false
+    for (const conversationId of selectedIds) {
+      const { error } = await supabase
+        .from('conversation_members')
+        .delete()
+        .eq('conversation_id', conversationId)
+        .eq('user_id', user!.id)
+      
+      if (error) hasError = true
+    }
+    
+    // Revert on error
+    if (hasError) {
+      setConversations(prev => {
+        const updated = [...prev, ...deletedConvs]
+        return updated.sort((a, b) => {
+          if (a.is_pinned && !b.is_pinned) return -1
+          if (!a.is_pinned && b.is_pinned) return 1
+          return new Date(b.last_message_at || 0).getTime() - new Date(a.last_message_at || 0).getTime()
+        })
+      })
+    }
+    
+    exitSelectionMode()
+  }
 
   // Load conversations from cache first, then sync with server
   useEffect(() => {
@@ -704,11 +940,90 @@ export function ChatsPage() {
     })
   }, [conversations, searchQuery, activeFilter])
 
+  // Check if any selected conversation is pinned/muted (for toggle icons)
+  const anySelectedPinned = useMemo(() => {
+    return Array.from(selectedConversations).some(id => {
+      const conv = conversations.find(c => c.id === id)
+      return conv?.is_pinned
+    })
+  }, [selectedConversations, conversations])
+  
+  const anySelectedMuted = useMemo(() => {
+    return Array.from(selectedConversations).some(id => {
+      const conv = conversations.find(c => c.id === id)
+      return conv?.is_muted
+    })
+  }, [selectedConversations, conversations])
+
   return (
     <MainLayout>
+      {/* Selection Mode Top Bar - WhatsApp style */}
+      {isSelectionMode && (
+        <div className="fixed top-0 left-0 right-0 z-50 bg-bg-surface border-b border-bg-hover shadow-lg animate-in slide-in-from-top duration-200">
+          <div className="flex items-center justify-between h-14 px-2">
+            {/* Left side: Back arrow + count */}
+            <div className="flex items-center gap-3">
+              <button
+                onClick={exitSelectionMode}
+                className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-bg-hover transition-colors"
+              >
+                <ArrowLeft size={24} className="text-text-primary" />
+              </button>
+              <span className="text-lg font-medium text-text-primary">
+                {selectedConversations.size}
+              </span>
+            </div>
+            
+            {/* Right side: Action icons */}
+            <div className="flex items-center gap-1">
+              {/* Pin */}
+              <button
+                onClick={handleBulkPin}
+                className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-bg-hover transition-colors"
+                title={anySelectedPinned ? 'Désépingler' : 'Épingler'}
+              >
+                <Pin size={20} className={anySelectedPinned ? 'text-accent' : 'text-text-primary'} />
+              </button>
+              
+              {/* Mute */}
+              <button
+                onClick={handleBulkMute}
+                className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-bg-hover transition-colors"
+                title={anySelectedMuted ? 'Réactiver le son' : 'Désactiver les notifications'}
+              >
+                {anySelectedMuted ? (
+                  <Volume2 size={20} className="text-text-primary" />
+                ) : (
+                  <VolumeX size={20} className="text-text-primary" />
+                )}
+              </button>
+              
+              {/* Archive */}
+              <button
+                onClick={handleBulkArchive}
+                className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-bg-hover transition-colors"
+                title="Archiver"
+              >
+                <Archive size={20} className="text-text-primary" />
+              </button>
+              
+              {/* Delete */}
+              <button
+                onClick={handleBulkDelete}
+                className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-bg-hover transition-colors"
+                title="Supprimer"
+              >
+                <Trash2 size={20} className="text-red-500" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {/* Liste des conversations - Style JemaOS */}
-      <div className="w-full md:w-[420px] bg-bg-secondary flex flex-col md:border-r border-bg-hover pb-20 md:pb-0">
-        {/* Header */}
+      <div className={`w-full md:w-[420px] bg-bg-secondary flex flex-col md:border-r border-bg-hover pb-20 md:pb-0 ${isSelectionMode ? 'pt-14' : ''}`}>
+        {/* Header - Hidden in selection mode */}
+        {!isSelectionMode && (
         <div className="bg-bg-surface p-4">
           <div className="flex items-center justify-between mb-4">
             <h1 className="text-xl font-semibold text-text-primary">Discussions</h1>
@@ -827,6 +1142,7 @@ export function ChatsPage() {
             </button>
           </div>
         </div>
+        )}
 
         {/* Liste des conversations */}
         <div className="flex-1 overflow-y-auto pb-4">
@@ -937,17 +1253,52 @@ export function ChatsPage() {
             const lastMessagePreview = getLastMessagePreview()
 
               const hasUnread = (conversation.unreadCount || 0) > 0
+              const isSelected = selectedConversations.has(conversation.id)
 
               return (
                 <div
                   key={conversation.id}
                   className={`px-4 py-3 cursor-pointer transition-colors ${
-                    hasUnread ? 'bg-bg-surface' : 'hover:bg-bg-surface'
+                    isSelected
+                      ? 'bg-accent/20'
+                      : hasUnread
+                        ? 'bg-bg-surface'
+                        : 'hover:bg-bg-surface'
                   }`}
-                  onClick={() => navigate(`/chat/${conversation.id}`)}
-                  onContextMenu={(e) => handleContextMenu(e, conversation.id)}
+                  onClick={() => handleConversationClick(conversation.id)}
+                  onContextMenu={(e) => {
+                    if (!isSelectionMode) {
+                      handleContextMenu(e, conversation.id)
+                    }
+                  }}
+                  onTouchStart={() => handleTouchStart(conversation.id)}
+                  onTouchEnd={handleTouchEnd}
+                  onTouchMove={handleTouchMove}
+                  onMouseDown={(e) => {
+                    // Desktop long press support
+                    if (e.button === 0) { // Left click only
+                      handleTouchStart(conversation.id)
+                    }
+                  }}
+                  onMouseUp={handleTouchEnd}
+                  onMouseLeave={handleTouchEnd}
                 >
                   <div className="flex items-center gap-3">
+                    {/* Selection Checkbox - WhatsApp style */}
+                    {isSelectionMode && (
+                      <div
+                        className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
+                          isSelected
+                            ? 'bg-[#25D366] border-[#25D366]'
+                            : 'border-text-secondary'
+                        }`}
+                      >
+                        {isSelected && (
+                          <Check size={14} className="text-white" strokeWidth={3} />
+                        )}
+                      </div>
+                    )}
+                    
                     {/* Avatar */}
                     <div className="relative">
                       {(conversation.type === 'direct' && conversation.otherUserProfile?.avatar_url) || conversation.avatar_url ? (
@@ -962,12 +1313,12 @@ export function ChatsPage() {
                           {displayName[0]?.toUpperCase()}
                         </div>
                       )}
-                      {conversation.is_pinned && (
+                      {!isSelectionMode && conversation.is_pinned && (
                         <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-accent flex items-center justify-center">
                           <Pin size={12} className="text-white" />
                         </div>
                       )}
-                      {conversation.is_muted && (
+                      {!isSelectionMode && conversation.is_muted && (
                         <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-[#8696a0] flex items-center justify-center">
                           <BellOff size={12} className="text-white" />
                         </div>
@@ -1057,8 +1408,8 @@ export function ChatsPage() {
         </div>
       </div>
 
-      {/* Context Menu */}
-      {contextMenu && (() => {
+      {/* Context Menu - Only show when not in selection mode */}
+      {contextMenu && !isSelectionMode && (() => {
         const selectedConv = conversations.find(c => c.id === contextMenu.conversationId)
         return (
           <ConversationContextMenu
