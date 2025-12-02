@@ -229,12 +229,8 @@ export function ChatsPage() {
         .select('conversation_id, user_id')
         .in('conversation_id', conversationIds)
       
-      console.log('[ChatsPage] All members including self:', allMembersIncludingSelf?.length || 0)
-      
       // Filter to get other members (for normal conversations)
       const allMembers = allMembersIncludingSelf?.filter(m => m.user_id !== user.id) || []
-      
-      console.log('[ChatsPage] Other members (excluding self):', allMembers.length)
       
       // Detect "Saved Messages" conversations (only one member = self)
       const savedMessagesConvIds = new Set<string>()
@@ -258,14 +254,10 @@ export function ChatsPage() {
         .filter(c => c.type === 'direct')
         .map(c => c.id)
       
-      console.log('[ChatsPage] Direct conversation IDs:', directConvIds)
-      
       // Get all user IDs from direct conversations (excluding self)
       const directConvOtherUserIds = allMembers
         .filter(m => directConvIds.includes(m.conversation_id))
         .map(m => m.user_id)
-      
-      console.log('[ChatsPage] Direct conv other user IDs:', directConvOtherUserIds)
       
       // Combine all user IDs we need to fetch
       const userIdsToFetch = [
@@ -276,16 +268,12 @@ export function ChatsPage() {
         ])
       ]
       
-      console.log('[ChatsPage] User IDs to fetch profiles for:', userIdsToFetch)
-      
       const { data: profiles } = userIdsToFetch.length > 0
         ? await supabase
             .from('profiles')
             .select('*')
             .in('id', userIdsToFetch)
         : { data: [] }
-      
-      console.log('[ChatsPage] Fetched profiles:', profiles?.length || 0)
 
       const profileMap = new Map(profiles?.map(p => [p.id, p]) || [])
 
@@ -329,8 +317,6 @@ export function ChatsPage() {
         existing.push(m.user_id)
         membersByConversation.set(m.conversation_id, existing)
       })
-      
-      console.log('[ChatsPage] Members by conversation map:', Object.fromEntries(membersByConversation))
 
       const enrichedConversations: ConversationWithDetails[] = conversationsData.map(conv => {
         const memberInfo = activeMembers.find(m => m.conversation_id === conv.id)
@@ -342,16 +328,12 @@ export function ChatsPage() {
         // For "Saved Messages", use current user's profile; otherwise use other user's profile
         let otherProfile: Profile | undefined
         if (conv.type === 'direct') {
-          console.log(`[ChatsPage] Processing direct conv ${conv.id}: otherUserIds=${JSON.stringify(otherUserIdsForConv)}, isSavedMessages=${isSavedMessages}`)
-          
           if (isSavedMessages) {
             // Use current user's profile for "Saved Messages"
             otherProfile = profileMap.get(user.id)
           } else if (otherUserIdsForConv.length > 0) {
             // Normal direct conversation - get the other user's profile
             otherProfile = profileMap.get(otherUserIdsForConv[0])
-            
-            console.log(`[ChatsPage] Direct conv ${conv.id}: looking for profile of ${otherUserIdsForConv[0]}, found: ${!!otherProfile}`)
             
             // If profile not found in map, try to find any other member's profile
             if (!otherProfile) {
@@ -363,9 +345,6 @@ export function ChatsPage() {
                 }
               }
             }
-          } else {
-            // No other members found - this is a problem!
-            console.error(`[ChatsPage] Direct conv ${conv.id} has NO other members! This conversation will not display correctly.`)
           }
           
           // Log warning if we couldn't find a profile for a direct conversation
