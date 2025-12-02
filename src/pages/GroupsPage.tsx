@@ -37,26 +37,72 @@ export function GroupsPage() {
   const loadContacts = async () => {
     if (!user) return
 
+    // 1. Load explicit contacts
     const { data: contactsData } = await supabase
       .from('contacts')
       .select('*')
       .eq('user_id', user.id)
       .eq('is_blocked', false)
 
-    if (contactsData) {
-      const contactsWithProfiles = await Promise.all(
-        contactsData.map(async (contact) => {
-          const { data: profileData } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', contact.contact_user_id)
-            .maybeSingle()
+    // 2. Load users from existing conversations (chat contacts)
+    const { data: myConversations } = await supabase
+      .from('conversation_members')
+      .select('conversation_id')
+      .eq('user_id', user.id)
 
-          return { ...contact, profile: profileData! }
+    const conversationIds = myConversations?.map(c => c.conversation_id) || []
+    
+    // Get other members from these conversations
+    let chatUserIds: string[] = []
+    if (conversationIds.length > 0) {
+      const { data: otherMembers } = await supabase
+        .from('conversation_members')
+        .select('user_id')
+        .in('conversation_id', conversationIds)
+        .neq('user_id', user.id)
+      
+      chatUserIds = [...new Set(otherMembers?.map(m => m.user_id) || [])]
+    }
+
+    // Get explicit contact user IDs
+    const explicitContactIds = contactsData?.map(c => c.contact_user_id) || []
+    
+    // Combine and deduplicate
+    const allContactIds = [...new Set([...explicitContactIds, ...chatUserIds])]
+
+    if (allContactIds.length > 0) {
+      // Fetch all profiles at once
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('*')
+        .in('id', allContactIds)
+
+      if (profiles) {
+        const contactsWithProfiles = profiles.map(profile => {
+          // Check if this is an explicit contact
+          const explicitContact = contactsData?.find(c => c.contact_user_id === profile.id)
+          
+          if (explicitContact) {
+            return { ...explicitContact, profile }
+          } else {
+            // Create a virtual contact entry for chat contacts
+            return {
+              id: `chat-${profile.id}`,
+              user_id: user.id,
+              contact_user_id: profile.id,
+              nickname: null,
+              is_blocked: false,
+              is_favorite: false,
+              created_at: new Date().toISOString(),
+              profile
+            }
+          }
         })
-      )
 
-      setContacts(contactsWithProfiles.filter(c => c.profile))
+        setContacts(contactsWithProfiles.filter(c => c.profile))
+      }
+    } else {
+      setContacts([])
     }
   }
 

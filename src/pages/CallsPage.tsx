@@ -89,36 +89,75 @@ export function CallsPage() {
     if (!user) return
 
     try {
-      // Step 1: Fetch all contacts (single query)
-      const { data: contactsData, error } = await supabase
+      // 1. Load explicit contacts
+      const { data: contactsData } = await supabase
         .from('contacts')
         .select('*')
         .eq('user_id', user.id)
         .eq('is_blocked', false)
 
-      if (error || !contactsData || contactsData.length === 0) {
-        setContacts([])
-        return
+      // 2. Load users from existing conversations (chat contacts)
+      const { data: myConversations } = await supabase
+        .from('conversation_members')
+        .select('conversation_id')
+        .eq('user_id', user.id)
+
+      const conversationIds = myConversations?.map(c => c.conversation_id) || []
+      
+      // Get other members from these conversations
+      let chatUserIds: string[] = []
+      if (conversationIds.length > 0) {
+        const { data: otherMembers } = await supabase
+          .from('conversation_members')
+          .select('user_id')
+          .in('conversation_id', conversationIds)
+          .neq('user_id', user.id)
+        
+        chatUserIds = [...new Set(otherMembers?.map(m => m.user_id) || [])]
       }
 
-      // Step 2: Batch fetch all profiles (single query)
-      const contactUserIds = contactsData.map(c => c.contact_user_id)
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('*')
-        .in('id', contactUserIds)
+      // Get explicit contact user IDs
+      const explicitContactIds = contactsData?.map(c => c.contact_user_id) || []
+      
+      // Combine and deduplicate
+      const allContactIds = [...new Set([...explicitContactIds, ...chatUserIds])]
 
-      const profileMap = new Map(profiles?.map(p => [p.id, p]) || [])
+      if (allContactIds.length > 0) {
+        // Fetch all profiles at once
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('*')
+          .in('id', allContactIds)
 
-      // Step 3: Enrich contacts with profiles (no additional queries)
-      const contactsWithProfiles = contactsData
-        .map(contact => ({
-          ...contact,
-          profile: profileMap.get(contact.contact_user_id)
-        }))
-        .filter(c => c.profile)
+        if (profiles) {
+          const contactsWithProfiles = profiles.map(profile => {
+            // Check if this is an explicit contact
+            const explicitContact = contactsData?.find(c => c.contact_user_id === profile.id)
+            
+            if (explicitContact) {
+              return { ...explicitContact, profile }
+            } else {
+              // Create a virtual contact entry for chat contacts
+              return {
+                id: `chat-${profile.id}`,
+                user_id: user.id,
+                contact_user_id: profile.id,
+                nickname: null,
+                is_blocked: false,
+                is_favorite: false,
+                created_at: new Date().toISOString(),
+                profile
+              }
+            }
+          })
 
-      setContacts(contactsWithProfiles)
+          setContacts(contactsWithProfiles.filter(c => c.profile))
+        } else {
+          setContacts([])
+        }
+      } else {
+        setContacts([])
+      }
     } catch (err) {
       console.error('Error loading contacts:', err)
       setContacts([])
