@@ -51,7 +51,7 @@ export const MediaMessageGroup: React.FC<MediaMessageGroupProps> = ({
     return (
       <>
         <div
-          className="relative cursor-pointer max-w-[240px] sm:max-w-[280px] rounded-xl overflow-hidden border-[3px] border-[#787add]"
+          className="relative cursor-pointer max-w-[240px] sm:max-w-[280px] rounded-xl overflow-hidden border-[3px] border-[#787add] message-media-container"
           onClick={() => openFullscreen(0)}
         >
           {item.type === 'image' ? (
@@ -81,7 +81,7 @@ export const MediaMessageGroup: React.FC<MediaMessageGroupProps> = ({
   if (items.length === 2) {
     return (
       <>
-        <div className="flex gap-0.5 max-w-[280px] sm:max-w-[320px] rounded-xl overflow-hidden border-[3px] border-[#787add]">
+        <div className="flex gap-0.5 max-w-[280px] sm:max-w-[320px] rounded-xl overflow-hidden border-[3px] border-[#787add] message-media-container">
           {items.map((item, index) => (
             <div
               key={item.id}
@@ -112,7 +112,7 @@ export const MediaMessageGroup: React.FC<MediaMessageGroupProps> = ({
   if (items.length <= 4) {
     return (
       <>
-        <div className="grid grid-cols-2 gap-0.5 max-w-[280px] sm:max-w-[320px] rounded-xl overflow-hidden border-[3px] border-[#787add]">
+        <div className="grid grid-cols-2 gap-0.5 max-w-[280px] sm:max-w-[320px] rounded-xl overflow-hidden border-[3px] border-[#787add] message-media-container">
           {visibleItems.map((item, index) => (
             <div
               key={item.id}
@@ -142,7 +142,7 @@ export const MediaMessageGroup: React.FC<MediaMessageGroupProps> = ({
   // More than 4 images - 2x2 grid with "+X" overlay on last item
   return (
     <>
-      <div className="grid grid-cols-2 gap-0.5 max-w-[280px] sm:max-w-[320px] rounded-xl overflow-hidden border-[3px] border-[#787add]">
+      <div className="grid grid-cols-2 gap-0.5 max-w-[280px] sm:max-w-[320px] rounded-xl overflow-hidden border-[3px] border-[#787add] message-media-container">
         {visibleItems.map((item, index) => (
           <div
             key={item.id}

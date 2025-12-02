@@ -91,3 +91,73 @@ img {
   background: linear-gradient(transparent, rgba(0, 0, 0, 0.3));
   border-radius: 0 0 6px 6px;
 }
+
+/* Safe area insets for mobile devices */
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.safe-area-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+/* Dynamic viewport height support for foldable phones and modern mobile browsers */
+/* This ensures proper height calculation on devices like Honor Magic V3 */
+.h-screen-safe {
+  height: 100vh; /* Fallback for older browsers */
+  height: 100dvh; /* Dynamic viewport height - adjusts for mobile browser UI */
+}
+
+/* Full height container that accounts for safe areas */
+.h-full-safe {
+  height: 100%;
+  min-height: 0;
+}
+
+/* Messages container with proper bottom padding for mobile */
+/* Accounts for: input bar (~56px) + bottom nav (~56px) + safe area */
+.messages-container-mobile {
+  padding-bottom: calc(56px + 56px + env(safe-area-inset-bottom, 0px) + 16px);
+}
+
+/* Ensure images in messages are fully visible */
+.message-media-container {
+  max-height: calc(100dvh - 200px); /* Leave room for header, input, and nav */
+  overflow: visible;
+}
+
+/* Fix for foldable phones where 100vh doesn't account for fold */
+@supports (height: 100dvh) {
+  .h-screen-safe {
+    height: 100dvh;
+  }
+  
+  .message-media-container {
+    max-height: calc(100dvh - 200px);
+  }
+}
+
+/* Additional fix for small viewport heights (foldable phones in folded mode) */
+@media (max-height: 600px) {
+  .messages-container-mobile {
+    padding-bottom: calc(56px + 56px + env(safe-area-inset-bottom, 0px) + 24px);
+  }
+  
+  .message-media-container {
+    max-height: calc(100dvh - 160px);
+  }
+}
+
+/* Fix for very tall aspect ratios (foldable phones unfolded) */
+@media (min-aspect-ratio: 1/2) and (max-width: 768px) {
+  .messages-container-mobile {
+    padding-bottom: calc(56px + 56px + env(safe-area-inset-bottom, 0px) + 32px);
+  }
+}
+
+/* Reset mobile container styles on desktop */
+@media (min-width: 768px) {
+  .md\:messages-container-mobile-reset {
+    padding-bottom: 1rem !important;
+  }
+}

@@ -207,7 +207,7 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
     return (
       <>
         <div
-          className="relative cursor-pointer overflow-hidden rounded-xl border-[3px] border-[#787add] group"
+          className="relative cursor-pointer overflow-hidden rounded-xl border-[3px] border-[#787add] group message-media-container"
           style={{ ...containerStyle }}
           onClick={() => !imageError && setIsFullscreen(true)}
         >
@@ -319,7 +319,7 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
     return (
       <>
         <div
-          className="relative cursor-pointer overflow-hidden rounded-xl border-[3px] border-[#787add] max-w-[280px] group"
+          className="relative cursor-pointer overflow-hidden rounded-xl border-[3px] border-[#787add] max-w-[280px] group message-media-container"
           onClick={() => setIsFullscreen(true)}
         >
           {/* Hover Actions Button */}
