@@ -182,7 +182,8 @@ export function ContactsPage() {
           }
         }
       } else {
-        // Cas normal: chercher une conversation avec l'autre utilisateur
+        // Cas normal: chercher une conversation DIRECTE avec l'autre utilisateur
+        // On doit vérifier que c'est bien une conversation de type 'direct' et non un groupe
         const { data: existingMembers } = await supabase
           .from('conversation_members')
           .select('conversation_id')
@@ -190,6 +191,18 @@ export function ContactsPage() {
 
         if (existingMembers) {
           for (const member of existingMembers) {
+            // Vérifier d'abord que c'est une conversation directe (pas un groupe)
+            const { data: conversationData } = await supabase
+              .from('conversations')
+              .select('type')
+              .eq('id', member.conversation_id)
+              .maybeSingle()
+            
+            // Si ce n'est pas une conversation directe, passer à la suivante
+            if (!conversationData || conversationData.type !== 'direct') {
+              continue
+            }
+
             const { data: otherMember } = await supabase
               .from('conversation_members')
               .select('*')
@@ -294,7 +307,8 @@ export function ContactsPage() {
           }
         }
       } else {
-        // Cas normal: chercher une conversation avec l'autre utilisateur
+        // Cas normal: chercher une conversation DIRECTE avec l'autre utilisateur
+        // On doit vérifier que c'est bien une conversation de type 'direct' et non un groupe
         const { data: existingMembers } = await supabase
           .from('conversation_members')
           .select('conversation_id')
@@ -302,6 +316,19 @@ export function ContactsPage() {
 
         if (existingMembers) {
           for (const member of existingMembers) {
+            // Vérifier d'abord que c'est une conversation directe (pas un groupe)
+            const { data: conversationData } = await supabase
+              .from('conversations')
+              .select('type')
+              .eq('id', member.conversation_id)
+              .maybeSingle()
+            
+            // Si ce n'est pas une conversation directe, passer à la suivante
+            if (!conversationData || conversationData.type !== 'direct') {
+              continue
+            }
+
+            // Vérifier que l'autre utilisateur est membre de cette conversation directe
             const { data: otherMember } = await supabase
               .from('conversation_members')
               .select('*')
@@ -310,7 +337,7 @@ export function ContactsPage() {
               .maybeSingle()
 
             if (otherMember) {
-              console.log('Conversation already exists:', member.conversation_id)
+              console.log('Direct conversation already exists:', member.conversation_id)
               navigate(`/chat/${member.conversation_id}`)
               return
             }
