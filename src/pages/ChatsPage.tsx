@@ -48,14 +48,29 @@ interface ConversationWithDetails extends Omit<Conversation, 'is_pinned'> {
 }
 
 export function ChatsPage() {
-  const [conversations, setConversations] = useState<ConversationWithDetails[]>([])
+  // Initialize from memory cache synchronously (instant, no flicker)
+  const [conversations, setConversations] = useState<ConversationWithDetails[]>(() => {
+    const cached = offlineStorage.getConversationsSync()
+    if (cached && cached.length > 0) {
+      console.log('[ChatsPage] Initialized from memory cache:', cached.length)
+      return cached
+    }
+    return []
+  })
   const [searchQuery, setSearchQuery] = useState('')
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; conversationId: string } | null>(null)
   const [showFilterMenu, setShowFilterMenu] = useState(false)
   const [showNewMenu, setShowNewMenu] = useState(false)
   const [activeFilter, setActiveFilter] = useState<'all' | 'unread' | 'groups'>('all')
-  const [isLoading, setIsLoading] = useState(true)
-  const [hasLoadedFromCache, setHasLoadedFromCache] = useState(false)
+  // Don't show loading if we have cached data
+  const [isLoading, setIsLoading] = useState(() => {
+    const cached = offlineStorage.getConversationsSync()
+    return !cached || cached.length === 0
+  })
+  const [hasLoadedFromCache, setHasLoadedFromCache] = useState(() => {
+    const cached = offlineStorage.getConversationsSync()
+    return cached !== null && cached.length > 0
+  })
   const { user } = useAuth()
   const navigate = useNavigate()
   
@@ -156,8 +171,11 @@ export function ChatsPage() {
         setHasLoadedFromCache(true)
         setIsLoading(false) // No spinner - show cached data immediately!
         
-        // Step 2: Sync with server in background
-        loadConversationsFromServer(false)
+        // Step 2: Sync with server in background after a small delay
+        // This ensures the cached data is rendered first
+        setTimeout(() => {
+          loadConversationsFromServer(false)
+        }, 100)
       } else {
         // No cache, show loading and fetch from server
         console.log('[ChatsPage] No cached conversations, loading from server')
@@ -370,34 +388,91 @@ export function ChatsPage() {
         return new Date(b.last_message_at || 0).getTime() - new Date(a.last_message_at || 0).getTime()
       })
       
-      // Only update UI if data has changed (compare by stringifying)
-      // This prevents unnecessary re-renders when data is the same
-      const currentConversationsJson = JSON.stringify(conversations.map(c => ({
-        id: c.id,
-        last_message_at: c.last_message_at,
-        unreadCount: c.unreadCount,
-        is_pinned: c.is_pinned,
-        is_muted: c.is_muted,
-        lastMessageId: c.lastMessage?.id
-      })))
+      // Compare data by content (not order) to avoid unnecessary re-renders
+      // Create a map of conversation data for comparison
+      const createDataMap = (convs: ConversationWithDetails[]) => {
+        const map = new Map<string, string>()
+        convs.forEach(c => {
+          map.set(c.id, JSON.stringify({
+            last_message_at: c.last_message_at,
+            unreadCount: c.unreadCount,
+            is_pinned: c.is_pinned,
+            is_muted: c.is_muted,
+            lastMessageId: c.lastMessage?.id,
+            lastMessageContent: c.lastMessage?.content?.substring(0, 50),
+            otherUserName: c.otherUserProfile?.display_name || c.otherUserProfile?.username,
+            otherUserAvatar: c.otherUserProfile?.avatar_url
+          }))
+        })
+        return map
+      }
       
-      const newConversationsJson = JSON.stringify(sorted.map(c => ({
-        id: c.id,
-        last_message_at: c.last_message_at,
-        unreadCount: c.unreadCount,
-        is_pinned: c.is_pinned,
-        is_muted: c.is_muted,
-        lastMessageId: c.lastMessage?.id
-      })))
+      const currentDataMap = createDataMap(conversations)
+      const newDataMap = createDataMap(sorted)
       
-      if (currentConversationsJson !== newConversationsJson || !hasLoadedFromCache) {
-        console.log('[ChatsPage] Updating conversations from server')
-        setConversations(sorted)
+      // Check if any conversation data has actually changed
+      let hasDataChanged = conversations.length !== sorted.length
+      if (!hasDataChanged) {
+        for (const [id, data] of newDataMap) {
+          if (currentDataMap.get(id) !== data) {
+            hasDataChanged = true
+            break
+          }
+        }
+      }
+      
+      // Check if there are new conversations or removed conversations
+      const currentIds = new Set(conversations.map(c => c.id))
+      const newIds = new Set(sorted.map(c => c.id))
+      const hasNewConversations = sorted.some(c => !currentIds.has(c.id))
+      const hasRemovedConversations = conversations.some(c => !newIds.has(c.id))
+      
+      // Also check if order has changed for pinned items (important for UX)
+      const currentPinnedOrder = conversations.filter(c => c.is_pinned).map(c => c.id).join(',')
+      const newPinnedOrder = sorted.filter(c => c.is_pinned).map(c => c.id).join(',')
+      const pinnedOrderChanged = currentPinnedOrder !== newPinnedOrder
+      
+      console.log('[ChatsPage] Comparison:', {
+        hasDataChanged,
+        pinnedOrderChanged,
+        hasNewConversations,
+        hasRemovedConversations,
+        hasLoadedFromCache
+      })
+      
+      // If we have cached data, update the existing conversations in place
+      // without changing the order (to avoid visual jump)
+      if (hasLoadedFromCache && !hasNewConversations && !hasRemovedConversations) {
+        // Update existing conversations with new data but keep the current order
+        const updatedConversations = conversations.map(conv => {
+          const newConv = sorted.find(c => c.id === conv.id)
+          return newConv || conv
+        })
         
-        // Save to cache for next app open
+        // Only update state if data actually changed
+        if (hasDataChanged || pinnedOrderChanged) {
+          // Re-sort only if pinned status changed
+          if (pinnedOrderChanged) {
+            const resorted = updatedConversations.sort((a, b) => {
+              if (a.is_pinned && !b.is_pinned) return -1
+              if (!a.is_pinned && b.is_pinned) return 1
+              return new Date(b.last_message_at || 0).getTime() - new Date(a.last_message_at || 0).getTime()
+            })
+            setConversations(resorted)
+            await offlineStorage.saveConversations(resorted)
+          } else {
+            setConversations(updatedConversations)
+            await offlineStorage.saveConversations(sorted) // Save sorted version for next load
+          }
+        } else {
+          // Just update cache with correct order for next load
+          await offlineStorage.saveConversations(sorted)
+        }
+      } else if (hasNewConversations || hasRemovedConversations || !hasLoadedFromCache) {
+        // New or removed conversations - full update needed
+        console.log('[ChatsPage] Full update needed')
+        setConversations(sorted)
         await offlineStorage.saveConversations(sorted)
-      } else {
-        console.log('[ChatsPage] Server data matches cache, no update needed')
       }
     } catch (err) {
       console.error('Error loading conversations:', err)

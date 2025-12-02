@@ -1,9 +1,9 @@
 // Service Worker for Nephtys PWA
-// Version: 2.0.0 - Optimized for Android PWA performance
+// Version: 3.0.0 - Fixed scroll behavior
 
-const CACHE_NAME = 'nephtys-app-v2';
-const STATIC_CACHE = 'nephtys-static-v2';
-const DYNAMIC_CACHE = 'nephtys-dynamic-v2';
+const CACHE_NAME = 'nephtys-app-v3';
+const STATIC_CACHE = 'nephtys-static-v3';
+const DYNAMIC_CACHE = 'nephtys-dynamic-v3';
 
 // Static assets to cache immediately (shell)
 const STATIC_ASSETS = [

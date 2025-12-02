@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
 import { User, Session } from '@supabase/supabase-js'
 import { supabase, Profile } from '@/lib/supabase'
+import { initializePresence, cleanupPresence } from '@/hooks/usePresence'
 
 // Timeout for auth operations (in milliseconds)
 const AUTH_TIMEOUT = 5000;
@@ -142,6 +143,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           cacheUser(session.user);
           // Load profile in background, don't block
           loadProfile(session.user.id);
+          // Initialize presence tracking
+          initializePresence(session.user.id);
         } else if (!cachedUser) {
           // No session and no cache - user needs to login
           setUser(null);
@@ -165,9 +168,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       if (session?.user) {
         loadProfile(session.user.id);
+        // Initialize presence tracking when user logs in
+        initializePresence(session.user.id);
       } else {
         setProfile(null);
         cacheProfile(null);
+        // Cleanup presence when user logs out
+        cleanupPresence();
       }
     })
 

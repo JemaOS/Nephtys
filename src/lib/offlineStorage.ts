@@ -45,6 +45,15 @@ class OfflineStorage {
   private initPromise: Promise<void> | null = null;
   private isInitialized = false;
   private initFailed = false;
+  
+  // In-memory cache for instant access (survives navigation, not page refresh)
+  private memoryCache: {
+    conversations: any[] | null;
+    messages: Map<string, any[]>;
+  } = {
+    conversations: null,
+    messages: new Map()
+  };
 
   constructor() {
     // Start initialization immediately but don't block
@@ -346,9 +355,12 @@ class OfflineStorage {
   }
 
   async saveConversations(conversations: any[]): Promise<void> {
+    // Always update memory cache immediately (instant)
+    this.memoryCache.conversations = conversations;
+    
     const ready = await this.ensureReady();
     if (!ready) {
-      console.warn('[OfflineStorage] Cannot save conversations - DB not ready');
+      console.warn('[OfflineStorage] Cannot save conversations to IndexedDB - DB not ready');
       return;
     }
     
@@ -364,7 +376,7 @@ class OfflineStorage {
         conversations.forEach(conversation => store.put(conversation));
 
         transaction.oncomplete = () => {
-          console.log(`[OfflineStorage] Saved ${conversations.length} conversations to cache`);
+          console.log(`[OfflineStorage] Saved ${conversations.length} conversations to IndexedDB`);
           resolve();
         };
         transaction.onerror = () => {
@@ -378,7 +390,18 @@ class OfflineStorage {
     });
   }
 
+  // Synchronous method to get conversations from memory cache (instant)
+  getConversationsSync(): any[] | null {
+    return this.memoryCache.conversations;
+  }
+
   async getConversations(): Promise<any[]> {
+    // First, check memory cache (instant)
+    if (this.memoryCache.conversations !== null) {
+      console.log('[OfflineStorage] Returning conversations from memory cache');
+      return this.memoryCache.conversations;
+    }
+    
     const ready = await this.ensureReady();
     if (!ready) {
       return [];
@@ -390,7 +413,12 @@ class OfflineStorage {
         const store = transaction.objectStore(CONVERSATIONS_STORE);
         const request = store.getAll();
 
-        request.onsuccess = () => resolve(request.result || []);
+        request.onsuccess = () => {
+          const result = request.result || [];
+          // Update memory cache
+          this.memoryCache.conversations = result;
+          resolve(result);
+        };
         request.onerror = () => {
           console.error('[OfflineStorage] Failed to get conversations:', request.error);
           resolve([]);

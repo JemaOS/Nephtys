@@ -7,6 +7,36 @@ import { useWebRTCCall } from '../hooks/useWebRTCCall'
 import { Phone, Video, PhoneIncoming, PhoneOutgoing, PhoneMissed, Search, Star, Link2, Plus, MessageCircle, X, Trash2, UserPlus, Check } from 'lucide-react'
 import { CallScreen } from '@/components/CallScreen'
 
+// Cache helpers for instant display like WhatsApp
+const CACHE_PREFIX = 'anu_cache_'
+const CACHE_EXPIRY = 5 * 60 * 1000 // 5 minutes
+
+const getCache = <T,>(key: string): T | null => {
+  try {
+    const cached = localStorage.getItem(CACHE_PREFIX + key)
+    if (cached) {
+      const { data, timestamp } = JSON.parse(cached)
+      if (Date.now() - timestamp < CACHE_EXPIRY) {
+        return data as T
+      }
+    }
+  } catch (e) {
+    // Ignore cache errors
+  }
+  return null
+}
+
+const setCache = <T,>(key: string, data: T) => {
+  try {
+    localStorage.setItem(CACHE_PREFIX + key, JSON.stringify({
+      data,
+      timestamp: Date.now()
+    }))
+  } catch (e) {
+    // Ignore cache errors (quota exceeded, etc.)
+  }
+}
+
 interface CallLog {
   id: string
   conversation_id: string
@@ -22,16 +52,20 @@ interface CallLog {
 }
 
 export function CallsPage() {
-  const [calls, setCalls] = useState<CallLog[]>([])
+  // Initialize from cache for instant display
+  const [calls, setCalls] = useState<CallLog[]>(() => getCache<CallLog[]>('calls') || [])
   const [searchQuery, setSearchQuery] = useState('')
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(() => {
+    const cached = getCache<CallLog[]>('calls')
+    return !cached || cached.length === 0
+  })
   const [showContactsModal, setShowContactsModal] = useState(false)
   const [showFavoritesModal, setShowFavoritesModal] = useState(false)
   const [showAddContactModal, setShowAddContactModal] = useState(false)
   const [usernameToAdd, setUsernameToAdd] = useState('')
   const [addContactLoading, setAddContactLoading] = useState(false)
   const [addContactError, setAddContactError] = useState('')
-  const [contacts, setContacts] = useState<any[]>([])
+  const [contacts, setContacts] = useState<any[]>(() => getCache<any[]>('calls_contacts') || [])
   const [selectedCall, setSelectedCall] = useState<CallLog | null>(null)
   const [favorites, setFavorites] = useState<string[]>([])
   const [contextMenuCall, setContextMenuCall] = useState<CallLog | null>(null)
@@ -89,6 +123,7 @@ export function CallsPage() {
     if (!user) return
 
     try {
+      // Use cached contacts if available (already set in useState)
       // 1. Load explicit contacts
       const { data: contactsData } = await supabase
         .from('contacts')
@@ -151,12 +186,16 @@ export function CallsPage() {
             }
           })
 
-          setContacts(contactsWithProfiles.filter(c => c.profile))
+          const filteredContacts = contactsWithProfiles.filter(c => c.profile)
+          setContacts(filteredContacts)
+          setCache('calls_contacts', filteredContacts) // Cache for instant display
         } else {
           setContacts([])
+          setCache('calls_contacts', [])
         }
       } else {
         setContacts([])
+        setCache('calls_contacts', [])
       }
     } catch (err) {
       console.error('Error loading contacts:', err)
@@ -182,7 +221,12 @@ export function CallsPage() {
 
   const loadCalls = async () => {
     if (!user) return
-    setLoading(true)
+    
+    // Only show loading if we don't have cached data
+    const hasCachedCalls = calls.length > 0
+    if (!hasCachedCalls) {
+      setLoading(true)
+    }
 
     try {
       // Step 1: Fetch all calls (single query)
@@ -234,6 +278,7 @@ export function CallsPage() {
       }))
 
       setCalls(enrichedCalls)
+      setCache('calls', enrichedCalls) // Cache for instant display
     } catch (err) {
       console.error('Error loading calls:', err)
       setCalls([])

@@ -6,12 +6,48 @@ import { useAuth } from '@/context/AuthContext'
 import { offlineStorage } from '@/lib/offlineStorage'
 import { Search, UserPlus, MessageCircle, X, Check, Trash2, CheckSquare, Square } from 'lucide-react'
 
+// Cache helpers for instant display like WhatsApp
+const CACHE_PREFIX = 'anu_cache_'
+const CACHE_EXPIRY = 5 * 60 * 1000 // 5 minutes
+
+const getCache = <T,>(key: string): T | null => {
+  try {
+    const cached = localStorage.getItem(CACHE_PREFIX + key)
+    if (cached) {
+      const { data, timestamp } = JSON.parse(cached)
+      if (Date.now() - timestamp < CACHE_EXPIRY) {
+        return data as T
+      }
+    }
+  } catch (e) {
+    // Ignore cache errors
+  }
+  return null
+}
+
+const setCache = <T,>(key: string, data: T) => {
+  try {
+    localStorage.setItem(CACHE_PREFIX + key, JSON.stringify({
+      data,
+      timestamp: Date.now()
+    }))
+  } catch (e) {
+    // Ignore cache errors (quota exceeded, etc.)
+  }
+}
+
 export function ContactsPage() {
-  const [contacts, setContacts] = useState<(Contact & { profile: Profile })[]>([])
+  // Initialize from cache for instant display
+  const [contacts, setContacts] = useState<(Contact & { profile: Profile })[]>(() =>
+    getCache<(Contact & { profile: Profile })[]>('contacts') || []
+  )
   const [searchQuery, setSearchQuery] = useState('')
   const [showAddModal, setShowAddModal] = useState(false)
   const [usernameToAdd, setUsernameToAdd] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(() => {
+    const cached = getCache<(Contact & { profile: Profile })[]>('contacts')
+    return !cached || cached.length === 0
+  })
   const [error, setError] = useState('')
   const [isSelectionMode, setIsSelectionMode] = useState(false)
   const [selectedContacts, setSelectedContacts] = useState<Set<string>>(new Set())
@@ -26,6 +62,12 @@ export function ContactsPage() {
 
   const loadContacts = async () => {
     if (!user) return
+
+    // Only show loading if we don't have cached data
+    const hasCachedContacts = contacts.length > 0
+    if (!hasCachedContacts) {
+      setLoading(true)
+    }
 
     // 1. Load explicit contacts
     const { data: contactsData } = await supabase
@@ -90,11 +132,15 @@ export function ContactsPage() {
           }
         })
 
-        setContacts(contactsWithProfiles.filter(c => c.profile) as (Contact & { profile: Profile })[])
+        const filteredContacts = contactsWithProfiles.filter(c => c.profile) as (Contact & { profile: Profile })[]
+        setContacts(filteredContacts)
+        setCache('contacts', filteredContacts) // Cache for instant display
       }
     } else {
       setContacts([])
+      setCache('contacts', [])
     }
+    setLoading(false)
   }
 
   const addContact = async () => {
@@ -659,7 +705,11 @@ export function ContactsPage() {
 
         {/* Contacts List */}
         <div className="flex-1 overflow-y-auto pb-2">
-          {filteredContacts.length === 0 ? (
+          {loading ? (
+            <div className="flex justify-center items-center h-full">
+              <div className="w-8 h-8 rounded-full border-4 border-accent border-t-transparent animate-spin" />
+            </div>
+          ) : filteredContacts.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center px-8">
               <UserPlus size={64} className="text-[#3b4a54] mb-4" />
               <h3 className="text-lg font-medium text-text-secondary mb-2">Aucun contact</h3>

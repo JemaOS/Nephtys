@@ -16,6 +16,9 @@ export interface Profile {
   public_key: string | null
   created_at: string
   updated_at: string
+  // Online presence fields
+  is_online?: boolean
+  last_seen?: string | null
 }
 
 export interface Conversation {

@@ -22,6 +22,12 @@ export function SettingsPage() {
   const [currentView, setCurrentView] = useState<SettingsView>('main')
   const [notificationsEnabled, setNotificationsEnabled] = useState(true)
   const [soundEnabled, setSoundEnabled] = useState(true)
+  const [vibrationEnabled, setVibrationEnabled] = useState(true)
+  const [messagePreviewEnabled, setMessagePreviewEnabled] = useState(true)
+  const [callNotificationsEnabled, setCallNotificationsEnabled] = useState(true)
+  const [ringtoneEnabled, setRingtoneEnabled] = useState(true)
+  const [callVibrationEnabled, setCallVibrationEnabled] = useState(true)
+  const [showCallerName, setShowCallerName] = useState(true)
   const [editingName, setEditingName] = useState(false)
   const [newDisplayName, setNewDisplayName] = useState(profile?.display_name || '')
   const [editingBio, setEditingBio] = useState(false)
@@ -644,6 +650,96 @@ export function SettingsPage() {
     </div>
   )
 
+  const renderMessageNotifView = () => (
+    <div className="flex-1 overflow-y-auto pb-4">
+      <div className="py-2">
+        <div className="px-6 py-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-text-primary">Notifications de messages</div>
+              <div className="text-sm text-text-secondary">Afficher les notifications pour les nouveaux messages</div>
+            </div>
+            <button onClick={() => setNotificationsEnabled(!notificationsEnabled)} className={`w-12 h-6 rounded-full relative transition-colors ${notificationsEnabled ? 'bg-accent' : 'bg-[#8696a0]'}`}>
+              <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${notificationsEnabled ? 'right-1' : 'left-1'}`}></div>
+            </button>
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-text-primary">Son de notification</div>
+              <div className="text-sm text-text-secondary">Jouer un son pour les nouveaux messages</div>
+            </div>
+            <button onClick={() => setSoundEnabled(!soundEnabled)} className={`w-12 h-6 rounded-full relative transition-colors ${soundEnabled ? 'bg-accent' : 'bg-[#8696a0]'}`}>
+              <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${soundEnabled ? 'right-1' : 'left-1'}`}></div>
+            </button>
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-text-primary">Vibration</div>
+              <div className="text-sm text-text-secondary">Vibrer pour les nouveaux messages</div>
+            </div>
+            <button onClick={() => setVibrationEnabled(!vibrationEnabled)} className={`w-12 h-6 rounded-full relative transition-colors ${vibrationEnabled ? 'bg-accent' : 'bg-[#8696a0]'}`}>
+              <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${vibrationEnabled ? 'right-1' : 'left-1'}`}></div>
+            </button>
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-text-primary">Aperçu du message</div>
+              <div className="text-sm text-text-secondary">Afficher le contenu dans la notification</div>
+            </div>
+            <button onClick={() => setMessagePreviewEnabled(!messagePreviewEnabled)} className={`w-12 h-6 rounded-full relative transition-colors ${messagePreviewEnabled ? 'bg-accent' : 'bg-[#8696a0]'}`}>
+              <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${messagePreviewEnabled ? 'right-1' : 'left-1'}`}></div>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+
+  const renderCallNotifView = () => (
+    <div className="flex-1 overflow-y-auto pb-4">
+      <div className="py-2">
+        <div className="px-6 py-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-text-primary">Notifications d'appels</div>
+              <div className="text-sm text-text-secondary">Afficher les notifications pour les appels entrants</div>
+            </div>
+            <button onClick={() => setCallNotificationsEnabled(!callNotificationsEnabled)} className={`w-12 h-6 rounded-full relative transition-colors ${callNotificationsEnabled ? 'bg-accent' : 'bg-[#8696a0]'}`}>
+              <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${callNotificationsEnabled ? 'right-1' : 'left-1'}`}></div>
+            </button>
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-text-primary">Sonnerie</div>
+              <div className="text-sm text-text-secondary">Jouer une sonnerie pour les appels entrants</div>
+            </div>
+            <button onClick={() => setRingtoneEnabled(!ringtoneEnabled)} className={`w-12 h-6 rounded-full relative transition-colors ${ringtoneEnabled ? 'bg-accent' : 'bg-[#8696a0]'}`}>
+              <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${ringtoneEnabled ? 'right-1' : 'left-1'}`}></div>
+            </button>
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-text-primary">Vibration</div>
+              <div className="text-sm text-text-secondary">Vibrer pour les appels entrants</div>
+            </div>
+            <button onClick={() => setCallVibrationEnabled(!callVibrationEnabled)} className={`w-12 h-6 rounded-full relative transition-colors ${callVibrationEnabled ? 'bg-accent' : 'bg-[#8696a0]'}`}>
+              <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${callVibrationEnabled ? 'right-1' : 'left-1'}`}></div>
+            </button>
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-text-primary">Afficher le nom de l'appelant</div>
+              <div className="text-sm text-text-secondary">Afficher qui appelle dans la notification</div>
+            </div>
+            <button onClick={() => setShowCallerName(!showCallerName)} className={`w-12 h-6 rounded-full relative transition-colors ${showCallerName ? 'bg-accent' : 'bg-[#8696a0]'}`}>
+              <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${showCallerName ? 'right-1' : 'left-1'}`}></div>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+
   const renderStorageView = () => (
     <div className="flex-1 overflow-y-auto pb-4">
       <div className="py-2">
@@ -969,8 +1065,8 @@ export function SettingsPage() {
     discussions: renderDiscussionsView,
     wallpaper: renderWallpaperView,
     notifications: renderNotificationsView,
-    'message-notif': renderNotificationsView,
-    'call-notif': renderNotificationsView,
+    'message-notif': renderMessageNotifView,
+    'call-notif': renderCallNotifView,
     storage: renderStorageView,
     network: renderNetworkView,
     help: renderHelpView,
@@ -979,12 +1075,46 @@ export function SettingsPage() {
     terms: renderTermsView,
   }
 
+  // Define parent views for proper back navigation
+  const getParentView = (view: SettingsView): SettingsView => {
+    switch (view) {
+      // Account sub-views
+      case 'privacy':
+      case 'security':
+      case '2fa':
+      case 'delete':
+        return 'account'
+      // Discussions sub-views
+      case 'wallpaper':
+        return 'discussions'
+      // Notifications sub-views
+      case 'message-notif':
+      case 'call-notif':
+        return 'notifications'
+      // Storage sub-views
+      case 'network':
+        return 'storage'
+      // Help sub-views
+      case 'faq':
+      case 'contact':
+      case 'terms':
+        return 'help'
+      // All main menu items go back to main
+      default:
+        return 'main'
+    }
+  }
+
+  const handleBack = () => {
+    setCurrentView(getParentView(currentView))
+  }
+
   return (
     <MainLayout>
       <div className="flex-1 flex flex-col bg-bg-primary pb-20 md:pb-0 overflow-hidden">
         <div className="bg-bg-surface px-4 py-3 flex items-center gap-4">
           {currentView !== 'main' && (
-            <button onClick={() => setCurrentView('main')} className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1]">
+            <button onClick={handleBack} className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1]">
               <ArrowLeft size={20} />
             </button>
           )}

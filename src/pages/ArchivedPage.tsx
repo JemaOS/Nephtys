@@ -5,13 +5,50 @@ import { supabase, Conversation, Profile, Message } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { Archive, ArchiveRestore } from 'lucide-react'
 
+// Cache helpers for instant display like WhatsApp
+const CACHE_PREFIX = 'anu_cache_'
+const CACHE_EXPIRY = 5 * 60 * 1000 // 5 minutes
+
+const getCache = <T,>(key: string): T | null => {
+  try {
+    const cached = localStorage.getItem(CACHE_PREFIX + key)
+    if (cached) {
+      const { data, timestamp } = JSON.parse(cached)
+      if (Date.now() - timestamp < CACHE_EXPIRY) {
+        return data as T
+      }
+    }
+  } catch (e) {
+    // Ignore cache errors
+  }
+  return null
+}
+
+const setCache = <T,>(key: string, data: T) => {
+  try {
+    localStorage.setItem(CACHE_PREFIX + key, JSON.stringify({
+      data,
+      timestamp: Date.now()
+    }))
+  } catch (e) {
+    // Ignore cache errors (quota exceeded, etc.)
+  }
+}
+
 interface ConversationWithDetails extends Conversation {
   otherUserProfile?: Profile
   lastMessage?: Message
 }
 
 export function ArchivedPage() {
-  const [conversations, setConversations] = useState<ConversationWithDetails[]>([])
+  // Initialize from cache for instant display
+  const [conversations, setConversations] = useState<ConversationWithDetails[]>(() =>
+    getCache<ConversationWithDetails[]>('archived_conversations') || []
+  )
+  const [loading, setLoading] = useState(() => {
+    const cached = getCache<ConversationWithDetails[]>('archived_conversations')
+    return !cached || cached.length === 0
+  })
   const { user } = useAuth()
   const navigate = useNavigate()
 
@@ -23,6 +60,12 @@ export function ArchivedPage() {
 
   const loadArchivedConversations = async () => {
     if (!user) return
+
+    // Only show loading if we don't have cached data
+    const hasCachedData = conversations.length > 0
+    if (!hasCachedData) {
+      setLoading(true)
+    }
 
     const { data: memberData } = await supabase
       .from('conversation_members')
@@ -63,8 +106,13 @@ export function ArchivedPage() {
           })
         )
         setConversations(enriched)
+        setCache('archived_conversations', enriched) // Cache for instant display
       }
+    } else {
+      setConversations([])
+      setCache('archived_conversations', [])
     }
+    setLoading(false)
   }
 
   const handleUnarchive = async (conversationId: string, e: React.MouseEvent) => {
@@ -95,7 +143,11 @@ export function ArchivedPage() {
         </div>
 
         <div className="flex-1 overflow-y-auto">
-          {conversations.length === 0 ? (
+          {loading ? (
+            <div className="flex justify-center items-center h-full">
+              <div className="w-8 h-8 rounded-full border-4 border-accent border-t-transparent animate-spin" />
+            </div>
+          ) : conversations.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center px-8">
               <Archive size={64} className="text-[#3b4a54] mb-4" />
               <h3 className="text-lg font-medium text-text-secondary mb-2">Aucune discussion archivée</h3>
