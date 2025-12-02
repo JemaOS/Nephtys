@@ -131,6 +131,12 @@ export function ChatViewPage() {
     isOwn: boolean;
     messageId: string;
   } | null>(null)
+  
+  // State for media viewer with navigation support
+  const [mediaViewerState, setMediaViewerState] = useState<{
+    isOpen: boolean;
+    currentIndex: number;
+  }>({ isOpen: false, currentIndex: 0 })
   const [pinnedMessage, setPinnedMessage] = useState<{
     id: string;
     content: string;
@@ -150,6 +156,72 @@ export function ChatViewPage() {
   const isMobile = useIsMobile()
   
   const displayedMessages = filteredMessages.length > 0 ? filteredMessages : messages
+
+  // Collect all media from messages for navigation in MediaViewer
+  const allMediaItems = useMemo(() => {
+    return messages
+      .filter(m => {
+        // Include image and video messages
+        if (m.media_url && m.media_type && (m.media_type === 'image' || m.media_type === 'video') && m.type !== 'audio') {
+          return true
+        }
+        // Include GIF messages
+        if (m.type === 'text' && m.content && m.content.match(/^\[GIF\]\(https?:\/\/[^\)]+\)$/)) {
+          return true
+        }
+        // Include Sticker messages
+        if (m.type === 'text' && m.content && m.content.match(/^\[STICKER\]\(https?:\/\/[^\)]+\)$/)) {
+          return true
+        }
+        return false
+      })
+      .map(m => {
+        // Determine the media URL and type
+        let mediaUrl = m.media_url || ''
+        let mediaType: 'image' | 'video' | 'audio' | 'gif' | 'sticker' = 'image'
+        
+        if (m.media_url && m.media_type) {
+          mediaUrl = m.media_url
+          mediaType = m.media_type as 'image' | 'video'
+        } else if (m.content) {
+          const gifMatch = m.content.match(/^\[GIF\]\((https?:\/\/[^\)]+)\)$/)
+          const stickerMatch = m.content.match(/^\[STICKER\]\((https?:\/\/[^\)]+)\)$/)
+          if (gifMatch) {
+            mediaUrl = gifMatch[1]
+            mediaType = 'gif'
+          } else if (stickerMatch) {
+            mediaUrl = stickerMatch[1]
+            mediaType = 'sticker'
+          }
+        }
+        
+        const senderInfo = m.sender_id === user?.id
+          ? { name: profile?.display_name || profile?.username || 'Vous', avatar: profile?.avatar_url }
+          : { name: otherUser?.display_name || otherUser?.username || 'Utilisateur', avatar: otherUser?.avatar_url }
+        
+        return {
+          url: mediaUrl,
+          type: mediaType,
+          senderName: senderInfo.name,
+          senderAvatar: senderInfo.avatar,
+          timestamp: m.created_at,
+          isOwn: m.sender_id === user?.id,
+          messageId: m.id,
+        }
+      })
+  }, [messages, user?.id, profile, otherUser])
+
+  // Handler for media navigation
+  const handleMediaNavigate = useCallback((index: number) => {
+    if (index >= 0 && index < allMediaItems.length) {
+      setMediaViewerState({ isOpen: true, currentIndex: index })
+    }
+  }, [allMediaItems.length])
+
+  // Get current media index for a message
+  const getMediaIndexForMessage = useCallback((messageId: string) => {
+    return allMediaItems.findIndex(m => m.messageId === messageId)
+  }, [allMediaItems])
 
   const getWallpaperStyle = () => {
     switch (wallpaper) {
@@ -217,28 +289,35 @@ export function ChatViewPage() {
     }
   }, [conversationId, user?.id, permission, otherUser?.id])
 
-  // Scroll to bottom when messages change (smooth for new messages)
-  useEffect(() => {
-    if (messages.length > 0) {
-      scrollToBottom('smooth')
-    }
-  }, [messages])
+  // Track previous message count to detect new messages
+  const prevMessageCountRef = useRef(0)
+  const hasScrolledInitially = useRef(false)
   
   // Scroll to bottom instantly when conversation loads (initial load)
-  const hasScrolledInitially = useRef(false)
+  // Only scroll smoothly for NEW messages after initial load
   useEffect(() => {
-    if (!loading && messages.length > 0 && !hasScrolledInitially.current) {
-      // Use requestAnimationFrame to ensure DOM is ready
-      requestAnimationFrame(() => {
-        scrollToBottom('instant')
-        hasScrolledInitially.current = true
-      })
+    if (!loading && messages.length > 0) {
+      if (!hasScrolledInitially.current) {
+        // Initial load - scroll instantly without animation
+        // Use setTimeout to ensure DOM is fully rendered
+        const timer = setTimeout(() => {
+          messagesEndRef.current?.scrollIntoView({ behavior: 'instant' })
+          hasScrolledInitially.current = true
+          prevMessageCountRef.current = messages.length
+        }, 50)
+        return () => clearTimeout(timer)
+      } else if (messages.length > prevMessageCountRef.current) {
+        // New message added - scroll smoothly
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+        prevMessageCountRef.current = messages.length
+      }
     }
   }, [loading, messages.length])
   
   // Reset initial scroll flag when conversation changes
   useEffect(() => {
     hasScrolledInitially.current = false
+    prevMessageCountRef.current = 0
   }, [conversationId])
   
   const scrollToBottom = (behavior: 'smooth' | 'instant' = 'smooth') => {
@@ -1754,41 +1833,44 @@ export function ChatViewPage() {
                           {/* Media display - no background bubble */}
                           <div className="space-y-1">
                             <MediaMessage
-                              url={message.media_url!}
-                              type={message.media_type as 'image' | 'video' | 'file'}
-                              fileName={message.file_name}
-                              fileSize={message.file_size}
-                              caption={message.content}
-                              width={message.media_width ?? undefined}
-                              height={message.media_height ?? undefined}
-                              thumbnail={message.media_thumbnail ?? undefined}
-                              senderName={message.sender_id === user?.id
-                                ? (profile?.display_name || profile?.username || 'Vous')
-                                : (otherUser?.display_name || otherUser?.username || 'Utilisateur')
-                              }
-                              senderAvatar={message.sender_id === user?.id
-                                ? profile?.avatar_url
-                                : otherUser?.avatar_url
-                              }
-                              timestamp={message.created_at}
-                              isOwn={message.sender_id === user?.id}
-                              isStarred={message.is_starred || false}
-                              messageId={message.id}
-                              status={message.status as 'sent' | 'delivered' | 'read' | undefined}
-                              onForward={() => handleForwardMessage(message)}
-                              onStar={() => handleStarMessage(message.id)}
-                              onPin={() => handlePinMessage(message.id)}
-                              onReaction={(emoji) => addReaction(message.id, emoji)}
-                              showHoverActions={hoveredMessageId === message.id}
-                              onOpenMenu={(e) => {
-                                const rect = e.currentTarget.getBoundingClientRect();
-                                setContextMenu({
-                                  isOpen: true,
-                                  position: { x: rect.left, y: rect.bottom + 5 },
-                                  message,
-                                });
-                              }}
-                            />
+                                url={message.media_url!}
+                                type={message.media_type as 'image' | 'video' | 'file'}
+                                fileName={message.file_name}
+                                fileSize={message.file_size}
+                                caption={message.content}
+                                width={message.media_width ?? undefined}
+                                height={message.media_height ?? undefined}
+                                thumbnail={message.media_thumbnail ?? undefined}
+                                senderName={message.sender_id === user?.id
+                                  ? (profile?.display_name || profile?.username || 'Vous')
+                                  : (otherUser?.display_name || otherUser?.username || 'Utilisateur')
+                                }
+                                senderAvatar={message.sender_id === user?.id
+                                  ? profile?.avatar_url
+                                  : otherUser?.avatar_url
+                                }
+                                timestamp={message.created_at}
+                                isOwn={message.sender_id === user?.id}
+                                isStarred={message.is_starred || false}
+                                messageId={message.id}
+                                status={message.status as 'sent' | 'delivered' | 'read' | undefined}
+                                onForward={() => handleForwardMessage(message)}
+                                onStar={() => handleStarMessage(message.id)}
+                                onPin={() => handlePinMessage(message.id)}
+                                onReaction={(emoji) => addReaction(message.id, emoji)}
+                                showHoverActions={hoveredMessageId === message.id}
+                                onOpenMenu={(e) => {
+                                  const rect = e.currentTarget.getBoundingClientRect();
+                                  setContextMenu({
+                                    isOpen: true,
+                                    position: { x: rect.left, y: rect.bottom + 5 },
+                                    message,
+                                  });
+                                }}
+                                allMedia={allMediaItems}
+                                currentIndex={getMediaIndexForMessage(message.id)}
+                                onNavigate={handleMediaNavigate}
+                              />
                           </div>
                         </div>
                       ) : (
@@ -2347,6 +2429,23 @@ export function ChatViewPage() {
           }}
           onStar={() => handleStarMessage(gifStickerViewer.messageId)}
           onPin={() => handlePinMessage(gifStickerViewer.messageId)}
+          allMedia={allMediaItems}
+          currentIndex={getMediaIndexForMessage(gifStickerViewer.messageId)}
+          onNavigate={(index) => {
+            const media = allMediaItems[index]
+            if (media) {
+              setGifStickerViewer({
+                isOpen: true,
+                url: media.url,
+                type: media.type as 'gif' | 'sticker',
+                senderName: media.senderName,
+                senderAvatar: media.senderAvatar,
+                timestamp: media.timestamp,
+                isOwn: media.isOwn,
+                messageId: media.messageId,
+              })
+            }
+          }}
         />
       )}
     </MainLayout>

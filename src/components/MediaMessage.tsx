@@ -31,6 +31,18 @@ interface MediaMessageProps {
   // Hover actions
   onOpenMenu?: (e: React.MouseEvent) => void;
   showHoverActions?: boolean;
+  // Navigation props for MediaViewer
+  allMedia?: Array<{
+    url: string;
+    type: 'image' | 'video' | 'audio' | 'gif' | 'sticker';
+    senderName: string;
+    senderAvatar?: string;
+    timestamp: string;
+    isOwn: boolean;
+    messageId: string;
+  }>;
+  currentIndex?: number;
+  onNavigate?: (index: number) => void;
 }
 
 // Helper component for timestamp overlay inside media
@@ -105,6 +117,9 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
   onReaction,
   onOpenMenu,
   showHoverActions = false,
+  allMedia,
+  currentIndex,
+  onNavigate,
 }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
@@ -313,6 +328,9 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
           onStar={onStar}
           onPin={onPin}
           onReaction={onReaction}
+          allMedia={allMedia}
+          currentIndex={currentIndex}
+          onNavigate={onNavigate}
         />
       </>
     );
@@ -398,6 +416,9 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
           onStar={onStar}
           onPin={onPin}
           onReaction={onReaction}
+          allMedia={allMedia}
+          currentIndex={currentIndex}
+          onNavigate={onNavigate}
         />
       </>
     );

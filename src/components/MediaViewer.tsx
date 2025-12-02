@@ -122,21 +122,40 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
           onClose();
           break;
         case 'ArrowLeft':
-          handlePrevious();
+          e.preventDefault();
+          if (allMedia && currentIndex > 0 && onNavigate) {
+            onNavigate(currentIndex - 1);
+          }
           break;
         case 'ArrowRight':
-          handleNext();
+          e.preventDefault();
+          if (allMedia && currentIndex < allMedia.length - 1 && onNavigate) {
+            onNavigate(currentIndex + 1);
+          }
           break;
         case ' ':
           e.preventDefault();
-          togglePlayPause();
+          // Toggle play/pause for video/audio
+          if (mediaType === 'video' && videoRef.current) {
+            if (videoRef.current.paused) {
+              videoRef.current.play();
+            } else {
+              videoRef.current.pause();
+            }
+          } else if (mediaType === 'audio' && audioRef.current) {
+            if (audioRef.current.paused) {
+              audioRef.current.play();
+            } else {
+              audioRef.current.pause();
+            }
+          }
           break;
       }
     };
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, currentIndex, allMedia]);
+  }, [isOpen, currentIndex, allMedia, onNavigate, onClose, mediaType]);
 
   // Reset zoom and swipe state when media changes or viewer closes
   useEffect(() => {
