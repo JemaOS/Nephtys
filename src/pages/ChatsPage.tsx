@@ -1058,20 +1058,25 @@ export function ChatsPage() {
       </div>
 
       {/* Context Menu */}
-      {contextMenu && (
-        <ConversationContextMenu
-          x={contextMenu.x}
-          y={contextMenu.y}
-          onClose={() => setContextMenu(null)}
-          onMarkAsUnread={() => handleMarkAsUnread(contextMenu.conversationId)}
-          onPin={() => handlePinConversation(contextMenu.conversationId)}
-          onArchive={() => handleArchiveConversation(contextMenu.conversationId)}
-          onMute={() => handleMuteConversation(contextMenu.conversationId)}
-          onClearMessages={() => handleClearMessages(contextMenu.conversationId)}
-          onDelete={() => handleDeleteConversation(contextMenu.conversationId)}
-          onOpenInNewWindow={() => handleOpenInNewWindow(contextMenu.conversationId)}
-        />
-      )}
+      {contextMenu && (() => {
+        const selectedConv = conversations.find(c => c.id === contextMenu.conversationId)
+        return (
+          <ConversationContextMenu
+            x={contextMenu.x}
+            y={contextMenu.y}
+            onClose={() => setContextMenu(null)}
+            onMarkAsUnread={() => handleMarkAsUnread(contextMenu.conversationId)}
+            onPin={() => handlePinConversation(contextMenu.conversationId)}
+            onArchive={() => handleArchiveConversation(contextMenu.conversationId)}
+            onMute={() => handleMuteConversation(contextMenu.conversationId)}
+            onClearMessages={() => handleClearMessages(contextMenu.conversationId)}
+            onDelete={() => handleDeleteConversation(contextMenu.conversationId)}
+            onOpenInNewWindow={() => handleOpenInNewWindow(contextMenu.conversationId)}
+            isPinned={selectedConv?.is_pinned || false}
+            isMuted={selectedConv?.is_muted || false}
+          />
+        )
+      })()}
     </MainLayout>
   )
 }
