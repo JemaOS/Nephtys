@@ -345,6 +345,39 @@ class OfflineStorage {
     });
   }
 
+  async saveConversations(conversations: any[]): Promise<void> {
+    const ready = await this.ensureReady();
+    if (!ready) {
+      console.warn('[OfflineStorage] Cannot save conversations - DB not ready');
+      return;
+    }
+    
+    return new Promise((resolve) => {
+      try {
+        const transaction = this.db!.transaction([CONVERSATIONS_STORE], 'readwrite');
+        const store = transaction.objectStore(CONVERSATIONS_STORE);
+
+        // Clear existing conversations first to ensure fresh data
+        store.clear();
+
+        // Add all new conversations
+        conversations.forEach(conversation => store.put(conversation));
+
+        transaction.oncomplete = () => {
+          console.log(`[OfflineStorage] Saved ${conversations.length} conversations to cache`);
+          resolve();
+        };
+        transaction.onerror = () => {
+          console.error('[OfflineStorage] Failed to save conversations:', transaction.error);
+          resolve();
+        };
+      } catch (error) {
+        console.error('[OfflineStorage] Exception saving conversations:', error);
+        resolve();
+      }
+    });
+  }
+
   async getConversations(): Promise<any[]> {
     const ready = await this.ensureReady();
     if (!ready) {

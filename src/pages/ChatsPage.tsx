@@ -4,6 +4,7 @@ import { MainLayout } from '@/components/MainLayout'
 import { ConversationContextMenu } from '@/components/ConversationContextMenu'
 import { supabase, Conversation, Profile, Message } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
+import { offlineStorage } from '@/lib/offlineStorage'
 import { MessageCircle, Search, Plus, MoreVertical, Check, UserPlus, Users, Pin, BellOff } from 'lucide-react'
 
 // Memoized formatDate function outside component to prevent recreation on every render
@@ -54,11 +55,14 @@ export function ChatsPage() {
   const [showNewMenu, setShowNewMenu] = useState(false)
   const [activeFilter, setActiveFilter] = useState<'all' | 'unread' | 'groups'>('all')
   const [isLoading, setIsLoading] = useState(true)
+  const [hasLoadedFromCache, setHasLoadedFromCache] = useState(false)
   const { user } = useAuth()
   const navigate = useNavigate()
   
   // Ref for debouncing real-time subscription reloads
   const reloadTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  // Ref to track if initial load is complete
+  const initialLoadComplete = useRef(false)
   
   // Debounced reload function to prevent excessive reloads from real-time subscriptions
   const debouncedReload = useCallback(() => {
@@ -66,7 +70,7 @@ export function ChatsPage() {
       clearTimeout(reloadTimeoutRef.current)
     }
     reloadTimeoutRef.current = setTimeout(() => {
-      loadConversations()
+      loadConversationsFromServer(false) // Background sync, no loading state
     }, 500) // 500ms debounce
   }, [])
   
@@ -79,9 +83,17 @@ export function ChatsPage() {
     }
   }, [])
 
+  // Load conversations from cache first, then sync with server
+  useEffect(() => {
+    if (user && !initialLoadComplete.current) {
+      initialLoadComplete.current = true
+      loadConversationsWithCacheFirst()
+    }
+  }, [user])
+
+  // Set up real-time subscriptions
   useEffect(() => {
     if (user) {
-      loadConversations()
       
       // Subscribe to conversation changes with debounced reload
       const conversationsChannel = supabase
@@ -130,10 +142,41 @@ export function ChatsPage() {
     }
   }, [user, debouncedReload])
 
-  const loadConversations = async () => {
+  // Load from cache first, then sync with server (WhatsApp-like behavior)
+  const loadConversationsWithCacheFirst = async () => {
     if (!user) return
 
-    setIsLoading(true)
+    try {
+      // Step 1: Load from cache immediately (no loading spinner if we have cached data)
+      const cachedConversations = await offlineStorage.getConversations()
+      
+      if (cachedConversations && cachedConversations.length > 0) {
+        console.log(`[ChatsPage] Loaded ${cachedConversations.length} conversations from cache`)
+        setConversations(cachedConversations)
+        setHasLoadedFromCache(true)
+        setIsLoading(false) // No spinner - show cached data immediately!
+        
+        // Step 2: Sync with server in background
+        loadConversationsFromServer(false)
+      } else {
+        // No cache, show loading and fetch from server
+        console.log('[ChatsPage] No cached conversations, loading from server')
+        await loadConversationsFromServer(true)
+      }
+    } catch (error) {
+      console.error('[ChatsPage] Error loading from cache:', error)
+      // Fallback to server load
+      await loadConversationsFromServer(true)
+    }
+  }
+
+  // Load conversations from server (can be called with or without loading state)
+  const loadConversationsFromServer = async (showLoading: boolean = true) => {
+    if (!user) return
+
+    if (showLoading) {
+      setIsLoading(true)
+    }
 
     try {
       // Step 1: Get all conversation memberships for the user (single query)
@@ -186,8 +229,12 @@ export function ChatsPage() {
         .select('conversation_id, user_id')
         .in('conversation_id', conversationIds)
       
+      console.log('[ChatsPage] All members including self:', allMembersIncludingSelf?.length || 0)
+      
       // Filter to get other members (for normal conversations)
       const allMembers = allMembersIncludingSelf?.filter(m => m.user_id !== user.id) || []
+      
+      console.log('[ChatsPage] Other members (excluding self):', allMembers.length)
       
       // Detect "Saved Messages" conversations (only one member = self)
       const savedMessagesConvIds = new Set<string>()
@@ -211,10 +258,14 @@ export function ChatsPage() {
         .filter(c => c.type === 'direct')
         .map(c => c.id)
       
+      console.log('[ChatsPage] Direct conversation IDs:', directConvIds)
+      
       // Get all user IDs from direct conversations (excluding self)
       const directConvOtherUserIds = allMembers
         .filter(m => directConvIds.includes(m.conversation_id))
         .map(m => m.user_id)
+      
+      console.log('[ChatsPage] Direct conv other user IDs:', directConvOtherUserIds)
       
       // Combine all user IDs we need to fetch
       const userIdsToFetch = [
@@ -225,12 +276,16 @@ export function ChatsPage() {
         ])
       ]
       
+      console.log('[ChatsPage] User IDs to fetch profiles for:', userIdsToFetch)
+      
       const { data: profiles } = userIdsToFetch.length > 0
         ? await supabase
             .from('profiles')
             .select('*')
             .in('id', userIdsToFetch)
         : { data: [] }
+      
+      console.log('[ChatsPage] Fetched profiles:', profiles?.length || 0)
 
       const profileMap = new Map(profiles?.map(p => [p.id, p]) || [])
 
@@ -274,6 +329,8 @@ export function ChatsPage() {
         existing.push(m.user_id)
         membersByConversation.set(m.conversation_id, existing)
       })
+      
+      console.log('[ChatsPage] Members by conversation map:', Object.fromEntries(membersByConversation))
 
       const enrichedConversations: ConversationWithDetails[] = conversationsData.map(conv => {
         const memberInfo = activeMembers.find(m => m.conversation_id === conv.id)
@@ -285,12 +342,16 @@ export function ChatsPage() {
         // For "Saved Messages", use current user's profile; otherwise use other user's profile
         let otherProfile: Profile | undefined
         if (conv.type === 'direct') {
+          console.log(`[ChatsPage] Processing direct conv ${conv.id}: otherUserIds=${JSON.stringify(otherUserIdsForConv)}, isSavedMessages=${isSavedMessages}`)
+          
           if (isSavedMessages) {
             // Use current user's profile for "Saved Messages"
             otherProfile = profileMap.get(user.id)
           } else if (otherUserIdsForConv.length > 0) {
             // Normal direct conversation - get the other user's profile
             otherProfile = profileMap.get(otherUserIdsForConv[0])
+            
+            console.log(`[ChatsPage] Direct conv ${conv.id}: looking for profile of ${otherUserIdsForConv[0]}, found: ${!!otherProfile}`)
             
             // If profile not found in map, try to find any other member's profile
             if (!otherProfile) {
@@ -302,6 +363,9 @@ export function ChatsPage() {
                 }
               }
             }
+          } else {
+            // No other members found - this is a problem!
+            console.error(`[ChatsPage] Direct conv ${conv.id} has NO other members! This conversation will not display correctly.`)
           }
           
           // Log warning if we couldn't find a profile for a direct conversation
@@ -327,14 +391,48 @@ export function ChatsPage() {
         return new Date(b.last_message_at || 0).getTime() - new Date(a.last_message_at || 0).getTime()
       })
       
-      setConversations(sorted)
+      // Only update UI if data has changed (compare by stringifying)
+      // This prevents unnecessary re-renders when data is the same
+      const currentConversationsJson = JSON.stringify(conversations.map(c => ({
+        id: c.id,
+        last_message_at: c.last_message_at,
+        unreadCount: c.unreadCount,
+        is_pinned: c.is_pinned,
+        is_muted: c.is_muted,
+        lastMessageId: c.lastMessage?.id
+      })))
+      
+      const newConversationsJson = JSON.stringify(sorted.map(c => ({
+        id: c.id,
+        last_message_at: c.last_message_at,
+        unreadCount: c.unreadCount,
+        is_pinned: c.is_pinned,
+        is_muted: c.is_muted,
+        lastMessageId: c.lastMessage?.id
+      })))
+      
+      if (currentConversationsJson !== newConversationsJson || !hasLoadedFromCache) {
+        console.log('[ChatsPage] Updating conversations from server')
+        setConversations(sorted)
+        
+        // Save to cache for next app open
+        await offlineStorage.saveConversations(sorted)
+      } else {
+        console.log('[ChatsPage] Server data matches cache, no update needed')
+      }
     } catch (err) {
       console.error('Error loading conversations:', err)
-      setConversations([])
+      // Only clear conversations if we don't have cached data
+      if (!hasLoadedFromCache) {
+        setConversations([])
+      }
     } finally {
       setIsLoading(false)
     }
   }
+
+  // Legacy function name for compatibility with existing code
+  const loadConversations = () => loadConversationsFromServer(true)
 
   const handleContextMenu = (e: React.MouseEvent, conversationId: string) => {
     e.preventDefault()
