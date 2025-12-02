@@ -67,14 +67,24 @@ export function ArchivedPage() {
     }
   }
 
-  const handleUnarchive = async (conversationId: string) => {
-    await supabase
+  const handleUnarchive = async (conversationId: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    
+    // Mise à jour optimiste - retirer immédiatement de la liste
+    setConversations(prev => prev.filter(c => c.id !== conversationId))
+    
+    // Puis mettre à jour en base de données
+    const { error } = await supabase
       .from('conversation_members')
       .update({ is_archived: false })
       .eq('conversation_id', conversationId)
       .eq('user_id', user!.id)
     
-    loadArchivedConversations()
+    // En cas d'erreur, recharger les données
+    if (error) {
+      console.error('Erreur lors du désarchivage:', error)
+      loadArchivedConversations()
+    }
   }
 
   return (
@@ -121,7 +131,7 @@ export function ArchivedPage() {
                     </div>
 
                     <button
-                      onClick={() => handleUnarchive(conversation.id)}
+                      onClick={(e) => handleUnarchive(conversation.id, e)}
                       className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors flex-shrink-0"
                       title="Désarchiver"
                     >
