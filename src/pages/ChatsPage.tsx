@@ -1302,9 +1302,9 @@ export function ChatsPage() {
                       <div
                         className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all duration-200 cursor-pointer ${
                           isSelected
-                            ? 'bg-[#25D366] border-[#25D366] opacity-100'
+                            ? 'bg-[#6063cf] border-[#6063cf] opacity-100'
                             : showCheckbox
-                              ? 'border-text-secondary opacity-100 hover:border-[#25D366]'
+                              ? 'border-text-secondary opacity-100 hover:border-[#6063cf]'
                               : 'border-transparent opacity-0'
                         }`}
                         onClick={(e) => {
@@ -1327,7 +1327,7 @@ export function ChatsPage() {
                       <div
                         className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
                           isSelected
-                            ? 'bg-[#25D366] border-[#25D366]'
+                            ? 'bg-[#6063cf] border-[#6063cf]'
                             : 'border-text-secondary'
                         }`}
                       >
