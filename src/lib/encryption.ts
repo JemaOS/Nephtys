@@ -1,6 +1,35 @@
-// End-to-End Encryption (E2EE) - Version simplifiée
-// Utilise Web Crypto API pour le chiffrement AES-GCM
+/**
+ * @deprecated This module uses P-256 ECDH which is not military-grade.
+ * Use the new crypto modules in ./crypto/ instead:
+ * - import { E2EEMessagingService, getMessagingService } from './crypto/messagingService'
+ * - import { GroupEncryptionManager, getGroupEncryptionManager } from './crypto/groupEncryption'
+ *
+ * The new crypto modules provide:
+ * - X25519 for key exchange (Curve25519)
+ * - Ed25519 for digital signatures
+ * - Double Ratchet Algorithm for Perfect Forward Secrecy
+ * - X3DH for asynchronous key agreement
+ * - Sender Keys protocol for efficient group encryption
+ *
+ * This module is kept for backward compatibility with existing encrypted messages.
+ * New messages should use the military-grade E2EE system.
+ *
+ * Migration guide:
+ * 1. Import the migration utility: import { migrateToMilitaryGradeE2EE } from './crypto/migration'
+ * 2. Call migrateToMilitaryGradeE2EE() to generate new keys
+ * 3. Notify contacts of key change
+ * 4. Use the new E2EEMessagingService for all new messages
+ *
+ * @module encryption
+ */
 
+// End-to-End Encryption (E2EE) - Legacy Version (P-256 ECDH)
+// Utilise Web Crypto API pour le chiffrement AES-GCM
+// DEPRECATED: Use ./crypto/messagingService.ts instead
+
+/**
+ * @deprecated Use E2EEMessagingService from ./crypto/messagingService instead
+ */
 export class E2EEManager {
   private keyPair: CryptoKeyPair | null = null;
   private sharedKeys: Map<string, CryptoKey> = new Map();
@@ -181,6 +210,117 @@ export class E2EEManager {
     }
     return bytes.buffer;
   }
+
+  /**
+   * Check if this manager has been initialized with keys
+   * @returns true if key pair exists
+   */
+  hasKeys(): boolean {
+    return this.keyPair !== null;
+  }
+
+  /**
+   * Get the current public key if available
+   * @returns Base64 encoded public key or null
+   */
+  async getPublicKey(): Promise<string | null> {
+    if (!this.keyPair) return null;
+    try {
+      const publicKeyBuffer = await window.crypto.subtle.exportKey('spki', this.keyPair.publicKey);
+      return this.arrayBufferToBase64(publicKeyBuffer);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Check if a shared key exists for a user
+   * @param userId - User ID to check
+   * @returns true if shared key exists
+   */
+  hasSharedKey(userId: string): boolean {
+    return this.sharedKeys.has(userId);
+  }
+
+  /**
+   * Clear all keys (for logout/migration)
+   */
+  clearKeys(): void {
+    this.keyPair = null;
+    this.sharedKeys.clear();
+  }
 }
 
+/**
+ * @deprecated Use getMessagingService() from ./crypto/messagingService instead
+ */
 export const e2eeManager = new E2EEManager();
+
+// ============================================================================
+// Migration Helpers
+// ============================================================================
+
+/**
+ * Check if a message was encrypted with the legacy system
+ * Legacy messages have a specific structure with 'encrypted' and 'iv' fields
+ *
+ * @param message - Message object to check
+ * @returns true if message uses legacy encryption
+ */
+export function isLegacyEncryptedMessage(message: unknown): boolean {
+  if (typeof message !== 'object' || message === null) return false;
+  const msg = message as Record<string, unknown>;
+  return (
+    typeof msg.encrypted === 'string' &&
+    typeof msg.iv === 'string' &&
+    !('header' in msg) && // New messages have headers
+    !('signature' in msg) // New messages have signatures
+  );
+}
+
+/**
+ * Decrypt a legacy message using the old E2EE system
+ *
+ * @param encryptedBase64 - Base64 encoded encrypted content
+ * @param ivBase64 - Base64 encoded IV
+ * @param userId - User ID for the shared key
+ * @returns Decrypted message string
+ * @throws Error if decryption fails
+ */
+export async function decryptLegacyMessage(
+  encryptedBase64: string,
+  ivBase64: string,
+  userId: string
+): Promise<string> {
+  return e2eeManager.decryptMessage(encryptedBase64, ivBase64, userId);
+}
+
+/**
+ * Re-encrypt a legacy message with the new military-grade E2EE system
+ * This is useful for migrating old messages to the new format
+ *
+ * @param legacyEncrypted - Legacy encrypted message data
+ * @param userId - User ID for decryption
+ * @param newEncryptFn - Function to encrypt with new system
+ * @returns New encrypted message or null if migration fails
+ */
+export async function migrateLegacyMessage(
+  legacyEncrypted: { encrypted: string; iv: string },
+  userId: string,
+  newEncryptFn: (plaintext: string) => Promise<unknown>
+): Promise<unknown | null> {
+  try {
+    // Decrypt with legacy system
+    const plaintext = await e2eeManager.decryptMessage(
+      legacyEncrypted.encrypted,
+      legacyEncrypted.iv,
+      userId
+    );
+    
+    // Re-encrypt with new system
+    return await newEncryptFn(plaintext);
+  } catch (error) {
+    console.error('Failed to migrate legacy message:', error);
+    return null;
+  }
+}
