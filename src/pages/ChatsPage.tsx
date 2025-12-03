@@ -976,22 +976,7 @@ export function ChatsPage() {
             {/* Left side: Back arrow + count */}
             <div className="flex items-center gap-3">
               <button
-                onClick={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  exitSelectionMode()
-                }}
-                onTouchStart={(e) => {
-                  e.stopPropagation()
-                }}
-                onTouchEnd={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  exitSelectionMode()
-                }}
-                onMouseDown={(e) => {
-                  e.stopPropagation()
-                }}
+                onClick={exitSelectionMode}
                 className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-bg-hover transition-colors"
               >
                 <ArrowLeft size={24} className="text-text-primary" />
