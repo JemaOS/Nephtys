@@ -171,36 +171,30 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
   };
 
   const loadEphemeralSetting = async () => {
-    const { data } = await supabase
-      .from('conversation_members')
-      .select('ephemeral_duration')
-      .eq('conversation_id', conversationId)
-      .eq('user_id', currentUserId)
-      .single();
-    
-    if (data) {
-      setEphemeralDuration(data.ephemeral_duration || null);
+    // Load ephemeral setting from localStorage since the database doesn't have this column
+    const storedSetting = localStorage.getItem(`ephemeral_${conversationId}`);
+    if (storedSetting) {
+      setEphemeralDuration(JSON.parse(storedSetting));
     }
   };
 
   const handleSetEphemeralDuration = async (duration: number | null) => {
-    const previousDuration = ephemeralDuration;
+    // Store ephemeral setting in localStorage
+    if (duration === null) {
+      localStorage.removeItem(`ephemeral_${conversationId}`);
+    } else {
+      localStorage.setItem(`ephemeral_${conversationId}`, JSON.stringify(duration));
+    }
     
-    const { error } = await supabase
-      .from('conversation_members')
-      .update({ ephemeral_duration: duration })
-      .eq('conversation_id', conversationId)
-      .eq('user_id', currentUserId);
-
-    if (!error) {
-      setEphemeralDuration(duration);
-      setShowEphemeralMenu(false);
-      
-      // Send a system message to notify about ephemeral mode change
-      const systemMessageContent = duration
-        ? `🕐 Messages éphémères activés : ${getEphemeralLabel(duration)}`
-        : '🕐 Messages éphémères désactivés';
-      
+    setEphemeralDuration(duration);
+    setShowEphemeralMenu(false);
+    
+    // Send a system message to notify about ephemeral mode change
+    const systemMessageContent = duration
+      ? `🕐 Messages éphémères activés : ${getEphemeralLabel(duration)}`
+      : '🕐 Messages éphémères désactivés';
+    
+    try {
       await supabase.from('messages').insert({
         conversation_id: conversationId,
         sender_id: currentUserId,
@@ -214,6 +208,8 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
         .from('conversations')
         .update({ last_message_at: new Date().toISOString() })
         .eq('id', conversationId);
+    } catch (err) {
+      console.error('Error sending system message:', err);
     }
   };
 
@@ -572,70 +568,22 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
           </div>
 
           {/* Messages éphémères */}
-          <div className="relative">
-            <div
-              onClick={() => setShowEphemeralMenu(!showEphemeralMenu)}
-              className="bg-bg-surface rounded-xl p-4 cursor-pointer hover:bg-bg-hover transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${ephemeralDuration ? 'bg-accent/20' : 'bg-bg-hover'}`}>
-                  <Timer size={20} className={ephemeralDuration ? 'text-accent' : 'text-text-secondary'} />
-                </div>
-                <div className="flex-1">
-                  <h4 className="text-sm font-medium text-text-primary">Messages éphémères</h4>
-                  <p className={`text-xs ${ephemeralDuration ? 'text-accent' : 'text-text-secondary'}`}>
-                    {getEphemeralLabel(ephemeralDuration)}
-                  </p>
-                </div>
-                <ChevronRight size={18} className="text-text-secondary" />
+          <div
+            onClick={() => setShowEphemeralMenu(!showEphemeralMenu)}
+            className="bg-bg-surface rounded-xl p-4 cursor-pointer hover:bg-bg-hover transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${ephemeralDuration ? 'bg-accent/20' : 'bg-bg-hover'}`}>
+                <Timer size={20} className={ephemeralDuration ? 'text-accent' : 'text-text-secondary'} />
               </div>
+              <div className="flex-1">
+                <h4 className="text-sm font-medium text-text-primary">Messages éphémères</h4>
+                <p className={`text-xs ${ephemeralDuration ? 'text-accent' : 'text-text-secondary'}`}>
+                  {getEphemeralLabel(ephemeralDuration)}
+                </p>
+              </div>
+              <ChevronRight size={18} className="text-text-secondary" />
             </div>
-            
-            {/* Ephemeral Duration Menu */}
-            {showEphemeralMenu && (
-              <>
-                <div className="fixed inset-0 z-[70]" onClick={() => setShowEphemeralMenu(false)} />
-                <div className="absolute left-0 right-0 top-full mt-2 z-[80] bg-bg-surface rounded-xl shadow-2xl border border-bg-hover overflow-hidden">
-                  <div className="p-3 border-b border-bg-hover">
-                    <h4 className="text-sm font-medium text-text-primary">Durée des messages</h4>
-                    <p className="text-xs text-text-secondary mt-1">
-                      Les nouveaux messages disparaîtront après la durée sélectionnée
-                    </p>
-                  </div>
-                  
-                  <div className="py-1">
-                    <button
-                      onClick={() => handleSetEphemeralDuration(null)}
-                      className="w-full px-4 py-3 text-left hover:bg-bg-hover transition-colors flex items-center justify-between"
-                    >
-                      <span className="text-sm text-text-primary">Désactivé</span>
-                      {ephemeralDuration === null && <Check size={18} className="text-accent" />}
-                    </button>
-                    <button
-                      onClick={() => handleSetEphemeralDuration(86400)}
-                      className="w-full px-4 py-3 text-left hover:bg-bg-hover transition-colors flex items-center justify-between"
-                    >
-                      <span className="text-sm text-text-primary">24 heures</span>
-                      {ephemeralDuration === 86400 && <Check size={18} className="text-accent" />}
-                    </button>
-                    <button
-                      onClick={() => handleSetEphemeralDuration(604800)}
-                      className="w-full px-4 py-3 text-left hover:bg-bg-hover transition-colors flex items-center justify-between"
-                    >
-                      <span className="text-sm text-text-primary">7 jours</span>
-                      {ephemeralDuration === 604800 && <Check size={18} className="text-accent" />}
-                    </button>
-                    <button
-                      onClick={() => handleSetEphemeralDuration(7776000)}
-                      className="w-full px-4 py-3 text-left hover:bg-bg-hover transition-colors flex items-center justify-between"
-                    >
-                      <span className="text-sm text-text-primary">90 jours</span>
-                      {ephemeralDuration === 7776000 && <Check size={18} className="text-accent" />}
-                    </button>
-                  </div>
-                </div>
-              </>
-            )}
           </div>
 
           {/* Notifications */}
@@ -1126,6 +1074,75 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
                 ) : (
                   `Ajouter (${selectedContacts.length})`
                 )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Ephemeral Duration Menu - Rendered as a modal outside the main content */}
+      {showEphemeralMenu && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div
+            className="bg-bg-surface w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-4 border-b border-bg-hover">
+              <h4 className="text-base font-medium text-text-primary">Durée des messages</h4>
+              <p className="text-xs text-text-secondary mt-1">
+                Les nouveaux messages disparaîtront après la durée sélectionnée
+              </p>
+            </div>
+            
+            <div className="py-2">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleSetEphemeralDuration(null);
+                }}
+                className="w-full px-4 py-3 text-left hover:bg-bg-hover transition-colors flex items-center justify-between"
+              >
+                <span className="text-sm text-text-primary">Désactivé</span>
+                {ephemeralDuration === null && <Check size={18} className="text-accent" />}
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleSetEphemeralDuration(86400);
+                }}
+                className="w-full px-4 py-3 text-left hover:bg-bg-hover transition-colors flex items-center justify-between"
+              >
+                <span className="text-sm text-text-primary">24 heures</span>
+                {ephemeralDuration === 86400 && <Check size={18} className="text-accent" />}
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleSetEphemeralDuration(604800);
+                }}
+                className="w-full px-4 py-3 text-left hover:bg-bg-hover transition-colors flex items-center justify-between"
+              >
+                <span className="text-sm text-text-primary">7 jours</span>
+                {ephemeralDuration === 604800 && <Check size={18} className="text-accent" />}
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleSetEphemeralDuration(7776000);
+                }}
+                className="w-full px-4 py-3 text-left hover:bg-bg-hover transition-colors flex items-center justify-between"
+              >
+                <span className="text-sm text-text-primary">90 jours</span>
+                {ephemeralDuration === 7776000 && <Check size={18} className="text-accent" />}
+              </button>
+            </div>
+
+            <div className="p-4 border-t border-bg-hover">
+              <button
+                onClick={() => setShowEphemeralMenu(false)}
+                className="w-full py-2 bg-bg-hover text-text-primary rounded-xl text-sm font-medium hover:bg-bg-hover/80 transition-colors"
+              >
+                Annuler
               </button>
             </div>
           </div>
