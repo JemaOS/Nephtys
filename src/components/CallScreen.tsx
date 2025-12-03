@@ -121,7 +121,6 @@ export const CallScreen: React.FC<CallScreenProps> = ({
   const remoteAudioRef = useRef<HTMLAudioElement>(null);
   const [callDuration, setCallDuration] = useState(0);
   const [isAnswering, setIsAnswering] = useState(false);
-  const [remoteVideoFit, setRemoteVideoFit] = useState<'contain' | 'cover'>('contain');
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   const handleAnswer = async () => {
@@ -184,18 +183,11 @@ export const CallScreen: React.FC<CallScreenProps> = ({
       // NE PAS appeler play() manuellement - laisser autoPlay faire son travail
       // Cela évite l'AbortError quand le composant se re-rend
       
-      // Détecter le ratio de la vidéo pour ajuster l'affichage
+      // Log video metadata when loaded
       remoteVideoRef.current.onloadedmetadata = () => {
         console.log('📹 CallScreen: Remote video metadata loaded');
         if (remoteVideoRef.current) {
-          const videoRatio = remoteVideoRef.current.videoWidth / remoteVideoRef.current.videoHeight;
-          const screenRatio = window.innerWidth / window.innerHeight;
-          
-          console.log('📹 Video ratio:', videoRatio, 'Screen ratio:', screenRatio);
-          
-          // Toujours utiliser 'contain' pour éviter le zoom excessif
-          // Cela garantit que toute la vidéo est visible sans être coupée
-          setRemoteVideoFit('contain');
+          console.log('📹 Video dimensions:', remoteVideoRef.current.videoWidth, 'x', remoteVideoRef.current.videoHeight);
         }
       };
     }
@@ -317,7 +309,7 @@ export const CallScreen: React.FC<CallScreenProps> = ({
   // Render 1-to-1 call UI
   const renderOneToOneCallUI = () => {
     return (
-      <div className="flex-1 relative">
+      <div className="flex-1 relative flex items-center justify-center bg-black">
         {isVideoCall && remoteStream ? (
           <>
             <video
@@ -325,7 +317,7 @@ export const CallScreen: React.FC<CallScreenProps> = ({
               autoPlay
               playsInline
               muted={false}
-              className={`w-full h-full bg-black ${remoteVideoFit === 'contain' ? 'object-contain' : 'object-cover'}`}
+              className="max-w-full max-h-full object-contain"
             />
             {console.log('📹 CallScreen: Rendering remote video element')}
           </>
@@ -363,7 +355,7 @@ export const CallScreen: React.FC<CallScreenProps> = ({
               autoPlay
               playsInline
               muted
-              className="w-full h-full object-cover transform scale-x-[-1]"
+              className="w-full h-full object-contain transform scale-x-[-1]"
             />
           </div>
         )}
