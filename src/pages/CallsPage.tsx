@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { MainLayout } from '@/components/MainLayout'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { useWebRTCCall } from '../hooks/useWebRTCCall'
-import { Phone, Video, PhoneIncoming, PhoneOutgoing, PhoneMissed, Search, Star, Link2, Plus, MessageCircle, X, Trash2, UserPlus, Check } from 'lucide-react'
+import { useIsMobile } from '@/hooks/use-mobile'
+import { Phone, Video, PhoneIncoming, PhoneOutgoing, PhoneMissed, Search, Star, Link2, Plus, MessageCircle, X, Trash2, UserPlus, Check, ArrowLeft, CheckCheck } from 'lucide-react'
 import { CallScreen } from '@/components/CallScreen'
 
 // Cache helpers for instant display like WhatsApp
@@ -72,8 +73,21 @@ export function CallsPage() {
   const [contextMenuPosition, setContextMenuPosition] = useState<{ x: number; y: number } | null>(null)
   const [callerName, setCallerName] = useState<string>('')
   const [callerAvatar, setCallerAvatar] = useState<string | undefined>(undefined)
+  
+  // Selection mode state (WhatsApp-style)
+  const [isSelectionMode, setIsSelectionMode] = useState(false)
+  const [selectedCalls, setSelectedCalls] = useState<Set<string>>(new Set())
+  
+  // Long press detection refs
+  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const longPressTriggeredRef = useRef(false)
+  
   const { user } = useAuth()
   const navigate = useNavigate()
+  const isMobile = useIsMobile()
+  
+  // Long press duration (ms) - WhatsApp uses ~500ms
+  const LONG_PRESS_DURATION = 500
   const {
     isInCall, isRinging, isCalling,
     localStream, remoteStream,
@@ -93,6 +107,128 @@ export function CallsPage() {
       callerName,
     })
   }, [isInCall, isRinging, isCalling, localStream, remoteStream, callerName])
+
+  // Cleanup long press timer on unmount
+  useEffect(() => {
+    return () => {
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current)
+      }
+    }
+  }, [])
+  
+  // Exit selection mode when pressing Escape
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isSelectionMode) {
+        exitSelectionMode()
+      }
+    }
+    document.addEventListener('keydown', handleEscape)
+    return () => document.removeEventListener('keydown', handleEscape)
+  }, [isSelectionMode])
+  
+  // Selection mode handlers
+  const enterSelectionMode = useCallback((callId: string) => {
+    setIsSelectionMode(true)
+    setSelectedCalls(new Set([callId]))
+    // Close context menu if open
+    handleCloseContextMenu()
+  }, [])
+  
+  const exitSelectionMode = useCallback(() => {
+    setSelectedCalls(new Set())
+    setIsSelectionMode(false)
+  }, [])
+  
+  const toggleCallSelection = useCallback((callId: string) => {
+    setSelectedCalls(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(callId)) {
+        newSet.delete(callId)
+        // Exit selection mode if no calls selected
+        if (newSet.size === 0) {
+          setIsSelectionMode(false)
+        }
+      } else {
+        newSet.add(callId)
+      }
+      return newSet
+    })
+  }, [])
+  
+  // Long press handlers for touch devices
+  const handleTouchStart = useCallback((callId: string) => {
+    longPressTriggeredRef.current = false
+    longPressTimerRef.current = setTimeout(() => {
+      longPressTriggeredRef.current = true
+      if (!isSelectionMode) {
+        enterSelectionMode(callId)
+      } else {
+        toggleCallSelection(callId)
+      }
+      // Vibrate on mobile if supported (WhatsApp-like feedback)
+      if (navigator.vibrate) {
+        navigator.vibrate(50)
+      }
+    }, LONG_PRESS_DURATION)
+  }, [isSelectionMode, enterSelectionMode, toggleCallSelection])
+  
+  const handleTouchEnd = useCallback(() => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current)
+      longPressTimerRef.current = null
+    }
+  }, [])
+  
+  const handleTouchMove = useCallback(() => {
+    // Cancel long press if user moves finger
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current)
+      longPressTimerRef.current = null
+    }
+  }, [])
+  
+  // Click handler for calls
+  const handleCallClick = useCallback((call: CallLog) => {
+    // If long press was triggered, don't open details
+    if (longPressTriggeredRef.current) {
+      longPressTriggeredRef.current = false
+      return
+    }
+    
+    if (isSelectionMode) {
+      toggleCallSelection(call.id)
+    } else {
+      setSelectedCall(call)
+    }
+  }, [isSelectionMode, toggleCallSelection])
+  
+  // Bulk delete for selected calls
+  const handleBulkDelete = async () => {
+    const selectedIds = Array.from(selectedCalls)
+    const count = selectedIds.length
+    
+    if (!confirm(`Voulez-vous vraiment supprimer ${count} appel${count > 1 ? 's' : ''} ?`)) {
+      return
+    }
+    
+    try {
+      // Delete all selected calls
+      for (const callId of selectedIds) {
+        await supabase
+          .from('call_logs')
+          .delete()
+          .eq('id', callId)
+      }
+      
+      // Refresh the list
+      loadCalls()
+      exitSelectionMode()
+    } catch (error) {
+      console.error('Erreur lors de la suppression:', error)
+    }
+  }
 
   useEffect(() => {
     if (user) {
@@ -608,6 +744,11 @@ export function CallsPage() {
 
   const handleCallContextMenu = (e: React.MouseEvent, call: CallLog) => {
     e.preventDefault()
+    // If in selection mode, toggle selection instead of showing context menu
+    if (isSelectionMode) {
+      toggleCallSelection(call.id)
+      return
+    }
     setContextMenuCall(call)
     setContextMenuPosition({ x: e.clientX, y: e.clientY })
   }
@@ -681,11 +822,67 @@ export function CallsPage() {
     return name.toLowerCase().includes(searchQuery.toLowerCase())
   })
 
+  // Select all calls (must be after filteredCalls is defined)
+  const selectAllCalls = useCallback(() => {
+    const allCallIds = new Set(filteredCalls.map(call => call.id))
+    setSelectedCalls(allCallIds)
+  }, [filteredCalls])
+  
+  // Check if all calls are selected
+  const allCallsSelected = filteredCalls.length > 0 && selectedCalls.size === filteredCalls.length
+
   return (
     <MainLayout>
+      {/* Selection Mode Top Bar - WhatsApp style */}
+      {isSelectionMode && (
+        <div className="fixed top-0 left-0 right-0 z-50 bg-bg-surface border-b border-bg-hover shadow-lg animate-in slide-in-from-top duration-200">
+          <div className="flex items-center justify-between h-14 px-2">
+            {/* Left side: Back arrow + count */}
+            <div className="flex items-center gap-3">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  exitSelectionMode()
+                }}
+                className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-bg-hover transition-colors"
+              >
+                <ArrowLeft size={24} className="text-text-primary" />
+              </button>
+              <span className="text-lg font-medium text-text-primary">
+                {selectedCalls.size}
+              </span>
+            </div>
+            
+            {/* Right side: Select All + Delete icons */}
+            <div className="flex items-center gap-1">
+              {/* Select All */}
+              <button
+                onClick={selectAllCalls}
+                className={`w-10 h-10 flex items-center justify-center rounded-full hover:bg-bg-hover transition-colors ${
+                  allCallsSelected ? 'text-accent' : 'text-text-primary'
+                }`}
+                title={allCallsSelected ? 'Tout sélectionné' : 'Tout sélectionner'}
+              >
+                <CheckCheck size={20} />
+              </button>
+              
+              {/* Delete */}
+              <button
+                onClick={handleBulkDelete}
+                className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-bg-hover transition-colors"
+                title="Supprimer"
+              >
+                <Trash2 size={20} className="text-red-500" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {/* Liste des appels - Style JemaOS */}
-      <div className="w-full md:w-[420px] bg-bg-secondary flex flex-col md:border-r border-bg-hover pb-14 md:pb-0">
-        {/* Header */}
+      <div className={`w-full md:w-[420px] bg-bg-secondary flex flex-col md:border-r border-bg-hover pb-14 md:pb-0 ${isSelectionMode ? 'pt-14' : ''}`}>
+        {/* Header - Hidden in selection mode */}
+        {!isSelectionMode && (
         <div className="bg-bg-surface px-4 py-3">
           <div className="flex items-center justify-between mb-4">
             <h1 className="text-xl font-semibold text-text-primary">Appels</h1>
@@ -709,8 +906,10 @@ export function CallsPage() {
             />
           </div>
         </div>
+        )}
 
-        {/* Favoris Section */}
+        {/* Favoris Section - Hidden in selection mode */}
+        {!isSelectionMode && (
         <div className="px-4 py-3 bg-bg-secondary">
           <p className="text-xs text-text-secondary uppercase tracking-wide mb-2">Favoris</p>
           <button
@@ -762,11 +961,14 @@ export function CallsPage() {
             </div>
           )}
         </div>
+        )}
 
-        {/* Separator */}
+        {/* Separator - Hidden in selection mode */}
+        {!isSelectionMode && (
         <div className="px-4 py-2 bg-bg-secondary">
           <p className="text-xs text-text-secondary uppercase tracking-wide">Récents</p>
         </div>
+        )}
 
         {/* Calls List */}
         <div className="flex-1 overflow-y-auto pb-2">
@@ -789,16 +991,48 @@ export function CallsPage() {
               const isMissed = call.status === 'missed' || call.status === 'rejected'
               const isAnswered = call.status === 'answered' || call.status === 'ended'
 
+              const isSelected = selectedCalls.has(call.id)
+              
               return (
                 <div
                   key={call.id}
-                  className={`px-4 py-3 hover:bg-bg-surface transition-colors cursor-pointer ${
-                    selectedCall?.id === call.id ? 'bg-bg-surface' : ''
+                  className={`px-4 py-3 transition-colors cursor-pointer ${
+                    isSelected
+                      ? 'bg-accent/20'
+                      : selectedCall?.id === call.id
+                        ? 'bg-bg-surface'
+                        : 'hover:bg-bg-surface'
                   }`}
-                  onClick={() => setSelectedCall(call)}
+                  onClick={() => handleCallClick(call)}
                   onContextMenu={(e) => handleCallContextMenu(e, call)}
+                  onTouchStart={() => handleTouchStart(call.id)}
+                  onTouchEnd={handleTouchEnd}
+                  onTouchMove={handleTouchMove}
+                  onMouseDown={(e) => {
+                    // Desktop long press support - only on mobile
+                    if (isMobile && e.button === 0) {
+                      handleTouchStart(call.id)
+                    }
+                  }}
+                  onMouseUp={handleTouchEnd}
+                  onMouseLeave={handleTouchEnd}
                 >
                   <div className="flex items-center gap-3">
+                    {/* Selection Checkbox - Only in selection mode */}
+                    {isSelectionMode && (
+                      <div
+                        className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
+                          isSelected
+                            ? 'bg-[#6063cf] border-[#6063cf]'
+                            : 'border-text-secondary'
+                        }`}
+                      >
+                        {isSelected && (
+                          <Check size={14} className="text-white" strokeWidth={3} />
+                        )}
+                      </div>
+                    )}
+                    
                     {/* Avatar */}
                     {otherProfile?.avatar_url ? (
                       <img
@@ -1413,8 +1647,8 @@ export function CallsPage() {
         />
       )}
 
-      {/* Menu contextuel pour les appels */}
-      {contextMenuCall && contextMenuPosition && (
+      {/* Menu contextuel pour les appels - Only show when not in selection mode */}
+      {contextMenuCall && contextMenuPosition && !isSelectionMode && (
         <>
           {/* Overlay pour fermer le menu */}
           <div
@@ -1430,6 +1664,20 @@ export function CallsPage() {
               top: `${contextMenuPosition.y}px`,
             }}
           >
+            {/* Option Sélectionner */}
+            <button
+              onClick={() => {
+                enterSelectionMode(contextMenuCall.id)
+              }}
+              className="w-full px-4 py-3 text-left hover:bg-bg-surface flex items-center gap-3 text-text-primary transition-colors"
+            >
+              <Check size={20} />
+              <span>Sélectionner</span>
+            </button>
+            
+            {/* Séparateur */}
+            <div className="h-px bg-bg-surface my-1" />
+            
             {/* Option Effacer */}
             <button
               onClick={() => handleDeleteCall(contextMenuCall.id)}

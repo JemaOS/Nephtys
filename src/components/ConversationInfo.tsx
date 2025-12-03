@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   X, Camera, Video, Phone, Users, Image, FileText, Link as LinkIcon,
   Calendar, Lock, Edit2, Check, ChevronRight, Bell, BellOff, Archive,
-  Trash2, UserPlus, Crown, Download, ExternalLink, Loader2, Search
+  Trash2, UserPlus, Crown, Download, ExternalLink, Loader2, Search, Timer
 } from 'lucide-react';
 import { supabase, Profile, Message } from '@/lib/supabase';
 
@@ -53,6 +53,8 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
   const [currentDescription, setCurrentDescription] = useState(conversationDescription || '');
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
+  const [ephemeralDuration, setEphemeralDuration] = useState<number | null>(null);
+  const [showEphemeralMenu, setShowEphemeralMenu] = useState(false);
   const [currentAvatar, setCurrentAvatar] = useState(
     conversationType === 'direct' && otherUser?.avatar_url
       ? otherUser.avatar_url
@@ -81,6 +83,7 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
       loadDirectParticipants();
     }
     loadMuteStatus();
+    loadEphemeralSetting();
     
     if (conversationType === 'direct' && otherUser?.avatar_url) {
       setCurrentAvatar(otherUser.avatar_url);
@@ -167,61 +170,62 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
     }
   };
 
+  const loadEphemeralSetting = async () => {
+    const { data } = await supabase
+      .from('conversation_members')
+      .select('ephemeral_duration')
+      .eq('conversation_id', conversationId)
+      .eq('user_id', currentUserId)
+      .single();
+    
+    if (data) {
+      setEphemeralDuration(data.ephemeral_duration || null);
+    }
+  };
+
+  const handleSetEphemeralDuration = async (duration: number | null) => {
+    const { error } = await supabase
+      .from('conversation_members')
+      .update({ ephemeral_duration: duration })
+      .eq('conversation_id', conversationId)
+      .eq('user_id', currentUserId);
+
+    if (!error) {
+      setEphemeralDuration(duration);
+      setShowEphemeralMenu(false);
+    }
+  };
+
+  const getEphemeralLabel = (duration: number | null): string => {
+    if (!duration) return 'Désactivés';
+    if (duration === 86400) return '24 heures';
+    if (duration === 604800) return '7 jours';
+    if (duration === 7776000) return '90 jours';
+    return `${Math.floor(duration / 86400)} jours`;
+  };
+
   const loadAvailableContacts = async () => {
     const memberUserIds = members.map(m => m.user_id);
     
-    // Load bidirectional contacts:
-    // 1. Contacts I added (user_id = me)
-    // 2. Contacts who added me (contact_user_id = me)
-    // 3. Users from my conversations
-    const [myContactsResult, addedMeResult, conversationsResult] = await Promise.all([
-      supabase
-        .from('contacts')
-        .select('contact_user_id')
-        .eq('user_id', currentUserId)
-        .eq('is_blocked', false),
-      supabase
-        .from('contacts')
-        .select('user_id')
-        .eq('contact_user_id', currentUserId)
-        .eq('is_blocked', false),
-      supabase
-        .from('conversation_members')
-        .select('conversation_id, user_id')
-        .neq('user_id', currentUserId)
-    ]);
+    // Only load contacts that the current user has explicitly added
+    // If a user deletes a contact, they should no longer see that person
+    // even if that person had added them as a contact
+    const { data: myContacts } = await supabase
+      .from('contacts')
+      .select('contact_user_id')
+      .eq('user_id', currentUserId)
+      .eq('is_blocked', false);
 
-    const myContacts = myContactsResult.data || [];
-    const addedMe = addedMeResult.data || [];
-
-    // Get my conversation IDs first (we need to filter)
-    const { data: myConversations } = await supabase
-      .from('conversation_members')
-      .select('conversation_id')
-      .eq('user_id', currentUserId);
-    
-    const myConversationIds = new Set(myConversations?.map(c => c.conversation_id) || []);
-    
-    // Filter other members to only those in my conversations
-    const chatUserIds = [...new Set(
-      (conversationsResult.data || [])
-        .filter(m => myConversationIds.has(m.conversation_id))
-        .map(m => m.user_id)
-    )];
-
-    // Get all unique user IDs (contacts I added + users who added me + chat users)
-    const myContactIds = myContacts.map(c => c.contact_user_id);
-    const addedMeUserIds = addedMe.map(c => c.user_id);
-    
-    // Combine and deduplicate, excluding current group members
-    const allContactIds = [...new Set([...myContactIds, ...addedMeUserIds, ...chatUserIds])]
+    // Get only the contacts I explicitly added, excluding current group members
+    const myContactIds = (myContacts || [])
+      .map(c => c.contact_user_id)
       .filter(id => !memberUserIds.includes(id));
 
-    if (allContactIds.length > 0) {
+    if (myContactIds.length > 0) {
       const { data: profiles } = await supabase
         .from('profiles')
         .select('*')
-        .in('id', allContactIds);
+        .in('id', myContactIds);
       
       setAvailableContacts(profiles || []);
     } else {
@@ -537,17 +541,70 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
           </div>
 
           {/* Messages éphémères */}
-          <div className="bg-bg-surface rounded-xl p-4 cursor-pointer hover:bg-bg-hover transition-colors">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-bg-hover flex items-center justify-center">
-                <Calendar size={20} className="text-text-secondary" />
+          <div className="relative">
+            <div
+              onClick={() => setShowEphemeralMenu(!showEphemeralMenu)}
+              className="bg-bg-surface rounded-xl p-4 cursor-pointer hover:bg-bg-hover transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${ephemeralDuration ? 'bg-accent/20' : 'bg-bg-hover'}`}>
+                  <Timer size={20} className={ephemeralDuration ? 'text-accent' : 'text-text-secondary'} />
+                </div>
+                <div className="flex-1">
+                  <h4 className="text-sm font-medium text-text-primary">Messages éphémères</h4>
+                  <p className={`text-xs ${ephemeralDuration ? 'text-accent' : 'text-text-secondary'}`}>
+                    {getEphemeralLabel(ephemeralDuration)}
+                  </p>
+                </div>
+                <ChevronRight size={18} className="text-text-secondary" />
               </div>
-              <div className="flex-1">
-                <h4 className="text-sm font-medium text-text-primary">Messages éphémères</h4>
-                <p className="text-xs text-text-secondary">Désactivés</p>
-              </div>
-              <ChevronRight size={18} className="text-text-secondary" />
             </div>
+            
+            {/* Ephemeral Duration Menu */}
+            {showEphemeralMenu && (
+              <>
+                <div className="fixed inset-0 z-[70]" onClick={() => setShowEphemeralMenu(false)} />
+                <div className="absolute left-0 right-0 top-full mt-2 z-[80] bg-bg-surface rounded-xl shadow-2xl border border-bg-hover overflow-hidden">
+                  <div className="p-3 border-b border-bg-hover">
+                    <h4 className="text-sm font-medium text-text-primary">Durée des messages</h4>
+                    <p className="text-xs text-text-secondary mt-1">
+                      Les nouveaux messages disparaîtront après la durée sélectionnée
+                    </p>
+                  </div>
+                  
+                  <div className="py-1">
+                    <button
+                      onClick={() => handleSetEphemeralDuration(null)}
+                      className="w-full px-4 py-3 text-left hover:bg-bg-hover transition-colors flex items-center justify-between"
+                    >
+                      <span className="text-sm text-text-primary">Désactivé</span>
+                      {ephemeralDuration === null && <Check size={18} className="text-accent" />}
+                    </button>
+                    <button
+                      onClick={() => handleSetEphemeralDuration(86400)}
+                      className="w-full px-4 py-3 text-left hover:bg-bg-hover transition-colors flex items-center justify-between"
+                    >
+                      <span className="text-sm text-text-primary">24 heures</span>
+                      {ephemeralDuration === 86400 && <Check size={18} className="text-accent" />}
+                    </button>
+                    <button
+                      onClick={() => handleSetEphemeralDuration(604800)}
+                      className="w-full px-4 py-3 text-left hover:bg-bg-hover transition-colors flex items-center justify-between"
+                    >
+                      <span className="text-sm text-text-primary">7 jours</span>
+                      {ephemeralDuration === 604800 && <Check size={18} className="text-accent" />}
+                    </button>
+                    <button
+                      onClick={() => handleSetEphemeralDuration(7776000)}
+                      className="w-full px-4 py-3 text-left hover:bg-bg-hover transition-colors flex items-center justify-between"
+                    >
+                      <span className="text-sm text-text-primary">90 jours</span>
+                      {ephemeralDuration === 7776000 && <Check size={18} className="text-accent" />}
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
 
           {/* Notifications */}

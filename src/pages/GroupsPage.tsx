@@ -37,74 +37,41 @@ export function GroupsPage() {
   const loadContacts = async () => {
     if (!user) return
 
-    // Load bidirectional contacts:
-    // 1. Contacts I added (user_id = me)
-    // 2. Contacts who added me (contact_user_id = me)
-    // 3. Users from my conversations
-    const [myContactsResult, addedMeResult, conversationsResult] = await Promise.all([
-      supabase
-        .from('contacts')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('is_blocked', false),
-      supabase
-        .from('contacts')
-        .select('*')
-        .eq('contact_user_id', user.id)
-        .eq('is_blocked', false),
-      supabase
-        .from('conversation_members')
-        .select('conversation_id, user_id')
-        .neq('user_id', user.id)
-    ])
-
-    const myContacts = myContactsResult.data || []
-    const addedMe = addedMeResult.data || []
-
-    // Get my conversation IDs first (we need to filter)
-    const { data: myConversations } = await supabase
-      .from('conversation_members')
-      .select('conversation_id')
+    // Only load contacts that the current user has explicitly added
+    // If a user deletes a contact, they should no longer see that person
+    // even if that person had added them as a contact
+    const { data: myContacts } = await supabase
+      .from('contacts')
+      .select('*')
       .eq('user_id', user.id)
-    
-    const myConversationIds = new Set(myConversations?.map(c => c.conversation_id) || [])
-    
-    // Filter other members to only those in my conversations
-    const chatUserIds = [...new Set(
-      (conversationsResult.data || [])
-        .filter(m => myConversationIds.has(m.conversation_id))
-        .map(m => m.user_id)
-    )]
+      .eq('is_blocked', false)
 
-    // Get all unique user IDs (contacts I added + users who added me + chat users)
+    if (!myContacts || myContacts.length === 0) {
+      setContacts([])
+      return
+    }
+
+    // Get only the contacts I explicitly added
     const myContactIds = myContacts.map(c => c.contact_user_id)
-    const addedMeUserIds = addedMe.map(c => c.user_id)
-    
-    // Combine and deduplicate
-    const allContactIds = [...new Set([...myContactIds, ...addedMeUserIds, ...chatUserIds])]
 
-    if (allContactIds.length > 0) {
-      // Fetch all profiles at once
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('*')
-        .in('id', allContactIds)
+    // Fetch all profiles at once
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('*')
+      .in('id', myContactIds)
 
-      if (profiles) {
-        const contactsWithProfiles = profiles.map(profile => {
-          // Check if this is a contact I added or someone who added me
-          const myContact = myContacts.find(c => c.contact_user_id === profile.id)
-          const theirContact = addedMe.find(c => c.user_id === profile.id)
-          
-          return {
-            id: myContact?.id || theirContact?.id || `chat-${profile.id}`,
-            contact_user_id: profile.id,
-            profile
-          }
-        })
+    if (profiles) {
+      const contactsWithProfiles = profiles.map(profile => {
+        const myContact = myContacts.find(c => c.contact_user_id === profile.id)
+        
+        return {
+          id: myContact?.id || `contact-${profile.id}`,
+          contact_user_id: profile.id,
+          profile
+        }
+      })
 
-        setContacts(contactsWithProfiles.filter(c => c.profile))
-      }
+      setContacts(contactsWithProfiles.filter(c => c.profile))
     } else {
       setContacts([])
     }

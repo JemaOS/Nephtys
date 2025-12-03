@@ -288,6 +288,7 @@ export function ChatViewPage() {
     if (!conversationId || !user) return
     loadConversation()
     loadMessages()
+    loadEphemeralSetting()
     if (permission === 'default') requestPermission()
     subscribeToConversation(conversationId)
     
@@ -509,6 +510,24 @@ export function ChatViewPage() {
 
   const updateMessageStatus = async (messageId: string, status: 'delivered' | 'read') => {
     await supabase.from('messages').update({ status }).eq('id', messageId)
+  }
+
+  // Load ephemeral setting from conversation_members
+  const loadEphemeralSetting = async () => {
+    if (!conversationId || !user) return
+    
+    const { data } = await supabase
+      .from('conversation_members')
+      .select('ephemeral_duration')
+      .eq('conversation_id', conversationId)
+      .eq('user_id', user.id)
+      .single()
+    
+    if (data && data.ephemeral_duration) {
+      setEphemeralDuration(data.ephemeral_duration)
+    } else {
+      setEphemeralDuration(null)
+    }
   }
 
   const handleSendMessage = async (e: React.FormEvent) => {
@@ -1148,25 +1167,38 @@ export function ChatViewPage() {
   const handleBulkDeleteForEveryone = useCallback(async () => {
     const ids = Array.from(selectedMessages)
     
-    // Delete media files from storage for messages that have them
+    // Optimistic update - remove from UI immediately for instant feedback
+    setMessages(prev => prev.filter(m => !selectedMessages.has(m.id)))
+    setShowBulkDeleteDialog(false)
+    exitSelectionMode()
+    
+    // Collect all media file paths to delete in batch
     const selectedMsgs = messages.filter(m => selectedMessages.has(m.id))
+    const mediaFilePaths: string[] = []
+    
     for (const msg of selectedMsgs) {
       if (msg.media_url) {
         try {
           const url = new URL(msg.media_url)
           const pathParts = url.pathname.split('/storage/v1/object/public/media/')
           if (pathParts.length > 1) {
-            const filePath = pathParts[1]
-            await supabase.storage.from('media').remove([filePath])
+            mediaFilePaths.push(pathParts[1])
           }
         } catch (error) {
-          console.error('Error deleting file from storage:', error)
+          console.error('Error parsing media URL:', error)
         }
       }
     }
     
-    // Soft delete all selected messages
-    await supabase
+    // Delete all media files in a single batch request (much faster)
+    if (mediaFilePaths.length > 0) {
+      supabase.storage.from('media').remove(mediaFilePaths).catch(error => {
+        console.error('Error deleting files from storage:', error)
+      })
+    }
+    
+    // Soft delete all selected messages in a single batch request
+    supabase
       .from('messages')
       .update({
         deleted_at: new Date().toISOString(),
@@ -1176,37 +1208,39 @@ export function ChatViewPage() {
         file_size: null,
       })
       .in('id', ids)
-    
-    setMessages(prev => prev.filter(m => !selectedMessages.has(m.id)))
-    setShowBulkDeleteDialog(false)
-    exitSelectionMode()
+      .then(({ error }) => {
+        if (error) {
+          console.error('Error deleting messages:', error)
+        }
+      })
   }, [selectedMessages, messages, exitSelectionMode])
 
   const handleBulkDeleteForMe = useCallback(async () => {
     const ids = Array.from(selectedMessages)
     
-    // Try to insert into deleted_messages table for each message
-    if (user) {
-      for (const id of ids) {
-        try {
-          await supabase
-            .from('deleted_messages')
-            .insert({
-              message_id: id,
-              user_id: user.id,
-              deleted_at: new Date().toISOString(),
-            })
-        } catch (error) {
-          console.log('Using local state for delete for me:', error)
-        }
-      }
-    }
-    
-    // Update local state to hide the messages
+    // Optimistic update - remove from UI immediately for instant feedback
     setDeletedForMeIds(prev => new Set([...prev, ...ids]))
     setMessages(prev => prev.filter(m => !selectedMessages.has(m.id)))
     setShowBulkDeleteDialog(false)
     exitSelectionMode()
+    
+    // Try to insert all records into deleted_messages table in a single batch
+    if (user) {
+      const deletedRecords = ids.map(id => ({
+        message_id: id,
+        user_id: user.id,
+        deleted_at: new Date().toISOString(),
+      }))
+      
+      supabase
+        .from('deleted_messages')
+        .insert(deletedRecords)
+        .then(({ error }) => {
+          if (error) {
+            console.log('Using local state for delete for me:', error.message)
+          }
+        })
+    }
   }, [selectedMessages, user, exitSelectionMode])
 
   const handleBulkForward = useCallback(() => {
@@ -2359,6 +2393,8 @@ export function ChatViewPage() {
             setShowConversationInfo(false)
             setShowAddMemberModal(false)
             refreshConversation()
+            // Reload ephemeral setting in case it was changed
+            loadEphemeralSetting()
           }}
           onStartVideoCall={handleStartVideoCall}
           onStartAudioCall={handleStartAudioCall}
