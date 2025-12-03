@@ -285,7 +285,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
     };
   };
 
-  // Handle touch start for pinch-to-zoom and swipe navigation (WhatsApp-like)
+  // Handle touch start for pinch-to-zoom, pan, and swipe navigation (WhatsApp-like)
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     if (e.touches.length === 2) {
       // Pinch gesture started
@@ -295,20 +295,28 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
       setInitialZoom(zoom);
       setPinchCenter(getTouchCenter(e.touches));
       setIsSwipeActive(false);
-    } else if (e.touches.length === 1 && zoom <= 1) {
-      // Single touch - potential swipe for navigation
+    } else if (e.touches.length === 1) {
       const touch = e.touches[0];
       setTouchStartX(touch.clientX);
       setTouchStartY(touch.clientY);
-      setSwipeDirection(null);
-      setIsSwipeActive(true);
-      lastTouchTimeRef.current = Date.now();
-      lastTouchXRef.current = touch.clientX;
-      swipeVelocityRef.current = 0;
+      
+      if (zoom > 1) {
+        // When zoomed in, single touch is for panning
+        setIsDragging(true);
+        setDragStart({ x: touch.clientX - position.x, y: touch.clientY - position.y });
+        setIsSwipeActive(false);
+      } else {
+        // When not zoomed, single touch is for swipe navigation
+        setSwipeDirection(null);
+        setIsSwipeActive(true);
+        lastTouchTimeRef.current = Date.now();
+        lastTouchXRef.current = touch.clientX;
+        swipeVelocityRef.current = 0;
+      }
     }
-  }, [zoom]);
+  }, [zoom, position]);
 
-  // Handle touch move for pinch-to-zoom and swipe navigation (WhatsApp-like)
+  // Handle touch move for pinch-to-zoom, pan, and swipe navigation (WhatsApp-like)
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
     if (e.touches.length === 2 && initialPinchDistance !== null) {
       // Pinch gesture in progress
@@ -326,54 +334,64 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
           y: (center.y - pinchCenter.y) * (newZoom - 1),
         });
       }
-    } else if (e.touches.length === 1 && touchStartX !== null && touchStartY !== null && zoom <= 1 && allMedia && allMedia.length > 1 && isSwipeActive) {
-      // Single touch swipe for navigation - WhatsApp-like smooth following
+    } else if (e.touches.length === 1 && touchStartX !== null && touchStartY !== null) {
       const touch = e.touches[0];
       const currentX = touch.clientX;
       const currentY = touch.clientY;
-      const diffX = currentX - touchStartX;
-      const diffY = currentY - touchStartY;
       
-      // Determine swipe direction on first significant movement
-      if (swipeDirection === null && (Math.abs(diffX) > 10 || Math.abs(diffY) > 10)) {
-        if (Math.abs(diffX) > Math.abs(diffY)) {
-          setSwipeDirection('horizontal');
-        } else {
-          setSwipeDirection('vertical');
-          setIsSwipeActive(false);
-          return;
-        }
-      }
-      
-      // Only process horizontal swipes
-      if (swipeDirection === 'horizontal') {
+      if (zoom > 1 && isDragging) {
+        // Pan when zoomed in - single finger drag
         e.preventDefault();
+        setPosition({
+          x: currentX - dragStart.x,
+          y: currentY - dragStart.y
+        });
+      } else if (zoom <= 1 && allMedia && allMedia.length > 1 && isSwipeActive) {
+        // Single touch swipe for navigation - WhatsApp-like instant following
+        const diffX = currentX - touchStartX;
+        const diffY = currentY - touchStartY;
         
-        // Calculate velocity for momentum
-        const now = Date.now();
-        const timeDelta = now - lastTouchTimeRef.current;
-        if (timeDelta > 0) {
-          swipeVelocityRef.current = (currentX - lastTouchXRef.current) / timeDelta;
+        // Determine swipe direction on first significant movement
+        if (swipeDirection === null && (Math.abs(diffX) > 10 || Math.abs(diffY) > 10)) {
+          if (Math.abs(diffX) > Math.abs(diffY)) {
+            setSwipeDirection('horizontal');
+          } else {
+            setSwipeDirection('vertical');
+            setIsSwipeActive(false);
+            return;
+          }
         }
-        lastTouchTimeRef.current = now;
-        lastTouchXRef.current = currentX;
         
-        // Apply resistance at edges (WhatsApp-like behavior)
-        let adjustedOffset = diffX;
-        const isAtStart = currentIndex === 0 && diffX > 0;
-        const isAtEnd = currentIndex === allMedia.length - 1 && diffX < 0;
-        
-        if (isAtStart || isAtEnd) {
-          // Apply rubber band effect at edges
-          adjustedOffset = diffX * 0.3;
+        // Only process horizontal swipes
+        if (swipeDirection === 'horizontal') {
+          e.preventDefault();
+          
+          // Calculate velocity for momentum
+          const now = Date.now();
+          const timeDelta = now - lastTouchTimeRef.current;
+          if (timeDelta > 0) {
+            swipeVelocityRef.current = (currentX - lastTouchXRef.current) / timeDelta;
+          }
+          lastTouchTimeRef.current = now;
+          lastTouchXRef.current = currentX;
+          
+          // Apply resistance at edges (WhatsApp-like behavior)
+          let adjustedOffset = diffX;
+          const isAtStart = currentIndex === 0 && diffX > 0;
+          const isAtEnd = currentIndex === allMedia.length - 1 && diffX < 0;
+          
+          if (isAtStart || isAtEnd) {
+            // Apply rubber band effect at edges
+            adjustedOffset = diffX * 0.3;
+          }
+          
+          setSwipeOffset(adjustedOffset);
         }
-        
-        setSwipeOffset(adjustedOffset);
       }
     }
-  }, [initialPinchDistance, initialZoom, pinchCenter, touchStartX, touchStartY, zoom, allMedia, currentIndex, isSwipeActive, swipeDirection]);
+  }, [initialPinchDistance, initialZoom, pinchCenter, touchStartX, touchStartY, zoom, allMedia, currentIndex, isSwipeActive, swipeDirection, isDragging, dragStart]);
 
-  // Handle touch end for pinch-to-zoom and swipe navigation (WhatsApp-like)
+  // Handle touch end for pinch-to-zoom, pan, and swipe navigation (WhatsApp-like)
   const handleTouchEnd = useCallback(() => {
     // Reset pinch state
     if (initialPinchDistance !== null) {
@@ -386,7 +404,10 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
       }
     }
     
-    // Handle swipe navigation with velocity consideration
+    // Reset dragging state
+    setIsDragging(false);
+    
+    // Handle swipe navigation with velocity consideration - INSTANT navigation like WhatsApp
     if (touchStartX !== null && zoom <= 1 && allMedia && allMedia.length > 1 && swipeDirection === 'horizontal') {
       const velocity = swipeVelocityRef.current;
       const shouldNavigate = Math.abs(swipeOffset) > SWIPE_THRESHOLD || Math.abs(velocity) > SWIPE_VELOCITY_THRESHOLD;
@@ -397,35 +418,19 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
         const goPrev = swipeOffset > 0 || (swipeOffset === 0 && velocity > 0);
         
         if (goPrev && currentIndex > 0) {
-          // Swipe right - go to previous
-          setNavigationDirection('right');
-          setIsNavigating(true);
-          // Animate out to the right
-          setSwipeOffset(window.innerWidth);
-          setTimeout(() => {
-            onNavigate?.(currentIndex - 1);
-            setSwipeOffset(0);
-            setIsNavigating(false);
-            setNavigationDirection(null);
-          }, 200);
+          // Swipe right - go to previous - INSTANT navigation
+          onNavigate?.(currentIndex - 1);
+          setSwipeOffset(0);
         } else if (goNext && currentIndex < allMedia.length - 1) {
-          // Swipe left - go to next
-          setNavigationDirection('left');
-          setIsNavigating(true);
-          // Animate out to the left
-          setSwipeOffset(-window.innerWidth);
-          setTimeout(() => {
-            onNavigate?.(currentIndex + 1);
-            setSwipeOffset(0);
-            setIsNavigating(false);
-            setNavigationDirection(null);
-          }, 200);
+          // Swipe left - go to next - INSTANT navigation
+          onNavigate?.(currentIndex + 1);
+          setSwipeOffset(0);
         } else {
           // At edge, snap back
           setSwipeOffset(0);
         }
       } else {
-        // Not enough swipe distance/velocity, animate back smoothly
+        // Not enough swipe distance/velocity, snap back
         setSwipeOffset(0);
       }
     } else {
@@ -451,34 +456,18 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
     };
   }, [isOpen]);
 
-  // Desktop navigation with smooth transition
+  // Desktop navigation - instant like WhatsApp
   const handlePrevious = useCallback(() => {
-    if (allMedia && currentIndex > 0 && onNavigate && !isNavigating) {
-      setNavigationDirection('right');
-      setIsNavigating(true);
-      setSwipeOffset(window.innerWidth);
-      setTimeout(() => {
-        onNavigate(currentIndex - 1);
-        setSwipeOffset(0);
-        setIsNavigating(false);
-        setNavigationDirection(null);
-      }, 200);
+    if (allMedia && currentIndex > 0 && onNavigate) {
+      onNavigate(currentIndex - 1);
     }
-  }, [allMedia, currentIndex, onNavigate, isNavigating]);
+  }, [allMedia, currentIndex, onNavigate]);
 
   const handleNext = useCallback(() => {
-    if (allMedia && currentIndex < allMedia.length - 1 && onNavigate && !isNavigating) {
-      setNavigationDirection('left');
-      setIsNavigating(true);
-      setSwipeOffset(-window.innerWidth);
-      setTimeout(() => {
-        onNavigate(currentIndex + 1);
-        setSwipeOffset(0);
-        setIsNavigating(false);
-        setNavigationDirection(null);
-      }, 200);
+    if (allMedia && currentIndex < allMedia.length - 1 && onNavigate) {
+      onNavigate(currentIndex + 1);
     }
-  }, [allMedia, currentIndex, onNavigate, isNavigating]);
+  }, [allMedia, currentIndex, onNavigate]);
 
   const togglePlayPause = () => {
     if (mediaType === 'video' && videoRef.current) {
@@ -583,31 +572,29 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
 
           {/* Right side - Action buttons */}
           <div className="flex items-center gap-0.5 md:gap-2 flex-shrink-0">
-            {/* Zoom controls - only for images */}
-            {(mediaType === 'image' || mediaType === 'gif' || mediaType === 'sticker') && (
+            {/* Zoom controls - only for images, hidden on mobile (use pinch-to-zoom) */}
+            {(mediaType === 'image' || mediaType === 'gif' || mediaType === 'sticker') && !isMobile && (
               <>
                 <button
                   onClick={(e) => { e.stopPropagation(); handleZoomOut(); }}
-                  className="w-9 h-9 md:w-10 md:h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
+                  className="w-10 h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
                   title="Zoom arrière"
                   disabled={zoom <= MIN_ZOOM}
                 >
-                  <ZoomOut size={18} className="md:hidden text-white" />
-                  <ZoomOut size={20} className="hidden md:block text-white" />
+                  <ZoomOut size={20} className="text-white" />
                 </button>
                 <button
                   onClick={(e) => { e.stopPropagation(); handleZoomIn(); }}
-                  className="w-9 h-9 md:w-10 md:h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
+                  className="w-10 h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
                   title="Zoom avant"
                   disabled={zoom >= MAX_ZOOM}
                 >
-                  <ZoomIn size={18} className="md:hidden text-white" />
-                  <ZoomIn size={20} className="hidden md:block text-white" />
+                  <ZoomIn size={20} className="text-white" />
                 </button>
                 {zoom !== 1 && (
                   <button
                     onClick={(e) => { e.stopPropagation(); handleResetZoom(); }}
-                    className="px-2 h-9 md:h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors text-white text-xs md:text-sm"
+                    className="px-2 h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors text-white text-sm"
                     title="Réinitialiser le zoom"
                   >
                     {Math.round(zoom * 100)}%
@@ -712,9 +699,9 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
           {/* Previous button */}
           <button
             onClick={(e) => { e.stopPropagation(); handlePrevious(); }}
-            disabled={currentIndex === 0 || isNavigating}
+            disabled={currentIndex === 0}
             className={`absolute left-4 top-1/2 -translate-y-1/2 z-10 w-12 h-12 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center transition-all duration-200 ${
-              currentIndex === 0 || isNavigating ? 'opacity-30 cursor-not-allowed' : 'opacity-100 hover:scale-110'
+              currentIndex === 0 ? 'opacity-30 cursor-not-allowed' : 'opacity-100 hover:scale-110'
             } ${showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
           >
             <ChevronLeft size={28} className="text-white" />
@@ -723,9 +710,9 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
           {/* Next button */}
           <button
             onClick={(e) => { e.stopPropagation(); handleNext(); }}
-            disabled={currentIndex === allMedia.length - 1 || isNavigating}
+            disabled={currentIndex === allMedia.length - 1}
             className={`absolute right-4 top-1/2 -translate-y-1/2 z-10 w-12 h-12 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center transition-all duration-200 ${
-              currentIndex === allMedia.length - 1 || isNavigating ? 'opacity-30 cursor-not-allowed' : 'opacity-100 hover:scale-110'
+              currentIndex === allMedia.length - 1 ? 'opacity-30 cursor-not-allowed' : 'opacity-100 hover:scale-110'
             } ${showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
           >
             <ChevronRight size={28} className="text-white" />
@@ -756,7 +743,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
             onMouseMove={handleMouseMove}
             style={{
               transform: zoom <= 1 ? `translateX(${swipeOffset}px)` : 'none',
-              transition: isSwipeActive ? 'none' : 'transform 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94)',
+              transition: isSwipeActive ? 'none' : 'transform 0.15s ease-out',
               willChange: 'transform',
             }}
           >

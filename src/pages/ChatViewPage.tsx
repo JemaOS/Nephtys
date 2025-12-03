@@ -1707,7 +1707,7 @@ export function ChatViewPage() {
                       </div>
                     )}
                     <div
-                      className={`max-w-[85%] md:max-w-[65%] relative group`}
+                      className={`max-w-[85%] sm:max-w-[75%] md:max-w-[70%] lg:max-w-[65%] relative group`}
                       data-message-id={message.id}
                       onContextMenu={(e) => {
                         // On mobile, prevent native context menu - use long press instead

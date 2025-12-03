@@ -50,6 +50,7 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [isEditingDescription, setIsEditingDescription] = useState(false);
   const [newDescription, setNewDescription] = useState(conversationDescription || '');
+  const [currentDescription, setCurrentDescription] = useState(conversationDescription || '');
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [currentAvatar, setCurrentAvatar] = useState(
@@ -381,16 +382,24 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
     }
 
     try {
+      const trimmedDescription = newDescription.trim() || null;
       const { error } = await supabase
         .from('conversations')
-        .update({ description: newDescription.trim() || null })
+        .update({ description: trimmedDescription })
         .eq('id', conversationId);
 
-      if (!error) {
-        setIsEditingDescription(false);
-        alert('✅ Description mise à jour !');
+      if (error) {
+        console.error('Error updating description:', error);
+        alert('❌ Erreur lors de la mise à jour: ' + error.message);
+        return;
       }
+
+      // Update local state to reflect the change
+      setCurrentDescription(trimmedDescription || '');
+      setIsEditingDescription(false);
+      alert('✅ Description mise à jour !');
     } catch (err) {
+      console.error('Error updating description:', err);
       alert('❌ Erreur lors de la mise à jour');
     }
   };
@@ -464,7 +473,7 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
                   </div>
                 ) : (
                   <p className="text-sm text-text-secondary">
-                    {conversationDescription || 'Aucune description'}
+                    {currentDescription || 'Aucune description'}
                   </p>
                 )}
               </div>

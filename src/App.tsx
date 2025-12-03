@@ -7,7 +7,6 @@ import { ChatsPage } from './pages/ChatsPage'
 import { ChatViewPage } from './pages/ChatViewPage'
 import { ContactsPage } from './pages/ContactsPage'
 import { GroupsPage } from './pages/GroupsPage'
-import { StatusPage } from './pages/StatusPage'
 import { CallsPage } from './pages/CallsPage'
 import { ArchivedPage } from './pages/ArchivedPage'
 import { SettingsPage } from './pages/SettingsPage'
@@ -124,12 +123,6 @@ function AppRoutes() {
       <Route path="/archived" element={
         <PrivateRoute>
           <ArchivedPage />
-        </PrivateRoute>
-      } />
-      
-      <Route path="/status" element={
-        <PrivateRoute>
-          <StatusPage />
         </PrivateRoute>
       } />
       

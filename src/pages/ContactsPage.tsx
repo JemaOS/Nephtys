@@ -69,78 +69,89 @@ export function ContactsPage() {
       setLoading(true)
     }
 
-    // 1. Load explicit contacts
-    const { data: contactsData } = await supabase
-      .from('contacts')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('is_blocked', false)
-      .order('added_at', { ascending: false })
+    try {
+      // OPTIMIZATION: Run both queries in parallel instead of sequentially
+      const [contactsResult, conversationsResult] = await Promise.all([
+        // 1. Load explicit contacts
+        supabase
+          .from('contacts')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('is_blocked', false)
+          .order('added_at', { ascending: false }),
+        
+        // 2. Load conversation members in a single optimized query
+        supabase
+          .from('conversation_members')
+          .select('conversation_id, user_id')
+          .neq('user_id', user.id)
+      ])
 
-    // 2. Load users from existing conversations (chat contacts)
-    const { data: myConversations } = await supabase
-      .from('conversation_members')
-      .select('conversation_id')
-      .eq('user_id', user.id)
-
-    const conversationIds = myConversations?.map(c => c.conversation_id) || []
-    
-    // Get other members from these conversations
-    let chatUserIds: string[] = []
-    if (conversationIds.length > 0) {
-      const { data: otherMembers } = await supabase
-        .from('conversation_members')
-        .select('user_id')
-        .in('conversation_id', conversationIds)
-        .neq('user_id', user.id)
+      const contactsData = contactsResult.data
       
-      chatUserIds = [...new Set(otherMembers?.map(m => m.user_id) || [])]
-    }
+      // Get my conversation IDs first (we need to filter)
+      const { data: myConversations } = await supabase
+        .from('conversation_members')
+        .select('conversation_id')
+        .eq('user_id', user.id)
+      
+      const myConversationIds = new Set(myConversations?.map(c => c.conversation_id) || [])
+      
+      // Filter other members to only those in my conversations
+      const chatUserIds = [...new Set(
+        (conversationsResult.data || [])
+          .filter(m => myConversationIds.has(m.conversation_id))
+          .map(m => m.user_id)
+      )]
 
-    // Get explicit contact user IDs
-    const explicitContactIds = contactsData?.map(c => c.contact_user_id) || []
-    
-    // Combine and deduplicate
-    const allContactIds = [...new Set([...explicitContactIds, ...chatUserIds])]
+      // Get explicit contact user IDs
+      const explicitContactIds = contactsData?.map(c => c.contact_user_id) || []
+      
+      // Combine and deduplicate
+      const allContactIds = [...new Set([...explicitContactIds, ...chatUserIds])]
 
-    if (allContactIds.length > 0) {
-      // Fetch all profiles at once
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('*')
-        .in('id', allContactIds)
+      if (allContactIds.length > 0) {
+        // Fetch all profiles at once
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('*')
+          .in('id', allContactIds)
 
-      if (profiles) {
-        const contactsWithProfiles = profiles.map(profile => {
-          // Check if this is an explicit contact
-          const explicitContact = contactsData?.find(c => c.contact_user_id === profile.id)
-          
-          if (explicitContact) {
-            return { ...explicitContact, profile }
-          } else {
-            // Create a virtual contact entry for chat contacts
-            return {
-              id: `chat-${profile.id}`,
-              user_id: user.id,
-              contact_user_id: profile.id,
-              nickname: null,
-              is_blocked: false,
-              is_favorite: false,
-              added_at: new Date().toISOString(),
-              profile
+        if (profiles) {
+          const contactsWithProfiles = profiles.map(profile => {
+            // Check if this is an explicit contact
+            const explicitContact = contactsData?.find(c => c.contact_user_id === profile.id)
+            
+            if (explicitContact) {
+              return { ...explicitContact, profile }
+            } else {
+              // Create a virtual contact entry for chat contacts
+              return {
+                id: `chat-${profile.id}`,
+                user_id: user.id,
+                contact_user_id: profile.id,
+                nickname: null,
+                is_blocked: false,
+                is_favorite: false,
+                added_at: new Date().toISOString(),
+                profile
+              }
             }
-          }
-        })
+          })
 
-        const filteredContacts = contactsWithProfiles.filter(c => c.profile) as (Contact & { profile: Profile })[]
-        setContacts(filteredContacts)
-        setCache('contacts', filteredContacts) // Cache for instant display
+          const filteredContacts = contactsWithProfiles.filter(c => c.profile) as (Contact & { profile: Profile })[]
+          setContacts(filteredContacts)
+          setCache('contacts', filteredContacts) // Cache for instant display
+        }
+      } else {
+        setContacts([])
+        setCache('contacts', [])
       }
-    } else {
-      setContacts([])
-      setCache('contacts', [])
+    } catch (error) {
+      console.error('Error loading contacts:', error)
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   const addContact = async () => {
@@ -706,8 +717,20 @@ export function ContactsPage() {
         {/* Contacts List */}
         <div className="flex-1 overflow-y-auto pb-2">
           {loading ? (
-            <div className="flex justify-center items-center h-full">
-              <div className="w-8 h-8 rounded-full border-4 border-accent border-t-transparent animate-spin" />
+            // Skeleton loading for better UX
+            <div className="space-y-0">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className="px-4 py-3 animate-pulse">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-full bg-bg-hover flex-shrink-0" />
+                    <div className="flex-1 min-w-0 border-b border-bg-hover pb-3">
+                      <div className="h-4 bg-bg-hover rounded w-32 mb-2" />
+                      <div className="h-3 bg-bg-hover rounded w-24" />
+                    </div>
+                    <div className="w-10 h-10 rounded-full bg-bg-hover flex-shrink-0" />
+                  </div>
+                </div>
+              ))}
             </div>
           ) : filteredContacts.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center px-8">

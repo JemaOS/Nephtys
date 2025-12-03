@@ -37,48 +37,31 @@ export function GroupsPage() {
   const loadContacts = async () => {
     if (!user) return
 
-    // 1. Load explicit contacts (contacts I added)
-    const { data: contactsData } = await supabase
-      .from('contacts')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('is_blocked', false)
+    // Load bidirectional contacts:
+    // 1. Contacts I added (user_id = me)
+    // 2. Contacts who added me (contact_user_id = me)
+    const [myContactsResult, addedMeResult] = await Promise.all([
+      supabase
+        .from('contacts')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('is_blocked', false),
+      supabase
+        .from('contacts')
+        .select('*')
+        .eq('contact_user_id', user.id)
+        .eq('is_blocked', false)
+    ])
 
-    // 2. Load reverse contacts (users who added me as a contact)
-    const { data: reverseContactsData } = await supabase
-      .from('contacts')
-      .select('*')
-      .eq('contact_user_id', user.id)
-      .eq('is_blocked', false)
+    const myContacts = myContactsResult.data || []
+    const addedMe = addedMeResult.data || []
 
-    // 3. Load users from existing conversations (chat contacts)
-    const { data: myConversations } = await supabase
-      .from('conversation_members')
-      .select('conversation_id')
-      .eq('user_id', user.id)
-
-    const conversationIds = myConversations?.map(c => c.conversation_id) || []
+    // Get all unique user IDs (contacts I added + users who added me)
+    const myContactIds = myContacts.map(c => c.contact_user_id)
+    const addedMeUserIds = addedMe.map(c => c.user_id)
     
-    // Get other members from these conversations
-    let chatUserIds: string[] = []
-    if (conversationIds.length > 0) {
-      const { data: otherMembers } = await supabase
-        .from('conversation_members')
-        .select('user_id')
-        .in('conversation_id', conversationIds)
-        .neq('user_id', user.id)
-      
-      chatUserIds = [...new Set(otherMembers?.map(m => m.user_id) || [])]
-    }
-
-    // Get explicit contact user IDs (contacts I added)
-    const explicitContactIds = contactsData?.map(c => c.contact_user_id) || []
-    
-    // Get reverse contact user IDs (users who added me)
-    const reverseContactIds = reverseContactsData?.map(c => c.user_id) || []
-    
-    // Combine and deduplicate all contact IDs
-    const allContactIds = [...new Set([...explicitContactIds, ...reverseContactIds, ...chatUserIds])]
+    // Combine and deduplicate
+    const allContactIds = [...new Set([...myContactIds, ...addedMeUserIds])]
 
     if (allContactIds.length > 0) {
       // Fetch all profiles at once
@@ -89,38 +72,14 @@ export function GroupsPage() {
 
       if (profiles) {
         const contactsWithProfiles = profiles.map(profile => {
-          // Check if this is an explicit contact (I added them)
-          const explicitContact = contactsData?.find(c => c.contact_user_id === profile.id)
+          // Check if this is a contact I added or someone who added me
+          const myContact = myContacts.find(c => c.contact_user_id === profile.id)
+          const theirContact = addedMe.find(c => c.user_id === profile.id)
           
-          // Check if this is a reverse contact (they added me)
-          const reverseContact = reverseContactsData?.find(c => c.user_id === profile.id)
-          
-          if (explicitContact) {
-            return { ...explicitContact, profile }
-          } else if (reverseContact) {
-            // Create a contact entry for reverse contacts (they added me)
-            return {
-              id: `reverse-${profile.id}`,
-              user_id: user.id,
-              contact_user_id: profile.id,
-              nickname: null,
-              is_blocked: false,
-              is_favorite: false,
-              created_at: reverseContact.added_at,
-              profile
-            }
-          } else {
-            // Create a virtual contact entry for chat contacts
-            return {
-              id: `chat-${profile.id}`,
-              user_id: user.id,
-              contact_user_id: profile.id,
-              nickname: null,
-              is_blocked: false,
-              is_favorite: false,
-              created_at: new Date().toISOString(),
-              profile
-            }
+          return {
+            id: myContact?.id || theirContact?.id,
+            contact_user_id: profile.id,
+            profile
           }
         })
 
