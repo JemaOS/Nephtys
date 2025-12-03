@@ -40,7 +40,8 @@ export function GroupsPage() {
     // Load bidirectional contacts:
     // 1. Contacts I added (user_id = me)
     // 2. Contacts who added me (contact_user_id = me)
-    const [myContactsResult, addedMeResult] = await Promise.all([
+    // 3. Users from my conversations
+    const [myContactsResult, addedMeResult, conversationsResult] = await Promise.all([
       supabase
         .from('contacts')
         .select('*')
@@ -50,18 +51,37 @@ export function GroupsPage() {
         .from('contacts')
         .select('*')
         .eq('contact_user_id', user.id)
-        .eq('is_blocked', false)
+        .eq('is_blocked', false),
+      supabase
+        .from('conversation_members')
+        .select('conversation_id, user_id')
+        .neq('user_id', user.id)
     ])
 
     const myContacts = myContactsResult.data || []
     const addedMe = addedMeResult.data || []
 
-    // Get all unique user IDs (contacts I added + users who added me)
+    // Get my conversation IDs first (we need to filter)
+    const { data: myConversations } = await supabase
+      .from('conversation_members')
+      .select('conversation_id')
+      .eq('user_id', user.id)
+    
+    const myConversationIds = new Set(myConversations?.map(c => c.conversation_id) || [])
+    
+    // Filter other members to only those in my conversations
+    const chatUserIds = [...new Set(
+      (conversationsResult.data || [])
+        .filter(m => myConversationIds.has(m.conversation_id))
+        .map(m => m.user_id)
+    )]
+
+    // Get all unique user IDs (contacts I added + users who added me + chat users)
     const myContactIds = myContacts.map(c => c.contact_user_id)
     const addedMeUserIds = addedMe.map(c => c.user_id)
     
     // Combine and deduplicate
-    const allContactIds = [...new Set([...myContactIds, ...addedMeUserIds])]
+    const allContactIds = [...new Set([...myContactIds, ...addedMeUserIds, ...chatUserIds])]
 
     if (allContactIds.length > 0) {
       // Fetch all profiles at once
@@ -77,7 +97,7 @@ export function GroupsPage() {
           const theirContact = addedMe.find(c => c.user_id === profile.id)
           
           return {
-            id: myContact?.id || theirContact?.id,
+            id: myContact?.id || theirContact?.id || `chat-${profile.id}`,
             contact_user_id: profile.id,
             profile
           }

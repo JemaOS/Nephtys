@@ -287,6 +287,9 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
 
   // Handle touch start for pinch-to-zoom, pan, and swipe navigation (WhatsApp-like)
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    // IMPORTANT: Stop propagation to prevent parent components (like chat view) from receiving touch events
+    e.stopPropagation();
+    
     if (e.touches.length === 2) {
       // Pinch gesture started
       e.preventDefault();
@@ -302,6 +305,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
       
       if (zoom > 1) {
         // When zoomed in, single touch is for panning
+        e.preventDefault(); // Prevent any default behavior when zoomed
         setIsDragging(true);
         setDragStart({ x: touch.clientX - position.x, y: touch.clientY - position.y });
         setIsSwipeActive(false);
@@ -318,6 +322,9 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
 
   // Handle touch move for pinch-to-zoom, pan, and swipe navigation (WhatsApp-like)
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    // IMPORTANT: Stop propagation to prevent parent components from receiving touch events
+    e.stopPropagation();
+    
     if (e.touches.length === 2 && initialPinchDistance !== null) {
       // Pinch gesture in progress
       e.preventDefault();
@@ -392,7 +399,10 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   }, [initialPinchDistance, initialZoom, pinchCenter, touchStartX, touchStartY, zoom, allMedia, currentIndex, isSwipeActive, swipeDirection, isDragging, dragStart]);
 
   // Handle touch end for pinch-to-zoom, pan, and swipe navigation (WhatsApp-like)
-  const handleTouchEnd = useCallback(() => {
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    // IMPORTANT: Stop propagation to prevent parent components from receiving touch events
+    e.stopPropagation();
+    
     // Reset pinch state
     if (initialPinchDistance !== null) {
       setInitialPinchDistance(null);
@@ -728,8 +738,13 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
+        onTouchCancel={(e) => {
+          e.stopPropagation();
+          handleTouchEnd(e);
+        }}
         style={{
-          touchAction: zoom > 1 ? 'none' : (swipeDirection === 'horizontal' ? 'none' : 'pan-y'),
+          // Always use touch-action: none to prevent browser default behaviors and ensure we handle all touch events
+          touchAction: 'none',
         }}
       >
         {/* Image, GIF, Sticker - all displayed fullscreen with zoom and swipe */}

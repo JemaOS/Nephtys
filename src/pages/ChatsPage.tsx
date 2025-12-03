@@ -971,7 +971,10 @@ export function ChatsPage() {
             {/* Left side: Back arrow + count */}
             <div className="flex items-center gap-3">
               <button
-                onClick={exitSelectionMode}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  exitSelectionMode()
+                }}
                 className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-bg-hover transition-colors"
               >
                 <ArrowLeft size={24} className="text-text-primary" />

@@ -170,26 +170,60 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
   const loadAvailableContacts = async () => {
     const memberUserIds = members.map(m => m.user_id);
     
-    const { data: contacts } = await supabase
-      .from('contacts')
-      .select('contact_user_id')
-      .eq('user_id', currentUserId)
-      .eq('is_blocked', false);
+    // Load bidirectional contacts:
+    // 1. Contacts I added (user_id = me)
+    // 2. Contacts who added me (contact_user_id = me)
+    // 3. Users from my conversations
+    const [myContactsResult, addedMeResult, conversationsResult] = await Promise.all([
+      supabase
+        .from('contacts')
+        .select('contact_user_id')
+        .eq('user_id', currentUserId)
+        .eq('is_blocked', false),
+      supabase
+        .from('contacts')
+        .select('user_id')
+        .eq('contact_user_id', currentUserId)
+        .eq('is_blocked', false),
+      supabase
+        .from('conversation_members')
+        .select('conversation_id, user_id')
+        .neq('user_id', currentUserId)
+    ]);
+
+    const myContacts = myContactsResult.data || [];
+    const addedMe = addedMeResult.data || [];
+
+    // Get my conversation IDs first (we need to filter)
+    const { data: myConversations } = await supabase
+      .from('conversation_members')
+      .select('conversation_id')
+      .eq('user_id', currentUserId);
     
-    if (contacts && contacts.length > 0) {
-      const contactIds = contacts.map(c => c.contact_user_id);
-      const availableIds = contactIds.filter(id => !memberUserIds.includes(id));
+    const myConversationIds = new Set(myConversations?.map(c => c.conversation_id) || []);
+    
+    // Filter other members to only those in my conversations
+    const chatUserIds = [...new Set(
+      (conversationsResult.data || [])
+        .filter(m => myConversationIds.has(m.conversation_id))
+        .map(m => m.user_id)
+    )];
+
+    // Get all unique user IDs (contacts I added + users who added me + chat users)
+    const myContactIds = myContacts.map(c => c.contact_user_id);
+    const addedMeUserIds = addedMe.map(c => c.user_id);
+    
+    // Combine and deduplicate, excluding current group members
+    const allContactIds = [...new Set([...myContactIds, ...addedMeUserIds, ...chatUserIds])]
+      .filter(id => !memberUserIds.includes(id));
+
+    if (allContactIds.length > 0) {
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('*')
+        .in('id', allContactIds);
       
-      if (availableIds.length > 0) {
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('*')
-          .in('id', availableIds);
-        
-        setAvailableContacts(profiles || []);
-      } else {
-        setAvailableContacts([]);
-      }
+      setAvailableContacts(profiles || []);
     } else {
       setAvailableContacts([]);
     }
@@ -806,15 +840,16 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
                     {conversationName[0]?.toUpperCase()}
                   </div>
                 )}
-                {(conversationType === 'group' ? isAdmin : true) && (
+                {/* Only show camera button for groups where user is admin - not for direct conversations */}
+                {conversationType === 'group' && isAdmin && (
                   <label className="absolute bottom-2 right-2 w-10 h-10 rounded-full bg-accent flex items-center justify-center cursor-pointer hover:bg-[#5a5ec9] transition-colors shadow-lg">
                     <Camera size={20} className="text-white" />
-                    <input 
-                      type="file" 
-                      accept="image/*" 
-                      onChange={handleUploadPhoto} 
-                      className="hidden" 
-                      disabled={uploadingPhoto} 
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleUploadPhoto}
+                      className="hidden"
+                      disabled={uploadingPhoto}
                     />
                   </label>
                 )}
