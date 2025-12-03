@@ -37,10 +37,12 @@ export function GroupsPage() {
   const loadContacts = async () => {
     if (!user) return
 
-    // Only load contacts that the current user has explicitly added
-    // If a user deletes a contact, they should no longer see that person
-    // even if that person had added them as a contact
-    // Order by added_at DESC to get the most recent entry first (handles re-added contacts)
+    // Load contacts from multiple sources:
+    // 1. Contacts that the current user has explicitly added
+    // 2. Contacts who have added the current user (bidirectional)
+    // 3. Users from shared conversations
+    
+    // Query 1: Contacts I explicitly added
     const { data: myContacts } = await supabase
       .from('contacts')
       .select('*')
@@ -48,31 +50,65 @@ export function GroupsPage() {
       .eq('is_blocked', false)
       .order('added_at', { ascending: false })
 
-    if (!myContacts || myContacts.length === 0) {
-      setContacts([])
-      return
-    }
+    // Query 2: Users who have added me as a contact (bidirectional contacts)
+    const { data: theirContacts } = await supabase
+      .from('contacts')
+      .select('*')
+      .eq('contact_user_id', user.id)
+      .eq('is_blocked', false)
+
+    // Query 3: Users from shared conversations (like ContactsPage does)
+    const { data: myConversations } = await supabase
+      .from('conversation_members')
+      .select('conversation_id')
+      .eq('user_id', user.id)
+
+    const myConversationIds = new Set(myConversations?.map(c => c.conversation_id) || [])
+
+    const { data: conversationMembers } = await supabase
+      .from('conversation_members')
+      .select('conversation_id, user_id')
+      .neq('user_id', user.id)
+
+    // Filter to only members in my conversations
+    const chatUserIds = [...new Set(
+      (conversationMembers || [])
+        .filter(m => myConversationIds.has(m.conversation_id))
+        .map(m => m.user_id)
+    )]
 
     // Deduplicate contacts by contact_user_id, keeping the most recent entry
-    const uniqueContactsMap = new Map<string, typeof myContacts[0]>()
-    for (const contact of myContacts) {
+    const uniqueContactsMap = new Map<string, typeof myContacts extends (infer T)[] ? T : never>()
+    for (const contact of (myContacts || [])) {
       if (!uniqueContactsMap.has(contact.contact_user_id)) {
         uniqueContactsMap.set(contact.contact_user_id, contact)
       }
     }
     const uniqueContacts = Array.from(uniqueContactsMap.values())
 
-    // Get only the contacts I explicitly added
+    // Get IDs from contacts I added
     const myContactIds = uniqueContacts.map(c => c.contact_user_id)
+    
+    // Get IDs from users who added me
+    const theirContactIds = (theirContacts || []).map(c => c.user_id)
+
+    // Combine all contact IDs and deduplicate
+    const allContactIds = [...new Set([...myContactIds, ...theirContactIds, ...chatUserIds])]
+
+    if (allContactIds.length === 0) {
+      setContacts([])
+      return
+    }
 
     // Fetch all profiles at once
     const { data: profiles } = await supabase
       .from('profiles')
       .select('*')
-      .in('id', myContactIds)
+      .in('id', allContactIds)
 
     if (profiles) {
       const contactsWithProfiles = profiles.map(profile => {
+        // Check if this is an explicit contact I added
         const myContact = uniqueContacts.find(c => c.contact_user_id === profile.id)
         
         return {

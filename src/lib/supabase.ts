@@ -42,7 +42,7 @@ export interface Message {
   conversation_id: string
   sender_id: string
   content: string
-  type: 'text' | 'image' | 'video' | 'audio' | 'file' | 'call'
+  type: 'text' | 'image' | 'video' | 'audio' | 'file' | 'call' | 'system'
   status: 'sent' | 'delivered' | 'read'
   reply_to_id: string | null
   file_url: string | null

@@ -1737,6 +1737,21 @@ export function ChatViewPage() {
                   longPressMessageRef.current = null
                 }
 
+                // System messages (ephemeral mode changes, etc.) - centered like WhatsApp
+                if (message.type === 'system') {
+                  return (
+                    <div
+                      key={message.id}
+                      id={`message-${message.id}`}
+                      className="flex justify-center mb-2"
+                    >
+                      <div className="bg-bg-surface/80 backdrop-blur-sm px-4 py-2 rounded-lg max-w-[85%] text-center">
+                        <p className="text-xs text-text-secondary">{message.content}</p>
+                      </div>
+                    </div>
+                  )
+                }
+
                 return (
                   <div
                     key={message.id}

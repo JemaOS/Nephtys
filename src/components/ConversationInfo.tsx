@@ -184,6 +184,8 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
   };
 
   const handleSetEphemeralDuration = async (duration: number | null) => {
+    const previousDuration = ephemeralDuration;
+    
     const { error } = await supabase
       .from('conversation_members')
       .update({ ephemeral_duration: duration })
@@ -193,6 +195,25 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
     if (!error) {
       setEphemeralDuration(duration);
       setShowEphemeralMenu(false);
+      
+      // Send a system message to notify about ephemeral mode change
+      const systemMessageContent = duration
+        ? `🕐 Messages éphémères activés : ${getEphemeralLabel(duration)}`
+        : '🕐 Messages éphémères désactivés';
+      
+      await supabase.from('messages').insert({
+        conversation_id: conversationId,
+        sender_id: currentUserId,
+        content: systemMessageContent,
+        type: 'system',
+        status: 'sent',
+      });
+      
+      // Update conversation's last_message_at
+      await supabase
+        .from('conversations')
+        .update({ last_message_at: new Date().toISOString() })
+        .eq('id', conversationId);
     }
   };
 
