@@ -309,15 +309,21 @@ export const CallScreen: React.FC<CallScreenProps> = ({
   // Render 1-to-1 call UI
   const renderOneToOneCallUI = () => {
     return (
-      <div className="flex-1 relative flex items-center justify-center bg-black">
+      <div className="flex-1 relative flex items-center justify-center bg-black overflow-hidden">
         {isVideoCall && remoteStream ? (
           <>
+            {/* Remote video with proper aspect ratio preservation (pillarbox/letterbox) */}
             <video
               ref={remoteVideoRef}
               autoPlay
               playsInline
               muted={false}
-              className="max-w-full max-h-full object-contain"
+              className="w-auto h-auto max-w-full max-h-full object-contain"
+              style={{
+                // Ensure the video maintains its natural aspect ratio
+                // and doesn't get stretched or cropped
+                objectFit: 'contain',
+              }}
             />
             {console.log('📹 CallScreen: Rendering remote video element')}
           </>
