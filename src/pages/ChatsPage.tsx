@@ -1049,8 +1049,8 @@ export function ChatsPage() {
       
       {/* Liste des conversations - Style JemaOS */}
       <div className={`w-full md:w-[420px] bg-bg-secondary flex flex-col md:border-r border-bg-hover pb-20 md:pb-0 ${isSelectionMode ? 'pt-14' : ''}`}>
-        {/* Header - Hidden in selection mode */}
-        {!isSelectionMode && (
+        {/* Header - COMPLETELY Hidden in selection mode */}
+        {!isSelectionMode ? (
         <div className="bg-bg-surface p-4">
           <div className="flex items-center justify-between mb-4">
             <h1 className="text-xl font-semibold text-text-primary">Discussions</h1>
@@ -1169,7 +1169,7 @@ export function ChatsPage() {
             </button>
           </div>
         </div>
-        )}
+        ) : null}
 
         {/* Liste des conversations */}
         <div className="flex-1 overflow-y-auto pb-4">
