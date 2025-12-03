@@ -966,14 +966,31 @@ export function ChatsPage() {
     <MainLayout>
       {/* Selection Mode Top Bar - WhatsApp style */}
       {isSelectionMode && (
-        <div className="fixed top-0 left-0 right-0 z-50 bg-bg-surface border-b border-bg-hover shadow-lg animate-in slide-in-from-top duration-200">
+        <div
+          className="fixed top-0 left-0 right-0 z-50 bg-bg-surface border-b border-bg-hover shadow-lg animate-in slide-in-from-top duration-200"
+          onTouchStart={(e) => e.stopPropagation()}
+          onTouchEnd={(e) => e.stopPropagation()}
+          onTouchMove={(e) => e.stopPropagation()}
+        >
           <div className="flex items-center justify-between h-14 px-2">
             {/* Left side: Back arrow + count */}
             <div className="flex items-center gap-3">
               <button
                 onClick={(e) => {
+                  e.preventDefault()
                   e.stopPropagation()
                   exitSelectionMode()
+                }}
+                onTouchStart={(e) => {
+                  e.stopPropagation()
+                }}
+                onTouchEnd={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  exitSelectionMode()
+                }}
+                onMouseDown={(e) => {
+                  e.stopPropagation()
                 }}
                 className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-bg-hover transition-colors"
               >
