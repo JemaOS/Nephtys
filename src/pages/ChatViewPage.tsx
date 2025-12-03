@@ -534,19 +534,13 @@ export function ChatViewPage() {
     await supabase.from('messages').update({ status }).eq('id', messageId)
   }
 
-  // Load ephemeral setting from conversation_members
-  const loadEphemeralSetting = async () => {
-    if (!conversationId || !user) return
+  // Load ephemeral setting from localStorage (since DB doesn't have this column)
+  const loadEphemeralSetting = () => {
+    if (!conversationId) return
     
-    const { data } = await supabase
-      .from('conversation_members')
-      .select('ephemeral_duration')
-      .eq('conversation_id', conversationId)
-      .eq('user_id', user.id)
-      .single()
-    
-    if (data && data.ephemeral_duration) {
-      setEphemeralDuration(data.ephemeral_duration)
+    const storedSetting = localStorage.getItem(`ephemeral_${conversationId}`)
+    if (storedSetting) {
+      setEphemeralDuration(JSON.parse(storedSetting))
     } else {
       setEphemeralDuration(null)
     }
@@ -1676,6 +1670,41 @@ export function ChatViewPage() {
                 const isOwn = message.sender_id === user?.id
                 const messageReactions = reactions.filter(r => r.message_id === message.id)
                 const isSelected = selectedMessages.has(message.id)
+                
+                // Check if this is a system message (starts with [SYSTEM])
+                const isSystemMessage = message.type === 'text' && message.content?.startsWith('[SYSTEM]')
+                const systemMessageContent = isSystemMessage ? message.content.replace('[SYSTEM]', '') : ''
+                
+                // Render system messages with glassmorphism 2025 style
+                if (isSystemMessage) {
+                  return (
+                    <div
+                      key={message.id}
+                      id={`message-${message.id}`}
+                      className="flex justify-center my-4 px-4"
+                    >
+                      <div className="relative bg-white/10 dark:bg-white/5 backdrop-blur-xl px-5 py-3 rounded-2xl max-w-[85%] sm:max-w-[70%] text-center border border-white/20 dark:border-white/10 shadow-lg">
+                        {/* Subtle gradient overlay */}
+                        <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-accent/10 to-transparent pointer-events-none" />
+                        
+                        {/* Icon */}
+                        <div className="flex justify-center mb-2">
+                          <div className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-accent">
+                              <circle cx="12" cy="12" r="10"/>
+                              <polyline points="12 6 12 12 16 14"/>
+                            </svg>
+                          </div>
+                        </div>
+                        
+                        {/* Message content */}
+                        <p className="text-xs sm:text-sm text-text-secondary leading-relaxed relative z-10">
+                          {systemMessageContent}
+                        </p>
+                      </div>
+                    </div>
+                  )
+                }
                 
                 // Check if this is an emoji-only message (1-3 emojis, no other text)
                 const emojiCheck = message.type === 'text' && message.content && !message.media_url

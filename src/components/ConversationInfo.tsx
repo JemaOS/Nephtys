@@ -190,24 +190,29 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
     setShowEphemeralMenu(false);
     
     // Send a system message to notify about ephemeral mode change
+    // Use [SYSTEM] prefix to identify system messages for special rendering
     const systemMessageContent = duration
-      ? `🕐 Messages éphémères activés : ${getEphemeralLabel(duration)}`
-      : '🕐 Messages éphémères désactivés';
+      ? `[SYSTEM]Vous avez mis à jour le délai avant disparition. Les nouveaux messages disparaîtront de cette discussion ${getEphemeralLabel(duration)} après avoir été envoyés, sauf s'ils sont gardés.`
+      : '[SYSTEM]Vous avez désactivé les messages éphémères.';
     
     try {
-      await supabase.from('messages').insert({
+      const { data, error } = await supabase.from('messages').insert({
         conversation_id: conversationId,
         sender_id: currentUserId,
         content: systemMessageContent,
-        type: 'system',
+        type: 'text',
         status: 'sent',
-      });
+      }).select();
       
-      // Update conversation's last_message_at
-      await supabase
-        .from('conversations')
-        .update({ last_message_at: new Date().toISOString() })
-        .eq('id', conversationId);
+      if (error) {
+        console.error('Error inserting system message:', error);
+      } else {
+        // Update conversation's last_message_at
+        await supabase
+          .from('conversations')
+          .update({ last_message_at: new Date().toISOString() })
+          .eq('id', conversationId);
+      }
     } catch (err) {
       console.error('Error sending system message:', err);
     }
@@ -215,6 +220,7 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
 
   const getEphemeralLabel = (duration: number | null): string => {
     if (!duration) return 'Désactivés';
+    if (duration === 3600) return '1 heure';
     if (duration === 86400) return '24 heures';
     if (duration === 604800) return '7 jours';
     if (duration === 7776000) return '90 jours';
@@ -1104,6 +1110,16 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
               >
                 <span className="text-sm text-text-primary">Désactivé</span>
                 {ephemeralDuration === null && <Check size={18} className="text-accent" />}
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleSetEphemeralDuration(3600);
+                }}
+                className="w-full px-4 py-3 text-left hover:bg-bg-hover transition-colors flex items-center justify-between"
+              >
+                <span className="text-sm text-text-primary">1 heure</span>
+                {ephemeralDuration === 3600 && <Check size={18} className="text-accent" />}
               </button>
               <button
                 onClick={(e) => {
