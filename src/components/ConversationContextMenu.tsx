@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { Pin, Archive, Trash2, X, Volume2, VolumeX, Edit, ArrowLeft, MoreVertical } from 'lucide-react'
+import { Pin, Archive, Trash2, X, Volume2, VolumeX, Edit, ArrowLeft, MoreVertical, CheckSquare } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'
 
-interface ConversationContextMenuProps {
+export interface ConversationContextMenuProps {
   x: number
   y: number
   onClose: () => void
@@ -13,12 +13,13 @@ interface ConversationContextMenuProps {
   onClearMessages: () => void
   onDelete: () => void
   onOpenInNewWindow: () => void
+  onSelect?: () => void
   isPinned?: boolean
   isMuted?: boolean
 }
 
 export function ConversationContextMenu({
-  x, y, onClose, onMarkAsUnread, onPin, onArchive, onMute, onClearMessages, onDelete, onOpenInNewWindow,
+  x, y, onClose, onMarkAsUnread, onPin, onArchive, onMute, onClearMessages, onDelete, onOpenInNewWindow, onSelect,
   isPinned = false, isMuted = false
 }: ConversationContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null)
@@ -52,6 +53,7 @@ export function ConversationContextMenu({
     { icon: X, label: 'Supprimer', onClick: onDelete, danger: true },
     { icon: Edit, label: 'Ouvrir dans une nouvelle fenêtre', onClick: onOpenInNewWindow },
     { icon: X, label: 'Fermer la discussion', onClick: onClose },
+    ...(onSelect ? [{ icon: CheckSquare, label: 'Sélectionner', onClick: onSelect }] : []),
   ]
 
   // Mobile: WhatsApp-style top action bar

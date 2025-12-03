@@ -59,7 +59,7 @@ export function ChatsPage() {
     return []
   })
   const [searchQuery, setSearchQuery] = useState('')
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; conversationId: string } | null>(null)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; conversationId: string; onSelect?: () => void } | null>(null)
   const [showFilterMenu, setShowFilterMenu] = useState(false)
   const [showNewMenu, setShowNewMenu] = useState(false)
   const [activeFilter, setActiveFilter] = useState<'all' | 'unread' | 'groups'>('all')
@@ -83,9 +83,6 @@ export function ChatsPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const isMobile = useIsMobile()
-  
-  // Hover state for desktop checkbox
-  const [hoveredConversationId, setHoveredConversationId] = useState<string | null>(null)
   
   // Ref for debouncing real-time subscription reloads
   const reloadTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -135,8 +132,8 @@ export function ChatsPage() {
   }, [])
   
   const exitSelectionMode = useCallback(() => {
-    setIsSelectionMode(false)
     setSelectedConversations(new Set())
+    setIsSelectionMode(false)
   }, [])
   
   const toggleConversationSelection = useCallback((conversationId: string) => {
@@ -731,7 +728,12 @@ export function ChatsPage() {
 
   const handleContextMenu = (e: React.MouseEvent, conversationId: string) => {
     e.preventDefault()
-    setContextMenu({ x: e.clientX, y: e.clientY, conversationId })
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      conversationId,
+      onSelect: () => enterSelectionMode(conversationId)
+    })
   }
 
   const handleMarkAsUnread = async (conversationId: string) => {
@@ -1259,10 +1261,6 @@ export function ChatsPage() {
 
               const hasUnread = (conversation.unreadCount || 0) > 0
               const isSelected = selectedConversations.has(conversation.id)
-              const isHovered = hoveredConversationId === conversation.id
-              
-              // Show checkbox on desktop: when hovered OR in selection mode
-              const showCheckbox = !isMobile && (isSelectionMode || isHovered)
 
               return (
                 <div
@@ -1290,40 +1288,11 @@ export function ChatsPage() {
                     }
                   }}
                   onMouseUp={handleTouchEnd}
-                  onMouseLeave={() => {
-                    handleTouchEnd()
-                    setHoveredConversationId(null)
-                  }}
-                  onMouseEnter={() => setHoveredConversationId(conversation.id)}
+                  onMouseLeave={handleTouchEnd}
                 >
                   <div className="flex items-center gap-3">
-                    {/* Desktop Hover Checkbox - WhatsApp Web style */}
-                    {!isMobile && (
-                      <div
-                        className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all duration-200 cursor-pointer ${
-                          isSelected
-                            ? 'bg-[#6063cf] border-[#6063cf] opacity-100'
-                            : showCheckbox
-                              ? 'border-text-secondary opacity-100 hover:border-[#6063cf]'
-                              : 'border-transparent opacity-0'
-                        }`}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          if (!isSelectionMode) {
-                            enterSelectionMode(conversation.id)
-                          } else {
-                            toggleConversationSelection(conversation.id)
-                          }
-                        }}
-                      >
-                        {isSelected && (
-                          <Check size={14} className="text-white" strokeWidth={3} />
-                        )}
-                      </div>
-                    )}
-                    
-                    {/* Mobile Selection Checkbox - Only in selection mode */}
-                    {isMobile && isSelectionMode && (
+                    {/* Selection Checkbox - Only in selection mode (both mobile and desktop) */}
+                    {isSelectionMode && (
                       <div
                         className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
                           isSelected
@@ -1461,6 +1430,7 @@ export function ChatsPage() {
             onClearMessages={() => handleClearMessages(contextMenu.conversationId)}
             onDelete={() => handleDeleteConversation(contextMenu.conversationId)}
             onOpenInNewWindow={() => handleOpenInNewWindow(contextMenu.conversationId)}
+            onSelect={contextMenu.onSelect}
             isPinned={selectedConv?.is_pinned || false}
             isMuted={selectedConv?.is_muted || false}
           />
