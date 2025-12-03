@@ -75,14 +75,21 @@ export function PersistentCallScreen() {
       />
       
       {/* Remote Video */}
-      <div className="flex-1 relative">
+      <div className="flex-1 relative flex items-center justify-center bg-black overflow-hidden">
         {isVideoCall && remoteStream ? (
           <video
             ref={remoteVideoRef}
             autoPlay
             playsInline
-            muted
-            className="w-full h-full bg-black object-contain"
+            muted={false}
+            className="max-w-full max-h-full object-contain"
+            style={{
+              // Ensure the video maintains its natural aspect ratio
+              // Portrait videos from phones will show with black bars on sides (pillarbox)
+              // Landscape videos will show with black bars on top/bottom (letterbox)
+              width: 'auto',
+              height: 'auto',
+            }}
           />
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center">

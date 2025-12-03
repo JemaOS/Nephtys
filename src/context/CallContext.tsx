@@ -91,21 +91,31 @@ export function CallProvider({ children }: { children: ReactNode }) {
       .on('broadcast', { event: 'call-signal' }, async (payload) => {
         const signal = payload.payload as CallSignal
         
-        console.log('🔔 CallContext: Received signal:', signal.type, 'from:', signal.from, 'to:', signal.to)
+        // DEBUG: Log full details for diagnosis
+        console.log('🔔 CallContext: === SIGNAL RECEIVED ===')
+        console.log('🔔 CallContext: Signal type:', signal.type)
+        console.log('🔔 CallContext: Signal from:', signal.from)
+        console.log('🔔 CallContext: Signal to:', signal.to)
+        console.log('🔔 CallContext: Current user.id:', user?.id)
+        console.log('🔔 CallContext: user object:', user)
+        console.log('🔔 CallContext: Comparison (signal.from === user.id):', signal.from === user?.id)
+        console.log('🔔 CallContext: Comparison (signal.to === user.id):', signal.to === user?.id)
+        console.log('🔔 CallContext: typeof signal.from:', typeof signal.from)
+        console.log('🔔 CallContext: typeof user.id:', typeof user?.id)
         
         // Ignorer nos propres signaux
-        if (signal.from === user.id) {
-          console.log('🔔 CallContext: Ignoring own signal')
+        if (signal.from === user?.id) {
+          console.log('🔔 CallContext: ❌ Ignoring own signal (from matches our user.id)')
           return
         }
         
         // Traiter uniquement les signaux qui nous sont destinés
-        if (signal.to !== user.id) {
-          console.log('🔔 CallContext: Signal not for us')
+        if (signal.to !== user?.id) {
+          console.log('🔔 CallContext: ❌ Signal not for us (to does not match our user.id)')
           return
         }
 
-        console.log('🔔 CallContext: Processing signal for us')
+        console.log('🔔 CallContext: ✅ Processing signal for us')
         handleIncomingSignal(signal)
       })
       .subscribe((status) => {
