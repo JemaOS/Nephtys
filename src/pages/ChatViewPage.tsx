@@ -299,7 +299,29 @@ export function ChatViewPage() {
         filter: `conversation_id=eq.${conversationId}`
       }, (payload) => {
         const newMsg = payload.new as Message
-        setMessages(prev => [...prev, newMsg])
+        // Avoid duplicates: check if message already exists (including temp messages)
+        setMessages(prev => {
+          // Check if this message ID already exists
+          const exists = prev.some(m => m.id === newMsg.id)
+          if (exists) return prev
+          
+          // Check if there's a temp message that should be replaced
+          // Temp messages start with 'temp-' and have the same media_url
+          const tempIndex = prev.findIndex(m =>
+            m.id.startsWith('temp-') &&
+            m.media_url === newMsg.media_url &&
+            m.sender_id === newMsg.sender_id
+          )
+          
+          if (tempIndex !== -1) {
+            // Replace temp message with real one
+            const newMessages = [...prev]
+            newMessages[tempIndex] = newMsg
+            return newMessages
+          }
+          
+          return [...prev, newMsg]
+        })
         if (newMsg.sender_id !== user.id) {
           updateMessageStatus(newMsg.id, 'delivered')
           if (document.hidden && permission === 'granted') {
@@ -610,21 +632,55 @@ export function ChatViewPage() {
   const handleVoiceRecordingComplete = async (audioBlob: Blob, duration: number) => {
     if (!user) return
     setSending(true)
+    
+    // Close voice recorder immediately for better UX
+    setShowVoiceRecorder(false)
+    
     try {
       const fileName = `${user.id}/${Date.now()}.webm`
       const { error: uploadError } = await supabase.storage.from('media').upload(fileName, audioBlob, { cacheControl: '3600', upsert: false })
       if (uploadError) throw uploadError
       const { data: { publicUrl } } = supabase.storage.from('media').getPublicUrl(fileName)
+      
+      const now = new Date().toISOString()
+      const tempId = `temp-${Date.now()}`
+      
       const messageData: any = {
         conversation_id: conversationId!, sender_id: user.id, content: '', type: 'audio', status: 'sent',
         reply_to_id: replyToMessage?.id || null, media_url: publicUrl, media_type: 'audio',
         file_name: `voice-${Date.now()}.webm`, file_size: audioBlob.size,
       }
-      const { error } = await supabase.from('messages').insert(messageData)
-      if (!error) {
-        setReplyToMessage(null)
-        setShowVoiceRecorder(false)
-        await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conversationId!)
+      
+      // Optimistic update - add message to local state immediately
+      const optimisticMessage = {
+        id: tempId,
+        conversation_id: conversationId!,
+        sender_id: user.id,
+        content: '',
+        type: 'audio',
+        status: 'sent',
+        created_at: now,
+        media_url: publicUrl,
+        media_type: 'audio',
+        file_name: messageData.file_name,
+        file_size: audioBlob.size,
+        reply_to_id: replyToMessage?.id || null,
+      } as unknown as Message
+      
+      setMessages(prev => [...prev, optimisticMessage])
+      setReplyToMessage(null)
+      
+      // Insert into database
+      const { data: insertedMessage, error } = await supabase.from('messages').insert(messageData).select().single()
+      
+      if (!error && insertedMessage) {
+        // Replace optimistic message with real one
+        setMessages(prev => prev.map(m => m.id === tempId ? insertedMessage : m))
+        await supabase.from('conversations').update({ last_message_at: now }).eq('id', conversationId!)
+      } else if (error) {
+        // Remove optimistic message on error
+        setMessages(prev => prev.filter(m => m.id !== tempId))
+        alert('Erreur lors de l\'envoi du message vocal')
       }
     } catch (err) {
       alert('Erreur lors de l\'envoi du message vocal')
@@ -2217,64 +2273,71 @@ export function ChatViewPage() {
         {/* Input Bar JemaOS - Fixed at bottom on mobile, above nav bar - Hidden in selection mode */}
         {!isSelectionMode && (
         <div className="fixed md:relative bottom-14 md:bottom-0 left-0 right-0 bg-bg-surface px-2 sm:px-3 md:px-4 py-2 md:py-3 border-t border-bg-hover md:border-t-0 z-40">
-          {/* Link Preview above input */}
-          {isLoadingPreview && <LinkPreviewSkeleton />}
-          {linkPreview && !isLoadingPreview && (
-            <LinkPreview
-              preview={linkPreview}
-              onDismiss={handleDismissPreview}
-            />
-          )}
-          
-          {replyToMessage && (
-            <MessageReply replyToMessage={{ id: replyToMessage.id, content: replyToMessage.content, sender_id: replyToMessage.sender_id, senderName: replyToMessage.sender_id === user?.id ? 'Vous' : otherUser?.display_name || otherUser?.username || 'Utilisateur' }} onCancel={() => setReplyToMessage(null)} isPreview={true} />
-          )}
-          <form onSubmit={handleSendMessage} className="flex items-center gap-1 md:gap-2">
-            <div className="relative hidden md:block" ref={emojiPickerRef}>
-              <button
-                type="button"
-                onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-text-secondary"
-              >
-                <Smile size={24} />
-              </button>
-              {showEmojiPicker && (
-                <div className="absolute bottom-full left-0 mb-2 bg-bg-surface backdrop-blur-xl rounded-2xl p-3 shadow-2xl border border-bg-hover z-50 min-w-[280px]">
-                  <div className="text-xs text-text-secondary mb-2 px-1">Emojis</div>
-                  <div className="grid grid-cols-6 gap-1">
-                    {['👍', '❤️', '😂', '😮', '😢', '🙏', '😊', '🔥', '👏', '🎉', '💯', '✨', '😍', '🤔', '😎', '🥳', '😭', '💪', '👌', '✅', '❌', '⭐', '💙', '💚', '💛', '💜', '🧡', '🖤', '🤍', '💖'].map((emoji) => (
-                      <button
-                        key={emoji}
-                        onClick={() => handleEmojiSelect(emoji)}
-                        className="w-10 h-10 flex items-center justify-center text-2xl hover:bg-bg-hover rounded-lg transition-all hover:scale-110 active:scale-95"
-                        type="button"
-                      >
-                        {emoji}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+          {/* Voice Recorder - replaces input bar when recording */}
+          {showVoiceRecorder ? (
+            <VoiceRecorder onRecordingComplete={handleVoiceRecordingComplete} onCancel={() => setShowVoiceRecorder(false)} />
+          ) : (
+            <>
+              {/* Link Preview above input */}
+              {isLoadingPreview && <LinkPreviewSkeleton />}
+              {linkPreview && !isLoadingPreview && (
+                <LinkPreview
+                  preview={linkPreview}
+                  onDismiss={handleDismissPreview}
+                />
               )}
-            </div>
-            <button type="button" onClick={() => setShowMediaUploader(true)} className="w-9 h-9 md:w-10 md:h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-text-secondary">
-              <Plus size={20} className="md:hidden" />
-              <Plus size={24} className="hidden md:block" />
-            </button>
-            <div className="flex-1 relative">
-              <input type="text" value={newMessage} onChange={(e) => setNewMessage(e.target.value)} placeholder="Taper un message" className="w-full h-10 md:h-11 px-3 md:px-4 rounded-2xl bg-bg-hover text-text-primary text-sm border-none outline-none placeholder:text-text-secondary" />
-            </div>
-            {newMessage.trim() ? (
-              <button type="submit" disabled={sending} className="w-10 h-10 md:w-11 md:h-11 rounded-full bg-accent hover:bg-[#5a5ec9] flex items-center justify-center transition-colors disabled:opacity-50">
-                <Send size={18} className="md:hidden text-white" />
-                <Send size={20} className="hidden md:block text-white" />
-              </button>
-            ) : (
-              <button type="button" onClick={() => setShowVoiceRecorder(true)} className="w-10 h-10 md:w-11 md:h-11 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-text-secondary">
-                <Mic size={22} className="md:hidden" />
-                <Mic size={24} className="hidden md:block" />
-              </button>
-            )}
-          </form>
+              
+              {replyToMessage && (
+                <MessageReply replyToMessage={{ id: replyToMessage.id, content: replyToMessage.content, sender_id: replyToMessage.sender_id, senderName: replyToMessage.sender_id === user?.id ? 'Vous' : otherUser?.display_name || otherUser?.username || 'Utilisateur' }} onCancel={() => setReplyToMessage(null)} isPreview={true} />
+              )}
+              <form onSubmit={handleSendMessage} className="flex items-center gap-1 md:gap-2">
+                <div className="relative hidden md:block" ref={emojiPickerRef}>
+                  <button
+                    type="button"
+                    onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                    className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-text-secondary"
+                  >
+                    <Smile size={24} />
+                  </button>
+                  {showEmojiPicker && (
+                    <div className="absolute bottom-full left-0 mb-2 bg-bg-surface backdrop-blur-xl rounded-2xl p-3 shadow-2xl border border-bg-hover z-50 min-w-[280px]">
+                      <div className="text-xs text-text-secondary mb-2 px-1">Emojis</div>
+                      <div className="grid grid-cols-6 gap-1">
+                        {['👍', '❤️', '😂', '😮', '😢', '🙏', '😊', '🔥', '👏', '🎉', '💯', '✨', '😍', '🤔', '😎', '🥳', '😭', '💪', '👌', '✅', '❌', '⭐', '💙', '💚', '💛', '💜', '🧡', '🖤', '🤍', '💖'].map((emoji) => (
+                          <button
+                            key={emoji}
+                            onClick={() => handleEmojiSelect(emoji)}
+                            className="w-10 h-10 flex items-center justify-center text-2xl hover:bg-bg-hover rounded-lg transition-all hover:scale-110 active:scale-95"
+                            type="button"
+                          >
+                            {emoji}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <button type="button" onClick={() => setShowMediaUploader(true)} className="w-9 h-9 md:w-10 md:h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-text-secondary">
+                  <Plus size={20} className="md:hidden" />
+                  <Plus size={24} className="hidden md:block" />
+                </button>
+                <div className="flex-1 relative">
+                  <input type="text" value={newMessage} onChange={(e) => setNewMessage(e.target.value)} placeholder="Taper un message" className="w-full h-10 md:h-11 px-3 md:px-4 rounded-2xl bg-bg-hover text-text-primary text-sm border-none outline-none placeholder:text-text-secondary" />
+                </div>
+                {newMessage.trim() ? (
+                  <button type="submit" disabled={sending} className="w-10 h-10 md:w-11 md:h-11 rounded-full bg-accent hover:bg-[#5a5ec9] flex items-center justify-center transition-colors disabled:opacity-50">
+                    <Send size={18} className="md:hidden text-white" />
+                    <Send size={20} className="hidden md:block text-white" />
+                  </button>
+                ) : (
+                  <button type="button" onClick={() => setShowVoiceRecorder(true)} className="w-10 h-10 md:w-11 md:h-11 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-text-secondary">
+                    <Mic size={22} className="md:hidden" />
+                    <Mic size={24} className="hidden md:block" />
+                  </button>
+                )}
+              </form>
+            </>
+          )}
         </div>
         )}
 
@@ -2378,7 +2441,6 @@ export function ChatViewPage() {
           }}
         />
       )}
-      {showVoiceRecorder && <VoiceRecorder onRecordingComplete={handleVoiceRecordingComplete} onCancel={() => setShowVoiceRecorder(false)} />}
       {showConversationInfo && (
         <ConversationInfo
           conversationId={conversationId!}

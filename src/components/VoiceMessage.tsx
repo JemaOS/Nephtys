@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Play, Pause, Download } from 'lucide-react';
 
 interface VoiceMessageProps {
@@ -6,6 +6,27 @@ interface VoiceMessageProps {
   duration: number;
   isOwn: boolean;
 }
+
+// Generate a consistent waveform pattern based on a seed
+const generateWaveformHeights = (count: number, seed: number = 42): number[] => {
+  const heights: number[] = [];
+  let value = seed;
+  
+  for (let i = 0; i < count; i++) {
+    // Simple pseudo-random based on position for consistent pattern
+    value = (value * 9301 + 49297) % 233280;
+    const random = value / 233280;
+    
+    // Create a natural waveform pattern with peaks and valleys
+    const wave = Math.sin(i * 0.5) * 0.3 + 0.5;
+    const variation = random * 0.4;
+    const height = Math.max(0.15, Math.min(1, wave + variation));
+    
+    heights.push(height);
+  }
+  
+  return heights;
+};
 
 export const VoiceMessage: React.FC<VoiceMessageProps> = ({
   url,
@@ -16,6 +37,12 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
   const [currentTime, setCurrentTime] = useState(0);
   const [audioDuration, setAudioDuration] = useState(duration);
   const audioRef = useRef<HTMLAudioElement>(null);
+  
+  // Generate waveform heights once based on URL hash
+  const waveformHeights = useMemo(() => {
+    const seed = url.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    return generateWaveformHeights(35, seed);
+  }, [url]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -96,45 +123,46 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
     <div className="flex items-center gap-3 min-w-[250px] max-w-[350px]">
       <audio ref={audioRef} src={url} preload="metadata" />
       
-      {/* Play/Pause Button */}
+      {/* Play/Pause Button - Apple Vision Pro style */}
       <button
         onClick={togglePlayPause}
-        className={`w-10 h-10 rounded-full flex items-center justify-center transition-all flex-shrink-0 ${
+        className={`w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0 ${
           isOwn
-            ? 'bg-white/20 hover:bg-white/30'
-            : 'bg-primary-500/20 hover:bg-primary-500/30'
+            ? 'bg-white/25'
+            : 'bg-[#8286ef]/20'
         }`}
         aria-label={isPlaying ? 'Pause' : 'Play'}
       >
         {isPlaying ? (
-          <Pause size={20} className={isOwn ? 'text-white' : 'text-primary-500'} fill="currentColor" />
+          <Pause size={22} className={isOwn ? 'text-white' : 'text-[#8286ef]'} fill="currentColor" />
         ) : (
-          <Play size={20} className={isOwn ? 'text-white' : 'text-primary-500'} fill="currentColor" />
+          <Play size={22} className={`${isOwn ? 'text-white' : 'text-[#8286ef]'} ml-0.5`} fill="currentColor" />
         )}
       </button>
 
-      {/* Waveform / Progress Bar */}
-      <div className="flex-1 flex flex-col gap-1">
+      {/* Waveform / Progress Bar - Vision Pro + ColorOS style */}
+      <div className="flex-1 flex flex-col gap-1.5">
         <div
           onClick={handleSeek}
-          className="h-8 flex items-center cursor-pointer"
+          className="h-7 flex items-center cursor-pointer"
         >
-          {/* Simplified waveform */}
-          <div className="flex items-center gap-0.5 h-full w-full">
-            {[...Array(30)].map((_, i) => {
-              const barProgress = (i / 30) * 100;
+          {/* Visual waveform with consistent heights */}
+          <div className="flex items-center gap-[2px] h-full w-full">
+            {waveformHeights.map((height, i) => {
+              const barProgress = (i / waveformHeights.length) * 100;
               const isActive = barProgress <= progress;
-              const height = Math.random() * 60 + 40;
               
               return (
                 <div
                   key={i}
-                  className={`flex-1 rounded-full transition-all ${
-                    isActive
-                      ? isOwn ? 'bg-white' : 'bg-primary-500'
-                      : isOwn ? 'bg-white/30' : 'bg-primary-500/30'
-                  }`}
-                  style={{ height: `${height}%` }}
+                  className="flex-1 rounded-full"
+                  style={{
+                    height: `${height * 100}%`,
+                    minHeight: '4px',
+                    backgroundColor: isActive
+                      ? (isOwn ? 'rgba(255, 255, 255, 0.95)' : '#8286ef')
+                      : (isOwn ? 'rgba(255, 255, 255, 0.35)' : 'rgba(130, 134, 239, 0.35)'),
+                  }}
                 />
               );
             })}
@@ -142,7 +170,7 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
         </div>
         
         {/* Time */}
-        <div className={`text-xs ${isOwn ? 'text-white/70' : 'text-text-tertiary'}`}>
+        <div className={`text-xs font-medium ${isOwn ? 'text-white/80' : 'text-text-secondary'}`}>
           {formatTime(currentTime)} / {formatTime(audioDuration)}
         </div>
       </div>
@@ -150,14 +178,14 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
       {/* Download Button */}
       <button
         onClick={handleDownload}
-        className={`w-8 h-8 rounded-full flex items-center justify-center transition-all flex-shrink-0 ${
+        className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
           isOwn
-            ? 'hover:bg-white/20'
-            : 'hover:bg-primary-500/20'
+            ? 'bg-white/15'
+            : 'bg-[#8286ef]/15'
         }`}
         aria-label="Télécharger"
       >
-        <Download size={16} className={isOwn ? 'text-white/70' : 'text-text-tertiary'} />
+        <Download size={16} className={isOwn ? 'text-white/80' : 'text-[#8286ef]'} />
       </button>
     </div>
   );
