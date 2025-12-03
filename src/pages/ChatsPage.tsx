@@ -132,8 +132,10 @@ export function ChatsPage() {
   }, [])
   
   const exitSelectionMode = useCallback(() => {
-    setSelectedConversations(new Set())
+    console.log('[ChatsPage] exitSelectionMode called - resetting selection state')
+    // Reset both states synchronously to avoid intermediate states
     setIsSelectionMode(false)
+    setSelectedConversations(new Set())
   }, [])
   
   const toggleConversationSelection = useCallback((conversationId: string) => {
@@ -968,16 +970,26 @@ export function ChatsPage() {
       {isSelectionMode && (
         <div
           className="fixed top-0 left-0 right-0 z-50 bg-bg-surface border-b border-bg-hover shadow-lg animate-in slide-in-from-top duration-200"
-          onTouchStart={(e) => e.stopPropagation()}
-          onTouchEnd={(e) => e.stopPropagation()}
-          onTouchMove={(e) => e.stopPropagation()}
         >
           <div className="flex items-center justify-between h-14 px-2">
             {/* Left side: Back arrow + count */}
             <div className="flex items-center gap-3">
               <button
-                onClick={exitSelectionMode}
-                className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-bg-hover transition-colors"
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  console.log('[ChatsPage] Back button clicked - exiting selection mode')
+                  exitSelectionMode()
+                }}
+                onTouchEnd={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  console.log('[ChatsPage] Back button touched - exiting selection mode')
+                  exitSelectionMode()
+                }}
+                className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-bg-hover active:bg-bg-hover transition-colors touch-manipulation"
+                type="button"
+                aria-label="Quitter le mode sélection"
               >
                 <ArrowLeft size={24} className="text-text-primary" />
               </button>
