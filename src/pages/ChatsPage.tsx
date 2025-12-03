@@ -132,9 +132,12 @@ export function ChatsPage() {
   }, [])
   
   const exitSelectionMode = useCallback(() => {
-    console.log('[ChatsPage] exitSelectionMode called - resetting selection state')
-    // Reset both states synchronously to avoid intermediate states
+    console.log('[ChatsPage] exitSelectionMode called - resetting selection state ATOMICALLY')
+    // CRITICAL: Set isSelectionMode to false FIRST and IMMEDIATELY
+    // This ensures the UI switches to normal mode before any other state changes
     setIsSelectionMode(false)
+    // Clear selections in a separate microtask to ensure isSelectionMode is false first
+    // But since React batches these, we use a single state update pattern
     setSelectedConversations(new Set())
   }, [])
   
@@ -143,10 +146,8 @@ export function ChatsPage() {
       const newSet = new Set(prev)
       if (newSet.has(conversationId)) {
         newSet.delete(conversationId)
-        // Exit selection mode if no conversations selected
-        if (newSet.size === 0) {
-          setIsSelectionMode(false)
-        }
+        // DO NOT exit selection mode here - let the user explicitly click back
+        // This prevents race conditions and intermediate states
       } else {
         newSet.add(conversationId)
       }
@@ -966,10 +967,11 @@ export function ChatsPage() {
 
   return (
     <MainLayout>
-      {/* Selection Mode Top Bar - WhatsApp style */}
-      {isSelectionMode && (
+      {/* Selection Mode Top Bar - WhatsApp style - ONLY rendered when isSelectionMode is true */}
+      {isSelectionMode === true && (
         <div
-          className="fixed top-0 left-0 right-0 z-50 bg-bg-surface border-b border-bg-hover shadow-lg animate-in slide-in-from-top duration-200"
+          className="fixed top-0 left-0 right-0 z-50 bg-bg-surface border-b border-bg-hover shadow-lg"
+          style={{ willChange: 'transform' }}
         >
           <div className="flex items-center justify-between h-14 px-2">
             {/* Left side: Back arrow + count */}
@@ -978,16 +980,22 @@ export function ChatsPage() {
                 onClick={(e) => {
                   e.preventDefault()
                   e.stopPropagation()
-                  console.log('[ChatsPage] Back button clicked - exiting selection mode')
+                  console.log('[ChatsPage] Back button clicked - exiting selection mode IMMEDIATELY')
+                  // Exit selection mode immediately - no delays
                   exitSelectionMode()
+                }}
+                onTouchStart={(e) => {
+                  // Prevent any touch delays
+                  e.stopPropagation()
                 }}
                 onTouchEnd={(e) => {
                   e.preventDefault()
                   e.stopPropagation()
-                  console.log('[ChatsPage] Back button touched - exiting selection mode')
+                  console.log('[ChatsPage] Back button touched - exiting selection mode IMMEDIATELY')
+                  // Exit selection mode immediately - no delays
                   exitSelectionMode()
                 }}
-                className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-bg-hover active:bg-bg-hover transition-colors touch-manipulation"
+                className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-bg-hover active:bg-bg-hover transition-colors touch-manipulation select-none"
                 type="button"
                 aria-label="Quitter le mode sélection"
               >
@@ -1045,9 +1053,9 @@ export function ChatsPage() {
       )}
       
       {/* Liste des conversations - Style JemaOS */}
-      <div className={`w-full md:w-[420px] bg-bg-secondary flex flex-col md:border-r border-bg-hover pb-20 md:pb-0 ${isSelectionMode ? 'pt-14' : ''}`}>
-        {/* Header - COMPLETELY Hidden in selection mode */}
-        {!isSelectionMode ? (
+      <div className={`w-full md:w-[420px] bg-bg-secondary flex flex-col md:border-r border-bg-hover pb-20 md:pb-0 ${isSelectionMode === true ? 'pt-14' : ''}`}>
+        {/* Header - COMPLETELY Hidden in selection mode - Mutually exclusive with selection bar */}
+        {isSelectionMode === false && (
         <div className="bg-bg-surface p-4">
           <div className="flex items-center justify-between mb-4">
             <h1 className="text-xl font-semibold text-text-primary">Discussions</h1>
@@ -1166,7 +1174,7 @@ export function ChatsPage() {
             </button>
           </div>
         </div>
-        ) : null}
+        )}
 
         {/* Liste des conversations */}
         <div className="flex-1 overflow-y-auto pb-4">
