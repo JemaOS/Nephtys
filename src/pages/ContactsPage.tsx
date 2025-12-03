@@ -89,6 +89,15 @@ export function ContactsPage() {
 
       const contactsData = contactsResult.data
       
+      // Deduplicate contacts by contact_user_id, keeping the most recent entry (first due to DESC order)
+      const uniqueContactsMap = new Map<string, typeof contactsData extends (infer T)[] ? T : never>()
+      for (const contact of (contactsData || [])) {
+        if (!uniqueContactsMap.has(contact.contact_user_id)) {
+          uniqueContactsMap.set(contact.contact_user_id, contact)
+        }
+      }
+      const deduplicatedContacts = Array.from(uniqueContactsMap.values())
+      
       // Get my conversation IDs first (we need to filter)
       const { data: myConversations } = await supabase
         .from('conversation_members')
@@ -104,8 +113,8 @@ export function ContactsPage() {
           .map(m => m.user_id)
       )]
 
-      // Get explicit contact user IDs
-      const explicitContactIds = contactsData?.map(c => c.contact_user_id) || []
+      // Get explicit contact user IDs (from deduplicated list)
+      const explicitContactIds = deduplicatedContacts.map(c => c.contact_user_id)
       
       // Combine and deduplicate
       const allContactIds = [...new Set([...explicitContactIds, ...chatUserIds])]
@@ -119,8 +128,8 @@ export function ContactsPage() {
 
         if (profiles) {
           const contactsWithProfiles = profiles.map(profile => {
-            // Check if this is an explicit contact
-            const explicitContact = contactsData?.find(c => c.contact_user_id === profile.id)
+            // Check if this is an explicit contact (use deduplicated list)
+            const explicitContact = deduplicatedContacts.find(c => c.contact_user_id === profile.id)
             
             if (explicitContact) {
               return { ...explicitContact, profile }
@@ -177,7 +186,7 @@ export function ContactsPage() {
       // Allow adding yourself (like "Saved Messages" in Telegram)
       // This creates a conversation with yourself for notes/saved messages
 
-      // Vérifier si déjà en contact
+      // Vérifier si déjà en contact (non bloqué)
       const { data: existingContact } = await supabase
         .from('contacts')
         .select('*')
@@ -185,23 +194,28 @@ export function ContactsPage() {
         .eq('contact_user_id', profileData.id)
         .maybeSingle()
 
-      if (existingContact) {
+      if (existingContact && !existingContact.is_blocked) {
         setError('Contact déjà ajouté')
         setLoading(false)
         return
       }
 
-      // Ajouter le contact
-      const { error: insertError } = await supabase
+      // Ajouter ou mettre à jour le contact (upsert pour gérer les re-ajouts après suppression)
+      // Utiliser upsert pour éviter les problèmes de doublons ou de contraintes uniques
+      const { error: upsertError } = await supabase
         .from('contacts')
-        .insert({
+        .upsert({
           user_id: user.id,
           contact_user_id: profileData.id,
           is_blocked: false,
-          is_favorite: false
+          is_favorite: existingContact?.is_favorite || false,
+          added_at: new Date().toISOString()
+        }, {
+          onConflict: 'user_id,contact_user_id'
         })
 
-      if (insertError) {
+      if (upsertError) {
+        console.error('Error upserting contact:', upsertError)
         setError('Erreur lors de l\'ajout')
         setLoading(false)
         return
@@ -529,52 +543,64 @@ export function ContactsPage() {
     
     if (!confirm(confirmMessage)) return
 
+    console.log('Starting contact deletion...')
+    console.log('Selected contacts:', Array.from(selectedContacts))
+
     try {
       // Get the contact_user_ids for the selected contacts
       const contactsToDelete = contacts.filter(c => selectedContacts.has(c.id))
+      console.log('Contacts to delete:', contactsToDelete.map(c => ({ id: c.id, contact_user_id: c.contact_user_id, isVirtual: c.id.startsWith('chat-') })))
       
-      // Get all contact_user_ids (both explicit and chat contacts)
-      const contactUserIds = contactsToDelete.map(c => c.contact_user_id)
+      // Separate explicit contacts from virtual chat contacts
+      const explicitContacts = contactsToDelete.filter(c => !c.id.startsWith('chat-'))
+      const virtualContacts = contactsToDelete.filter(c => c.id.startsWith('chat-'))
       
-      // Delete explicit contacts from contacts table
-      const realContactIds = contactsToDelete
-        .filter(c => !c.id.startsWith('chat-'))
-        .map(c => c.id)
-
-      if (realContactIds.length > 0) {
-        const { error } = await supabase
-          .from('contacts')
-          .delete()
-          .in('id', realContactIds)
-
-        if (error) {
-          console.error('Error deleting contacts:', error)
-        }
-      }
-
-      // Find and delete associated direct conversations
-      for (const contactUserId of contactUserIds) {
-        // Special case: "Saved Messages" (self-contact)
+      console.log('Explicit contacts:', explicitContacts.length)
+      console.log('Virtual contacts:', virtualContacts.length)
+      
+      // Process ALL contacts - find and handle their conversations
+      for (const contact of contactsToDelete) {
+        const contactUserId = contact.contact_user_id
+        const isVirtual = contact.id.startsWith('chat-')
         const isSelfContact = contactUserId === user.id
         
-        // Find conversations where both users are members
-        const { data: myConversations } = await supabase
+        console.log(`Processing contact: ${contactUserId}, isVirtual: ${isVirtual}, isSelf: ${isSelfContact}`)
+        
+        // Find the direct conversation with this user
+        const { data: myConversations, error: convError } = await supabase
           .from('conversation_members')
           .select('conversation_id')
           .eq('user_id', user.id)
 
+        console.log('My conversations count:', myConversations?.length, 'Error:', convError)
+
         if (myConversations) {
+          let foundConversation = false
           for (const conv of myConversations) {
             // Check if it's a direct conversation
+            const { data: conversationData } = await supabase
+              .from('conversations')
+              .select('type, created_by')
+              .eq('id', conv.conversation_id)
+              .maybeSingle()
+            
+            console.log('Checking conversation:', conv.conversation_id, 'type:', conversationData?.type, 'created_by:', conversationData?.created_by)
+            
+            if (!conversationData || conversationData.type !== 'direct') continue
+
             const { data: allMembers } = await supabase
               .from('conversation_members')
               .select('user_id')
               .eq('conversation_id', conv.conversation_id)
 
+            console.log('Members in conversation:', allMembers?.map(m => m.user_id))
+
             if (!allMembers) continue
 
             // For "Saved Messages": conversation with only 1 member (self)
             if (isSelfContact && allMembers.length === 1 && allMembers[0].user_id === user.id) {
+              console.log('Found Saved Messages conversation:', conv.conversation_id)
+              
               // Delete the conversation members first
               await supabase
                 .from('conversation_members')
@@ -594,7 +620,8 @@ export function ContactsPage() {
                 .eq('id', conv.conversation_id)
 
               console.log('Deleted Saved Messages conversation:', conv.conversation_id)
-              continue
+              foundConversation = true
+              break
             }
 
             // For normal contacts: check if this is a direct conversation with the contact
@@ -602,35 +629,180 @@ export function ContactsPage() {
               const hasOtherMember = allMembers.some(m => m.user_id === contactUserId)
 
               if (hasOtherMember && allMembers.length === 2) {
-                // Delete the conversation members first
-                await supabase
+                console.log('Found direct conversation:', conv.conversation_id, 'created_by:', conversationData.created_by)
+                
+                // Check if we created this conversation or the other person did
+                const weCreatedIt = conversationData.created_by === user.id
+                
+                if (weCreatedIt || !isVirtual) {
+                  // We created it OR it's an explicit contact - delete the whole conversation
+                  console.log('Deleting entire conversation...')
+                  
+                  // Delete the conversation members first
+                  const { error: membersError } = await supabase
+                    .from('conversation_members')
+                    .delete()
+                    .eq('conversation_id', conv.conversation_id)
+                  
+                  if (membersError) {
+                    console.error('Error deleting members:', membersError)
+                  }
+
+                  // Delete messages in the conversation
+                  const { error: messagesError } = await supabase
+                    .from('messages')
+                    .delete()
+                    .eq('conversation_id', conv.conversation_id)
+                  
+                  if (messagesError) {
+                    console.error('Error deleting messages:', messagesError)
+                  }
+
+                  // Delete the conversation
+                  const { error: convDeleteError } = await supabase
+                    .from('conversations')
+                    .delete()
+                    .eq('id', conv.conversation_id)
+                  
+                  if (convDeleteError) {
+                    console.error('Error deleting conversation:', convDeleteError)
+                  } else {
+                    console.log('Deleted conversation:', conv.conversation_id)
+                  }
+                } else {
+                  // Virtual contact (they added us) - just leave the conversation
+                  console.log('Leaving conversation (virtual contact)...')
+                  
+                  const { error: leaveError } = await supabase
+                    .from('conversation_members')
+                    .delete()
+                    .eq('conversation_id', conv.conversation_id)
+                    .eq('user_id', user.id)
+
+                  if (leaveError) {
+                    console.error('Error leaving conversation:', leaveError)
+                  } else {
+                    console.log('Left conversation:', conv.conversation_id)
+                  }
+                }
+                foundConversation = true
+                break
+              }
+            }
+          }
+          
+          if (!foundConversation && isVirtual) {
+            // This is a virtual contact from a GROUP conversation, not a direct one
+            // We need to remove them from all groups where we are both members
+            console.log('Virtual contact from group conversation - removing from shared groups')
+            
+            // Find all groups where both users are members
+            for (const conv of myConversations) {
+              const { data: groupData } = await supabase
+                .from('conversations')
+                .select('type, created_by')
+                .eq('id', conv.conversation_id)
+                .maybeSingle()
+              
+              // Only process group conversations
+              if (!groupData || groupData.type !== 'group') continue
+              
+              const { data: groupMembers } = await supabase
+                .from('conversation_members')
+                .select('user_id, role')
+                .eq('conversation_id', conv.conversation_id)
+              
+              if (!groupMembers) continue
+              
+              // Check if the contact is in this group
+              const contactInGroup = groupMembers.find(m => m.user_id === contactUserId)
+              if (!contactInGroup) continue
+              
+              console.log('Found shared group:', conv.conversation_id)
+              
+              // Check if we are admin of this group
+              const myRole = groupMembers.find(m => m.user_id === user.id)?.role
+              const isAdmin = myRole === 'admin' || groupData.created_by === user.id
+              
+              if (isAdmin) {
+                // We are admin - remove the contact from the group
+                console.log('Removing contact from group (we are admin)...')
+                const { error: removeError } = await supabase
                   .from('conversation_members')
                   .delete()
                   .eq('conversation_id', conv.conversation_id)
-
-                // Delete messages in the conversation
-                await supabase
-                  .from('messages')
+                  .eq('user_id', contactUserId)
+                
+                if (removeError) {
+                  console.error('Error removing contact from group:', removeError)
+                } else {
+                  console.log('Contact removed from group:', conv.conversation_id)
+                }
+              } else {
+                // We are not admin - we leave the group ourselves
+                console.log('Leaving group (we are not admin)...')
+                const { error: leaveError } = await supabase
+                  .from('conversation_members')
                   .delete()
                   .eq('conversation_id', conv.conversation_id)
-
-                // Delete the conversation
-                await supabase
-                  .from('conversations')
-                  .delete()
-                  .eq('id', conv.conversation_id)
-
-                console.log('Deleted conversation:', conv.conversation_id)
+                  .eq('user_id', user.id)
+                
+                if (leaveError) {
+                  console.error('Error leaving group:', leaveError)
+                } else {
+                  console.log('Left group:', conv.conversation_id)
+                }
               }
+            }
+            
+            // Also mark the contact as blocked to ensure they don't appear again
+            const { error: hideError } = await supabase
+              .from('contacts')
+              .upsert({
+                user_id: user.id,
+                contact_user_id: contactUserId,
+                is_blocked: true,
+                is_favorite: false,
+                added_at: new Date().toISOString()
+              }, {
+                onConflict: 'user_id,contact_user_id'
+              })
+            
+            if (hideError) {
+              console.error('Error blocking contact:', hideError)
+            } else {
+              console.log('Contact blocked:', contactUserId)
             }
           }
         }
       }
+      
+      // Delete explicit contacts from contacts table
+      const realContactIds = explicitContacts.map(c => c.id)
 
+      if (realContactIds.length > 0) {
+        console.log('Deleting explicit contacts with IDs:', realContactIds)
+        const { error } = await supabase
+          .from('contacts')
+          .delete()
+          .in('id', realContactIds)
+
+        if (error) {
+          console.error('Error deleting contacts:', error)
+        } else {
+          console.log('Explicit contacts deleted successfully')
+        }
+      }
+
+      // Clear cache to ensure fresh data
+      localStorage.removeItem(CACHE_PREFIX + 'contacts')
+      console.log('Cache cleared')
+      
       // Reload contacts
       await loadContacts()
       setSelectedContacts(new Set())
       setIsSelectionMode(false)
+      console.log('Contacts reloaded successfully')
     } catch (err) {
       console.error('Error deleting contacts:', err)
       alert('Erreur lors de la suppression des contacts')
@@ -669,7 +841,10 @@ export function ContactsPage() {
                     )}
                   </button>
                   <button
-                    onClick={deleteSelectedContacts}
+                    onClick={() => {
+                      console.log('Delete button clicked, selectedContacts:', selectedContacts.size)
+                      deleteSelectedContacts()
+                    }}
                     disabled={selectedContacts.size === 0}
                     className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#ea4335] disabled:opacity-50 disabled:cursor-not-allowed"
                     title="Supprimer"

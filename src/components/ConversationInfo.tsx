@@ -210,16 +210,26 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
     // Only load contacts that the current user has explicitly added
     // If a user deletes a contact, they should no longer see that person
     // even if that person had added them as a contact
+    // Order by added_at DESC to get the most recent entry first (handles re-added contacts)
     const { data: myContacts } = await supabase
       .from('contacts')
-      .select('contact_user_id')
+      .select('contact_user_id, added_at')
       .eq('user_id', currentUserId)
-      .eq('is_blocked', false);
+      .eq('is_blocked', false)
+      .order('added_at', { ascending: false });
+
+    // Deduplicate contacts by contact_user_id, keeping the most recent entry
+    const uniqueContactIds = new Set<string>();
+    const deduplicatedContacts: string[] = [];
+    for (const contact of (myContacts || [])) {
+      if (!uniqueContactIds.has(contact.contact_user_id)) {
+        uniqueContactIds.add(contact.contact_user_id);
+        deduplicatedContacts.push(contact.contact_user_id);
+      }
+    }
 
     // Get only the contacts I explicitly added, excluding current group members
-    const myContactIds = (myContacts || [])
-      .map(c => c.contact_user_id)
-      .filter(id => !memberUserIds.includes(id));
+    const myContactIds = deduplicatedContacts.filter(id => !memberUserIds.includes(id));
 
     if (myContactIds.length > 0) {
       const { data: profiles } = await supabase

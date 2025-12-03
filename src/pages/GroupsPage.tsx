@@ -40,19 +40,30 @@ export function GroupsPage() {
     // Only load contacts that the current user has explicitly added
     // If a user deletes a contact, they should no longer see that person
     // even if that person had added them as a contact
+    // Order by added_at DESC to get the most recent entry first (handles re-added contacts)
     const { data: myContacts } = await supabase
       .from('contacts')
       .select('*')
       .eq('user_id', user.id)
       .eq('is_blocked', false)
+      .order('added_at', { ascending: false })
 
     if (!myContacts || myContacts.length === 0) {
       setContacts([])
       return
     }
 
+    // Deduplicate contacts by contact_user_id, keeping the most recent entry
+    const uniqueContactsMap = new Map<string, typeof myContacts[0]>()
+    for (const contact of myContacts) {
+      if (!uniqueContactsMap.has(contact.contact_user_id)) {
+        uniqueContactsMap.set(contact.contact_user_id, contact)
+      }
+    }
+    const uniqueContacts = Array.from(uniqueContactsMap.values())
+
     // Get only the contacts I explicitly added
-    const myContactIds = myContacts.map(c => c.contact_user_id)
+    const myContactIds = uniqueContacts.map(c => c.contact_user_id)
 
     // Fetch all profiles at once
     const { data: profiles } = await supabase
@@ -62,7 +73,7 @@ export function GroupsPage() {
 
     if (profiles) {
       const contactsWithProfiles = profiles.map(profile => {
-        const myContact = myContacts.find(c => c.contact_user_id === profile.id)
+        const myContact = uniqueContacts.find(c => c.contact_user_id === profile.id)
         
         return {
           id: myContact?.id || `contact-${profile.id}`,
