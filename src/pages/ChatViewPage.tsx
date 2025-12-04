@@ -1392,9 +1392,9 @@ export function ChatViewPage() {
   return (
     <MainLayout>
       <div className="flex-1 flex flex-col bg-bg-primary h-full overflow-hidden">
-        {/* Header JemaOS - Selection mode header on mobile */}
+        {/* Header JemaOS - FIXED at top, never scrolls - Selection mode header on mobile */}
         {isSelectionMode && isMobile ? (
-          <div className="bg-bg-surface px-2 sm:px-4 py-2 sm:py-3 flex items-center justify-between sticky top-0 z-50">
+          <div className="bg-bg-surface px-2 sm:px-4 py-2 sm:py-3 flex items-center justify-between flex-shrink-0 z-50">
             <div className="flex items-center gap-3">
               <button
                 onClick={exitSelectionMode}
@@ -1545,7 +1545,7 @@ export function ChatViewPage() {
             </div>
           </div>
         ) : (
-        <div className="bg-bg-surface px-2 sm:px-4 py-2 sm:py-3 flex items-center gap-2 sm:gap-4 sticky top-0 z-50">
+        <div className="bg-bg-surface px-2 sm:px-4 py-2 sm:py-3 flex items-center gap-2 sm:gap-4 flex-shrink-0 z-50">
           <button onClick={() => navigate('/chats')} className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1]">
             <ArrowLeft size={20} />
           </button>
