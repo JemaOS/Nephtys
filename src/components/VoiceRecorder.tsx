@@ -87,21 +87,32 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
       source.connect(analyserRef.current);
 
       // Determine the best supported audio format
-      // Priority: audio/ogg (WhatsApp format) > audio/webm with opus > audio/webm
+      // Priority: MP4/AAC (most compatible) > audio/webm (basic) > audio/ogg
+      // Note: We avoid opus codec as it has playback issues on some browsers
       let mimeType = 'audio/webm';
       let audioBitsPerSecond = 128000; // 128 kbps for high quality voice
       
-      if (MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')) {
-        // OGG/Opus - WhatsApp's format, best quality
+      // Check for MP4/AAC first - most universally supported for playback
+      if (MediaRecorder.isTypeSupported('audio/mp4')) {
+        mimeType = 'audio/mp4';
+        audioBitsPerSecond = 128000;
+      } else if (MediaRecorder.isTypeSupported('audio/mp4;codecs=aac')) {
+        mimeType = 'audio/mp4;codecs=aac';
+        audioBitsPerSecond = 128000;
+      } else if (MediaRecorder.isTypeSupported('audio/aac')) {
+        mimeType = 'audio/aac';
+        audioBitsPerSecond = 128000;
+      } else if (MediaRecorder.isTypeSupported('audio/webm')) {
+        // Basic WebM without opus codec - better compatibility
+        mimeType = 'audio/webm';
+        audioBitsPerSecond = 128000;
+      } else if (MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')) {
+        // OGG/Opus as fallback
         mimeType = 'audio/ogg;codecs=opus';
         audioBitsPerSecond = 128000;
       } else if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
-        // WebM/Opus - Good quality alternative
+        // WebM/Opus as last resort
         mimeType = 'audio/webm;codecs=opus';
-        audioBitsPerSecond = 128000;
-      } else if (MediaRecorder.isTypeSupported('audio/mp4;codecs=aac')) {
-        // AAC fallback for Safari
-        mimeType = 'audio/mp4;codecs=aac';
         audioBitsPerSecond = 128000;
       }
       

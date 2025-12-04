@@ -129,6 +129,13 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   
+  // Video progress state
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [playbackRate, setPlaybackRate] = useState(1);
+  const [isSeeking, setIsSeeking] = useState(false);
+  const progressBarRef = useRef<HTMLDivElement>(null);
+  
   // Touch/swipe state for navigation - WhatsApp-like
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
   const [touchStartY, setTouchStartY] = useState<number | null>(null);
@@ -527,60 +534,187 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
     };
   }, [isOpen, isMobile]);
 
-  // Track fullscreen state
+  // Track fullscreen state - with vendor prefix support
   useEffect(() => {
     const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
+      const isCurrentlyFullscreen = !!(
+        document.fullscreenElement ||
+        (document as any).webkitFullscreenElement ||
+        (document as any).mozFullScreenElement ||
+        (document as any).msFullscreenElement
+      );
+      setIsFullscreen(isCurrentlyFullscreen);
+    };
+
+    // Also handle video-specific fullscreen events (iOS)
+    const handleVideoFullscreenChange = () => {
+      if (videoRef.current) {
+        // Check if video is in fullscreen mode
+        const video = videoRef.current as HTMLVideoElement & {
+          webkitDisplayingFullscreen?: boolean;
+        };
+        if (video.webkitDisplayingFullscreen !== undefined) {
+          setIsFullscreen(video.webkitDisplayingFullscreen);
+        }
+      }
     };
 
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+    document.addEventListener('MSFullscreenChange', handleFullscreenChange);
+    
+    // iOS video fullscreen events
+    if (videoRef.current) {
+      videoRef.current.addEventListener('webkitbeginfullscreen', () => setIsFullscreen(true));
+      videoRef.current.addEventListener('webkitendfullscreen', () => setIsFullscreen(false));
+    }
     
     return () => {
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
       document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
+      
+      if (videoRef.current) {
+        videoRef.current.removeEventListener('webkitbeginfullscreen', () => setIsFullscreen(true));
+        videoRef.current.removeEventListener('webkitendfullscreen', () => setIsFullscreen(false));
+      }
     };
+  }, [mediaType]);
+
+  // Detect if running as installed PWA
+  const isPWA = useMemo(() => {
+    return window.matchMedia('(display-mode: standalone)').matches ||
+           window.matchMedia('(display-mode: fullscreen)').matches ||
+           (window.navigator as any).standalone === true;
   }, []);
 
-  // Toggle fullscreen mode
+  // Toggle fullscreen mode - with better mobile/PWA support
   const toggleFullscreen = useCallback(async () => {
     try {
-      if (!document.fullscreenElement) {
-        await document.documentElement.requestFullscreen();
-        
-        // Try to lock orientation to landscape for videos
-        // Using type assertion because lock() is part of the experimental Screen Orientation API
-        if (mediaType === 'video' && window.screen?.orientation) {
-          const orientation = window.screen.orientation as ScreenOrientation & {
-            lock?: (orientation: string) => Promise<void>;
-            unlock?: () => void;
+      // Check if we're already in fullscreen
+      const isCurrentlyFullscreen = !!(
+        document.fullscreenElement ||
+        (document as any).webkitFullscreenElement ||
+        (document as any).mozFullScreenElement ||
+        (document as any).msFullscreenElement
+      );
+      
+      if (!isCurrentlyFullscreen) {
+        // For videos on mobile, try to use the video element's native fullscreen
+        // This works better on Android PWA and handles rotation automatically
+        if (mediaType === 'video' && videoRef.current) {
+          const video = videoRef.current as HTMLVideoElement & {
+            webkitEnterFullscreen?: () => void;
+            webkitRequestFullscreen?: () => Promise<void>;
+            mozRequestFullScreen?: () => Promise<void>;
+            msRequestFullscreen?: () => Promise<void>;
+            webkitSupportsFullscreen?: boolean;
           };
-          if (orientation.lock) {
-            try {
-              await orientation.lock('landscape');
-            } catch (e) {
-              // Orientation lock not supported or not allowed
-              console.log('Orientation lock not available');
+          
+          // On Android PWA, native video fullscreen is the ONLY reliable way
+          // to get proper rotation and fullscreen behavior
+          if (isMobile) {
+            // Try iOS Safari native fullscreen first
+            if (video.webkitEnterFullscreen) {
+              video.webkitEnterFullscreen();
+              setIsFullscreen(true);
+              return;
+            }
+            
+            // For Android, request fullscreen on the video element directly
+            // This triggers the native video player which handles rotation properly
+            if (video.requestFullscreen) {
+              await video.requestFullscreen();
+              setIsFullscreen(true);
+              return;
+            } else if (video.webkitRequestFullscreen) {
+              await video.webkitRequestFullscreen();
+              setIsFullscreen(true);
+              return;
             }
           }
-        }
-      } else {
-        await document.exitFullscreen();
-        
-        // Unlock orientation
-        if (window.screen?.orientation) {
-          const orientation = window.screen.orientation as ScreenOrientation & {
-            unlock?: () => void;
+          
+          // Desktop fallback - standard fullscreen on video element
+          if (video.requestFullscreen) {
+            await video.requestFullscreen();
+          } else if (video.webkitRequestFullscreen) {
+            await video.webkitRequestFullscreen();
+          } else if (video.mozRequestFullScreen) {
+            await video.mozRequestFullScreen();
+          } else if (video.msRequestFullscreen) {
+            await video.msRequestFullscreen();
+          }
+        } else {
+          // For images, use document fullscreen
+          const docEl = document.documentElement as HTMLElement & {
+            webkitRequestFullscreen?: () => Promise<void>;
+            mozRequestFullScreen?: () => Promise<void>;
+            msRequestFullscreen?: () => Promise<void>;
           };
-          if (orientation.unlock) {
-            orientation.unlock();
+          
+          if (docEl.requestFullscreen) {
+            await docEl.requestFullscreen();
+          } else if (docEl.webkitRequestFullscreen) {
+            await docEl.webkitRequestFullscreen();
+          } else if (docEl.mozRequestFullScreen) {
+            await docEl.mozRequestFullScreen();
+          } else if (docEl.msRequestFullscreen) {
+            await docEl.msRequestFullscreen();
           }
         }
+        
+        // Try to lock orientation to landscape for videos
+        // Note: This often fails on Android PWA, but the native video fullscreen
+        // handles rotation automatically, so it's not critical
+        if (mediaType === 'video' && window.screen?.orientation && !isPWA) {
+          try {
+            // @ts-ignore - lock is experimental
+            await window.screen.orientation.lock('landscape');
+          } catch (e) {
+            // Orientation lock not supported or not allowed - this is expected on PWA
+            console.log('Orientation lock not available (expected on PWA):', e);
+          }
+        }
+        
+        setIsFullscreen(true);
+      } else {
+        // Exit fullscreen
+        const doc = document as Document & {
+          webkitExitFullscreen?: () => Promise<void>;
+          mozCancelFullScreen?: () => Promise<void>;
+          msExitFullscreen?: () => Promise<void>;
+        };
+        
+        if (doc.exitFullscreen) {
+          await doc.exitFullscreen();
+        } else if (doc.webkitExitFullscreen) {
+          await doc.webkitExitFullscreen();
+        } else if (doc.mozCancelFullScreen) {
+          await doc.mozCancelFullScreen();
+        } else if (doc.msExitFullscreen) {
+          await doc.msExitFullscreen();
+        }
+        
+        // Unlock orientation (only if not PWA, as it likely wasn't locked)
+        if (window.screen?.orientation && !isPWA) {
+          try {
+            // @ts-ignore - unlock is experimental
+            window.screen.orientation.unlock();
+          } catch (e) {
+            // Ignore unlock errors
+          }
+        }
+        
+        setIsFullscreen(false);
       }
     } catch (error) {
       console.error('Fullscreen error:', error);
+      // Even if fullscreen fails, try to toggle the state for UI feedback
+      setIsFullscreen(!isFullscreen);
     }
-  }, [mediaType]);
+  }, [mediaType, isFullscreen, isMobile, isPWA]);
 
   // Desktop navigation - instant like WhatsApp
   const handlePrevious = useCallback(() => {
@@ -622,6 +756,91 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
     }
     setIsMuted(!isMuted);
   };
+
+  // Format time for video progress (MM:SS)
+  const formatVideoTime = (seconds: number): string => {
+    if (!isFinite(seconds) || isNaN(seconds)) return '00:00';
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Handle video time update
+  const handleTimeUpdate = useCallback(() => {
+    if (videoRef.current && !isSeeking) {
+      setCurrentTime(videoRef.current.currentTime);
+    }
+  }, [isSeeking]);
+
+  // Handle video loaded metadata
+  const handleLoadedMetadata = useCallback(() => {
+    if (videoRef.current) {
+      setDuration(videoRef.current.duration);
+    }
+  }, []);
+
+  // Handle seeking via progress bar
+  const handleProgressBarClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!progressBarRef.current || !videoRef.current) return;
+    
+    const rect = progressBarRef.current.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const percentage = Math.max(0, Math.min(1, clickX / rect.width));
+    const newTime = percentage * duration;
+    
+    videoRef.current.currentTime = newTime;
+    setCurrentTime(newTime);
+  }, [duration]);
+
+  // Handle seeking via touch/drag on progress bar
+  const handleProgressBarTouchStart = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    setIsSeeking(true);
+    
+    if (!progressBarRef.current || !videoRef.current) return;
+    
+    const rect = progressBarRef.current.getBoundingClientRect();
+    const touchX = e.touches[0].clientX - rect.left;
+    const percentage = Math.max(0, Math.min(1, touchX / rect.width));
+    const newTime = percentage * duration;
+    
+    videoRef.current.currentTime = newTime;
+    setCurrentTime(newTime);
+  }, [duration]);
+
+  const handleProgressBarTouchMove = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    if (!isSeeking || !progressBarRef.current || !videoRef.current) return;
+    
+    const rect = progressBarRef.current.getBoundingClientRect();
+    const touchX = e.touches[0].clientX - rect.left;
+    const percentage = Math.max(0, Math.min(1, touchX / rect.width));
+    const newTime = percentage * duration;
+    
+    videoRef.current.currentTime = newTime;
+    setCurrentTime(newTime);
+  }, [isSeeking, duration]);
+
+  const handleProgressBarTouchEnd = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    setIsSeeking(false);
+  }, []);
+
+  // Cycle through playback rates
+  const cyclePlaybackRate = useCallback(() => {
+    const rates = [0.5, 0.75, 1, 1.25, 1.5, 2];
+    const currentIndex = rates.indexOf(playbackRate);
+    const nextIndex = (currentIndex + 1) % rates.length;
+    const newRate = rates[nextIndex];
+    
+    setPlaybackRate(newRate);
+    if (videoRef.current) {
+      videoRef.current.playbackRate = newRate;
+    }
+  }, [playbackRate]);
+
+  // Calculate progress percentage
+  const progressPercentage = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   const handleDownload = async () => {
     try {
@@ -939,63 +1158,132 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
 
         {/* Video */}
         {mediaType === 'video' && (
-          <div className={`relative ${isLandscape && isMobile ? 'w-full h-full' : 'max-w-full max-h-full'}`}>
-            <video
-              ref={videoRef}
-              src={mediaUrl}
-              className={`object-contain ${
-                isLandscape && isMobile
-                  ? 'w-full h-full max-w-none max-h-none'
-                  : 'max-w-full max-h-[80vh]'
-              }`}
-              playsInline
-              webkit-playsinline="true"
-              onClick={(e) => {
-                e.stopPropagation();
-                togglePlayPause();
-              }}
-              onPlay={() => setIsPlaying(true)}
-              onPause={() => setIsPlaying(false)}
-              onEnded={() => setIsPlaying(false)}
-            />
-            
-            {/* Video controls overlay */}
-            <div 
-              className={`absolute inset-0 flex items-center justify-center transition-opacity ${
-                showControls || !isPlaying ? 'opacity-100' : 'opacity-0'
-              }`}
-            >
-              <button
+          <div className={`relative flex flex-col ${isLandscape && isMobile ? 'w-full h-full' : 'max-w-full max-h-full w-full'}`}>
+            <div className="flex-1 flex items-center justify-center relative">
+              <video
+                ref={videoRef}
+                src={mediaUrl}
+                className={`object-contain ${
+                  isLandscape && isMobile
+                    ? 'w-full h-full max-w-none max-h-none'
+                    : 'max-w-full max-h-[70vh]'
+                }`}
+                playsInline
+                webkit-playsinline="true"
+                // Android-specific attributes for better video handling
+                // @ts-ignore - x5 attributes for Android WebView/browsers
+                x5-video-player-type="h5-page"
+                x5-video-player-fullscreen="true"
+                x5-video-orientation="landscape"
+                // Allow fullscreen on iOS
+                // @ts-ignore
+                allowsInlineMediaPlayback={true}
                 onClick={(e) => {
                   e.stopPropagation();
                   togglePlayPause();
                 }}
-                className="w-16 h-16 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center transition-colors"
+                onPlay={() => setIsPlaying(true)}
+                onPause={() => setIsPlaying(false)}
+                onEnded={() => {
+                  setIsPlaying(false);
+                  setCurrentTime(0);
+                }}
+                onTimeUpdate={handleTimeUpdate}
+                onLoadedMetadata={handleLoadedMetadata}
+              />
+              
+              {/* Video controls overlay - Play/Pause button in center */}
+              <div
+                className={`absolute inset-0 flex items-center justify-center transition-opacity ${
+                  showControls || !isPlaying ? 'opacity-100' : 'opacity-0'
+                }`}
               >
-                {isPlaying ? (
-                  <Pause size={32} className="text-white" />
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    togglePlayPause();
+                  }}
+                  className="w-16 h-16 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center transition-colors"
+                >
+                  {isPlaying ? (
+                    <Pause size={32} className="text-white" />
+                  ) : (
+                    <Play size={32} className="text-white ml-1" />
+                  )}
+                </button>
+              </div>
+
+              {/* Volume control - top right */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleMute();
+                }}
+                className={`absolute top-4 right-4 w-10 h-10 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center transition-all ${
+                  showControls ? 'opacity-100' : 'opacity-0'
+                }`}
+              >
+                {isMuted ? (
+                  <VolumeX size={20} className="text-white" />
                 ) : (
-                  <Play size={32} className="text-white ml-1" />
+                  <Volume2 size={20} className="text-white" />
                 )}
               </button>
             </div>
 
-            {/* Volume control */}
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                toggleMute();
-              }}
-              className={`absolute bottom-4 right-4 w-10 h-10 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center transition-all ${
-                showControls ? 'opacity-100' : 'opacity-0'
+            {/* Video progress bar - WhatsApp style at bottom */}
+            <div
+              className={`w-full px-4 py-3 bg-gradient-to-t from-black/80 to-transparent transition-opacity ${
+                showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
               }`}
+              onClick={(e) => e.stopPropagation()}
             >
-              {isMuted ? (
-                <VolumeX size={20} className="text-white" />
-              ) : (
-                <Volume2 size={20} className="text-white" />
-              )}
-            </button>
+              <div className="flex items-center gap-3">
+                {/* Current time */}
+                <span className="text-white text-sm font-medium min-w-[45px] text-center">
+                  {formatVideoTime(currentTime)}
+                </span>
+                
+                {/* Progress bar */}
+                <div
+                  ref={progressBarRef}
+                  className="flex-1 h-8 flex items-center cursor-pointer group"
+                  onClick={handleProgressBarClick}
+                  onTouchStart={handleProgressBarTouchStart}
+                  onTouchMove={handleProgressBarTouchMove}
+                  onTouchEnd={handleProgressBarTouchEnd}
+                >
+                  <div className="w-full h-1 bg-white/30 rounded-full relative">
+                    {/* Progress fill */}
+                    <div
+                      className="absolute left-0 top-0 h-full bg-[#25D366] rounded-full transition-all"
+                      style={{ width: `${progressPercentage}%` }}
+                    />
+                    {/* Seek handle */}
+                    <div
+                      className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-[#25D366] rounded-full shadow-lg transition-transform group-hover:scale-125"
+                      style={{ left: `calc(${progressPercentage}% - 8px)` }}
+                    />
+                  </div>
+                </div>
+                
+                {/* Duration */}
+                <span className="text-white text-sm font-medium min-w-[45px] text-center">
+                  {formatVideoTime(duration)}
+                </span>
+                
+                {/* Playback speed */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    cyclePlaybackRate();
+                  }}
+                  className="text-white text-sm font-medium min-w-[45px] hover:bg-white/10 px-2 py-1 rounded transition-colors"
+                >
+                  x {playbackRate.toFixed(1).replace('.0', ',0')}
+                </button>
+              </div>
+            </div>
           </div>
         )}
 

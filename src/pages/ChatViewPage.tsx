@@ -293,6 +293,11 @@ export function ChatViewPage() {
     if (permission === 'default') requestPermission()
     subscribeToConversation(conversationId)
     
+    // Loading timeout - prevent infinite loading (max 10 seconds)
+    const loadingTimeout = setTimeout(() => {
+      setLoading(false)
+    }, 10000)
+    
     const messagesChannel = supabase
       .channel(`messages:${conversationId}`, { config: { broadcast: { self: true } } })
       .on('postgres_changes', {
@@ -352,10 +357,25 @@ export function ChatViewPage() {
       })
       .subscribe()
 
+    // Handle visibility change - refresh data when app comes back to foreground
+    // This is critical for PWA on mobile where the app may be suspended
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        console.log('[ChatViewPage] App became visible, refreshing data...')
+        // Reload messages when app becomes visible again
+        loadMessages()
+        loadConversation()
+      }
+    }
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
     return () => {
+      clearTimeout(loadingTimeout)
       supabase.removeChannel(messagesChannel)
       supabase.removeChannel(profilesChannel)
       unsubscribeFromConversation(conversationId)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
   }, [conversationId, user?.id, permission, otherUser?.id])
 
@@ -632,8 +652,23 @@ export function ChatViewPage() {
     setShowVoiceRecorder(false)
     
     try {
-      const fileName = `${user.id}/${Date.now()}.webm`
-      const { error: uploadError } = await supabase.storage.from('media').upload(fileName, audioBlob, { cacheControl: '3600', upsert: false })
+      // Determine the correct file extension based on the blob's MIME type
+      let fileExtension = 'webm'
+      const mimeType = audioBlob.type
+      if (mimeType.includes('ogg')) {
+        fileExtension = 'ogg'
+      } else if (mimeType.includes('mp4') || mimeType.includes('aac')) {
+        fileExtension = 'm4a'
+      } else if (mimeType.includes('webm')) {
+        fileExtension = 'webm'
+      }
+      
+      const fileName = `${user.id}/${Date.now()}.${fileExtension}`
+      const { error: uploadError } = await supabase.storage.from('media').upload(fileName, audioBlob, {
+        cacheControl: '3600',
+        upsert: false,
+        contentType: mimeType // Explicitly set the content type
+      })
       if (uploadError) throw uploadError
       const { data: { publicUrl } } = supabase.storage.from('media').getPublicUrl(fileName)
       
@@ -643,7 +678,7 @@ export function ChatViewPage() {
       const messageData: any = {
         conversation_id: conversationId!, sender_id: user.id, content: '', type: 'audio', status: 'sent',
         reply_to_id: replyToMessage?.id || null, media_url: publicUrl, media_type: 'audio',
-        file_name: `voice-${Date.now()}.webm`, file_size: audioBlob.size,
+        file_name: `voice-${Date.now()}.${fileExtension}`, file_size: audioBlob.size,
       }
       
       // Optimistic update - add message to local state immediately

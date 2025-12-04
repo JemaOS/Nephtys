@@ -351,6 +351,11 @@ export function ChatsPage() {
   useEffect(() => {
     if (user) {
       
+      // Loading timeout - prevent infinite loading (max 10 seconds)
+      const loadingTimeout = setTimeout(() => {
+        setIsLoading(false)
+      }, 10000)
+      
       // Subscribe to conversation changes with debounced reload
       const conversationsChannel = supabase
         .channel('conversations')
@@ -390,10 +395,24 @@ export function ChatsPage() {
         )
         .subscribe()
 
+      // Handle visibility change - refresh data when app comes back to foreground
+      // This is critical for PWA on mobile where the app may be suspended
+      const handleVisibilityChange = () => {
+        if (document.visibilityState === 'visible') {
+          console.log('[ChatsPage] App became visible, refreshing conversations...')
+          // Reload conversations when app becomes visible again
+          loadConversationsFromServer(false) // Background sync, no loading state
+        }
+      }
+      
+      document.addEventListener('visibilitychange', handleVisibilityChange)
+
       return () => {
+        clearTimeout(loadingTimeout)
         supabase.removeChannel(conversationsChannel)
         supabase.removeChannel(membersChannel)
         supabase.removeChannel(profilesChannel)
+        document.removeEventListener('visibilitychange', handleVisibilityChange)
       }
     }
   }, [user, debouncedReload])

@@ -1,5 +1,14 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Play, Pause, Download } from 'lucide-react';
+
+// Audio context for decoding audio that browsers can't play natively
+let audioContext: AudioContext | null = null;
+const getAudioContext = () => {
+  if (!audioContext) {
+    audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+  }
+  return audioContext;
+};
 
 interface VoiceMessageProps {
   url: string;
@@ -53,7 +62,17 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
     };
 
     const handleLoadedMetadata = () => {
-      setAudioDuration(audio.duration);
+      console.log('Audio loaded - duration:', audio.duration, 'src:', url);
+      if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
+        setAudioDuration(audio.duration);
+      }
+    };
+
+    const handleDurationChange = () => {
+      console.log('Duration changed:', audio.duration);
+      if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
+        setAudioDuration(audio.duration);
+      }
     };
 
     const handleEnded = () => {
@@ -61,28 +80,246 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
       setCurrentTime(0);
     };
 
+    const handleError = (e: Event) => {
+      const audioElement = e.target as HTMLAudioElement;
+      console.error('Audio playback error:', {
+        error: audioElement.error,
+        errorCode: audioElement.error?.code,
+        errorMessage: audioElement.error?.message,
+        src: url,
+        networkState: audioElement.networkState,
+        readyState: audioElement.readyState,
+      });
+    };
+
+    const handleCanPlay = () => {
+      console.log('Audio can play - ready state:', audio.readyState, 'duration:', audio.duration);
+      if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
+        setAudioDuration(audio.duration);
+      }
+    };
+
+    const handleCanPlayThrough = () => {
+      console.log('Audio can play through - ready state:', audio.readyState);
+    };
+
     audio.addEventListener('timeupdate', handleTimeUpdate);
     audio.addEventListener('loadedmetadata', handleLoadedMetadata);
+    audio.addEventListener('durationchange', handleDurationChange);
     audio.addEventListener('ended', handleEnded);
+    audio.addEventListener('error', handleError);
+    audio.addEventListener('canplay', handleCanPlay);
+    audio.addEventListener('canplaythrough', handleCanPlayThrough);
+
+    // Force load on mobile - some browsers need this
+    audio.load();
 
     return () => {
       audio.removeEventListener('timeupdate', handleTimeUpdate);
       audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      audio.removeEventListener('durationchange', handleDurationChange);
       audio.removeEventListener('ended', handleEnded);
+      audio.removeEventListener('error', handleError);
+      audio.removeEventListener('canplay', handleCanPlay);
+      audio.removeEventListener('canplaythrough', handleCanPlayThrough);
     };
+  }, [url]);
+
+  // Web Audio API playback state
+  const webAudioSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const webAudioStartTimeRef = useRef<number>(0);
+  const webAudioOffsetRef = useRef<number>(0);
+  const webAudioIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const audioBufferRef = useRef<AudioBuffer | null>(null);
+
+  // Cleanup Web Audio resources
+  const cleanupWebAudio = useCallback(() => {
+    if (webAudioSourceRef.current) {
+      try {
+        webAudioSourceRef.current.stop();
+      } catch (e) {
+        // Ignore - might already be stopped
+      }
+      webAudioSourceRef.current = null;
+    }
+    if (webAudioIntervalRef.current) {
+      clearInterval(webAudioIntervalRef.current);
+      webAudioIntervalRef.current = null;
+    }
   }, []);
 
-  const togglePlayPause = () => {
+  // Play using Web Audio API (for formats that HTML5 audio can't handle)
+  const playWithWebAudio = useCallback(async () => {
+    try {
+      console.log('Trying Web Audio API playback...');
+      
+      const ctx = getAudioContext();
+      
+      // Resume context if suspended (required for user interaction)
+      if (ctx.state === 'suspended') {
+        await ctx.resume();
+      }
+      
+      // Fetch and decode the audio if not already cached
+      if (!audioBufferRef.current) {
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const arrayBuffer = await response.arrayBuffer();
+        
+        // Decode the audio data
+        audioBufferRef.current = await ctx.decodeAudioData(arrayBuffer);
+        console.log('Audio decoded successfully, duration:', audioBufferRef.current.duration);
+        
+        // Update duration
+        if (audioBufferRef.current.duration && isFinite(audioBufferRef.current.duration)) {
+          setAudioDuration(audioBufferRef.current.duration);
+        }
+      }
+      
+      // Create a new source node
+      const source = ctx.createBufferSource();
+      source.buffer = audioBufferRef.current;
+      source.connect(ctx.destination);
+      
+      // Handle playback end
+      source.onended = () => {
+        if (webAudioSourceRef.current === source) {
+          setIsPlaying(false);
+          setCurrentTime(0);
+          webAudioOffsetRef.current = 0;
+          cleanupWebAudio();
+        }
+      };
+      
+      // Start playback from the current offset
+      const offset = webAudioOffsetRef.current;
+      source.start(0, offset);
+      webAudioSourceRef.current = source;
+      webAudioStartTimeRef.current = ctx.currentTime - offset;
+      
+      // Update current time periodically
+      webAudioIntervalRef.current = setInterval(() => {
+        if (webAudioSourceRef.current && audioBufferRef.current) {
+          const elapsed = ctx.currentTime - webAudioStartTimeRef.current;
+          if (elapsed < audioBufferRef.current.duration) {
+            setCurrentTime(elapsed);
+          }
+        }
+      }, 100);
+      
+      setIsPlaying(true);
+      console.log('Web Audio API playback started');
+      return true;
+    } catch (error) {
+      console.error('Web Audio API playback failed:', error);
+      return false;
+    }
+  }, [url, cleanupWebAudio]);
+
+  // Pause Web Audio playback
+  const pauseWebAudio = useCallback(() => {
+    if (webAudioSourceRef.current) {
+      const ctx = getAudioContext();
+      webAudioOffsetRef.current = ctx.currentTime - webAudioStartTimeRef.current;
+      cleanupWebAudio();
+    }
+  }, [cleanupWebAudio]);
+
+  const togglePlayPause = async () => {
     const audio = audioRef.current;
     if (!audio) return;
 
     if (isPlaying) {
-      audio.pause();
+      // Check if we're using Web Audio API
+      if (webAudioSourceRef.current) {
+        pauseWebAudio();
+      } else {
+        audio.pause();
+      }
+      setIsPlaying(false);
     } else {
-      audio.play();
+      try {
+        console.log('Attempting to play audio:', url, 'readyState:', audio.readyState);
+        
+        // First, try HTML5 audio (most compatible)
+        await audio.play();
+        setIsPlaying(true);
+        console.log('HTML5 audio playing successfully');
+      } catch (error) {
+        console.error('HTML5 audio error:', error);
+        
+        // Try Web Audio API (can decode more formats)
+        const webAudioSuccess = await playWithWebAudio();
+        
+        if (!webAudioSuccess) {
+          // Last resort: try blob URL approach
+          try {
+            console.log('Trying blob URL playback...');
+            
+            const response = await fetch(url);
+            if (!response.ok) {
+              throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const blob = await response.blob();
+            
+            // Try to determine the correct MIME type
+            let mimeType = blob.type;
+            if (!mimeType || mimeType === 'application/octet-stream') {
+              // Guess from URL
+              if (url.includes('.ogg')) mimeType = 'audio/ogg';
+              else if (url.includes('.m4a')) mimeType = 'audio/mp4';
+              else if (url.includes('.webm')) mimeType = 'audio/webm';
+              else mimeType = 'audio/webm'; // Default
+            }
+            
+            // Create blob with explicit type
+            const typedBlob = new Blob([blob], { type: mimeType });
+            const blobUrl = URL.createObjectURL(typedBlob);
+            
+            // Create new audio element with blob URL
+            const newAudio = new Audio(blobUrl);
+            
+            // Copy event listeners
+            newAudio.addEventListener('timeupdate', () => {
+              setCurrentTime(newAudio.currentTime);
+            });
+            newAudio.addEventListener('ended', () => {
+              setIsPlaying(false);
+              setCurrentTime(0);
+              URL.revokeObjectURL(blobUrl);
+            });
+            newAudio.addEventListener('loadedmetadata', () => {
+              if (newAudio.duration && !isNaN(newAudio.duration) && isFinite(newAudio.duration)) {
+                setAudioDuration(newAudio.duration);
+              }
+            });
+            
+            await newAudio.play();
+            
+            // Replace the ref
+            if (audioRef.current) {
+              audioRef.current.pause();
+            }
+            (audioRef as any).current = newAudio;
+            setIsPlaying(true);
+            console.log('Blob URL playback successful');
+          } catch (blobError) {
+            console.error('All playback methods failed:', blobError);
+            alert('Impossible de lire ce message vocal. Le format audio n\'est pas supporté par votre navigateur.');
+          }
+        }
+      }
     }
-    setIsPlaying(!isPlaying);
   };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      cleanupWebAudio();
+    };
+  }, [cleanupWebAudio]);
 
   const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
     const audio = audioRef.current;
@@ -104,10 +341,24 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
     try {
       const response = await fetch(url);
       const blob = await response.blob();
+      
+      // Determine file extension from MIME type or URL
+      let fileExtension = 'webm';
+      const mimeType = blob.type;
+      if (mimeType.includes('ogg')) {
+        fileExtension = 'ogg';
+      } else if (mimeType.includes('mp4') || mimeType.includes('aac') || mimeType.includes('m4a')) {
+        fileExtension = 'm4a';
+      } else if (url.includes('.ogg')) {
+        fileExtension = 'ogg';
+      } else if (url.includes('.m4a')) {
+        fileExtension = 'm4a';
+      }
+      
       const downloadUrl = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = downloadUrl;
-      a.download = `voice-message-${Date.now()}.webm`;
+      a.download = `voice-message-${Date.now()}.${fileExtension}`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -121,7 +372,12 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
 
   return (
     <div className="flex items-center gap-3 min-w-[250px] max-w-[350px]">
-      <audio ref={audioRef} src={url} preload="metadata" />
+      <audio
+        ref={audioRef}
+        src={url}
+        preload="auto"
+        playsInline
+      />
       
       {/* Play/Pause Button - Apple Vision Pro style */}
       <button
