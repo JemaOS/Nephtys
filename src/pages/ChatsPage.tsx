@@ -6,6 +6,7 @@ import { supabase, Conversation, Profile, Message } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { offlineStorage } from '@/lib/offlineStorage'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useOnSupabaseReconnect } from '@/hooks/useSupabaseReconnect'
 import { MessageCircle, Search, Plus, MoreVertical, Check, UserPlus, Users, Pin, BellOff, ArrowLeft, Trash2, Archive, VolumeX, Volume2 } from 'lucide-react'
 
 // Memoized formatDate function outside component to prevent recreation on every render
@@ -406,6 +407,14 @@ export function ChatsPage() {
       }
       
       document.addEventListener('visibilitychange', handleVisibilityChange)
+      
+      // Handle Supabase reconnection event (triggered by useSupabaseReconnect hook)
+      const handleSupabaseReconnect = () => {
+        console.log('[ChatsPage] Supabase reconnected, reloading conversations...')
+        loadConversationsFromServer(false) // Background sync, no loading state
+      }
+      
+      window.addEventListener('supabase-reconnected', handleSupabaseReconnect)
 
       return () => {
         clearTimeout(loadingTimeout)
@@ -413,6 +422,7 @@ export function ChatsPage() {
         supabase.removeChannel(membersChannel)
         supabase.removeChannel(profilesChannel)
         document.removeEventListener('visibilitychange', handleVisibilityChange)
+        window.removeEventListener('supabase-reconnected', handleSupabaseReconnect)
       }
     }
   }, [user, debouncedReload])

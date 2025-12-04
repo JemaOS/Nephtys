@@ -1,9 +1,9 @@
 // Service Worker for Nephtys PWA
-// Version: 3.0.0 - Fixed scroll behavior
+// Version: 4.0.0 - Optimized for Android PWA reconnection
 
-const CACHE_NAME = 'nephtys-app-v3';
-const STATIC_CACHE = 'nephtys-static-v3';
-const DYNAMIC_CACHE = 'nephtys-dynamic-v3';
+const CACHE_NAME = 'nephtys-app-v4';
+const STATIC_CACHE = 'nephtys-static-v4';
+const DYNAMIC_CACHE = 'nephtys-dynamic-v4';
 
 // Static assets to cache immediately (shell)
 const STATIC_ASSETS = [
@@ -13,8 +13,13 @@ const STATIC_ASSETS = [
   '/icon.svg'
 ];
 
-// Network timeout in milliseconds
-const NETWORK_TIMEOUT = 3000;
+// Network timeout in milliseconds - REDUCED for faster fallback
+const NETWORK_TIMEOUT = 2000; // 2 seconds for normal requests
+const SUPABASE_TIMEOUT = 5000; // 5 seconds for Supabase (reduced from 10)
+
+// Track if we should bypass cache (after app returns from background)
+let bypassCache = false;
+let lastActiveTime = Date.now();
 
 // Install event - cache static assets
 self.addEventListener('install', (event) => {
@@ -161,7 +166,7 @@ async function cacheFirst(request, cacheName = STATIC_CACHE) {
   }
 }
 
-// Fetch event - smart caching strategy
+// Fetch event - smart caching strategy optimized for PWA
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
@@ -171,30 +176,35 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Skip cross-origin requests (except for CDN assets)
+  // Skip cross-origin requests (except for CDN assets and Supabase)
   if (url.origin !== location.origin && !url.hostname.includes('supabase')) {
     return;
   }
 
-  // Skip Supabase API calls - always go to network
+  // Skip Supabase API calls - always go to network with shorter timeout
   if (url.hostname.includes('supabase')) {
     event.respondWith(
-      fetchWithTimeout(request, 10000)
-        .catch(() => new Response(JSON.stringify({ error: 'Offline' }), {
-          status: 503,
-          headers: { 'Content-Type': 'application/json' }
-        }))
+      // Use AbortController for better timeout handling
+      fetchWithAbort(request, SUPABASE_TIMEOUT)
+        .catch((error) => {
+          console.log('[SW] Supabase request failed:', error.message);
+          return new Response(JSON.stringify({ error: 'Offline', message: error.message }), {
+            status: 503,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        })
     );
     return;
   }
 
-  // Navigation requests - stale-while-revalidate for fast loading
+  // Navigation requests - network-first for PWA to ensure fresh content
+  // This is important when app returns from background
   if (request.mode === 'navigate') {
-    event.respondWith(staleWhileRevalidate(request, STATIC_CACHE));
+    event.respondWith(networkFirstFast(request, STATIC_CACHE));
     return;
   }
 
-  // Static assets (JS, CSS, images) - cache-first
+  // Static assets (JS, CSS, images) - cache-first (these don't change often)
   if (
     url.pathname.match(/\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot)$/) ||
     url.pathname.startsWith('/assets/')
@@ -206,6 +216,45 @@ self.addEventListener('fetch', (event) => {
   // API calls and other requests - network-first
   event.respondWith(networkFirst(request, DYNAMIC_CACHE));
 });
+
+// Helper: Fetch with AbortController for better timeout handling
+async function fetchWithAbort(request, timeout) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  
+  try {
+    const response = await fetch(request, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      throw new Error('Request timed out');
+    }
+    throw error;
+  }
+}
+
+// Helper: Network-first with very fast fallback for navigation
+async function networkFirstFast(request, cacheName = STATIC_CACHE) {
+  // Try network first with short timeout
+  try {
+    const response = await fetchWithAbort(request, 1500); // 1.5 seconds for navigation
+    if (response && response.ok) {
+      const cache = await caches.open(cacheName);
+      cache.put(request, response.clone());
+    }
+    return response;
+  } catch (error) {
+    console.log('[SW] Network failed for navigation, using cache:', error.message);
+    const cachedResponse = await caches.match(request);
+    if (cachedResponse) {
+      return cachedResponse;
+    }
+    // Return index.html for SPA routing
+    return caches.match('/index.html');
+  }
+}
 
 // Push notification event
 self.addEventListener('push', (event) => {
@@ -308,6 +357,39 @@ self.addEventListener('message', (event) => {
       })
     );
   }
+  
+  // Handle app visibility change - when app returns from background
+  if (event.data && event.data.type === 'APP_RESUMED') {
+    console.log('[SW] App resumed from background, clearing dynamic cache');
+    // Clear dynamic cache to force fresh data
+    caches.open(DYNAMIC_CACHE).then((cache) => {
+      cache.keys().then((keys) => {
+        keys.forEach((key) => cache.delete(key));
+      });
+    });
+    bypassCache = true;
+    // Reset bypass flag after 5 seconds
+    setTimeout(() => {
+      bypassCache = false;
+    }, 5000);
+  }
+  
+  // Handle keepalive ping from app
+  if (event.data && event.data.type === 'KEEPALIVE') {
+    lastActiveTime = Date.now();
+  }
 });
 
-console.log('[SW] Service worker loaded');
+// Periodic check for stale connections (every 30 seconds)
+setInterval(() => {
+  const now = Date.now();
+  const timeSinceActive = now - lastActiveTime;
+  
+  // If no activity for more than 60 seconds, prepare for reconnection
+  if (timeSinceActive > 60000) {
+    console.log('[SW] No activity detected, preparing for reconnection');
+    bypassCache = true;
+  }
+}, 30000);
+
+console.log('[SW] Service worker loaded - v4.0.0 (PWA optimized)');

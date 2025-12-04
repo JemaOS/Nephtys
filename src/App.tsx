@@ -12,6 +12,7 @@ import { ArchivedPage } from './pages/ArchivedPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { OfflineIndicator } from './components/OfflineIndicator'
 import { PersistentCallScreen } from './components/PersistentCallScreen'
+import { useSupabaseReconnect } from './hooks/useSupabaseReconnect'
 import { useEffect, useState } from 'react'
 
 // Optimized loading component that shows quickly and doesn't block
@@ -68,6 +69,16 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
   }
   
   return user ? <>{children}</> : <Navigate to="/auth" />
+}
+
+// Component to handle Supabase reconnection for PWA
+function SupabaseReconnectHandler() {
+  const { user } = useAuth()
+  
+  // Use the reconnect hook - it handles all the visibility/focus events
+  useSupabaseReconnect(user?.id || null)
+  
+  return null // This component doesn't render anything
 }
 
 function PublicRoute({ children }: { children: React.ReactNode }) {
@@ -143,6 +154,7 @@ function App() {
       <ThemeProvider>
         <AuthProvider>
           <CallProvider>
+            <SupabaseReconnectHandler />
             <OfflineIndicator />
             <PersistentCallScreen />
             <AppRoutes />

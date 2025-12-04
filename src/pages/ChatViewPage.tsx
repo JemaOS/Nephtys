@@ -369,6 +369,15 @@ export function ChatViewPage() {
     }
     
     document.addEventListener('visibilitychange', handleVisibilityChange)
+    
+    // Handle Supabase reconnection event (triggered by useSupabaseReconnect hook)
+    const handleSupabaseReconnect = () => {
+      console.log('[ChatViewPage] Supabase reconnected, reloading messages...')
+      loadMessages()
+      loadConversation()
+    }
+    
+    window.addEventListener('supabase-reconnected', handleSupabaseReconnect)
 
     return () => {
       clearTimeout(loadingTimeout)
@@ -376,6 +385,7 @@ export function ChatViewPage() {
       supabase.removeChannel(profilesChannel)
       unsubscribeFromConversation(conversationId)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('supabase-reconnected', handleSupabaseReconnect)
     }
   }, [conversationId, user?.id, permission, otherUser?.id])
 
