@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { X, ChevronLeft, ChevronRight, Forward, Star, Pin, Smile, Share2, Download, Play, Pause, Volume2, VolumeX, ZoomIn, ZoomOut } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, Forward, Star, Pin, Smile, Share2, Download, Play, Pause, Volume2, VolumeX, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
 
 // Custom hook for mobile detection
 const useIsMobile = () => {
@@ -19,6 +19,52 @@ const useIsMobile = () => {
   }, []);
 
   return isMobile;
+};
+
+// Custom hook for screen orientation
+const useScreenOrientation = () => {
+  const [orientation, setOrientation] = useState<'portrait' | 'landscape'>('portrait');
+  const [isLandscape, setIsLandscape] = useState(false);
+
+  useEffect(() => {
+    const updateOrientation = () => {
+      // Check orientation using multiple methods for better compatibility
+      if (window.screen?.orientation?.type) {
+        const type = window.screen.orientation.type;
+        const landscape = type.includes('landscape');
+        setOrientation(landscape ? 'landscape' : 'portrait');
+        setIsLandscape(landscape);
+      } else if (window.matchMedia) {
+        const landscape = window.matchMedia('(orientation: landscape)').matches;
+        setOrientation(landscape ? 'landscape' : 'portrait');
+        setIsLandscape(landscape);
+      } else {
+        // Fallback: compare window dimensions
+        const landscape = window.innerWidth > window.innerHeight;
+        setOrientation(landscape ? 'landscape' : 'portrait');
+        setIsLandscape(landscape);
+      }
+    };
+
+    updateOrientation();
+
+    // Listen for orientation changes
+    if (window.screen?.orientation) {
+      window.screen.orientation.addEventListener('change', updateOrientation);
+    }
+    window.addEventListener('orientationchange', updateOrientation);
+    window.addEventListener('resize', updateOrientation);
+
+    return () => {
+      if (window.screen?.orientation) {
+        window.screen.orientation.removeEventListener('change', updateOrientation);
+      }
+      window.removeEventListener('orientationchange', updateOrientation);
+      window.removeEventListener('resize', updateOrientation);
+    };
+  }, []);
+
+  return { orientation, isLandscape };
 };
 
 interface MediaViewerProps {
@@ -72,7 +118,9 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   onNavigate,
 }) => {
   const isMobile = useIsMobile();
+  const { orientation, isLandscape } = useScreenOrientation();
   const [showControls, setShowControls] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -454,17 +502,85 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
     setSwipeDirection(null);
   }, [initialPinchDistance, touchStartX, zoom, allMedia, currentIndex, onNavigate, swipeOffset, swipeDirection]);
 
-  // Prevent body scroll when viewer is open
+  // Prevent body scroll when viewer is open and handle fullscreen
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = 'hidden';
+      document.body.classList.add('media-viewer-open');
+      
+      // On mobile, try to enable fullscreen for better landscape experience
+      if (isMobile && document.documentElement.requestFullscreen) {
+        // Don't auto-fullscreen, let user control it
+      }
     } else {
       document.body.style.overflow = '';
+      document.body.classList.remove('media-viewer-open');
+      
+      // Exit fullscreen when closing
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch(() => {});
+      }
     }
     return () => {
       document.body.style.overflow = '';
+      document.body.classList.remove('media-viewer-open');
     };
-  }, [isOpen]);
+  }, [isOpen, isMobile]);
+
+  // Track fullscreen state
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+    };
+  }, []);
+
+  // Toggle fullscreen mode
+  const toggleFullscreen = useCallback(async () => {
+    try {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen();
+        
+        // Try to lock orientation to landscape for videos
+        // Using type assertion because lock() is part of the experimental Screen Orientation API
+        if (mediaType === 'video' && window.screen?.orientation) {
+          const orientation = window.screen.orientation as ScreenOrientation & {
+            lock?: (orientation: string) => Promise<void>;
+            unlock?: () => void;
+          };
+          if (orientation.lock) {
+            try {
+              await orientation.lock('landscape');
+            } catch (e) {
+              // Orientation lock not supported or not allowed
+              console.log('Orientation lock not available');
+            }
+          }
+        }
+      } else {
+        await document.exitFullscreen();
+        
+        // Unlock orientation
+        if (window.screen?.orientation) {
+          const orientation = window.screen.orientation as ScreenOrientation & {
+            unlock?: () => void;
+          };
+          if (orientation.unlock) {
+            orientation.unlock();
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Fullscreen error:', error);
+    }
+  }, [mediaType]);
 
   // Desktop navigation - instant like WhatsApp
   const handlePrevious = useCallback(() => {
@@ -550,9 +666,18 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div 
-      className="fixed inset-0 z-[200] bg-black flex flex-col"
+    <div
+      className={`fixed inset-0 z-[200] bg-black flex flex-col media-viewer-fullscreen ${
+        isLandscape && isMobile ? 'landscape-mode' : ''
+      } ${isFullscreen ? 'fullscreen-active' : ''}`}
       onClick={() => setShowControls(true)}
+      style={{
+        // Ensure the viewer takes full screen on mobile in any orientation
+        width: '100%',
+        height: '100%',
+        // Use viewport units that account for mobile browser chrome
+        minHeight: isMobile ? '100dvh' : '100vh',
+      }}
     >
       {/* Header */}
       <div
@@ -672,6 +797,16 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
                 )}
               </div>
             )}
+            {/* Fullscreen toggle - visible on mobile for videos */}
+            {isMobile && (mediaType === 'video' || mediaType === 'image') && (
+              <button
+                onClick={(e) => { e.stopPropagation(); toggleFullscreen(); }}
+                className="w-9 h-9 md:w-10 md:h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
+                title={isFullscreen ? "Quitter le plein écran" : "Plein écran"}
+              >
+                <Maximize2 size={18} className={`text-white ${isFullscreen ? 'rotate-45' : ''}`} />
+              </button>
+            )}
             {/* Share - visible on mobile */}
             <button
               onClick={(e) => { e.stopPropagation(); handleShare(); }}
@@ -732,7 +867,9 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
 
       {/* Media content */}
       <div
-        className="flex-1 flex items-center justify-center p-4 md:p-8 overflow-hidden"
+        className={`flex-1 flex items-center justify-center overflow-hidden media-content-container ${
+          isLandscape && isMobile ? 'p-0' : 'p-4 md:p-8'
+        }`}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
         onTouchStart={handleTouchStart}
@@ -802,11 +939,17 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
 
         {/* Video */}
         {mediaType === 'video' && (
-          <div className="relative max-w-full max-h-full">
+          <div className={`relative ${isLandscape && isMobile ? 'w-full h-full' : 'max-w-full max-h-full'}`}>
             <video
               ref={videoRef}
               src={mediaUrl}
-              className="max-w-full max-h-[80vh] object-contain"
+              className={`object-contain ${
+                isLandscape && isMobile
+                  ? 'w-full h-full max-w-none max-h-none'
+                  : 'max-w-full max-h-[80vh]'
+              }`}
+              playsInline
+              webkit-playsinline="true"
               onClick={(e) => {
                 e.stopPropagation();
                 togglePlayPause();

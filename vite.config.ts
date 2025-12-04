@@ -6,7 +6,7 @@ import sourceIdentifierPlugin from 'vite-plugin-source-identifier'
 const isProd = process.env.BUILD_MODE === 'prod'
 export default defineConfig({
   plugins: [
-    react(), 
+    react(),
     sourceIdentifierPlugin({
       enabled: !isProd,
       attributePrefix: 'data-matrix',
@@ -17,6 +17,9 @@ export default defineConfig({
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
+  },
+  optimizeDeps: {
+    include: ['pdfjs-dist'],
   },
 })
 

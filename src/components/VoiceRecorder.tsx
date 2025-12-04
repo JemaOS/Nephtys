@@ -23,6 +23,7 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const mimeTypeRef = useRef<string>('audio/webm;codecs=opus');
 
   // Cleanup on unmount
   useEffect(() => {
@@ -61,19 +62,56 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
 
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // High quality audio constraints similar to WhatsApp
+      const audioConstraints: MediaTrackConstraints = {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+        // Request high sample rate for better quality
+        sampleRate: 48000,
+        // Mono channel is sufficient for voice
+        channelCount: 1,
+      };
+      
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: audioConstraints
+      });
       streamRef.current = stream;
 
-      // Setup audio analysis
-      audioContextRef.current = new AudioContext();
+      // Setup audio analysis with higher quality settings
+      audioContextRef.current = new AudioContext({ sampleRate: 48000 });
       analyserRef.current = audioContextRef.current.createAnalyser();
       analyserRef.current.fftSize = 256;
       
       const source = audioContextRef.current.createMediaStreamSource(stream);
       source.connect(analyserRef.current);
 
+      // Determine the best supported audio format
+      // Priority: audio/ogg (WhatsApp format) > audio/webm with opus > audio/webm
+      let mimeType = 'audio/webm';
+      let audioBitsPerSecond = 128000; // 128 kbps for high quality voice
+      
+      if (MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')) {
+        // OGG/Opus - WhatsApp's format, best quality
+        mimeType = 'audio/ogg;codecs=opus';
+        audioBitsPerSecond = 128000;
+      } else if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+        // WebM/Opus - Good quality alternative
+        mimeType = 'audio/webm;codecs=opus';
+        audioBitsPerSecond = 128000;
+      } else if (MediaRecorder.isTypeSupported('audio/mp4;codecs=aac')) {
+        // AAC fallback for Safari
+        mimeType = 'audio/mp4;codecs=aac';
+        audioBitsPerSecond = 128000;
+      }
+      
+      // Store the mimeType for later use when creating the blob
+      mimeTypeRef.current = mimeType;
+      console.log('Using audio format:', mimeType, 'at', audioBitsPerSecond, 'bps');
+
       const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: 'audio/webm;codecs=opus'
+        mimeType,
+        audioBitsPerSecond,
       });
 
       chunksRef.current = [];
@@ -85,7 +123,7 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
       };
 
       mediaRecorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: 'audio/webm;codecs=opus' });
+        const blob = new Blob(chunksRef.current, { type: mimeTypeRef.current });
         setAudioBlob(blob);
         
         // Stop all tracks
@@ -179,7 +217,7 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
       // Wait for the blob to be created
       setTimeout(() => {
         if (chunksRef.current.length > 0) {
-          const blob = new Blob(chunksRef.current, { type: 'audio/webm;codecs=opus' });
+          const blob = new Blob(chunksRef.current, { type: mimeTypeRef.current });
           onRecordingComplete(blob, recordingTime);
         }
       }, 100);

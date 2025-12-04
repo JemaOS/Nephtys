@@ -1,8 +1,235 @@
-import React, { useRef, useState, useEffect } from 'react';
-import { Image, Video, File as FileIcon, X, Loader2, Camera, Smile, Sticker, FileImage, Search, Plus, Send, Edit3 } from 'lucide-react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
+import { Image, Video, File as FileIcon, X, Loader2, Camera, Smile, Sticker, FileImage, Search, Plus, Send, Edit3, FileText, FileSpreadsheet, FileArchive, Download, Music, Play, Pause } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { ImageEditor } from './ImageEditor';
 import { processImageForUpload, ProcessedImage } from '@/lib/imageUtils';
+import { DocumentPreviewModal, generatePDFThumbnail } from './DocumentPreview';
+
+// Helper function to format file size
+const formatFileSizeDisplay = (bytes: number): string => {
+  if (bytes < 1024) return bytes + ' o';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(0) + ' ko';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' Mo';
+};
+
+// Helper function to get file extension
+const getFileExtension = (filename: string): string => {
+  const parts = filename.split('.');
+  return parts.length > 1 ? parts[parts.length - 1].toLowerCase() : '';
+};
+
+// Helper function to get icon and color based on file type
+const getDocumentIconConfig = (extension: string): { bgColor: string; icon: React.ReactNode } => {
+  const ext = extension.toLowerCase();
+  
+  // PDF files - Red
+  if (ext === 'pdf') {
+    return {
+      bgColor: 'bg-red-500',
+      icon: <FileText size={32} className="text-white" />
+    };
+  }
+  
+  // Word documents - Blue
+  if (['doc', 'docx', 'odt', 'rtf'].includes(ext)) {
+    return {
+      bgColor: 'bg-blue-500',
+      icon: <FileText size={32} className="text-white" />
+    };
+  }
+  
+  // Excel/Spreadsheets - Green
+  if (['xls', 'xlsx', 'csv', 'ods'].includes(ext)) {
+    return {
+      bgColor: 'bg-green-500',
+      icon: <FileSpreadsheet size={32} className="text-white" />
+    };
+  }
+  
+  // PowerPoint - Orange
+  if (['ppt', 'pptx', 'odp'].includes(ext)) {
+    return {
+      bgColor: 'bg-orange-500',
+      icon: <FileImage size={32} className="text-white" />
+    };
+  }
+  
+  // Archives - Purple
+  if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) {
+    return {
+      bgColor: 'bg-purple-500',
+      icon: <FileArchive size={32} className="text-white" />
+    };
+  }
+  
+  // Text files - Gray
+  if (['txt', 'md', 'json', 'xml', 'html', 'css', 'js'].includes(ext)) {
+    return {
+      bgColor: 'bg-gray-500',
+      icon: <FileText size={32} className="text-white" />
+    };
+  }
+  
+  // Default - Teal/Primary
+  return {
+    bgColor: 'bg-[#787add]',
+    icon: <FileIcon size={32} className="text-white" />
+  };
+};
+
+// Custom Audio Preview Player Component - Minimalist design
+const AudioPreviewPlayer: React.FC<{ file: File; preview: string | null }> = ({ file, preview }) => {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const progressRef = useRef<HTMLDivElement>(null);
+
+  const formatTime = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const togglePlay = () => {
+    if (audioRef.current) {
+      if (isPlaying) {
+        audioRef.current.pause();
+      } else {
+        audioRef.current.play();
+      }
+      setIsPlaying(!isPlaying);
+    }
+  };
+
+  const handleTimeUpdate = () => {
+    if (audioRef.current && !isDragging) {
+      setCurrentTime(audioRef.current.currentTime);
+    }
+  };
+
+  const handleLoadedMetadata = () => {
+    if (audioRef.current) {
+      setDuration(audioRef.current.duration);
+    }
+  };
+
+  const handleEnded = () => {
+    setIsPlaying(false);
+    setCurrentTime(0);
+  };
+
+  const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (progressRef.current && audioRef.current) {
+      const rect = progressRef.current.getBoundingClientRect();
+      const percent = (e.clientX - rect.left) / rect.width;
+      const newTime = percent * duration;
+      audioRef.current.currentTime = newTime;
+      setCurrentTime(newTime);
+    }
+  };
+
+  const handleProgressDrag = useCallback((e: MouseEvent) => {
+    if (progressRef.current && audioRef.current && isDragging) {
+      const rect = progressRef.current.getBoundingClientRect();
+      const percent = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+      const newTime = percent * duration;
+      audioRef.current.currentTime = newTime;
+      setCurrentTime(newTime);
+    }
+  }, [isDragging, duration]);
+
+  const handleMouseUp = useCallback(() => {
+    setIsDragging(false);
+  }, []);
+
+  useEffect(() => {
+    if (isDragging) {
+      window.addEventListener('mousemove', handleProgressDrag);
+      window.addEventListener('mouseup', handleMouseUp);
+      return () => {
+        window.removeEventListener('mousemove', handleProgressDrag);
+        window.removeEventListener('mouseup', handleMouseUp);
+      };
+    }
+  }, [isDragging, handleProgressDrag, handleMouseUp]);
+
+  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+
+  return (
+    <div className="p-6">
+      <div className="flex flex-col items-center gap-5">
+        {/* Album art / Music icon */}
+        <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-accent/30 to-accent/10 flex items-center justify-center">
+          <Music size={48} className="text-accent" />
+        </div>
+        
+        {/* File name */}
+        <div className="text-center max-w-full px-4">
+          <p className="text-text-primary font-medium truncate">
+            {file.name.replace(/\.[^/.]+$/, '')}
+          </p>
+          <p className="text-text-tertiary text-sm mt-1">
+            {formatFileSizeDisplay(file.size)}
+          </p>
+        </div>
+        
+        {/* Custom audio player */}
+        <div className="w-full max-w-sm">
+          {/* Progress bar */}
+          <div
+            ref={progressRef}
+            onClick={handleProgressClick}
+            onMouseDown={() => setIsDragging(true)}
+            className="relative h-1.5 bg-bg-hover rounded-full cursor-pointer group"
+          >
+            {/* Progress fill */}
+            <div
+              className="absolute left-0 top-0 h-full bg-accent rounded-full transition-all"
+              style={{ width: `${progress}%` }}
+            />
+            {/* Drag handle */}
+            <div
+              className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-accent rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+              style={{ left: `calc(${progress}% - 6px)` }}
+            />
+          </div>
+          
+          {/* Time display */}
+          <div className="flex justify-between text-xs text-text-tertiary mt-2">
+            <span>{formatTime(currentTime)}</span>
+            <span>{formatTime(duration)}</span>
+          </div>
+          
+          {/* Play/Pause button */}
+          <div className="flex justify-center mt-4">
+            <button
+              onClick={togglePlay}
+              className="w-14 h-14 rounded-full bg-accent hover:bg-[#6a6ec8] flex items-center justify-center transition-colors"
+            >
+              {isPlaying ? (
+                <Pause size={24} className="text-white" fill="white" />
+              ) : (
+                <Play size={24} className="text-white ml-1" fill="white" />
+              )}
+            </button>
+          </div>
+        </div>
+        
+        {/* Hidden audio element */}
+        <audio
+          ref={audioRef}
+          src={preview || URL.createObjectURL(file)}
+          onTimeUpdate={handleTimeUpdate}
+          onLoadedMetadata={handleLoadedMetadata}
+          onEnded={handleEnded}
+          className="hidden"
+        />
+      </div>
+    </div>
+  );
+};
 
 // Tenor GIF API (free tier)
 const TENOR_API_KEY = 'AIzaSyAyimkuYQYF_FXVALexPuGQctUWRURdCYQ'; // Public API key for demo
@@ -10,17 +237,18 @@ const TENOR_CLIENT_KEY = 'nephtys_app';
 
 interface UploadedFileData {
   url: string;
-  type: 'image' | 'video' | 'file';
+  type: 'image' | 'video' | 'file' | 'audio';
   fileName: string;
   fileSize: number;
   width?: number;
   height?: number;
   thumbnail?: string;
+  duration?: number;
 }
 
 interface MediaUploaderProps {
-  onMediaSelect: (selectedFile: globalThis.File, type: 'image' | 'video' | 'file') => void;
-  onUploadComplete: (url: string, type: 'image' | 'video' | 'file', fileName: string, fileSize: number, width?: number, height?: number, thumbnail?: string) => void;
+  onMediaSelect: (selectedFile: globalThis.File, type: 'image' | 'video' | 'file' | 'audio') => void;
+  onUploadComplete: (url: string, type: 'image' | 'video' | 'file' | 'audio', fileName: string, fileSize: number, width?: number, height?: number, thumbnail?: string, duration?: number) => void;
   onMultipleUploadComplete?: (files: UploadedFileData[]) => void;
   onCancel: () => void;
   onEmojiSelect?: (emoji: string) => void;
@@ -38,7 +266,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   // Multiple files selection state
-  const [selectedFiles, setSelectedFiles] = useState<Array<{ file: File; preview: string; type: 'image' | 'video' | 'file' }>>([]);
+  const [selectedFiles, setSelectedFiles] = useState<Array<{ file: File; preview: string; type: 'image' | 'video' | 'file' | 'audio' }>>([]);
   const [multipleSelectionMode, setMultipleSelectionMode] = useState(false);
   const [multipleCaption, setMultipleCaption] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -60,16 +288,23 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
   // Image editor state
   const [showImageEditor, setShowImageEditor] = useState(false);
   const [imageToEdit, setImageToEdit] = useState<{ url: string; fileName: string; file: File } | null>(null);
+  // PDF document preview state
+  const [showDocumentPreview, setShowDocumentPreview] = useState(false);
+  const [documentFile, setDocumentFile] = useState<File | null>(null);
+  const [documentUploading, setDocumentUploading] = useState(false);
+  const [documentUploadProgress, setDocumentUploadProgress] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
+  const audioInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  const getFileType = (file: File): 'image' | 'video' | 'file' => {
+  const getFileType = (file: File): 'image' | 'video' | 'file' | 'audio' => {
     if (file.type.startsWith('image/')) return 'image';
     if (file.type.startsWith('video/')) return 'video';
+    if (file.type.startsWith('audio/')) return 'audio';
     return 'file';
   };
 
@@ -91,12 +326,37 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       return;
     }
 
-    setSelectedFile(file);
     const type = getFileType(file);
+
+    // Special handling for document files - show document preview modal
+    // Includes PDF, Word, Excel, PowerPoint, and other document types
+    const documentMimeTypes = [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-powerpoint',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'text/plain',
+      'application/rtf',
+    ];
+    
+    const documentExtensions = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'rtf', 'odt', 'ods', 'odp'];
+    const fileExtension = file.name.split('.').pop()?.toLowerCase() || '';
+    
+    if (type === 'file' && (documentMimeTypes.includes(file.type) || documentExtensions.includes(fileExtension))) {
+      console.log('Opening document preview for:', file.name, 'type:', file.type, 'extension:', fileExtension);
+      setDocumentFile(file);
+      setShowDocumentPreview(true);
+      return; // Don't proceed with normal flow
+    }
+
+    setSelectedFile(file);
     onMediaSelect(file, type);
 
-    // Créer une preview pour les images et vidéos
-    if (type === 'image' || type === 'video') {
+    // Créer une preview pour les images, vidéos et audio
+    if (type === 'image' || type === 'video' || type === 'audio') {
       const reader = new FileReader();
       reader.onloadend = () => {
         setPreview(reader.result as string);
@@ -116,7 +376,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
 
   // Handle multiple file selection (WhatsApp-like)
   const handleMultipleFileSelect = async (files: FileList) => {
-    const newFiles: Array<{ file: File; preview: string; type: 'image' | 'video' | 'file' }> = [];
+    const newFiles: Array<{ file: File; preview: string; type: 'image' | 'video' | 'file' | 'audio' }> = [];
     
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
@@ -359,8 +619,26 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       // Use 'media' bucket for all file types to ensure consistency
       const bucket = 'media';
       // Create a subfolder based on file type for organization
-      const folder = fileType === 'image' ? 'images' : fileType === 'video' ? 'videos' : 'documents';
+      const folder = fileType === 'image' ? 'images' : fileType === 'video' ? 'videos' : fileType === 'audio' ? 'audio' : 'documents';
       const fileName = `${user.id}/${folder}/${Date.now()}_${selectedFile.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+
+      // Get audio duration if it's an audio file
+      let audioDuration: number | undefined;
+      if (fileType === 'audio' && preview) {
+        try {
+          audioDuration = await new Promise<number>((resolve) => {
+            const audio = new Audio(preview);
+            audio.addEventListener('loadedmetadata', () => {
+              resolve(Math.round(audio.duration));
+            });
+            audio.addEventListener('error', () => {
+              resolve(0);
+            });
+          });
+        } catch (err) {
+          console.warn('Could not get audio duration:', err);
+        }
+      }
 
       // Simulate progress for better UX
       const progressInterval = setInterval(() => {
@@ -396,7 +674,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
 
       setUploadProgress(100);
       
-      // Include image dimensions if available
+      // Include image dimensions or audio duration if available
       onUploadComplete(
         publicUrl,
         fileType,
@@ -404,7 +682,8 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
         fileToUpload instanceof Blob ? fileToUpload.size : selectedFile.size,
         processedImage?.dimensions.width,
         processedImage?.dimensions.height,
-        processedImage?.thumbnailDataUrl
+        processedImage?.thumbnailDataUrl,
+        audioDuration
       );
       
       // Reset
@@ -429,7 +708,123 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
     setActiveTab('attach');
     setShowImageEditor(false);
     setImageToEdit(null);
+    setShowDocumentPreview(false);
+    setDocumentFile(null);
+    setDocumentUploading(false);
+    setDocumentUploadProgress(0);
     onCancel();
+  };
+
+  // Handle document send from preview modal (PDF, Word, Excel, etc.)
+  const handleDocumentSend = async (caption: string) => {
+    if (!documentFile) return;
+
+    setDocumentUploading(true);
+    setDocumentUploadProgress(0);
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('User not authenticated');
+
+      // Check if file is a PDF to generate thumbnail
+      const isPDF = documentFile.type === 'application/pdf' || documentFile.name.toLowerCase().endsWith('.pdf');
+      
+      // Generate thumbnail from PDF first page (only for PDFs)
+      let thumbnailUrl: string | undefined;
+      if (isPDF) {
+        try {
+          setDocumentUploadProgress(5);
+          const thumbnailDataUrl = await generatePDFThumbnail(documentFile, 300);
+          setDocumentUploadProgress(15);
+
+          // Upload thumbnail to storage
+          const thumbnailResponse = await fetch(thumbnailDataUrl);
+          const thumbnailBlob = await thumbnailResponse.blob();
+          const thumbnailFileName = `${user.id}/thumbnails/${Date.now()}_${documentFile.name.replace(/\.[^/.]+$/, '')}_thumb.jpg`;
+
+          const { error: thumbError } = await supabase.storage
+            .from('media')
+            .upload(thumbnailFileName, thumbnailBlob, {
+              cacheControl: '3600',
+              upsert: false,
+              contentType: 'image/jpeg',
+            });
+
+          if (!thumbError) {
+            const { data: { publicUrl } } = supabase.storage
+              .from('media')
+              .getPublicUrl(thumbnailFileName);
+            thumbnailUrl = publicUrl;
+          }
+          setDocumentUploadProgress(30);
+        } catch (err) {
+          console.warn('PDF thumbnail generation failed, continuing without thumbnail:', err);
+          setDocumentUploadProgress(30);
+        }
+      } else {
+        // For non-PDF documents, skip thumbnail generation
+        setDocumentUploadProgress(30);
+      }
+
+      // Upload the document
+      const folder = 'documents';
+      const fileName = `${user.id}/${folder}/${Date.now()}_${documentFile.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+
+      // Simulate progress for better UX
+      const progressInterval = setInterval(() => {
+        setDocumentUploadProgress(prev => {
+          if (prev >= 90) {
+            clearInterval(progressInterval);
+            return prev;
+          }
+          return prev + 10;
+        });
+      }, 200);
+
+      const { data, error } = await supabase.storage
+        .from('media')
+        .upload(fileName, documentFile, {
+          cacheControl: '3600',
+          upsert: false,
+          contentType: documentFile.type || 'application/octet-stream',
+        });
+
+      clearInterval(progressInterval);
+
+      if (error) {
+        console.error('Upload error details:', error);
+        throw new Error(error.message || 'Upload failed');
+      }
+
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('media')
+        .getPublicUrl(fileName);
+
+      setDocumentUploadProgress(100);
+
+      // Call onUploadComplete with thumbnail URL
+      onUploadComplete(
+        publicUrl,
+        'file',
+        documentFile.name,
+        documentFile.size,
+        undefined, // width
+        undefined, // height
+        thumbnailUrl // thumbnail URL for PDF preview
+      );
+
+      // Reset state
+      setShowDocumentPreview(false);
+      setDocumentFile(null);
+      setDocumentUploading(false);
+      setDocumentUploadProgress(0);
+    } catch (error: any) {
+      console.error('Error uploading document:', error);
+      const errorMessage = error?.message || 'Erreur inconnue';
+      alert(`Erreur lors de l'upload du document: ${errorMessage}`);
+      setDocumentUploading(false);
+    }
   };
 
   // Handle edited image from ImageEditor
@@ -723,6 +1118,20 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
             }
           }}
           onSend={handleImageEditorSend}
+        />
+      )}
+
+      {/* PDF Document Preview Modal */}
+      {showDocumentPreview && documentFile && (
+        <DocumentPreviewModal
+          file={documentFile}
+          onClose={() => {
+            setShowDocumentPreview(false);
+            setDocumentFile(null);
+          }}
+          onSend={handleDocumentSend}
+          uploading={documentUploading}
+          uploadProgress={documentUploadProgress}
         />
       )}
 
@@ -1024,7 +1433,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
               {/* Attach tab */}
               {activeTab === 'attach' && (
                 <div className="space-y-4">
-                  <div className="grid grid-cols-4 gap-3">
+                  <div className="grid grid-cols-5 gap-2 sm:gap-3">
                     {/* Camera */}
                     <button
                       onClick={() => {
@@ -1037,45 +1446,61 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
                           startCamera('photo');
                         }
                       }}
-                      className="flex flex-col items-center gap-2 p-3 rounded-xl bg-bg-surface hover:bg-bg-hover transition-colors"
+                      className="flex flex-col items-center gap-2 p-2 sm:p-3 rounded-xl bg-bg-surface hover:bg-bg-hover transition-colors"
                     >
-                      <div className="w-12 h-12 rounded-full bg-accent flex items-center justify-center">
-                        <Camera size={24} className="text-white" />
+                      <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-accent flex items-center justify-center">
+                        <Camera size={20} className="text-white sm:hidden" />
+                        <Camera size={24} className="text-white hidden sm:block" />
                       </div>
-                      <span className="text-xs text-text-primary">Caméra</span>
+                      <span className="text-[10px] sm:text-xs text-text-primary">Caméra</span>
                     </button>
                     
                     {/* Gallery */}
                     <button
                       onClick={() => imageInputRef.current?.click()}
-                      className="flex flex-col items-center gap-2 p-3 rounded-xl bg-bg-surface hover:bg-bg-hover transition-colors"
+                      className="flex flex-col items-center gap-2 p-2 sm:p-3 rounded-xl bg-bg-surface hover:bg-bg-hover transition-colors"
                     >
-                      <div className="w-12 h-12 rounded-full bg-accent flex items-center justify-center">
-                        <Image size={24} className="text-white" />
+                      <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-accent flex items-center justify-center">
+                        <Image size={20} className="text-white sm:hidden" />
+                        <Image size={24} className="text-white hidden sm:block" />
                       </div>
-                      <span className="text-xs text-text-primary">Galerie</span>
+                      <span className="text-[10px] sm:text-xs text-text-primary">Galerie</span>
                     </button>
                     
                     {/* Video */}
                     <button
                       onClick={() => videoInputRef.current?.click()}
-                      className="flex flex-col items-center gap-2 p-3 rounded-xl bg-bg-surface hover:bg-bg-hover transition-colors"
+                      className="flex flex-col items-center gap-2 p-2 sm:p-3 rounded-xl bg-bg-surface hover:bg-bg-hover transition-colors"
                     >
-                      <div className="w-12 h-12 rounded-full bg-accent flex items-center justify-center">
-                        <Video size={24} className="text-white" />
+                      <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-accent flex items-center justify-center">
+                        <Video size={20} className="text-white sm:hidden" />
+                        <Video size={24} className="text-white hidden sm:block" />
                       </div>
-                      <span className="text-xs text-text-primary">Vidéo</span>
+                      <span className="text-[10px] sm:text-xs text-text-primary">Vidéo</span>
+                    </button>
+                    
+                    {/* Audio */}
+                    <button
+                      onClick={() => audioInputRef.current?.click()}
+                      className="flex flex-col items-center gap-2 p-2 sm:p-3 rounded-xl bg-bg-surface hover:bg-bg-hover transition-colors"
+                    >
+                      <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-accent flex items-center justify-center">
+                        <Music size={20} className="text-white sm:hidden" />
+                        <Music size={24} className="text-white hidden sm:block" />
+                      </div>
+                      <span className="text-[10px] sm:text-xs text-text-primary">Audio</span>
                     </button>
                     
                     {/* Document */}
                     <button
                       onClick={() => fileInputRef.current?.click()}
-                      className="flex flex-col items-center gap-2 p-3 rounded-xl bg-bg-surface hover:bg-bg-hover transition-colors"
+                      className="flex flex-col items-center gap-2 p-2 sm:p-3 rounded-xl bg-bg-surface hover:bg-bg-hover transition-colors"
                     >
-                      <div className="w-12 h-12 rounded-full bg-accent flex items-center justify-center">
-                        <FileIcon size={24} className="text-white" />
+                      <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-accent flex items-center justify-center">
+                        <FileIcon size={20} className="text-white sm:hidden" />
+                        <FileIcon size={24} className="text-white hidden sm:block" />
                       </div>
-                      <span className="text-xs text-text-primary">Document</span>
+                      <span className="text-[10px] sm:text-xs text-text-primary">Document</span>
                     </button>
                   </div>
                 </div>
@@ -1267,6 +1692,13 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
               className="hidden"
             />
             <input
+              ref={audioInputRef}
+              type="file"
+              onChange={handleFileSelect}
+              accept="audio/*"
+              className="hidden"
+            />
+            <input
               ref={cameraInputRef}
               type="file"
               onChange={handleCameraCapture}
@@ -1332,11 +1764,49 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
               {preview && getFileType(selectedFile) === 'video' && (
                 <video src={preview} controls className="w-full h-auto max-h-96" />
               )}
+              {getFileType(selectedFile) === 'audio' && (
+                <AudioPreviewPlayer
+                  file={selectedFile}
+                  preview={preview}
+                />
+              )}
               {getFileType(selectedFile) === 'file' && (
-                <div className="p-8 text-center">
-                  <FileIcon size={48} className="mx-auto mb-2 text-text-tertiary" />
-                  <p className="text-sm text-text-secondary">{selectedFile.name}</p>
-                  <p className="text-xs text-text-tertiary mt-1">{formatFileSize(selectedFile.size)}</p>
+                <div className="p-4">
+                  {/* WhatsApp-style document preview card */}
+                  <div className="bg-bg-hover rounded-xl border border-bg-hover overflow-hidden">
+                    <div className="flex items-center gap-4 p-4">
+                      {/* Document type icon with colored background */}
+                      {(() => {
+                        const extension = getFileExtension(selectedFile.name);
+                        const { bgColor, icon } = getDocumentIconConfig(extension);
+                        return (
+                          <div className={`w-16 h-16 rounded-lg ${bgColor} flex items-center justify-center flex-shrink-0`}>
+                            {icon}
+                          </div>
+                        );
+                      })()}
+                      
+                      {/* File details */}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-base font-medium text-text-primary truncate">
+                          {selectedFile.name}
+                        </p>
+                        <div className="flex items-center gap-2 text-sm text-text-tertiary mt-1">
+                          <span>{formatFileSizeDisplay(selectedFile.size)}</span>
+                          <span>•</span>
+                          <span className="uppercase">{getFileExtension(selectedFile.name)}</span>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Extension badge at bottom */}
+                    <div className="px-4 pb-4">
+                      <div className="inline-flex items-center gap-1 px-2 py-1 rounded bg-bg-surface text-xs text-text-secondary">
+                        <FileIcon size={12} />
+                        <span className="uppercase font-medium">{getFileExtension(selectedFile.name)}</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -1369,7 +1839,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
               <button
                 onClick={handleUpload}
                 disabled={uploading}
-                className="flex-1 py-2 rounded-lg bg-gradient-to-r from-primary-500 to-primary-600 text-white hover:shadow-glow-primary transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                className="flex-1 py-2 rounded-lg bg-accent hover:bg-[#6a6ec8] text-white transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 {uploading ? (
                   <>

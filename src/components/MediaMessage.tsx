@@ -1,8 +1,82 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Download, File, Play, Copy, ChevronDown } from 'lucide-react';
+import { Download, File, Play, Copy, ChevronDown, FileText, FileSpreadsheet, FileImage, FileArchive } from 'lucide-react';
 import { MediaViewer } from './MediaViewer';
 import { calculateDisplayDimensions } from '@/lib/imageUtils';
 import { MessageHoverActions } from './MessageHoverActions';
+
+// Helper function to format file size
+const formatFileSize = (bytes?: number): string => {
+  if (!bytes) return '';
+  if (bytes < 1024) return bytes + ' o';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(0) + ' ko';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' Mo';
+};
+
+// Helper function to get file extension
+const getFileExtension = (filename?: string): string => {
+  if (!filename) return '';
+  const parts = filename.split('.');
+  return parts.length > 1 ? parts[parts.length - 1].toLowerCase() : '';
+};
+
+// Helper function to get icon background color based on file type
+const getFileIconConfig = (extension: string): { bgColor: string; icon: React.ReactNode } => {
+  const ext = extension.toLowerCase();
+  
+  // PDF files - Red
+  if (ext === 'pdf') {
+    return {
+      bgColor: 'bg-red-500',
+      icon: <FileText size={24} className="text-white" />
+    };
+  }
+  
+  // Word documents - Blue
+  if (['doc', 'docx', 'odt', 'rtf'].includes(ext)) {
+    return {
+      bgColor: 'bg-blue-500',
+      icon: <FileText size={24} className="text-white" />
+    };
+  }
+  
+  // Excel/Spreadsheets - Green
+  if (['xls', 'xlsx', 'csv', 'ods'].includes(ext)) {
+    return {
+      bgColor: 'bg-green-500',
+      icon: <FileSpreadsheet size={24} className="text-white" />
+    };
+  }
+  
+  // PowerPoint - Orange
+  if (['ppt', 'pptx', 'odp'].includes(ext)) {
+    return {
+      bgColor: 'bg-orange-500',
+      icon: <FileImage size={24} className="text-white" />
+    };
+  }
+  
+  // Archives - Purple
+  if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) {
+    return {
+      bgColor: 'bg-purple-500',
+      icon: <FileArchive size={24} className="text-white" />
+    };
+  }
+  
+  // Text files - Gray
+  if (['txt', 'md', 'json', 'xml', 'html', 'css', 'js'].includes(ext)) {
+    return {
+      bgColor: 'bg-gray-500',
+      icon: <FileText size={24} className="text-white" />
+    };
+  }
+  
+  // Default - Teal/Primary
+  return {
+    bgColor: 'bg-[#787add]',
+    icon: <File size={24} className="text-white" />
+  };
+};
 
 interface MediaMessageProps {
   url: string;
@@ -130,7 +204,7 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
   const [videoDuration, setVideoDuration] = useState<string>('');
   const videoRef = useRef<HTMLVideoElement>(null);
 
-  const formatFileSize = (bytes?: number): string => {
+  const formatFileSizeLocal = (bytes?: number): string => {
     if (!bytes) return '';
     if (bytes < 1024) return bytes + ' B';
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
@@ -158,6 +232,11 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
     } catch (error) {
       console.error('Error downloading file:', error);
     }
+  };
+
+  // Open file in new tab - browser will either display it or prompt download
+  const handleOpenFile = () => {
+    window.open(url, '_blank', 'noopener,noreferrer');
   };
 
   // Determine media type for viewer (handle GIF detection)
@@ -424,25 +503,205 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
     );
   }
 
-  // File type
+  // File type - WhatsApp-style document preview
+  const extension = getFileExtension(fileName);
+  const { bgColor, icon } = getFileIconConfig(extension);
+  const isPDF = extension === 'pdf';
+  const hasThumbnail = isPDF && thumbnail;
+  
+  // Format timestamp
+  const formatTimestamp = (ts: string) => {
+    return new Date(ts).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  };
+  
+  // Render status checkmarks
+  const renderStatusCheck = () => {
+    if (!isOwn) return null;
+    if (status === 'read') {
+      return (
+        <svg width="16" height="11" viewBox="0 0 16 11" fill="none">
+          <path d="M1.5 5.5L4.5 8.5L10.5 2.5" stroke="#53bdeb" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          <path d="M5.5 5.5L8.5 8.5L14.5 2.5" stroke="#53bdeb" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      );
+    }
+    if (status === 'delivered') {
+      return (
+        <svg width="16" height="11" viewBox="0 0 16 11" fill="none">
+          <path d="M1.5 5.5L4.5 8.5L10.5 2.5" stroke="rgba(255,255,255,0.7)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          <path d="M5.5 5.5L8.5 8.5L14.5 2.5" stroke="rgba(255,255,255,0.7)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      );
+    }
+    return (
+      <svg width="12" height="11" viewBox="0 0 16 11" fill="none">
+        <path d="M10.5 1L4.5 7L2 4.5" stroke="rgba(255,255,255,0.7)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    );
+  };
+  
+  // Get Word-style icon for document types
+  const getWordStyleIcon = (ext: string) => {
+    const e = ext.toLowerCase();
+    if (['doc', 'docx', 'odt', 'rtf'].includes(e)) {
+      return (
+        <div className="w-11 h-11 rounded-lg bg-blue-500 flex items-center justify-center flex-shrink-0">
+          <span className="text-white font-bold text-xl">W</span>
+        </div>
+      );
+    }
+    if (['xls', 'xlsx', 'csv', 'ods'].includes(e)) {
+      return (
+        <div className="w-11 h-11 rounded-lg bg-green-600 flex items-center justify-center flex-shrink-0">
+          <span className="text-white font-bold text-xl">X</span>
+        </div>
+      );
+    }
+    if (['ppt', 'pptx', 'odp'].includes(e)) {
+      return (
+        <div className="w-11 h-11 rounded-lg bg-orange-600 flex items-center justify-center flex-shrink-0">
+          <span className="text-white font-bold text-xl">P</span>
+        </div>
+      );
+    }
+    // Default icon for other file types
+    return (
+      <div className={`w-11 h-11 rounded-lg ${bgColor} flex items-center justify-center flex-shrink-0`}>
+        {icon}
+      </div>
+    );
+  };
+  
   return (
-    <div className="flex items-center gap-3 p-3 rounded-lg bg-glass-surface-medium border border-glass-border max-w-[240px] sm:max-w-[280px]">
-      <div className="w-10 h-10 rounded-lg bg-primary-500/20 flex items-center justify-center flex-shrink-0">
-        <File size={20} className="text-primary-500" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium truncate">{fileName || 'Fichier'}</p>
-        {fileSize && (
-          <p className="text-xs text-text-tertiary">{formatFileSize(fileSize)}</p>
-        )}
-      </div>
-      <button
-        onClick={handleDownload}
-        className="p-2 rounded-full hover:bg-white/10 transition-colors flex-shrink-0"
-        aria-label="Télécharger"
-      >
-        <Download size={18} className="text-text-tertiary" />
-      </button>
+    <div className="relative">
+      {/* Hover Actions Button */}
+      {onOpenMenu && (
+        <MessageHoverActions
+          isVisible={showHoverActions}
+          isOwn={isOwn}
+          onOpenMenu={onOpenMenu}
+        />
+      )}
+      
+      {/* PDF with thumbnail - App style with #787add accent */}
+      {hasThumbnail ? (
+        <div className="rounded-xl overflow-hidden max-w-[320px]">
+          {/* Thumbnail image of first page - clickable */}
+          <div
+            className="relative bg-white cursor-pointer"
+            onClick={handleOpenFile}
+          >
+            <img
+              src={thumbnail}
+              alt={fileName || 'PDF'}
+              className="w-full h-auto max-h-[200px] object-cover object-top"
+            />
+          </div>
+          
+          {/* File info section - accent color background */}
+          <div className="bg-[#5a5cc9] p-3">
+            <div className="flex items-start gap-3">
+              {/* PDF icon badge with PDF label */}
+              <div className="w-11 h-11 rounded-lg bg-red-500 flex flex-col items-center justify-center flex-shrink-0">
+                <FileText size={16} className="text-white" />
+                <span className="text-white text-[8px] font-bold mt-0.5">PDF</span>
+              </div>
+              
+              {/* File details */}
+              <div className="flex-1 min-w-0">
+                <p className="text-white text-[15px] font-medium leading-tight line-clamp-2">
+                  {fileName || 'Document.pdf'}
+                </p>
+                <p className="text-white/70 text-[13px] mt-1">
+                  1 page • PDF • {formatFileSize(fileSize)}
+                </p>
+              </div>
+            </div>
+            
+            {/* Timestamp row - right aligned */}
+            <div className="flex justify-end mt-2">
+              <div className="flex items-center gap-1">
+                <span className="text-[11px] text-white/70">
+                  {formatTimestamp(timestamp)}
+                </span>
+                {renderStatusCheck()}
+              </div>
+            </div>
+          </div>
+          
+          {/* Action buttons - Ouvrir / Enregistrer sous */}
+          <div className="bg-[#4a4cb9] flex border-t border-[#6a6cd9]">
+            <button
+              onClick={handleOpenFile}
+              className="flex-1 py-3 text-white text-sm font-medium hover:bg-[#5a5cc9] transition-colors"
+            >
+              Ouvrir
+            </button>
+            <div className="w-px bg-[#6a6cd9]" />
+            <button
+              onClick={handleDownload}
+              className="flex-1 py-3 text-white text-sm font-medium hover:bg-[#5a5cc9] transition-colors"
+            >
+              Enregistrer sous...
+            </button>
+          </div>
+        </div>
+      ) : (
+        /* Standard document card - for Word, Excel, etc. */
+        <div className="rounded-xl overflow-hidden max-w-[320px]">
+          {/* Document info section - accent color background */}
+          <div className="bg-[#5a5cc9] p-3">
+            <div className="flex items-start gap-3">
+              {/* Document type icon - Word/Excel style */}
+              {getWordStyleIcon(extension)}
+              
+              {/* File details */}
+              <div className="flex-1 min-w-0">
+                <p className="text-white text-[15px] font-medium leading-tight line-clamp-2">
+                  {fileName || 'Document'}
+                </p>
+                <p className="text-white/70 text-[13px] mt-1">
+                  {extension.toUpperCase()} • {formatFileSize(fileSize)}
+                </p>
+              </div>
+            </div>
+            
+            {/* Timestamp row - right aligned */}
+            <div className="flex justify-end mt-2">
+              <div className="flex items-center gap-1">
+                <span className="text-[11px] text-white/70">
+                  {formatTimestamp(timestamp)}
+                </span>
+                {renderStatusCheck()}
+              </div>
+            </div>
+          </div>
+          
+          {/* Action buttons - Ouvrir / Enregistrer sous */}
+          <div className="bg-[#4a4cb9] flex border-t border-[#6a6cd9]">
+            <button
+              onClick={handleOpenFile}
+              className="flex-1 py-3 text-white text-sm font-medium hover:bg-[#5a5cc9] transition-colors"
+            >
+              Ouvrir
+            </button>
+            <div className="w-px bg-[#6a6cd9]" />
+            <button
+              onClick={handleDownload}
+              className="flex-1 py-3 text-white text-sm font-medium hover:bg-[#5a5cc9] transition-colors"
+            >
+              Enregistrer sous...
+            </button>
+          </div>
+        </div>
+      )}
+      
+      {/* Caption below if present */}
+      {caption && (
+        <p className={`mt-1.5 text-sm whitespace-pre-wrap break-words ${isOwn ? 'text-white' : 'text-text-primary'}`}>
+          {caption}
+        </p>
+      )}
     </div>
   );
 };

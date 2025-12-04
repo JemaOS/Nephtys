@@ -16,6 +16,7 @@ import { MediaMessage } from '@/components/MediaMessage'
 import { MediaViewer } from '@/components/MediaViewer'
 import { VoiceRecorder } from '@/components/VoiceRecorder'
 import { VoiceMessage } from '@/components/VoiceMessage'
+import { AudioFilePlayer } from '@/components/AudioFilePlayer'
 import { CallScreen } from '@/components/CallScreen'
 import { ConversationInfo } from '@/components/ConversationInfo'
 import { useMessageReactions } from '@/hooks/useMessageReactions'
@@ -1360,7 +1361,13 @@ export function ChatViewPage() {
             </div>
             <div className="flex items-center gap-1">
               <button
-                onClick={() => setReplyToMessage(messages.find(m => selectedMessages.has(m.id)) || null)}
+                onClick={() => {
+                  const selectedMsg = messages.find(m => selectedMessages.has(m.id))
+                  if (selectedMsg) {
+                    setReplyToMessage(selectedMsg)
+                    exitSelectionMode()
+                  }
+                }}
                 disabled={selectedMessages.size !== 1}
                 className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1] disabled:opacity-50"
                 title="Répondre"
@@ -1376,7 +1383,15 @@ export function ChatViewPage() {
                 <Trash2 size={20} />
               </button>
               <button
-                onClick={handleBulkForward}
+                onClick={() => {
+                  // Get the first selected message to forward immediately
+                  const selectedMsgs = messages.filter(m => selectedMessages.has(m.id))
+                  if (selectedMsgs.length > 0) {
+                    setMessageToForward(selectedMsgs[0])
+                    setShowForwardModal(true)
+                    exitSelectionMode()
+                  }
+                }}
                 disabled={selectedMessages.size === 0}
                 className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1] disabled:opacity-50"
                 title="Transférer"
@@ -1485,7 +1500,7 @@ export function ChatViewPage() {
             </div>
           </div>
         ) : (
-        <div className="bg-bg-surface px-2 sm:px-4 py-2 sm:py-3 flex items-center gap-2 sm:gap-4">
+        <div className="bg-bg-surface px-2 sm:px-4 py-2 sm:py-3 flex items-center gap-2 sm:gap-4 sticky top-0 z-50">
           <button onClick={() => navigate('/chats')} className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1]">
             <ArrowLeft size={20} />
           </button>
@@ -1726,6 +1741,8 @@ export function ChatViewPage() {
                 
                 // Check if this is an image or video message (should be rendered without bubble like WhatsApp)
                 const isMediaMessage = message.media_url && message.media_type && (message.media_type === 'image' || message.media_type === 'video') && message.type !== 'audio'
+                // Check if this is a document/file message
+                const isDocumentMessage = message.media_url && message.media_type === 'file'
                 // Long press handlers for mobile
                 const handleTouchStart = (msg: Message) => {
                   if (!isMobile) return
@@ -2092,6 +2109,53 @@ export function ChatViewPage() {
                               />
                           </div>
                         </div>
+                      ) : isDocumentMessage ? (
+                        /* Document/File message - WhatsApp style document card */
+                        <div className="relative">
+                          {/* Hover Actions for document messages */}
+                          <MessageHoverActions
+                            isVisible={hoveredMessageId === message.id}
+                            isOwn={isOwn}
+                            onOpenMenu={(e) => {
+                              const rect = e.currentTarget.getBoundingClientRect();
+                              setContextMenu({
+                                isOpen: true,
+                                position: { x: rect.left, y: rect.bottom + 5 },
+                                message,
+                              });
+                            }}
+                          />
+                          <MediaMessage
+                            url={message.media_url!}
+                            type="file"
+                            fileName={message.file_name}
+                            fileSize={message.file_size}
+                            caption={message.content}
+                            thumbnail={message.media_thumbnail ?? undefined}
+                            senderName={message.sender_id === user?.id
+                              ? (profile?.display_name || profile?.username || 'Vous')
+                              : (otherUser?.display_name || otherUser?.username || 'Utilisateur')
+                            }
+                            timestamp={message.created_at}
+                            isOwn={message.sender_id === user?.id}
+                            isStarred={message.is_starred || false}
+                            messageId={message.id}
+                            status={message.status as 'sent' | 'delivered' | 'read' | undefined}
+                            onForward={() => handleForwardMessage(message)}
+                            onStar={() => handleStarMessage(message.id)}
+                            onPin={() => handlePinMessage(message.id)}
+                            onReaction={(emoji) => addReaction(message.id, emoji)}
+                            showHoverActions={hoveredMessageId === message.id}
+                            onOpenMenu={(e) => {
+                              const rect = e.currentTarget.getBoundingClientRect();
+                              setContextMenu({
+                                isOpen: true,
+                                position: { x: rect.left, y: rect.bottom + 5 },
+                                message,
+                              });
+                            }}
+                          />
+                        </div>
                       ) : (
                       <div className={`relative px-3 py-2 rounded-2xl ${isOwn ? 'bg-[#787add] text-white rounded-br-none' : 'bg-bg-surface text-text-primary rounded-bl-none'}`}>
                         {/* Hover Actions (Chevron dropdown) - Inside message bubble */}
@@ -2149,7 +2213,18 @@ export function ChatViewPage() {
                           return null
                         })()}
                         {message.type === 'audio' && message.media_url && (
-                          <VoiceMessage url={message.media_url} duration={message.ephemeral_duration || 0} isOwn={isOwn} />
+                          // Check if it's a voice message (recorded) or an audio file (uploaded)
+                          // Voice messages have file names starting with 'voice-'
+                          message.file_name?.startsWith('voice-') ? (
+                            <VoiceMessage url={message.media_url} duration={message.ephemeral_duration || 0} isOwn={isOwn} />
+                          ) : (
+                            <AudioFilePlayer
+                              url={message.media_url}
+                              fileName={message.file_name || undefined}
+                              duration={message.ephemeral_duration || undefined}
+                              isOwn={isOwn}
+                            />
+                          )
                         )}
                         {(!message.media_url && message.content) && (
                           <>
@@ -2196,7 +2271,7 @@ export function ChatViewPage() {
                         )}
                         {/* Only show timestamp in message bubble for non-media messages (media messages show timestamp via MediaTimestampOverlay) */}
                         {!(message.media_url && message.media_type && message.type !== 'audio') && (
-                        <div className={`flex items-center justify-end gap-1 mt-1 text-xs ${isOwn ? 'text-text-secondary' : 'text-text-secondary'}`}>
+                        <div className={`flex items-center justify-end gap-1 mt-1 text-xs ${isOwn ? 'text-[#2d2f6e]' : 'text-text-secondary'}`}>
                           {message.is_starred && (
                             <Star size={12} className="fill-current" />
                           )}
