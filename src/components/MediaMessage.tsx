@@ -224,65 +224,6 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
   const isPWA = window.matchMedia('(display-mode: standalone)').matches ||
                 (window.navigator as any).standalone === true;
 
-  const handleDownload = async () => {
-    try {
-      const response = await fetch(url);
-      const blob = await response.blob();
-      const downloadUrl = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = downloadUrl;
-      a.download = fileName || 'download';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(downloadUrl);
-    } catch (error) {
-      console.error('Error downloading file:', error);
-    }
-  };
-
-  // Open file with native app on mobile, or in new tab on desktop
-  const handleOpenFile = async () => {
-    // On mobile/PWA, download the file to trigger native app opening
-    if (isMobile || isPWA) {
-      try {
-        // Fetch the file
-        const response = await fetch(url);
-        const blob = await response.blob();
-        
-        // Get the correct MIME type
-        const mimeType = blob.type || getMimeType(fileName || '');
-        
-        // Create a blob with the correct MIME type
-        const typedBlob = new Blob([blob], { type: mimeType });
-        const downloadUrl = window.URL.createObjectURL(typedBlob);
-        
-        // Create a download link
-        const a = document.createElement('a');
-        a.href = downloadUrl;
-        a.download = fileName || 'document';
-        
-        // On Android, setting target="_blank" can help trigger the "Open with" dialog
-        // But we primarily rely on the download attribute
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        
-        // Clean up after a delay to allow the download to start
-        setTimeout(() => {
-          window.URL.revokeObjectURL(downloadUrl);
-        }, 1000);
-      } catch (error) {
-        console.error('Error opening file:', error);
-        // Fallback to opening in new tab
-        window.open(url, '_blank', 'noopener,noreferrer');
-      }
-    } else {
-      // On desktop, open in new tab
-      window.open(url, '_blank', 'noopener,noreferrer');
-    }
-  };
-
   // Helper to get MIME type from filename
   const getMimeType = (filename: string): string => {
     const ext = filename.split('.').pop()?.toLowerCase() || '';
@@ -303,6 +244,85 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
       'gz': 'application/gzip',
     };
     return mimeTypes[ext] || 'application/octet-stream';
+  };
+
+  const handleDownload = async () => {
+    try {
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = fileName || 'download';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(downloadUrl);
+    } catch (error) {
+      console.error('Error downloading file:', error);
+    }
+  };
+
+  // Open file with native app using Web Share API (shows "Open with" dialog on mobile)
+  const handleOpenFile = async () => {
+    // On mobile/PWA, try to use Web Share API to show "Open with" dialog
+    if (isMobile || isPWA) {
+      try {
+        // Fetch the file
+        const response = await fetch(url);
+        const blob = await response.blob();
+        
+        // Get the correct MIME type
+        const mimeType = blob.type || getMimeType(fileName || '');
+        
+        // Create a File object (required for Web Share API)
+        const shareFile = new window.File([blob], fileName || 'document', { type: mimeType });
+        
+        // Check if Web Share API with files is supported
+        if (navigator.canShare && navigator.canShare({ files: [shareFile] })) {
+          // Use Web Share API - this shows the native "Open with" / "Share" dialog
+          await navigator.share({
+            files: [shareFile],
+            title: fileName || 'Document',
+          });
+          return;
+        }
+        
+        // Fallback: Try to open directly (some browsers support this)
+        const fileUrl = URL.createObjectURL(shareFile);
+        
+        // On Android Chrome, opening a blob URL can trigger the "Open with" dialog
+        const newWindow = window.open(fileUrl, '_blank');
+        
+        // If popup was blocked or didn't work, fall back to download
+        if (!newWindow) {
+          const a = document.createElement('a');
+          a.href = fileUrl;
+          a.download = fileName || 'document';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        }
+        
+        // Clean up after a delay
+        setTimeout(() => {
+          URL.revokeObjectURL(fileUrl);
+        }, 5000);
+      } catch (error: any) {
+        // If user cancelled the share dialog, don't show error
+        if (error.name === 'AbortError') {
+          console.log('Share cancelled by user');
+          return;
+        }
+        
+        console.error('Error opening file:', error);
+        // Fallback to download
+        handleDownload();
+      }
+    } else {
+      // On desktop, open in new tab
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
   };
 
   // Determine media type for viewer (handle GIF detection)
