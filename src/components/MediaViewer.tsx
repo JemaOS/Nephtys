@@ -1254,14 +1254,14 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
                   onTouchEnd={handleProgressBarTouchEnd}
                 >
                   <div className="w-full h-1 bg-white/30 rounded-full relative">
-                    {/* Progress fill */}
+                    {/* Progress fill - using app accent color */}
                     <div
-                      className="absolute left-0 top-0 h-full bg-[#25D366] rounded-full transition-all"
+                      className="absolute left-0 top-0 h-full bg-[#787add] rounded-full transition-all"
                       style={{ width: `${progressPercentage}%` }}
                     />
-                    {/* Seek handle */}
+                    {/* Seek handle - using app accent color */}
                     <div
-                      className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-[#25D366] rounded-full shadow-lg transition-transform group-hover:scale-125"
+                      className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-[#787add] rounded-full shadow-lg transition-transform group-hover:scale-125"
                       style={{ left: `calc(${progressPercentage}% - 8px)` }}
                     />
                   </div>
