@@ -2,7 +2,7 @@ import { useEffect, useRef, useCallback } from 'react'
 import { supabase, updateLastSuccessfulQuery, isConnectionStale, forceReconnectRealtime } from '@/lib/supabase'
 import { initializePresence, cleanupPresence } from '@/hooks/usePresence'
 
-// Configuration for reconnection - OPTIMIZED FOR PWA v5 (WITH HEALTH CHECK)
+// Configuration for reconnection - OPTIMIZED FOR PWA v6 (FORCE RELOAD STRATEGY)
 const RECONNECT_DELAY_PWA = 0 // No delay for PWA - reconnect immediately
 const RECONNECT_DELAY_BROWSER = 300 // Reduced delay for regular browser
 const BACKGROUND_THRESHOLD_PWA = 1000 // 1 second for PWA - reconnect VERY fast
@@ -12,6 +12,15 @@ const KEEPALIVE_INTERVAL = 30000 // Send keepalive to SW every 30 seconds
 const RECONNECT_DEBOUNCE = 2000 // Minimum time between reconnections (2 seconds)
 const RECONNECT_TIMEOUT = 10000 // Maximum time for a reconnection attempt (10 seconds)
 const ACTIVITY_CHECK_INTERVAL = 30000 // Check connection health every 30 seconds during active use
+
+// CRITICAL: Force page reload after this duration in background (Android PWA fix)
+// This is the nuclear option - if the app was in background for more than 2 minutes,
+// force a full page reload to ensure clean state
+const FORCE_RELOAD_THRESHOLD_PWA = 120000 // 2 minutes for PWA
+const FORCE_RELOAD_THRESHOLD_BROWSER = 300000 // 5 minutes for browser
+
+// Track if we've already scheduled a reload to prevent multiple reloads
+let reloadScheduled = false
 
 /**
  * Hook to handle Supabase reconnection when PWA comes back from background
@@ -204,7 +213,75 @@ export function useSupabaseReconnect(userId: string | null) {
     return true
   }, [refreshSession, reconnectRealtime, sendToServiceWorker])
 
-  // Handle visibility change - ULTRA OPTIMIZED for PWA
+  // Force page reload - nuclear option for stuck PWA
+  const forcePageReload = useCallback(() => {
+    if (reloadScheduled) {
+      console.log('[Reconnect] Reload already scheduled, skipping')
+      return
+    }
+    
+    reloadScheduled = true
+    console.log('[Reconnect] FORCING PAGE RELOAD - nuclear option for stuck PWA')
+    
+    // Clear all caches before reload
+    if ('caches' in window) {
+      caches.keys().then(names => {
+        names.forEach(name => {
+          if (name.includes('dynamic') || name.includes('nephtys-dynamic')) {
+            caches.delete(name)
+          }
+        })
+      })
+    }
+    
+    // Notify service worker to clear cache
+    sendToServiceWorker('CLEAR_CACHE')
+    
+    // Small delay to let cache clearing complete
+    setTimeout(() => {
+      // Use location.reload(true) for hard reload (bypass cache)
+      // Note: The 'true' parameter is deprecated but still works in most browsers
+      window.location.reload()
+    }, 100)
+  }, [sendToServiceWorker])
+
+  // Test connection health with a simple query
+  const testConnectionHealth = useCallback(async (): Promise<boolean> => {
+    try {
+      // Use Promise.race with timeout since Supabase doesn't support AbortController directly
+      const timeoutPromise = new Promise<{ error: { message: string } }>((_, reject) =>
+        setTimeout(() => reject(new Error('Connection test timeout')), 5000)
+      )
+      
+      // Simple query to test connection - just check if we can reach the database
+      const queryPromise = supabase
+        .from('profiles')
+        .select('id')
+        .limit(1)
+      
+      const result = await Promise.race([queryPromise, timeoutPromise])
+      
+      // Check if we got a valid response (even empty is OK)
+      if (result && 'error' in result && result.error) {
+        const errorObj = result.error as any
+        // Some errors are OK (like no rows found)
+        if (errorObj.code === 'PGRST116') {
+          console.log('[Reconnect] Connection health check passed (no rows)')
+          return true
+        }
+        console.log('[Reconnect] Connection health check failed:', errorObj.message || 'Unknown error')
+        return false
+      }
+      
+      console.log('[Reconnect] Connection health check passed')
+      return true
+    } catch (e) {
+      console.log('[Reconnect] Connection health check error:', e)
+      return false
+    }
+  }, [])
+
+  // Handle visibility change - ULTRA OPTIMIZED for PWA with FORCE RELOAD fallback
   const handleVisibilityChange = useCallback(async () => {
     const now = Date.now()
     const isPWA = checkIsPWA()
@@ -228,6 +305,26 @@ export function useSupabaseReconnect(userId: string | null) {
       console.log(`[Reconnect] App coming to foreground after ${Math.round(backgroundDuration / 1000)}s (PWA: ${isPWA})`)
       lastVisibleTime.current = now
 
+      // Determine force reload threshold based on context
+      const forceReloadThreshold = isPWA ? FORCE_RELOAD_THRESHOLD_PWA : FORCE_RELOAD_THRESHOLD_BROWSER
+
+      // NUCLEAR OPTION: If we were in background for too long, force a full page reload
+      // This is the most reliable way to recover from a stuck state on Android PWA
+      if (backgroundDuration > forceReloadThreshold) {
+        console.log(`[Reconnect] Background duration (${Math.round(backgroundDuration / 1000)}s) exceeded force reload threshold (${Math.round(forceReloadThreshold / 1000)}s)`)
+        
+        // First, try a quick connection test
+        const isHealthy = await testConnectionHealth()
+        
+        if (!isHealthy) {
+          console.log('[Reconnect] Connection unhealthy after long background, forcing page reload...')
+          forcePageReload()
+          return
+        } else {
+          console.log('[Reconnect] Connection still healthy, proceeding with normal reconnect')
+        }
+      }
+
       // Determine threshold based on context
       const threshold = isPWA ? BACKGROUND_THRESHOLD_PWA : BACKGROUND_THRESHOLD_BROWSER
 
@@ -238,7 +335,18 @@ export function useSupabaseReconnect(userId: string | null) {
         // NO DELAY - reconnect immediately
         // For PWA, always do full reconnect
         // For browser, also do full reconnect if background was long enough
-        performReconnect() // Don't await - let it run in parallel
+        const success = await performReconnect()
+        
+        // If reconnect failed and we're on PWA, try force reload
+        if (!success && isPWA && backgroundDuration > 30000) {
+          console.log('[Reconnect] Reconnect failed after 30s+ background on PWA, testing connection...')
+          const isHealthy = await testConnectionHealth()
+          if (!isHealthy) {
+            console.log('[Reconnect] Connection test failed, forcing page reload...')
+            forcePageReload()
+            return
+          }
+        }
       } else if (isPWA && backgroundDuration > 500) {
         // For PWA, even short backgrounds should trigger a refresh event
         // This ensures data is always fresh
@@ -258,7 +366,7 @@ export function useSupabaseReconnect(userId: string | null) {
         }, SESSION_CHECK_INTERVAL)
       }
     }
-  }, [checkIsPWA, performReconnect, refreshSession, userId])
+  }, [checkIsPWA, performReconnect, refreshSession, userId, forcePageReload, testConnectionHealth])
 
   // Handle online/offline events - FASTER
   const handleOnline = useCallback(async () => {

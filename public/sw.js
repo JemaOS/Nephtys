@@ -1,9 +1,9 @@
 // Service Worker for Nephtys PWA
-// Version: 5.0.0 - CRITICAL FIX: Don't intercept Supabase requests
+// Version: 6.0.0 - FORCE RELOAD STRATEGY for stuck PWA on Android
 
-const CACHE_NAME = 'nephtys-app-v5';
-const STATIC_CACHE = 'nephtys-static-v5';
-const DYNAMIC_CACHE = 'nephtys-dynamic-v5';
+const CACHE_NAME = 'nephtys-app-v6';
+const STATIC_CACHE = 'nephtys-static-v6';
+const DYNAMIC_CACHE = 'nephtys-dynamic-v6';
 
 // Static assets to cache immediately (shell)
 const STATIC_ASSETS = [
@@ -342,11 +342,17 @@ self.addEventListener('message', (event) => {
   }
   
   if (event.data && event.data.type === 'CLEAR_CACHE') {
+    console.log('[SW] Clearing ALL caches (force reload requested)');
     event.waitUntil(
       caches.keys().then((cacheNames) => {
         return Promise.all(
-          cacheNames.map((cacheName) => caches.delete(cacheName))
+          cacheNames.map((cacheName) => {
+            console.log('[SW] Deleting cache:', cacheName);
+            return caches.delete(cacheName);
+          })
         );
+      }).then(() => {
+        console.log('[SW] All caches cleared');
       })
     );
   }
@@ -371,6 +377,34 @@ self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'KEEPALIVE') {
     lastActiveTime = Date.now();
   }
+  
+  // Handle force reload request - clear everything and unregister
+  if (event.data && event.data.type === 'FORCE_RELOAD') {
+    console.log('[SW] Force reload requested - clearing all caches');
+    event.waitUntil(
+      caches.keys().then((cacheNames) => {
+        return Promise.all(
+          cacheNames.map((cacheName) => caches.delete(cacheName))
+        );
+      }).then(() => {
+        console.log('[SW] All caches cleared for force reload');
+        // Notify all clients to reload
+        return self.clients.matchAll();
+      }).then((clients) => {
+        clients.forEach((client) => {
+          client.postMessage({ type: 'RELOAD_NOW' });
+        });
+      })
+    );
+  }
+  
+  // Health check - respond to ping from app
+  if (event.data && event.data.type === 'HEALTH_CHECK') {
+    // Respond immediately to confirm SW is alive
+    if (event.ports && event.ports[0]) {
+      event.ports[0].postMessage({ status: 'alive', timestamp: Date.now() });
+    }
+  }
 });
 
 // Periodic check for stale connections (every 30 seconds)
@@ -385,4 +419,4 @@ setInterval(() => {
   }
 }, 30000);
 
-console.log('[SW] Service worker loaded - v5.0.0 (Supabase bypass)');
+console.log('[SW] Service worker loaded - v6.0.0 (Force reload strategy)');
