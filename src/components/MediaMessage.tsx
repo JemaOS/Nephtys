@@ -217,6 +217,13 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // Detect if we're on mobile
+  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  
+  // Detect if we're in a PWA
+  const isPWA = window.matchMedia('(display-mode: standalone)').matches ||
+                (window.navigator as any).standalone === true;
+
   const handleDownload = async () => {
     try {
       const response = await fetch(url);
@@ -234,9 +241,68 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
     }
   };
 
-  // Open file in new tab - browser will either display it or prompt download
-  const handleOpenFile = () => {
-    window.open(url, '_blank', 'noopener,noreferrer');
+  // Open file with native app on mobile, or in new tab on desktop
+  const handleOpenFile = async () => {
+    // On mobile/PWA, download the file to trigger native app opening
+    if (isMobile || isPWA) {
+      try {
+        // Fetch the file
+        const response = await fetch(url);
+        const blob = await response.blob();
+        
+        // Get the correct MIME type
+        const mimeType = blob.type || getMimeType(fileName || '');
+        
+        // Create a blob with the correct MIME type
+        const typedBlob = new Blob([blob], { type: mimeType });
+        const downloadUrl = window.URL.createObjectURL(typedBlob);
+        
+        // Create a download link
+        const a = document.createElement('a');
+        a.href = downloadUrl;
+        a.download = fileName || 'document';
+        
+        // On Android, setting target="_blank" can help trigger the "Open with" dialog
+        // But we primarily rely on the download attribute
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        
+        // Clean up after a delay to allow the download to start
+        setTimeout(() => {
+          window.URL.revokeObjectURL(downloadUrl);
+        }, 1000);
+      } catch (error) {
+        console.error('Error opening file:', error);
+        // Fallback to opening in new tab
+        window.open(url, '_blank', 'noopener,noreferrer');
+      }
+    } else {
+      // On desktop, open in new tab
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+  };
+
+  // Helper to get MIME type from filename
+  const getMimeType = (filename: string): string => {
+    const ext = filename.split('.').pop()?.toLowerCase() || '';
+    const mimeTypes: Record<string, string> = {
+      'pdf': 'application/pdf',
+      'doc': 'application/msword',
+      'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'xls': 'application/vnd.ms-excel',
+      'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'ppt': 'application/vnd.ms-powerpoint',
+      'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'txt': 'text/plain',
+      'csv': 'text/csv',
+      'zip': 'application/zip',
+      'rar': 'application/x-rar-compressed',
+      '7z': 'application/x-7z-compressed',
+      'tar': 'application/x-tar',
+      'gz': 'application/gzip',
+    };
+    return mimeTypes[ext] || 'application/octet-stream';
   };
 
   // Determine media type for viewer (handle GIF detection)
