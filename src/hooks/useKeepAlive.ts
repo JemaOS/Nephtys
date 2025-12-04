@@ -3,9 +3,14 @@ import { useEffect, useRef, useCallback } from 'react';
 // Use any for Wake Lock to avoid type conflicts with native types
 // The Wake Lock API is still experimental and types vary across browsers
 
+// Configuration for auto-reload (last resort for stuck PWA)
+const MAX_RECONNECT_ATTEMPTS = 3; // After 3 failed reconnects, reload the page
+const FORCE_RELOAD_THRESHOLD = 60000; // 60 seconds without successful connection = force reload
+
 /**
  * Hook to keep the PWA alive on Android
  * Uses a Web Worker for heartbeat + Wake Lock API to prevent system throttling
+ * Includes auto-reload as last resort for completely stuck connections
  */
 export function useKeepAlive(
   onReconnectRequest: () => void,
@@ -14,6 +19,9 @@ export function useKeepAlive(
   const workerRef = useRef<Worker | null>(null);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   const isActiveRef = useRef(true);
+  const reconnectAttemptsRef = useRef(0);
+  const lastSuccessfulConnectionRef = useRef(Date.now());
+  const forceReloadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Request Wake Lock to prevent screen/app from sleeping
   const requestWakeLock = useCallback(async () => {
@@ -82,6 +90,47 @@ export function useKeepAlive(
     workerRef.current?.postMessage({ type: 'NETWORK_CHANGE', online: false });
   }, []);
 
+  // Force reload the page (last resort)
+  const forceReload = useCallback(() => {
+    console.log('[KeepAlive] FORCE RELOADING PAGE - connection stuck');
+    // Clear any stored state that might be causing issues
+    sessionStorage.setItem('pwa-force-reload', Date.now().toString());
+    // Force a hard reload
+    window.location.reload();
+  }, []);
+
+  // Mark connection as successful (call this from outside when data loads)
+  const markConnectionSuccess = useCallback(() => {
+    lastSuccessfulConnectionRef.current = Date.now();
+    reconnectAttemptsRef.current = 0;
+    // Clear any pending force reload
+    if (forceReloadTimeoutRef.current) {
+      clearTimeout(forceReloadTimeoutRef.current);
+      forceReloadTimeoutRef.current = null;
+    }
+  }, []);
+
+  // Check if we should force reload
+  const checkForceReload = useCallback(() => {
+    const timeSinceSuccess = Date.now() - lastSuccessfulConnectionRef.current;
+    
+    // If it's been too long since successful connection and document is visible
+    if (timeSinceSuccess > FORCE_RELOAD_THRESHOLD && !document.hidden) {
+      console.log(`[KeepAlive] No successful connection for ${Math.round(timeSinceSuccess / 1000)}s`);
+      
+      // Check if we've already tried reloading recently
+      const lastReload = sessionStorage.getItem('pwa-force-reload');
+      const timeSinceLastReload = lastReload ? Date.now() - parseInt(lastReload) : Infinity;
+      
+      // Only reload if we haven't reloaded in the last 2 minutes
+      if (timeSinceLastReload > 120000) {
+        forceReload();
+      } else {
+        console.log('[KeepAlive] Already reloaded recently, skipping force reload');
+      }
+    }
+  }, [forceReload]);
+
   // Initialize worker and Wake Lock
   useEffect(() => {
     if (!enabled) return;
@@ -97,6 +146,10 @@ export function useKeepAlive(
     }
 
     console.log('[KeepAlive] Initializing keep-alive system for PWA...');
+    
+    // Reset connection tracking
+    lastSuccessfulConnectionRef.current = Date.now();
+    reconnectAttemptsRef.current = 0;
 
     // Create worker
     try {
@@ -107,6 +160,7 @@ export function useKeepAlive(
         let isActive = true;
         const HEARTBEAT_INTERVAL = 10000;
         const STALE_THRESHOLD = 30000;
+        const CRITICAL_THRESHOLD = 60000;
 
         function postToMain(type, data) {
           self.postMessage({ type, ...data });
@@ -118,7 +172,9 @@ export function useKeepAlive(
             const now = Date.now();
             const timeSinceLastPing = now - lastPingTime;
             postToMain('HEARTBEAT', { timestamp: now });
-            if (timeSinceLastPing > STALE_THRESHOLD) {
+            if (timeSinceLastPing > CRITICAL_THRESHOLD) {
+              postToMain('CONNECTION_CRITICAL', { elapsed: timeSinceLastPing });
+            } else if (timeSinceLastPing > STALE_THRESHOLD) {
               postToMain('REQUEST_RECONNECT', { reason: 'stale', elapsed: timeSinceLastPing });
             }
           }, HEARTBEAT_INTERVAL);
@@ -146,6 +202,9 @@ export function useKeepAlive(
               postToMain('STOPPED');
               break;
             case 'PONG':
+              lastPingTime = Date.now();
+              break;
+            case 'CONNECTION_SUCCESS':
               lastPingTime = Date.now();
               break;
             case 'VISIBILITY_CHANGE':
@@ -189,9 +248,25 @@ export function useKeepAlive(
 
           case 'REQUEST_RECONNECT':
             console.log('[KeepAlive] Reconnect requested:', data.reason);
+            reconnectAttemptsRef.current++;
+            
             // Only reconnect if document is visible
             if (!document.hidden) {
               onReconnectRequest();
+              
+              // If too many reconnect attempts, check if we should force reload
+              if (reconnectAttemptsRef.current >= MAX_RECONNECT_ATTEMPTS) {
+                console.log(`[KeepAlive] ${reconnectAttemptsRef.current} reconnect attempts, checking force reload...`);
+                checkForceReload();
+              }
+            }
+            break;
+            
+          case 'CONNECTION_CRITICAL':
+            console.log('[KeepAlive] CONNECTION CRITICAL - no response for', data.elapsed, 'ms');
+            // This is a critical situation - check if we should force reload
+            if (!document.hidden) {
+              checkForceReload();
             }
             break;
         }
@@ -221,6 +296,12 @@ export function useKeepAlive(
         // Release Wake Lock
         releaseWakeLock();
 
+        // Clear force reload timeout
+        if (forceReloadTimeoutRef.current) {
+          clearTimeout(forceReloadTimeoutRef.current);
+          forceReloadTimeoutRef.current = null;
+        }
+
         // Remove event listeners
         document.removeEventListener('visibilitychange', handleVisibilityChange);
         window.removeEventListener('online', handleOnline);
@@ -229,10 +310,12 @@ export function useKeepAlive(
     } catch (error) {
       console.error('[KeepAlive] Error initializing worker:', error);
     }
-  }, [enabled, onReconnectRequest, requestWakeLock, releaseWakeLock, handleVisibilityChange, handleOnline, handleOffline]);
+  }, [enabled, onReconnectRequest, requestWakeLock, releaseWakeLock, handleVisibilityChange, handleOnline, handleOffline, checkForceReload]);
 
   return {
     requestWakeLock,
     releaseWakeLock,
+    markConnectionSuccess,
+    forceReload,
   };
 }

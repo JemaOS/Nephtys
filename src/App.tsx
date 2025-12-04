@@ -87,7 +87,8 @@ function SupabaseReconnectHandler() {
   }, [reconnect])
   
   // Use keep-alive hook for PWA - maintains connection with Web Worker + Wake Lock
-  useKeepAlive(handleKeepAliveReconnect, !!user)
+  // Also includes auto-reload as last resort for stuck connections
+  const { markConnectionSuccess } = useKeepAlive(handleKeepAliveReconnect, !!user)
   
   // Start connection monitoring when user is logged in
   useEffect(() => {
@@ -101,14 +102,22 @@ function SupabaseReconnectHandler() {
         reconnect()
       }
       
+      // Listen for successful data loads to mark connection as healthy
+      const handleConnectionSuccess = () => {
+        console.log('[App] Connection success detected')
+        markConnectionSuccess()
+      }
+      
       window.addEventListener('supabase-connection-lost', handleConnectionLost)
+      window.addEventListener('supabase-connection-success', handleConnectionSuccess)
       
       return () => {
         stopConnectionMonitoring()
         window.removeEventListener('supabase-connection-lost', handleConnectionLost)
+        window.removeEventListener('supabase-connection-success', handleConnectionSuccess)
       }
     }
-  }, [user, reconnect])
+  }, [user, reconnect, markConnectionSuccess])
   
   return null // This component doesn't render anything
 }

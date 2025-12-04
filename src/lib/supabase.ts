@@ -46,6 +46,10 @@ export function getRealtimeConnectionState(): boolean {
 export function updateLastSuccessfulQuery(): void {
   lastSuccessfulQuery = Date.now()
   consecutiveFailures = 0 // Reset failures on success
+  
+  // Dispatch event to notify keep-alive system that connection is healthy
+  // This prevents unnecessary force reloads
+  window.dispatchEvent(new CustomEvent('supabase-connection-success'))
 }
 
 // Get time since last successful query
