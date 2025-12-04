@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { MainLayout } from '@/components/MainLayout'
 import { ConversationContextMenu } from '@/components/ConversationContextMenu'
-import { supabase, Conversation, Profile, Message } from '@/lib/supabase'
+import { supabase, Conversation, Profile, Message, updateLastSuccessfulQuery } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { offlineStorage } from '@/lib/offlineStorage'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -414,7 +414,15 @@ export function ChatsPage() {
         loadConversationsFromServer(false) // Background sync, no loading state
       }
       
+      // Handle connection lost event (triggered by health check)
+      const handleConnectionLost = () => {
+        console.log('[ChatsPage] Connection lost detected, will retry on next action...')
+        // Don't reload immediately - the health check will trigger reconnect
+        // Just mark that we need to reload when connection is restored
+      }
+      
       window.addEventListener('supabase-reconnected', handleSupabaseReconnect)
+      window.addEventListener('supabase-connection-lost', handleConnectionLost)
 
       return () => {
         clearTimeout(loadingTimeout)
@@ -423,6 +431,7 @@ export function ChatsPage() {
         supabase.removeChannel(profilesChannel)
         document.removeEventListener('visibilitychange', handleVisibilityChange)
         window.removeEventListener('supabase-reconnected', handleSupabaseReconnect)
+        window.removeEventListener('supabase-connection-lost', handleConnectionLost)
       }
     }
   }, [user, debouncedReload])
@@ -468,13 +477,38 @@ export function ChatsPage() {
 
     try {
       // Step 1: Get all conversation memberships for the user (single query)
-      const { data: memberData, error: memberError } = await supabase
-        .from('conversation_members')
-        .select('conversation_id, is_pinned, is_muted, is_archived')
-        .eq('user_id', user.id)
+      // With retry logic for connection issues
+      let memberData: any[] | null = null
+      let memberError: any = null
+      let retryCount = 0
+      const maxRetries = 2
+      
+      while (retryCount <= maxRetries) {
+        const result = await supabase
+          .from('conversation_members')
+          .select('conversation_id, is_pinned, is_muted, is_archived')
+          .eq('user_id', user.id)
+        
+        memberData = result.data
+        memberError = result.error
+        
+        if (!memberError && memberData) {
+          // Success! Update the last successful query time
+          updateLastSuccessfulQuery()
+          break
+        }
+        
+        retryCount++
+        if (retryCount <= maxRetries) {
+          console.log(`[ChatsPage] Query failed, retrying (${retryCount}/${maxRetries})...`)
+          await new Promise(resolve => setTimeout(resolve, 1000 * retryCount)) // Exponential backoff
+        }
+      }
 
       if (memberError) {
-        console.error('Error loading members:', memberError)
+        console.error('Error loading members after retries:', memberError)
+        // Dispatch connection lost event if all retries failed
+        window.dispatchEvent(new CustomEvent('supabase-connection-lost'))
         return
       }
 

@@ -1,9 +1,9 @@
 // Service Worker for Nephtys PWA
-// Version: 4.0.0 - Optimized for Android PWA reconnection
+// Version: 5.0.0 - CRITICAL FIX: Don't intercept Supabase requests
 
-const CACHE_NAME = 'nephtys-app-v4';
-const STATIC_CACHE = 'nephtys-static-v4';
-const DYNAMIC_CACHE = 'nephtys-dynamic-v4';
+const CACHE_NAME = 'nephtys-app-v5';
+const STATIC_CACHE = 'nephtys-static-v5';
+const DYNAMIC_CACHE = 'nephtys-dynamic-v5';
 
 // Static assets to cache immediately (shell)
 const STATIC_ASSETS = [
@@ -171,29 +171,22 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Skip non-GET requests
+  // Skip non-GET requests - let them go directly to network
   if (request.method !== 'GET') {
     return;
   }
 
-  // Skip cross-origin requests (except for CDN assets and Supabase)
-  if (url.origin !== location.origin && !url.hostname.includes('supabase')) {
+  // CRITICAL: NEVER intercept Supabase requests
+  // Let them go directly to the network without any Service Worker involvement
+  // This prevents the SW from blocking/delaying database requests after background
+  if (url.hostname.includes('supabase')) {
+    // Don't call event.respondWith() - this lets the request bypass the SW completely
+    console.log('[SW] Bypassing Supabase request:', url.pathname);
     return;
   }
 
-  // Skip Supabase API calls - always go to network with shorter timeout
-  if (url.hostname.includes('supabase')) {
-    event.respondWith(
-      // Use AbortController for better timeout handling
-      fetchWithAbort(request, SUPABASE_TIMEOUT)
-        .catch((error) => {
-          console.log('[SW] Supabase request failed:', error.message);
-          return new Response(JSON.stringify({ error: 'Offline', message: error.message }), {
-            status: 503,
-            headers: { 'Content-Type': 'application/json' }
-          });
-        })
-    );
+  // Skip other cross-origin requests
+  if (url.origin !== location.origin) {
     return;
   }
 
@@ -392,4 +385,4 @@ setInterval(() => {
   }
 }, 30000);
 
-console.log('[SW] Service worker loaded - v4.0.0 (PWA optimized)');
+console.log('[SW] Service worker loaded - v5.0.0 (Supabase bypass)');

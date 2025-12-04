@@ -590,7 +590,12 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
            (window.navigator as any).standalone === true;
   }, []);
 
-  // Toggle fullscreen mode - with better mobile/PWA support
+  // Detect Android specifically
+  const isAndroid = useMemo(() => {
+    return /Android/i.test(navigator.userAgent);
+  }, []);
+
+  // Toggle fullscreen mode - with better mobile/PWA support for Android 15
   const toggleFullscreen = useCallback(async () => {
     try {
       // Check if we're already in fullscreen
@@ -602,8 +607,8 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
       );
       
       if (!isCurrentlyFullscreen) {
-        // For videos on mobile, try to use the video element's native fullscreen
-        // This works better on Android PWA and handles rotation automatically
+        // For videos on mobile, use the video element's native fullscreen
+        // This is the ONLY reliable way on Android PWA to get proper rotation
         if (mediaType === 'video' && videoRef.current) {
           const video = videoRef.current as HTMLVideoElement & {
             webkitEnterFullscreen?: () => void;
@@ -611,23 +616,64 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
             mozRequestFullScreen?: () => Promise<void>;
             msRequestFullscreen?: () => Promise<void>;
             webkitSupportsFullscreen?: boolean;
+            webkitDisplayingFullscreen?: boolean;
           };
           
-          // On Android PWA, native video fullscreen is the ONLY reliable way
-          // to get proper rotation and fullscreen behavior
-          if (isMobile) {
-            // Try iOS Safari native fullscreen first
-            if (video.webkitEnterFullscreen) {
-              video.webkitEnterFullscreen();
-              setIsFullscreen(true);
-              return;
+          // On mobile (especially Android PWA), we MUST use native video fullscreen
+          // The screen.orientation.lock() API does NOT work on Android PWA
+          // Native video fullscreen handles rotation automatically
+          if (isMobile || isPWA) {
+            // Try iOS Safari native fullscreen first (webkitEnterFullscreen)
+            // This is the only way to get fullscreen on iOS Safari
+            if (video.webkitEnterFullscreen && video.webkitSupportsFullscreen !== false) {
+              try {
+                video.webkitEnterFullscreen();
+                setIsFullscreen(true);
+                return;
+              } catch (e) {
+                console.log('webkitEnterFullscreen failed:', e);
+              }
             }
             
-            // For Android, request fullscreen on the video element directly
-            // This triggers the native video player which handles rotation properly
+            // For Android PWA: Request fullscreen on the VIDEO element directly
+            // This triggers the native video player which:
+            // 1. Handles rotation automatically based on video aspect ratio
+            // 2. Shows native video controls
+            // 3. Works properly on Android 15 PWA
+            //
+            // IMPORTANT: Do NOT try to lock orientation manually on Android PWA
+            // as it will fail and cause the fullscreen to exit immediately
+            
+            if (isAndroid && isPWA) {
+              // On Android PWA, use requestFullscreen on video element
+              // Do NOT attempt orientation lock - it breaks fullscreen
+              if (video.requestFullscreen) {
+                await video.requestFullscreen();
+                setIsFullscreen(true);
+                return;
+              } else if (video.webkitRequestFullscreen) {
+                await video.webkitRequestFullscreen();
+                setIsFullscreen(true);
+                return;
+              }
+            }
+            
+            // For other mobile browsers (non-PWA Android, etc.)
             if (video.requestFullscreen) {
               await video.requestFullscreen();
               setIsFullscreen(true);
+              
+              // Only try orientation lock on non-PWA mobile browsers
+              // where it might actually work
+              if (!isPWA && window.screen?.orientation) {
+                try {
+                  // @ts-ignore - lock is experimental
+                  await window.screen.orientation.lock('landscape');
+                } catch (e) {
+                  // Orientation lock failed - this is expected on many devices
+                  console.log('Orientation lock not available:', e);
+                }
+              }
               return;
             } else if (video.webkitRequestFullscreen) {
               await video.webkitRequestFullscreen();
@@ -646,6 +692,8 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
           } else if (video.msRequestFullscreen) {
             await video.msRequestFullscreen();
           }
+          
+          setIsFullscreen(true);
         } else {
           // For images, use document fullscreen
           const docEl = document.documentElement as HTMLElement & {
@@ -663,22 +711,9 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
           } else if (docEl.msRequestFullscreen) {
             await docEl.msRequestFullscreen();
           }
+          
+          setIsFullscreen(true);
         }
-        
-        // Try to lock orientation to landscape for videos
-        // Note: This often fails on Android PWA, but the native video fullscreen
-        // handles rotation automatically, so it's not critical
-        if (mediaType === 'video' && window.screen?.orientation && !isPWA) {
-          try {
-            // @ts-ignore - lock is experimental
-            await window.screen.orientation.lock('landscape');
-          } catch (e) {
-            // Orientation lock not supported or not allowed - this is expected on PWA
-            console.log('Orientation lock not available (expected on PWA):', e);
-          }
-        }
-        
-        setIsFullscreen(true);
       } else {
         // Exit fullscreen
         const doc = document as Document & {
@@ -714,7 +749,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
       // Even if fullscreen fails, try to toggle the state for UI feedback
       setIsFullscreen(!isFullscreen);
     }
-  }, [mediaType, isFullscreen, isMobile, isPWA]);
+  }, [mediaType, isFullscreen, isMobile, isPWA, isAndroid]);
 
   // Desktop navigation - instant like WhatsApp
   const handlePrevious = useCallback(() => {

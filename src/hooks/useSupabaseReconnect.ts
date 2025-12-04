@@ -1,14 +1,17 @@
 import { useEffect, useRef, useCallback } from 'react'
-import { supabase } from '@/lib/supabase'
+import { supabase, updateLastSuccessfulQuery, isConnectionStale, forceReconnectRealtime } from '@/lib/supabase'
 import { initializePresence, cleanupPresence } from '@/hooks/usePresence'
 
-// Configuration for reconnection - OPTIMIZED FOR PWA v2
+// Configuration for reconnection - OPTIMIZED FOR PWA v5 (WITH HEALTH CHECK)
 const RECONNECT_DELAY_PWA = 0 // No delay for PWA - reconnect immediately
-const RECONNECT_DELAY_BROWSER = 500 // Small delay for regular browser
-const BACKGROUND_THRESHOLD_PWA = 3000 // 3 seconds for PWA - reconnect even faster
-const BACKGROUND_THRESHOLD_BROWSER = 30000 // 30 seconds for regular browser
-const SESSION_CHECK_INTERVAL = 30000 // Check session every 30 seconds when visible
-const KEEPALIVE_INTERVAL = 20000 // Send keepalive to SW every 20 seconds
+const RECONNECT_DELAY_BROWSER = 300 // Reduced delay for regular browser
+const BACKGROUND_THRESHOLD_PWA = 1000 // 1 second for PWA - reconnect VERY fast
+const BACKGROUND_THRESHOLD_BROWSER = 15000 // 15 seconds for regular browser (reduced)
+const SESSION_CHECK_INTERVAL = 60000 // Check session every 60 seconds when visible
+const KEEPALIVE_INTERVAL = 30000 // Send keepalive to SW every 30 seconds
+const RECONNECT_DEBOUNCE = 2000 // Minimum time between reconnections (2 seconds)
+const RECONNECT_TIMEOUT = 10000 // Maximum time for a reconnection attempt (10 seconds)
+const ACTIVITY_CHECK_INTERVAL = 30000 // Check connection health every 30 seconds during active use
 
 /**
  * Hook to handle Supabase reconnection when PWA comes back from background
@@ -20,9 +23,11 @@ const KEEPALIVE_INTERVAL = 20000 // Send keepalive to SW every 20 seconds
 export function useSupabaseReconnect(userId: string | null) {
   const lastVisibleTime = useRef<number>(Date.now())
   const lastBackgroundTime = useRef<number | null>(null)
+  const lastReconnectTime = useRef<number>(0) // Track last reconnection time for debouncing
   const reconnectAttempts = useRef<number>(0)
   const sessionCheckInterval = useRef<NodeJS.Timeout | null>(null)
   const keepaliveInterval = useRef<NodeJS.Timeout | null>(null)
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null) // Safety timeout
   const isReconnecting = useRef<boolean>(false)
   const isPWARef = useRef<boolean>(false)
 
@@ -43,20 +48,44 @@ export function useSupabaseReconnect(userId: string | null) {
     }
   }, [])
 
-  // Force refresh the Supabase session - FAST version
+  // Reset reconnecting state (safety function)
+  const resetReconnectingState = useCallback(() => {
+    isReconnecting.current = false
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current)
+      reconnectTimeoutRef.current = null
+    }
+  }, [])
+
+  // Force refresh the Supabase session - ULTRA FAST version with debounce
   const refreshSession = useCallback(async () => {
+    const now = Date.now()
+    
+    // Debounce: Skip if we just reconnected
+    if (now - lastReconnectTime.current < RECONNECT_DEBOUNCE) {
+      console.log('[Reconnect] Debounced - too soon since last reconnect')
+      return true // Return true to not block the app
+    }
+    
     if (isReconnecting.current) {
       console.log('[Reconnect] Already reconnecting, skipping...')
-      return false
+      return true // Return true to not block the app
     }
 
     isReconnecting.current = true
-    console.log('[Reconnect] Refreshing Supabase session...')
+    lastReconnectTime.current = now
+    console.log('[Reconnect] Refreshing Supabase session (fast)...')
+
+    // Set a safety timeout to reset the flag if something hangs
+    reconnectTimeoutRef.current = setTimeout(() => {
+      console.warn('[Reconnect] Safety timeout - resetting reconnecting state')
+      resetReconnectingState()
+    }, RECONNECT_TIMEOUT)
 
     try {
-      // Use Promise.race with a timeout to avoid hanging
-      const timeoutPromise = new Promise<null>((_, reject) => 
-        setTimeout(() => reject(new Error('Session refresh timeout')), 5000)
+      // Use Promise.race with a SHORT timeout to avoid hanging
+      const timeoutPromise = new Promise<null>((_, reject) =>
+        setTimeout(() => reject(new Error('Session refresh timeout')), 3000) // Reduced to 3s
       )
       
       const refreshPromise = supabase.auth.refreshSession()
@@ -65,26 +94,36 @@ export function useSupabaseReconnect(userId: string | null) {
       
       if (result?.error) {
         console.error('[Reconnect] Session refresh error:', result.error)
-        // Try to get current session as fallback
-        const { data: { session: currentSession } } = await supabase.auth.getSession()
-        if (!currentSession) {
-          console.warn('[Reconnect] No valid session found')
-          isReconnecting.current = false
-          return false
+        // Try to get current session as fallback - but don't wait long
+        try {
+          const sessionPromise = supabase.auth.getSession()
+          const sessionTimeout = new Promise<null>((_, reject) =>
+            setTimeout(() => reject(new Error('Get session timeout')), 2000)
+          )
+          const sessionResult = await Promise.race([sessionPromise, sessionTimeout]) as any
+          if (!sessionResult?.data?.session) {
+            console.warn('[Reconnect] No valid session found')
+            resetReconnectingState()
+            return false
+          }
+        } catch (e) {
+          console.warn('[Reconnect] Session check timed out, continuing anyway')
         }
       }
 
       console.log('[Reconnect] Session refreshed successfully')
       reconnectAttempts.current = 0
-      isReconnecting.current = false
+      resetReconnectingState()
       return true
     } catch (error) {
       console.error('[Reconnect] Error refreshing session:', error)
       reconnectAttempts.current++
-      isReconnecting.current = false
-      return false
+      resetReconnectingState()
+      // Return true anyway to allow the app to try loading data
+      // The data fetch will fail if there's really no session
+      return true
     }
-  }, [])
+  }, [resetReconnectingState])
 
   // Reconnect all Supabase realtime channels - FAST version (fire and forget)
   const reconnectRealtime = useCallback(() => {
@@ -127,34 +166,45 @@ export function useSupabaseReconnect(userId: string | null) {
     }, 0)
   }, [userId])
 
-  // Full reconnection procedure - OPTIMIZED for speed
+  // Full reconnection procedure - ULTRA OPTIMIZED for speed with debounce
   const performReconnect = useCallback(async () => {
-    console.log('[Reconnect] Starting fast reconnection procedure...')
+    const now = Date.now()
+    
+    // Debounce: Skip if we just reconnected (prevents multiple pull-to-refresh)
+    if (now - lastReconnectTime.current < RECONNECT_DEBOUNCE) {
+      console.log('[Reconnect] Debounced reconnect - too soon since last attempt')
+      return true
+    }
+    
+    console.log('[Reconnect] Starting ULTRA FAST reconnection procedure...')
+    lastReconnectTime.current = now
     
     // Step 0: Notify Service Worker to clear dynamic cache
     sendToServiceWorker('APP_RESUMED')
     
     // Step 1: Trigger event IMMEDIATELY so components can start loading
     // This allows the UI to show loading states while we reconnect
+    // Components should start fetching data NOW, not wait for session refresh
     window.dispatchEvent(new CustomEvent('supabase-reconnected', {
-      detail: { timestamp: Date.now() }
+      detail: { timestamp: Date.now(), immediate: true }
     }))
     
-    // Step 2: Refresh session (with timeout)
-    const sessionOk = await refreshSession()
-    if (!sessionOk) {
-      console.warn('[Reconnect] Session refresh failed, but event already dispatched')
-      // Don't return false - the event was already dispatched
-    }
+    // Step 2: Refresh session in PARALLEL (don't block)
+    // The session is likely still valid, so components can start loading
+    refreshSession().then((ok) => {
+      if (!ok) {
+        console.warn('[Reconnect] Session refresh failed in background')
+      }
+    })
 
     // Step 3: Reconnect realtime channels in background (non-blocking)
     reconnectRealtime()
 
-    console.log('[Reconnect] Fast reconnection complete')
+    console.log('[Reconnect] Ultra fast reconnection triggered')
     return true
   }, [refreshSession, reconnectRealtime, sendToServiceWorker])
 
-  // Handle visibility change - OPTIMIZED for PWA
+  // Handle visibility change - ULTRA OPTIMIZED for PWA
   const handleVisibilityChange = useCallback(async () => {
     const now = Date.now()
     const isPWA = checkIsPWA()
@@ -170,9 +220,9 @@ export function useSupabaseReconnect(userId: string | null) {
         sessionCheckInterval.current = null
       }
     } else {
-      // App coming to foreground
-      const backgroundDuration = lastBackgroundTime.current 
-        ? now - lastBackgroundTime.current 
+      // App coming to foreground - RECONNECT IMMEDIATELY
+      const backgroundDuration = lastBackgroundTime.current
+        ? now - lastBackgroundTime.current
         : 0
       
       console.log(`[Reconnect] App coming to foreground after ${Math.round(backgroundDuration / 1000)}s (PWA: ${isPWA})`)
@@ -180,28 +230,22 @@ export function useSupabaseReconnect(userId: string | null) {
 
       // Determine threshold based on context
       const threshold = isPWA ? BACKGROUND_THRESHOLD_PWA : BACKGROUND_THRESHOLD_BROWSER
-      const delay = isPWA ? RECONNECT_DELAY_PWA : RECONNECT_DELAY_BROWSER
 
-      // If we were in background for more than threshold, reconnect
+      // If we were in background for more than threshold, reconnect IMMEDIATELY
       if (backgroundDuration > threshold) {
-        console.log(`[Reconnect] Background duration (${backgroundDuration}ms) exceeded threshold (${threshold}ms), reconnecting...`)
+        console.log(`[Reconnect] Background duration (${backgroundDuration}ms) exceeded threshold (${threshold}ms), reconnecting IMMEDIATELY...`)
         
-        // Add delay only for non-PWA
-        if (delay > 0) {
-          await new Promise(resolve => setTimeout(resolve, delay))
-        }
-        
-        // Always perform full reconnect for PWA, or if very long background
-        if (isPWA || backgroundDuration > 5 * 60 * 1000) {
-          await performReconnect()
-        } else {
-          // For regular browser with shorter background, just refresh session
-          await refreshSession()
-          // Still dispatch event so components refresh
-          window.dispatchEvent(new CustomEvent('supabase-reconnected', {
-            detail: { timestamp: Date.now() }
-          }))
-        }
+        // NO DELAY - reconnect immediately
+        // For PWA, always do full reconnect
+        // For browser, also do full reconnect if background was long enough
+        performReconnect() // Don't await - let it run in parallel
+      } else if (isPWA && backgroundDuration > 500) {
+        // For PWA, even short backgrounds should trigger a refresh event
+        // This ensures data is always fresh
+        console.log('[Reconnect] Short PWA background, dispatching refresh event')
+        window.dispatchEvent(new CustomEvent('supabase-reconnected', {
+          detail: { timestamp: Date.now(), quick: true }
+        }))
       }
 
       // Restart session check interval

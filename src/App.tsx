@@ -13,7 +13,9 @@ import { SettingsPage } from './pages/SettingsPage'
 import { OfflineIndicator } from './components/OfflineIndicator'
 import { PersistentCallScreen } from './components/PersistentCallScreen'
 import { useSupabaseReconnect } from './hooks/useSupabaseReconnect'
-import { useEffect, useState } from 'react'
+import { useKeepAlive } from './hooks/useKeepAlive'
+import { startConnectionMonitoring, stopConnectionMonitoring } from './lib/supabase'
+import { useEffect, useState, useCallback } from 'react'
 
 // Optimized loading component that shows quickly and doesn't block
 function LoadingScreen({ message = 'Chargement...' }: { message?: string }) {
@@ -76,7 +78,37 @@ function SupabaseReconnectHandler() {
   const { user } = useAuth()
   
   // Use the reconnect hook - it handles all the visibility/focus events
-  useSupabaseReconnect(user?.id || null)
+  const { reconnect } = useSupabaseReconnect(user?.id || null)
+  
+  // Callback for keep-alive reconnect requests
+  const handleKeepAliveReconnect = useCallback(() => {
+    console.log('[App] Keep-alive requested reconnect')
+    reconnect()
+  }, [reconnect])
+  
+  // Use keep-alive hook for PWA - maintains connection with Web Worker + Wake Lock
+  useKeepAlive(handleKeepAliveReconnect, !!user)
+  
+  // Start connection monitoring when user is logged in
+  useEffect(() => {
+    if (user) {
+      // Start monitoring connection health
+      startConnectionMonitoring()
+      
+      // Listen for connection lost events
+      const handleConnectionLost = () => {
+        console.log('[App] Connection lost detected, triggering reconnect...')
+        reconnect()
+      }
+      
+      window.addEventListener('supabase-connection-lost', handleConnectionLost)
+      
+      return () => {
+        stopConnectionMonitoring()
+        window.removeEventListener('supabase-connection-lost', handleConnectionLost)
+      }
+    }
+  }, [user, reconnect])
   
   return null // This component doesn't render anything
 }

@@ -1,9 +1,218 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient, RealtimeChannel } from '@supabase/supabase-js'
 
 const supabaseUrl = 'https://imkfbalgviqeotpjogff.supabase.co'
 const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlta2ZiYWxndmlxZW90cGpvZ2ZmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ0NjE2NjYsImV4cCI6MjA4MDAzNzY2Nn0.POv8NbJu6TefE1e-J-9L8m5QTSp41XXwsO2ck69GnYc'
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+// Create Supabase client with OPTIMIZED settings for PWA/mobile
+// REDUCED heartbeat to decrease server load (was causing 2.6M+ queries)
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+    // Storage key for session persistence
+    storageKey: 'nephtys-auth',
+  },
+  realtime: {
+    params: {
+      // OPTIMIZED heartbeat interval - 30 seconds is enough for most cases
+      // This reduces server load significantly while maintaining connection
+      heartbeat_interval: 30,
+      // Increase timeout to reduce reconnection attempts
+      timeout: 60000, // 60 seconds
+    },
+  },
+  global: {
+    headers: {
+      'x-client-info': 'nephtys-pwa',
+    },
+  },
+})
+
+// Connection state tracking
+let isRealtimeConnected = false
+let connectionCheckInterval: NodeJS.Timeout | null = null
+let pingInterval: NodeJS.Timeout | null = null
+let lastSuccessfulQuery = Date.now()
+let consecutiveFailures = 0
+const MAX_CONSECUTIVE_FAILURES = 2
+
+// Track connection state
+export function getRealtimeConnectionState(): boolean {
+  return isRealtimeConnected
+}
+
+// Update last successful query time
+export function updateLastSuccessfulQuery(): void {
+  lastSuccessfulQuery = Date.now()
+  consecutiveFailures = 0 // Reset failures on success
+}
+
+// Get time since last successful query
+export function getTimeSinceLastQuery(): number {
+  return Date.now() - lastSuccessfulQuery
+}
+
+// Check if connection seems stale (no successful query in last 60 seconds)
+// Increased from 30s to reduce unnecessary health checks
+export function isConnectionStale(): boolean {
+  return getTimeSinceLastQuery() > 60000
+}
+
+// Force reconnect all realtime channels
+export async function forceReconnectRealtime(): Promise<void> {
+  console.log('[Supabase] Force reconnecting realtime channels...')
+  
+  try {
+    const channels = supabase.getChannels()
+    
+    // Reconnect each channel
+    for (const channel of channels) {
+      try {
+        await channel.unsubscribe()
+        channel.subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            console.log(`[Supabase] Channel ${channel.topic} reconnected`)
+            isRealtimeConnected = true
+          } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+            console.warn(`[Supabase] Channel ${channel.topic} error: ${status}`)
+            isRealtimeConnected = false
+          }
+        })
+      } catch (e) {
+        console.error(`[Supabase] Error reconnecting channel ${channel.topic}:`, e)
+      }
+    }
+  } catch (error) {
+    console.error('[Supabase] Error in forceReconnectRealtime:', error)
+  }
+}
+
+// Simple health check - try a lightweight query with SHORT timeout
+export async function checkConnection(): Promise<boolean> {
+  try {
+    const start = Date.now()
+    
+    // Use Promise.race for timeout
+    const queryPromise = supabase
+      .from('profiles')
+      .select('id')
+      .limit(1)
+      .maybeSingle()
+    
+    const timeoutPromise = new Promise<{ error: { message: string } }>((_, reject) =>
+      setTimeout(() => reject(new Error('Health check timeout')), 5000)
+    )
+    
+    const { error } = await Promise.race([queryPromise, timeoutPromise])
+    
+    const duration = Date.now() - start
+    
+    if (error) {
+      console.warn('[Supabase] Health check failed:', error.message)
+      consecutiveFailures++
+      return false
+    }
+    
+    console.log(`[Supabase] Health check OK (${duration}ms)`)
+    updateLastSuccessfulQuery()
+    return true
+  } catch (error: any) {
+    console.error('[Supabase] Health check error:', error.message || error)
+    consecutiveFailures++
+    return false
+  }
+}
+
+// Lightweight ping to keep connection alive
+async function pingConnection(): Promise<void> {
+  if (document.hidden) return
+  
+  try {
+    // Just do a simple count query - very lightweight
+    const { count, error } = await supabase
+      .from('profiles')
+      .select('*', { count: 'exact', head: true })
+      .limit(0)
+    
+    if (!error) {
+      updateLastSuccessfulQuery()
+    }
+  } catch (e) {
+    // Ignore ping errors - the health check will catch real issues
+  }
+}
+
+// Start connection monitoring (call this once when app starts)
+// OPTIMIZED: Reduced frequency to decrease server load
+export function startConnectionMonitoring(): void {
+  if (connectionCheckInterval) {
+    return // Already monitoring
+  }
+  
+  console.log('[Supabase] Starting OPTIMIZED connection monitoring...')
+  
+  // Ping every 60 seconds to keep connection alive (was 20 - too aggressive)
+  // The Realtime heartbeat already keeps the WebSocket alive
+  pingInterval = setInterval(pingConnection, 60000)
+  
+  // Check connection every 45 seconds (was 15 - too aggressive)
+  // Only do health check when there's a suspected issue
+  connectionCheckInterval = setInterval(async () => {
+    // Only check if document is visible
+    if (document.hidden) {
+      return
+    }
+    
+    // If connection seems stale OR we have consecutive failures, do a health check
+    if (isConnectionStale() || consecutiveFailures > 0) {
+      console.log(`[Supabase] Connection check (stale: ${isConnectionStale()}, failures: ${consecutiveFailures})`)
+      const isOk = await checkConnection()
+      
+      if (!isOk && consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+        console.log('[Supabase] Connection lost after multiple failures, triggering reconnect...')
+        consecutiveFailures = 0 // Reset to avoid spam
+        // Dispatch event for components to refresh
+        window.dispatchEvent(new CustomEvent('supabase-connection-lost'))
+        // Try to reconnect realtime
+        await forceReconnectRealtime()
+      }
+    }
+  }, 45000)
+  
+  // Initial ping after a short delay (not immediately)
+  setTimeout(pingConnection, 5000)
+}
+
+// Stop connection monitoring
+export function stopConnectionMonitoring(): void {
+  if (connectionCheckInterval) {
+    clearInterval(connectionCheckInterval)
+    connectionCheckInterval = null
+  }
+  if (pingInterval) {
+    clearInterval(pingInterval)
+    pingInterval = null
+  }
+}
+
+// Wrapper for queries that updates the last successful query time
+export async function queryWithTracking<T>(
+  queryFn: () => Promise<{ data: T | null; error: any }>
+): Promise<{ data: T | null; error: any }> {
+  const result = await queryFn()
+  if (!result.error) {
+    updateLastSuccessfulQuery()
+  } else {
+    consecutiveFailures++
+    // If we have too many failures, trigger reconnect
+    if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+      console.log('[Supabase] Query failed, triggering reconnect...')
+      window.dispatchEvent(new CustomEvent('supabase-connection-lost'))
+    }
+  }
+  return result
+}
 
 // Database types
 export interface Profile {
