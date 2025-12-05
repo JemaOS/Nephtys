@@ -3035,6 +3035,7 @@ export function ChatViewPage() {
           }}
         />
       )}
+
     </MainLayout>
   )
 }

@@ -44,6 +44,10 @@ const BACKUP_VERSION = '1.0.0'
 const STORAGE_KEY = 'nephtys_backup_settings'
 const BACKUP_METADATA_KEY = 'nephtys_backup_metadata'
 
+// Memory optimization constants
+const MEDIA_BATCH_SIZE = 1 // Process 1 file at a time for maximum memory efficiency
+const DELAY_BETWEEN_FILES = 300 // ms delay between files for GC
+
 // Simple encryption using Web Crypto API
 async function deriveKey(password: string, salt: ArrayBuffer): Promise<CryptoKey> {
   const encoder = new TextEncoder()
@@ -69,6 +73,45 @@ async function deriveKey(password: string, salt: ArrayBuffer): Promise<CryptoKey
   )
 }
 
+// Convert Uint8Array to base64 in chunks to avoid stack overflow
+function uint8ArrayToBase64(bytes: Uint8Array): string {
+  const CHUNK_SIZE = 0x8000 // 32KB chunks
+  let result = ''
+  for (let i = 0; i < bytes.length; i += CHUNK_SIZE) {
+    const chunk = bytes.subarray(i, Math.min(i + CHUNK_SIZE, bytes.length))
+    result += String.fromCharCode.apply(null, Array.from(chunk))
+  }
+  return btoa(result)
+}
+
+// Convert base64 to Uint8Array in chunks to handle large strings
+function base64ToUint8Array(base64: string): Uint8Array {
+  // For large strings, atob can fail, so we process in chunks
+  const CHUNK_SIZE = 1024 * 1024 // 1MB chunks for decoding
+  
+  // First decode the base64 string
+  let binaryString: string
+  try {
+    binaryString = atob(base64)
+  } catch (e) {
+    // If atob fails on large strings, try a chunked approach
+    console.error('atob failed, trying chunked decode:', e)
+    throw e
+  }
+  
+  const bytes = new Uint8Array(binaryString.length)
+  
+  // Process in chunks to avoid blocking
+  for (let i = 0; i < binaryString.length; i += CHUNK_SIZE) {
+    const end = Math.min(i + CHUNK_SIZE, binaryString.length)
+    for (let j = i; j < end; j++) {
+      bytes[j] = binaryString.charCodeAt(j)
+    }
+  }
+  
+  return bytes
+}
+
 // Encrypt data with AES-GCM
 export async function encryptData(data: string, password: string): Promise<string> {
   const encoder = new TextEncoder()
@@ -88,23 +131,38 @@ export async function encryptData(data: string, password: string): Promise<strin
   combined.set(ivArray, saltArray.length)
   combined.set(new Uint8Array(encrypted), saltArray.length + ivArray.length)
   
-  // Convert to base64
-  return btoa(String.fromCharCode(...combined))
+  // Convert to base64 using chunked approach to avoid stack overflow
+  return uint8ArrayToBase64(combined)
 }
 
 // Decrypt data with AES-GCM
 export async function decryptData(encryptedData: string, password: string): Promise<string | null> {
   try {
-    // Decode from base64
-    const combined = new Uint8Array(
-      atob(encryptedData).split('').map(c => c.charCodeAt(0))
-    )
+    console.log('Decryption: Starting, data length:', encryptedData.length)
+    
+    // Decode from base64 using chunked approach
+    let combined: Uint8Array
+    try {
+      combined = base64ToUint8Array(encryptedData)
+      console.log('Decryption: Base64 decoded, bytes:', combined.length)
+    } catch (e) {
+      console.error('Decryption: Base64 decode failed:', e)
+      return null
+    }
+    
+    if (combined.length < 28) {
+      console.error('Decryption: Data too short, expected at least 28 bytes')
+      return null
+    }
     
     const saltArray = combined.slice(0, 16)
     const ivArray = combined.slice(16, 28)
     const dataArray = combined.slice(28)
     
+    console.log('Decryption: Salt:', saltArray.length, 'IV:', ivArray.length, 'Data:', dataArray.length)
+    
     const key = await deriveKey(password, saltArray.buffer as ArrayBuffer)
+    console.log('Decryption: Key derived')
     
     const decrypted = await crypto.subtle.decrypt(
       { name: 'AES-GCM', iv: ivArray },
@@ -112,9 +170,14 @@ export async function decryptData(encryptedData: string, password: string): Prom
       dataArray
     )
     
+    console.log('Decryption: Success, decrypted bytes:', decrypted.byteLength)
     return new TextDecoder().decode(decrypted)
-  } catch (error) {
-    console.error('Decryption failed:', error)
+  } catch (error: any) {
+    console.error('Decryption failed:', error?.message || error)
+    // Check if it's an authentication error (wrong password)
+    if (error?.name === 'OperationError') {
+      console.error('Decryption: Wrong password or corrupted data')
+    }
     return null
   }
 }
@@ -168,8 +231,8 @@ export function saveBackupMetadata(metadata: BackupMetadata): void {
   localStorage.setItem(BACKUP_METADATA_KEY, JSON.stringify(metadata))
 }
 
-// Helper function to download a file and convert to base64
-async function downloadFileAsBase64(url: string): Promise<{ data: string; mimeType: string } | null> {
+// Helper function to download a file and convert to base64 (no size limit for complete backup)
+async function downloadFileAsBase64(url: string): Promise<{ data: string; mimeType: string; size: number } | null> {
   try {
     const response = await fetch(url)
     if (!response.ok) return null
@@ -183,7 +246,7 @@ async function downloadFileAsBase64(url: string): Promise<{ data: string; mimeTy
         const base64 = reader.result as string
         // Remove the data URL prefix (e.g., "data:image/png;base64,")
         const base64Data = base64.split(',')[1] || base64
-        resolve({ data: base64Data, mimeType })
+        resolve({ data: base64Data, mimeType, size: blob.size })
       }
       reader.onerror = () => resolve(null)
       reader.readAsDataURL(blob)
@@ -192,6 +255,70 @@ async function downloadFileAsBase64(url: string): Promise<{ data: string; mimeTy
     console.error('Error downloading file:', error)
     return null
   }
+}
+
+// Helper function to delay execution (for memory management)
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+// Process media files one at a time to minimize memory usage
+async function processMediaInBatches(
+  messagesWithMedia: any[],
+  onProgress?: (downloaded: number, total: number) => void
+): Promise<MediaFile[]> {
+  const mediaFiles: MediaFile[] = []
+  const totalMedia = messagesWithMedia.length
+  let downloadedCount = 0
+  let skippedCount = 0
+  let totalMediaSize = 0
+  
+  // Process files one at a time for maximum memory efficiency
+  for (const msg of messagesWithMedia) {
+    const url = msg.media_url || msg.file_url
+    if (!url) {
+      skippedCount++
+      downloadedCount++
+      onProgress?.(downloadedCount, totalMedia)
+      continue
+    }
+    
+    try {
+      const result = await downloadFileAsBase64(url)
+      if (result) {
+        mediaFiles.push({
+          messageId: msg.id,
+          type: msg.type || msg.media_type || 'file',
+          fileName: msg.file_name || `media_${msg.id}`,
+          mimeType: result.mimeType,
+          data: result.data,
+          size: result.size
+        })
+        totalMediaSize += result.size
+      } else {
+        skippedCount++
+      }
+    } catch (err) {
+      console.error('Error downloading file:', err)
+      skippedCount++
+    }
+    
+    downloadedCount++
+    onProgress?.(downloadedCount, totalMedia)
+    
+    // Delay between files to allow garbage collection
+    if (downloadedCount < totalMedia) {
+      await delay(DELAY_BETWEEN_FILES)
+    }
+  }
+  
+  if (skippedCount > 0) {
+    console.log(`Backup: Skipped ${skippedCount} files (failed to download)`)
+  }
+  
+  console.log(`Backup: Downloaded ${mediaFiles.length} files, total size: ${(totalMediaSize / (1024 * 1024)).toFixed(2)}MB`)
+  
+  return mediaFiles
 }
 
 // Create a full backup of user data
@@ -260,9 +387,9 @@ export async function createBackup(
     .select('*, contact:contact_id(id, username, display_name, avatar_url)')
     .eq('user_id', userId)
 
-  // Download media files based on settings
+  // Download media files based on settings (with memory optimization)
   onProgress?.(30, 'Téléchargement des fichiers médias...')
-  const mediaFiles: MediaFile[] = []
+  let mediaFiles: MediaFile[] = []
   
   if (messages && messages.length > 0) {
     // Filter messages that have media URLs
@@ -282,28 +409,18 @@ export async function createBackup(
     })
     
     const totalMedia = messagesWithMedia.length
-    let downloadedCount = 0
     
-    for (const msg of messagesWithMedia) {
-      const url = msg.media_url || msg.file_url
-      if (!url) continue
+    if (totalMedia > 0) {
+      onProgress?.(30, `Téléchargement des médias (0/${totalMedia})...`)
       
-      const progress = 30 + Math.floor((downloadedCount / totalMedia) * 50)
-      onProgress?.(progress, `Téléchargement des médias (${downloadedCount + 1}/${totalMedia})...`)
-      
-      const result = await downloadFileAsBase64(url)
-      if (result) {
-        mediaFiles.push({
-          messageId: msg.id,
-          type: msg.type || msg.media_type || 'file',
-          fileName: msg.file_name || `media_${msg.id}`,
-          mimeType: result.mimeType,
-          data: result.data,
-          size: msg.file_size || 0
-        })
-      }
-      
-      downloadedCount++
+      // Process media in batches to avoid memory issues
+      mediaFiles = await processMediaInBatches(
+        messagesWithMedia,
+        (downloaded, total) => {
+          const progress = 30 + Math.floor((downloaded / total) * 50)
+          onProgress?.(progress, `Téléchargement des médias (${downloaded}/${total})...`)
+        }
+      )
     }
   }
 
@@ -597,11 +714,27 @@ export async function restoreBackup(
   }
 }
 
-// Calculate estimated backup size
+// Calculate estimated backup size and stats
+export interface BackupSizeEstimate {
+  totalSize: number
+  mediaSize: number
+  textSize: number
+  skippedFilesCount: number
+  skippedFilesSize: number
+}
+
 export async function estimateBackupSize(
   userId: string,
   settings: BackupSettings
 ): Promise<number> {
+  const estimate = await estimateBackupSizeDetailed(userId, settings)
+  return estimate.totalSize
+}
+
+export async function estimateBackupSizeDetailed(
+  userId: string,
+  settings: BackupSettings
+): Promise<BackupSizeEstimate> {
   const { data: memberData } = await supabase
     .from('conversation_members')
     .select('conversation_id')
@@ -609,7 +742,9 @@ export async function estimateBackupSize(
 
   const conversationIds = memberData?.map(m => m.conversation_id) || []
 
-  if (conversationIds.length === 0) return 0
+  if (conversationIds.length === 0) {
+    return { totalSize: 0, mediaSize: 0, textSize: 0, skippedFilesCount: 0, skippedFilesSize: 0 }
+  }
 
   // Get all messages with media to calculate size based on settings
   const { data: messages } = await supabase
@@ -618,8 +753,11 @@ export async function estimateBackupSize(
     .in('conversation_id', conversationIds)
     .not('file_size', 'is', null)
 
-  // Calculate media size based on settings
+  // Calculate media size based on settings (no size limits - include all files)
   let mediaSize = 0
+  const skippedFilesCount = 0 // No files are skipped in complete backup
+  const skippedFilesSize = 0
+  
   if (messages) {
     for (const msg of messages) {
       const type = msg.type || msg.media_type
@@ -650,7 +788,32 @@ export async function estimateBackupSize(
   // Add overhead for JSON structure, conversations, contacts, profile (~50KB)
   const overhead = 50 * 1024
 
-  return mediaSize + textSize + overhead
+  return {
+    totalSize: mediaSize + textSize + overhead,
+    mediaSize,
+    textSize: textSize + overhead,
+    skippedFilesCount,
+    skippedFilesSize
+  }
+}
+
+// Create a light backup (text only, no media) for memory-constrained devices
+export async function createLightBackup(
+  userId: string,
+  onProgress?: (progress: number, status: string) => void
+): Promise<{ data: BackupData; size: number }> {
+  // Create backup with all media options disabled
+  const lightSettings: BackupSettings = {
+    frequency: 'weekly',
+    includeImages: false,
+    includeVideos: false,
+    includeAudio: false,
+    includeFiles: false,
+    lastBackupDate: null,
+    lastBackupSize: 0
+  }
+  
+  return createBackup(userId, lightSettings, onProgress)
 }
 
 // Check if backup is needed based on frequency

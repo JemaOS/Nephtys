@@ -199,6 +199,25 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
   onNavigate,
 }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
+  // Track the currently displayed media index in the viewer (for navigation)
+  const [viewerIndex, setViewerIndex] = useState(currentIndex ?? 0);
+  
+  // Reset viewer index when currentIndex prop changes (e.g., when opening a different image)
+  useEffect(() => {
+    if (currentIndex !== undefined) {
+      setViewerIndex(currentIndex);
+    }
+  }, [currentIndex]);
+
+  // Handle navigation within the viewer - update local state, don't close viewer
+  const handleNavigate = (index: number) => {
+    setViewerIndex(index);
+    // Also notify parent if needed (for state sync)
+    if (onNavigate) {
+      onNavigate(index);
+    }
+  };
+
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);
   const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(
@@ -484,21 +503,27 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
         {/* MediaViewer for fullscreen */}
         <MediaViewer
           isOpen={isFullscreen}
-          mediaUrl={url}
-          mediaType={getViewerMediaType()}
-          senderName={senderName}
-          senderAvatar={senderAvatar}
-          timestamp={timestamp}
-          isOwn={isOwn}
+          mediaUrl={allMedia && allMedia[viewerIndex] ? allMedia[viewerIndex].url : url}
+          mediaType={allMedia && allMedia[viewerIndex] ? allMedia[viewerIndex].type : getViewerMediaType()}
+          senderName={allMedia && allMedia[viewerIndex] ? allMedia[viewerIndex].senderName : senderName}
+          senderAvatar={allMedia && allMedia[viewerIndex] ? allMedia[viewerIndex].senderAvatar : senderAvatar}
+          timestamp={allMedia && allMedia[viewerIndex] ? allMedia[viewerIndex].timestamp : timestamp}
+          isOwn={allMedia && allMedia[viewerIndex] ? allMedia[viewerIndex].isOwn : isOwn}
           isStarred={isStarred}
-          onClose={() => setIsFullscreen(false)}
+          onClose={() => {
+            setIsFullscreen(false);
+            // Reset viewer index to original when closing
+            if (currentIndex !== undefined) {
+              setViewerIndex(currentIndex);
+            }
+          }}
           onForward={onForward}
           onStar={onStar}
           onPin={onPin}
           onReaction={onReaction}
           allMedia={allMedia}
-          currentIndex={currentIndex}
-          onNavigate={onNavigate}
+          currentIndex={viewerIndex}
+          onNavigate={handleNavigate}
         />
       </>
     );
@@ -572,21 +597,27 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
         {/* MediaViewer for fullscreen video */}
         <MediaViewer
           isOpen={isFullscreen}
-          mediaUrl={url}
-          mediaType="video"
-          senderName={senderName}
-          senderAvatar={senderAvatar}
-          timestamp={timestamp}
-          isOwn={isOwn}
+          mediaUrl={allMedia && allMedia[viewerIndex] ? allMedia[viewerIndex].url : url}
+          mediaType={allMedia && allMedia[viewerIndex] ? allMedia[viewerIndex].type : 'video'}
+          senderName={allMedia && allMedia[viewerIndex] ? allMedia[viewerIndex].senderName : senderName}
+          senderAvatar={allMedia && allMedia[viewerIndex] ? allMedia[viewerIndex].senderAvatar : senderAvatar}
+          timestamp={allMedia && allMedia[viewerIndex] ? allMedia[viewerIndex].timestamp : timestamp}
+          isOwn={allMedia && allMedia[viewerIndex] ? allMedia[viewerIndex].isOwn : isOwn}
           isStarred={isStarred}
-          onClose={() => setIsFullscreen(false)}
+          onClose={() => {
+            setIsFullscreen(false);
+            // Reset viewer index to original when closing
+            if (currentIndex !== undefined) {
+              setViewerIndex(currentIndex);
+            }
+          }}
           onForward={onForward}
           onStar={onStar}
           onPin={onPin}
           onReaction={onReaction}
           allMedia={allMedia}
-          currentIndex={currentIndex}
-          onNavigate={onNavigate}
+          currentIndex={viewerIndex}
+          onNavigate={handleNavigate}
         />
       </>
     );

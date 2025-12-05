@@ -8,14 +8,23 @@ import { useAuth } from '@/context/AuthContext'
 import { useTheme } from '@/context/ThemeContext'
 import { supabase } from '@/lib/supabase'
 import {
+  check2FAStatus,
+  enroll2FA,
+  verify2FAEnrollment,
+  unenroll2FA,
+  type TOTPFactor,
+  type EnrollmentData
+} from '@/lib/twoFactorAuth'
+import {
   ArrowLeft, User, Lock, Bell, MessageSquare, Video, Palette,
   Globe, Database, HelpCircle, Info, LogOut, ChevronRight,
   Moon, Sun, Monitor, Check, Camera, Edit2, Shield, Key, Trash2,
   Eye, EyeOff, Download, Wifi, WifiOff, Mail, Image, FileText, Mic, Loader2,
-  Cloud, CloudUpload, RefreshCw, Calendar, Upload, DownloadCloud
+  Cloud, CloudUpload, RefreshCw, Calendar, Upload, DownloadCloud, Smartphone, Copy, X
 } from 'lucide-react'
 import {
   createBackup,
+  createLightBackup,
   exportBackupAsFile,
   importBackupFromFile,
   restoreBackup,
@@ -23,8 +32,9 @@ import {
   saveBackupSettings,
   getBackupMetadata,
   saveBackupMetadata,
-  estimateBackupSize,
-  type BackupSettings
+  estimateBackupSizeDetailed,
+  type BackupSettings,
+  type BackupSizeEstimate
 } from '@/lib/backupService'
 
 type SettingsView = 'main' | 'profile' | 'account' | 'privacy' | 'security' | '2fa' | 'delete' |
@@ -52,6 +62,13 @@ export function SettingsPage() {
   const [showLastSeen, setShowLastSeen] = useState(true)
   const [showProfilePhoto, setShowProfilePhoto] = useState(true)
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false)
+  const [twoFactorFactors, setTwoFactorFactors] = useState<TOTPFactor[]>([])
+  const [twoFactorLoading, setTwoFactorLoading] = useState(false)
+  const [twoFactorEnrollment, setTwoFactorEnrollment] = useState<EnrollmentData | null>(null)
+  const [twoFactorCode, setTwoFactorCode] = useState('')
+  const [twoFactorError, setTwoFactorError] = useState('')
+  const [twoFactorStep, setTwoFactorStep] = useState<'idle' | 'enrolling' | 'verifying' | 'disabling'>('idle')
+  const [showSecret, setShowSecret] = useState(false)
   const [enterToSend, setEnterToSend] = useState(true)
   const [autoDownloadWifi, setAutoDownloadWifi] = useState(true)
   const [autoDownloadMobile, setAutoDownloadMobile] = useState(false)
@@ -82,7 +99,8 @@ export function SettingsPage() {
   const [estimatedSize, setEstimatedSize] = useState<number>(0)
   const [backupPassword, setBackupPassword] = useState('')
   const [showPasswordInput, setShowPasswordInput] = useState(false)
-  const [passwordAction, setPasswordAction] = useState<'backup' | 'restore'>('backup')
+  const [passwordAction, setPasswordAction] = useState<'backup' | 'restore' | 'light-backup'>('backup')
+  const [lightBackupMode, setLightBackupMode] = useState(false)
   const restoreFileRef = useRef<HTMLInputElement>(null)
 
 
@@ -91,6 +109,126 @@ export function SettingsPage() {
     loadStorageStats()
     loadBackupMetadata()
   }, [user])
+
+  // Load 2FA status
+  useEffect(() => {
+    if (user) {
+      load2FAStatus()
+    }
+  }, [user])
+
+  const load2FAStatus = async () => {
+    setTwoFactorLoading(true)
+    try {
+      const { enabled, factors } = await check2FAStatus()
+      setTwoFactorEnabled(enabled)
+      setTwoFactorFactors(factors)
+    } catch (err) {
+      console.error('Error loading 2FA status:', err)
+    } finally {
+      setTwoFactorLoading(false)
+    }
+  }
+
+  const handleStart2FAEnrollment = async () => {
+    setTwoFactorLoading(true)
+    setTwoFactorError('')
+    setTwoFactorStep('enrolling')
+    
+    try {
+      const result = await enroll2FA('Nephtys App')
+      
+      if (result.success && result.data) {
+        setTwoFactorEnrollment(result.data)
+        setTwoFactorStep('verifying')
+      } else {
+        setTwoFactorError(result.error || 'Erreur lors de l\'inscription')
+        setTwoFactorStep('idle')
+      }
+    } catch (err: any) {
+      setTwoFactorError(err.message || 'Erreur inattendue')
+      setTwoFactorStep('idle')
+    } finally {
+      setTwoFactorLoading(false)
+    }
+  }
+
+  const handleVerify2FACode = async () => {
+    if (!twoFactorEnrollment || twoFactorCode.length !== 6) return
+    
+    setTwoFactorLoading(true)
+    setTwoFactorError('')
+    
+    try {
+      const result = await verify2FAEnrollment(twoFactorEnrollment.id, twoFactorCode)
+      
+      if (result.success) {
+        setTwoFactorEnabled(true)
+        setTwoFactorEnrollment(null)
+        setTwoFactorCode('')
+        setTwoFactorStep('idle')
+        await load2FAStatus()
+        alert('✅ Authentification à deux facteurs activée !\n\nVotre compte est maintenant protégé.')
+      } else {
+        setTwoFactorError(result.error || 'Code invalide')
+      }
+    } catch (err: any) {
+      setTwoFactorError(err.message || 'Erreur de vérification')
+    } finally {
+      setTwoFactorLoading(false)
+    }
+  }
+
+  const handleDisable2FA = async () => {
+    if (twoFactorFactors.length === 0) return
+    
+    const confirmed = confirm(
+      '⚠️ Désactiver l\'authentification à deux facteurs ?\n\n' +
+      'Votre compte sera moins sécurisé sans cette protection supplémentaire.'
+    )
+    
+    if (!confirmed) return
+    
+    setTwoFactorLoading(true)
+    setTwoFactorError('')
+    setTwoFactorStep('disabling')
+    
+    try {
+      // Unenroll all factors
+      for (const factor of twoFactorFactors) {
+        const result = await unenroll2FA(factor.id)
+        if (!result.success) {
+          throw new Error(result.error)
+        }
+      }
+      
+      setTwoFactorEnabled(false)
+      setTwoFactorFactors([])
+      setTwoFactorStep('idle')
+      alert('✅ Authentification à deux facteurs désactivée')
+    } catch (err: any) {
+      setTwoFactorError(err.message || 'Erreur lors de la désactivation')
+    } finally {
+      setTwoFactorLoading(false)
+      setTwoFactorStep('idle')
+    }
+  }
+
+  const handleCancel2FAEnrollment = () => {
+    setTwoFactorEnrollment(null)
+    setTwoFactorCode('')
+    setTwoFactorError('')
+    setTwoFactorStep('idle')
+  }
+
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      alert('✅ Copié dans le presse-papiers')
+    } catch (err) {
+      console.error('Copy failed:', err)
+    }
+  }
 
   // Load backup metadata from localStorage
   const loadBackupMetadata = () => {
@@ -104,7 +242,9 @@ export function SettingsPage() {
   // Estimate backup size when settings change
   useEffect(() => {
     if (user) {
-      estimateBackupSize(user.id, backupSettings).then(setEstimatedSize)
+      estimateBackupSizeDetailed(user.id, backupSettings).then(estimate => {
+        setEstimatedSize(estimate.totalSize)
+      })
     }
   }, [user, backupSettings.includeVideos, backupSettings.includeImages, backupSettings.includeAudio, backupSettings.includeFiles])
 
@@ -531,29 +671,258 @@ export function SettingsPage() {
     </div>
   )
 
-  const render2FAView = () => (
-    <div className="flex-1 overflow-y-auto p-6 space-y-6">
-      <div className="bg-bg-surface rounded-2xl p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="text-text-primary font-medium">Authentification à deux facteurs</div>
-            <div className="text-sm text-text-secondary">Protection supplémentaire de votre compte</div>
+  const render2FAView = () => {
+    // Loading state
+    if (twoFactorLoading && twoFactorStep === 'idle') {
+      return (
+        <div className="flex-1 overflow-y-auto p-6 flex items-center justify-center">
+          <div className="text-center">
+            <Loader2 size={32} className="animate-spin text-accent mx-auto mb-4" />
+            <p className="text-text-secondary">Chargement...</p>
           </div>
-          <button onClick={() => setTwoFactorEnabled(!twoFactorEnabled)} className={`w-12 h-6 rounded-full relative transition-colors ${twoFactorEnabled ? 'bg-accent' : 'bg-[#8696a0]'}`}>
-            <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${twoFactorEnabled ? 'right-1' : 'left-1'}`}></div>
-          </button>
         </div>
-        {twoFactorEnabled && (
-          <div className="pt-4 border-t border-bg-hover">
-            <p className="text-sm text-text-secondary mb-3">Code de vérification requis à chaque connexion</p>
-            <button className="w-full py-2 rounded-xl bg-accent hover:bg-[#5a5ec9] text-text-primary text-sm font-medium">
-              Configurer l'application d'authentification
+      )
+    }
+
+    // Enrollment step - showing QR code
+    if (twoFactorStep === 'verifying' && twoFactorEnrollment) {
+      return (
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          {/* Header */}
+          <div className="text-center">
+            <div className="w-16 h-16 mx-auto rounded-full bg-accent/20 flex items-center justify-center mb-4">
+              <Smartphone size={32} className="text-accent" />
+            </div>
+            <h3 className="text-lg font-semibold text-text-primary mb-2">
+              Configurer l'authentification
+            </h3>
+            <p className="text-sm text-text-secondary">
+              Scannez ce QR code avec votre application d'authentification
+            </p>
+          </div>
+
+          {/* QR Code */}
+          <div className="bg-white rounded-2xl p-6 mx-auto max-w-xs">
+            <img
+              src={twoFactorEnrollment.totp.qr_code}
+              alt="QR Code 2FA"
+              className="w-full h-auto"
+            />
+          </div>
+
+          {/* Manual entry */}
+          <div className="bg-bg-surface rounded-2xl p-4 space-y-3">
+            <p className="text-sm text-text-secondary text-center">
+              Ou entrez ce code manuellement :
+            </p>
+            <div className="flex items-center gap-2">
+              <div className="flex-1 bg-bg-primary rounded-xl p-3 font-mono text-sm text-text-primary break-all">
+                {showSecret ? twoFactorEnrollment.totp.secret : '••••••••••••••••'}
+              </div>
+              <button
+                onClick={() => setShowSecret(!showSecret)}
+                className="p-2 rounded-xl bg-bg-hover text-text-secondary hover:text-text-primary"
+              >
+                {showSecret ? <EyeOff size={20} /> : <Eye size={20} />}
+              </button>
+              <button
+                onClick={() => copyToClipboard(twoFactorEnrollment.totp.secret)}
+                className="p-2 rounded-xl bg-bg-hover text-text-secondary hover:text-text-primary"
+              >
+                <Copy size={20} />
+              </button>
+            </div>
+          </div>
+
+          {/* Verification code input */}
+          <div className="space-y-3">
+            <label className="text-sm text-text-secondary">
+              Entrez le code à 6 chiffres de votre application :
+            </label>
+            <input
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={6}
+              value={twoFactorCode}
+              onChange={(e) => {
+                const value = e.target.value.replace(/\D/g, '')
+                setTwoFactorCode(value)
+                setTwoFactorError('')
+              }}
+              placeholder="000000"
+              className="w-full px-4 py-4 bg-bg-surface rounded-2xl text-text-primary text-center text-2xl font-mono tracking-widest placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-accent"
+              autoFocus
+            />
+            {twoFactorError && (
+              <p className="text-sm text-red-500 text-center">{twoFactorError}</p>
+            )}
+          </div>
+
+          {/* Actions */}
+          <div className="flex gap-3">
+            <button
+              onClick={handleCancel2FAEnrollment}
+              disabled={twoFactorLoading}
+              className="flex-1 py-3 rounded-2xl bg-bg-surface text-text-primary font-medium hover:bg-bg-hover transition-colors"
+            >
+              Annuler
+            </button>
+            <button
+              onClick={handleVerify2FACode}
+              disabled={twoFactorLoading || twoFactorCode.length !== 6}
+              className="flex-1 py-3 rounded-2xl bg-accent text-white font-medium hover:bg-[#5a5ec9] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {twoFactorLoading ? (
+                <>
+                  <Loader2 size={18} className="animate-spin" />
+                  Vérification...
+                </>
+              ) : (
+                'Vérifier'
+              )}
             </button>
           </div>
-        )}
+
+          {/* Supported apps */}
+          <div className="bg-bg-surface rounded-2xl p-4">
+            <p className="text-sm text-text-secondary mb-2">Applications recommandées (open source) :</p>
+            <ul className="text-sm text-text-primary space-y-1">
+              <li>• <strong>Aegis Authenticator</strong> (Android) - Open source</li>
+              <li>• <strong>FreeOTP+</strong> (Android) - Open source, Red Hat</li>
+              <li>• <strong>KeePassXC</strong> (Windows, Mac, Linux) - Open source, européen</li>
+              <li>• <strong>Bitwarden</strong> (Android, PC) - Open source</li>
+            </ul>
+            <p className="text-xs text-text-secondary mt-3">
+              💡 Ces applications respectent votre vie privée et fonctionnent hors ligne.
+            </p>
+          </div>
+        </div>
+      )
+    }
+
+    // Main 2FA view
+    return (
+      <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        {/* Status card */}
+        <div className="bg-bg-surface rounded-2xl p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                twoFactorEnabled ? 'bg-green-500/20' : 'bg-bg-hover'
+              }`}>
+                <Shield size={24} className={twoFactorEnabled ? 'text-green-500' : 'text-text-secondary'} />
+              </div>
+              <div>
+                <div className="text-text-primary font-medium">
+                  Authentification à deux facteurs
+                </div>
+                <div className={`text-sm ${twoFactorEnabled ? 'text-green-500' : 'text-text-secondary'}`}>
+                  {twoFactorEnabled ? '✓ Activée' : 'Désactivée'}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <p className="text-sm text-text-secondary">
+            {twoFactorEnabled
+              ? 'Votre compte est protégé par une authentification à deux facteurs. Un code de vérification sera demandé à chaque connexion.'
+              : 'Ajoutez une couche de sécurité supplémentaire à votre compte en activant l\'authentification à deux facteurs.'}
+          </p>
+
+          {/* Action button */}
+          {twoFactorEnabled ? (
+            <button
+              onClick={handleDisable2FA}
+              disabled={twoFactorLoading}
+              className="w-full py-3 rounded-2xl bg-red-500/10 text-red-500 font-medium hover:bg-red-500/20 transition-colors flex items-center justify-center gap-2"
+            >
+              {twoFactorLoading && twoFactorStep === 'disabling' ? (
+                <>
+                  <Loader2 size={18} className="animate-spin" />
+                  Désactivation...
+                </>
+              ) : (
+                <>
+                  <X size={18} />
+                  Désactiver l'authentification 2FA
+                </>
+              )}
+            </button>
+          ) : (
+            <button
+              onClick={handleStart2FAEnrollment}
+              disabled={twoFactorLoading}
+              className="w-full py-3 px-4 rounded-2xl bg-accent text-white font-medium hover:bg-[#5a5ec9] transition-colors flex items-center justify-center gap-2"
+            >
+              {twoFactorLoading && twoFactorStep === 'enrolling' ? (
+                <>
+                  <Loader2 size={18} className="animate-spin flex-shrink-0" />
+                  <span>Configuration...</span>
+                </>
+              ) : (
+                <>
+                  <Smartphone size={18} className="flex-shrink-0" />
+                  <span>Configurer l'application d'authentification</span>
+                </>
+              )}
+            </button>
+          )}
+
+          {twoFactorError && twoFactorStep === 'idle' && (
+            <p className="text-sm text-red-500 text-center">{twoFactorError}</p>
+          )}
+        </div>
+
+        {/* Info card */}
+        <div className="bg-bg-surface rounded-2xl p-6 space-y-4">
+          <h4 className="text-text-primary font-medium">Comment ça fonctionne ?</h4>
+          <div className="space-y-3">
+            <div className="flex items-start gap-3">
+              <div className="w-6 h-6 rounded-full bg-accent/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <span className="text-accent text-sm font-medium">1</span>
+              </div>
+              <p className="text-sm text-text-secondary">
+                Téléchargez une application d'authentification open source (Aegis, FreeOTP+, Tofu, etc.)
+              </p>
+            </div>
+            <div className="flex items-start gap-3">
+              <div className="w-6 h-6 rounded-full bg-accent/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <span className="text-accent text-sm font-medium">2</span>
+              </div>
+              <p className="text-sm text-text-secondary">
+                Scannez le QR code avec l'application pour lier votre compte
+              </p>
+            </div>
+            <div className="flex items-start gap-3">
+              <div className="w-6 h-6 rounded-full bg-accent/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <span className="text-accent text-sm font-medium">3</span>
+              </div>
+              <p className="text-sm text-text-secondary">
+                À chaque connexion, entrez le code à 6 chiffres généré par l'application
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Security info */}
+        <div className="bg-accent/10 rounded-2xl p-4">
+          <div className="flex items-start gap-3">
+            <Lock size={20} className="text-accent flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm text-text-primary font-medium mb-1">
+                Sécurité renforcée
+              </p>
+              <p className="text-xs text-text-secondary">
+                L'authentification à deux facteurs protège votre compte même si votre mot de passe est compromis.
+                Seul vous, avec votre téléphone, pouvez accéder à votre compte.
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
-    </div>
-  )
+    )
+  }
 
   const renderDeleteView = () => (
     <div className="flex-1 overflow-y-auto p-6">
@@ -1109,11 +1478,12 @@ export function SettingsPage() {
     </div>
   )
 
-  const handleBackup = async () => {
+  const handleBackup = async (isLightBackup: boolean = false) => {
     if (!user) return
     
     if (!backupPassword) {
-      setPasswordAction('backup')
+      setPasswordAction(isLightBackup ? 'light-backup' : 'backup')
+      setLightBackupMode(isLightBackup)
       setShowPasswordInput(true)
       return
     }
@@ -1123,15 +1493,23 @@ export function SettingsPage() {
     setBackupStatus('Démarrage de la sauvegarde...')
     
     try {
-      // Create backup
-      const { data: backupData, size } = await createBackup(
-        user.id,
-        backupSettings,
-        (progress, status) => {
-          setBackupProgress(progress)
-          setBackupStatus(status)
-        }
-      )
+      // Create backup (light or full)
+      const { data: backupData, size } = isLightBackup
+        ? await createLightBackup(
+            user.id,
+            (progress, status) => {
+              setBackupProgress(progress)
+              setBackupStatus(status)
+            }
+          )
+        : await createBackup(
+            user.id,
+            backupSettings,
+            (progress, status) => {
+              setBackupProgress(progress)
+              setBackupStatus(status)
+            }
+          )
       
       // Export as encrypted file
       setBackupStatus('Chiffrement et téléchargement...')
@@ -1152,6 +1530,7 @@ export function SettingsPage() {
       
       setBackupPassword('')
       setShowPasswordInput(false)
+      setLightBackupMode(false)
       alert('✅ Sauvegarde terminée avec succès !\n\nLe fichier a été téléchargé. Vous pouvez maintenant l\'uploader sur Proton Drive.')
     } catch (err: any) {
       console.error('Backup error:', err)
@@ -1286,7 +1665,9 @@ export function SettingsPage() {
                     if (backupPassword.length >= 4) {
                       setShowPasswordInput(false)
                       if (passwordAction === 'backup') {
-                        handleBackup()
+                        handleBackup(false)
+                      } else if (passwordAction === 'light-backup') {
+                        handleBackup(true)
                       } else if (restoreFileRef.current?.files?.[0]) {
                         handleRestore(restoreFileRef.current.files[0])
                       }
@@ -1361,11 +1742,12 @@ export function SettingsPage() {
           </div>
         </div>
 
-        {/* Backup button */}
-        <div className="px-6 py-4">
+        {/* Backup buttons */}
+        <div className="px-6 py-4 space-y-3">
           <button
             onClick={() => {
               setPasswordAction('backup')
+              setLightBackupMode(false)
               setShowPasswordInput(true)
             }}
             disabled={isBackingUp || isRestoring}
@@ -1376,8 +1758,28 @@ export function SettingsPage() {
             }`}
           >
             <CloudUpload size={20} />
-            Créer une sauvegarde
+            Créer une sauvegarde complète
           </button>
+          
+          <button
+            onClick={() => {
+              setPasswordAction('light-backup')
+              setLightBackupMode(true)
+              setShowPasswordInput(true)
+            }}
+            disabled={isBackingUp || isRestoring}
+            className={`w-full py-3 rounded-2xl font-medium transition-colors flex items-center justify-center gap-2 ${
+              isBackingUp || isRestoring
+                ? 'bg-bg-surface/50 text-text-secondary cursor-not-allowed'
+                : 'bg-bg-surface hover:bg-bg-hover text-text-primary'
+            }`}
+          >
+            <FileText size={20} />
+            Sauvegarde légère (texte uniquement)
+          </button>
+          <p className="text-xs text-text-secondary text-center">
+            La sauvegarde légère n'inclut pas les médias et utilise moins de mémoire
+          </p>
         </div>
 
         {/* Restore button */}
