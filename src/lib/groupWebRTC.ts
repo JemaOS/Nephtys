@@ -60,6 +60,10 @@ export class GroupCallManager {
     this.iceCandidateQueues = new Map();
   }
 
+  // Current user info
+  private currentUserName: string = '';
+  private currentUserAvatar: string | undefined = undefined;
+
   // Initialize the group call
   async initializeGroupCall(
     userId: string,
@@ -71,6 +75,22 @@ export class GroupCallManager {
     this.currentUserId = userId;
     this.conversationId = conversationId;
     this.config = config;
+
+    // Fetch current user's profile info
+    try {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('display_name, username, avatar_url')
+        .eq('id', userId)
+        .maybeSingle();
+      
+      this.currentUserName = profile?.display_name || profile?.username || 'Moi';
+      this.currentUserAvatar = profile?.avatar_url || undefined;
+      console.log('🎥 GroupWebRTC: Current user profile:', this.currentUserName);
+    } catch (error) {
+      console.error('🎥 GroupWebRTC: Error fetching user profile:', error);
+      this.currentUserName = 'Moi';
+    }
 
     try {
       // Get local media stream
@@ -151,7 +171,7 @@ export class GroupCallManager {
   async joinGroupCall(): Promise<void> {
     console.log('🎥 GroupWebRTC: Joining group call');
 
-    // Broadcast join signal to all participants
+    // Broadcast join signal to all participants with our profile info
     await this.sendSignal({
       type: 'group-join',
       from: this.currentUserId,
@@ -159,8 +179,29 @@ export class GroupCallManager {
       data: {
         audio: this.config.audio,
         video: this.config.video,
+        name: this.currentUserName,
+        avatar: this.currentUserAvatar,
       },
     });
+  }
+
+  // Fetch participant profile from database
+  private async fetchParticipantProfile(participantId: string): Promise<{ name: string; avatar?: string }> {
+    try {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('display_name, username, avatar_url')
+        .eq('id', participantId)
+        .maybeSingle();
+      
+      return {
+        name: profile?.display_name || profile?.username || 'Participant',
+        avatar: profile?.avatar_url || undefined,
+      };
+    } catch (error) {
+      console.error('🎥 GroupWebRTC: Error fetching participant profile:', error);
+      return { name: 'Participant' };
+    }
   }
 
   // Handle when a new participant joins
@@ -168,32 +209,58 @@ export class GroupCallManager {
     const participantId = signal.from;
     console.log('🎥 GroupWebRTC: Participant joining:', participantId);
 
+    // Check if we already have a connection with this participant
+    const existingParticipant = this.participants.get(participantId);
+    if (existingParticipant?.peerConnection) {
+      const state = existingParticipant.peerConnection.connectionState;
+      if (state === 'connected' || state === 'connecting') {
+        console.log('🎥 GroupWebRTC: Already connected/connecting to:', participantId, '- ignoring join');
+        return;
+      }
+      // Close the old connection
+      existingParticipant.peerConnection.close();
+    }
+
     // Create peer connection for this participant
     const peerConnection = await this.createPeerConnection(participantId);
+
+    // Get participant name - prefer from signal, fallback to database lookup
+    let participantName = signal.data.name;
+    let participantAvatar = signal.data.avatar;
+    
+    if (!participantName) {
+      const profile = await this.fetchParticipantProfile(participantId);
+      participantName = profile.name;
+      participantAvatar = profile.avatar;
+    }
 
     // Add participant to our list
     this.participants.set(participantId, {
       id: participantId,
-      name: signal.data.name || 'Participant',
-      avatar: signal.data.avatar,
+      name: participantName,
+      avatar: participantAvatar,
       peerConnection,
       audioEnabled: signal.data.audio,
       videoEnabled: signal.data.video,
     });
 
-    // Create and send offer to the new participant
-    const offer = await peerConnection.createOffer();
-    await peerConnection.setLocalDescription(offer);
+    try {
+      // Create and send offer to the new participant
+      const offer = await peerConnection.createOffer();
+      await peerConnection.setLocalDescription(offer);
 
-    await this.sendSignal({
-      type: 'group-offer',
-      from: this.currentUserId,
-      to: participantId,
-      conversationId: this.conversationId,
-      data: offer,
-    });
+      await this.sendSignal({
+        type: 'group-offer',
+        from: this.currentUserId,
+        to: participantId,
+        conversationId: this.conversationId,
+        data: offer,
+      });
 
-    this.notifyParticipantUpdate();
+      this.notifyParticipantUpdate();
+    } catch (error) {
+      console.error('🎥 GroupWebRTC: Error creating offer for participant:', participantId, error);
+    }
   }
 
   // Handle incoming offer
@@ -201,39 +268,68 @@ export class GroupCallManager {
     const participantId = signal.from;
     console.log('🎥 GroupWebRTC: Handling offer from:', participantId);
 
-    // Create peer connection if not exists
-    let peerConnection = this.participants.get(participantId)?.peerConnection;
+    // Get or create peer connection
+    let participant = this.participants.get(participantId);
+    let peerConnection = participant?.peerConnection;
     
     if (!peerConnection) {
       peerConnection = await this.createPeerConnection(participantId);
+      
+      // Fetch participant profile from database
+      const profile = await this.fetchParticipantProfile(participantId);
+      
       this.participants.set(participantId, {
         id: participantId,
-        name: 'Participant',
+        name: profile.name,
+        avatar: profile.avatar,
         peerConnection,
         audioEnabled: true,
         videoEnabled: this.config.video,
       });
+    } else {
+      // Check if we already have a stable connection - ignore duplicate offers
+      if (peerConnection.signalingState === 'stable' && peerConnection.connectionState === 'connected') {
+        console.log('🎥 GroupWebRTC: Ignoring duplicate offer - already connected to:', participantId);
+        return;
+      }
+      
+      // If we're in the middle of negotiation, check if we should handle this offer
+      // Use "polite peer" pattern - the peer with the lower ID is polite and yields
+      if (peerConnection.signalingState !== 'stable') {
+        const weArePolite = this.currentUserId < participantId;
+        if (!weArePolite) {
+          console.log('🎥 GroupWebRTC: Ignoring offer due to glare - we are impolite peer');
+          return;
+        }
+        // We are polite, so we rollback and accept the offer
+        console.log('🎥 GroupWebRTC: Rolling back local description due to glare');
+        await peerConnection.setLocalDescription({ type: 'rollback' });
+      }
     }
 
-    // Set remote description
-    await peerConnection.setRemoteDescription(new RTCSessionDescription(signal.data));
+    try {
+      // Set remote description
+      await peerConnection.setRemoteDescription(new RTCSessionDescription(signal.data));
 
-    // Process queued ICE candidates
-    await this.processQueuedIceCandidates(participantId);
+      // Process queued ICE candidates
+      await this.processQueuedIceCandidates(participantId);
 
-    // Create and send answer
-    const answer = await peerConnection.createAnswer();
-    await peerConnection.setLocalDescription(answer);
+      // Create and send answer
+      const answer = await peerConnection.createAnswer();
+      await peerConnection.setLocalDescription(answer);
 
-    await this.sendSignal({
-      type: 'group-answer',
-      from: this.currentUserId,
-      to: participantId,
-      conversationId: this.conversationId,
-      data: answer,
-    });
+      await this.sendSignal({
+        type: 'group-answer',
+        from: this.currentUserId,
+        to: participantId,
+        conversationId: this.conversationId,
+        data: answer,
+      });
 
-    this.notifyParticipantUpdate();
+      this.notifyParticipantUpdate();
+    } catch (error) {
+      console.error('🎥 GroupWebRTC: Error handling offer:', error);
+    }
   }
 
   // Handle incoming answer
@@ -247,10 +343,21 @@ export class GroupCallManager {
       return;
     }
 
-    await participant.peerConnection.setRemoteDescription(new RTCSessionDescription(signal.data));
+    // Check if we're in the right state to receive an answer
+    const signalingState = participant.peerConnection.signalingState;
+    if (signalingState !== 'have-local-offer') {
+      console.log('🎥 GroupWebRTC: Ignoring answer - wrong signaling state:', signalingState);
+      return;
+    }
 
-    // Process queued ICE candidates
-    await this.processQueuedIceCandidates(participantId);
+    try {
+      await participant.peerConnection.setRemoteDescription(new RTCSessionDescription(signal.data));
+
+      // Process queued ICE candidates
+      await this.processQueuedIceCandidates(participantId);
+    } catch (error) {
+      console.error('🎥 GroupWebRTC: Error handling answer:', error);
+    }
   }
 
   // Handle incoming ICE candidate
@@ -396,11 +503,91 @@ export class GroupCallManager {
   }
 
   // Toggle local video
-  toggleVideo(enabled: boolean): void {
-    if (this.localStream) {
-      this.localStream.getVideoTracks().forEach(track => {
-        track.enabled = enabled;
+  async toggleVideo(enabled: boolean): Promise<void> {
+    console.log('🎥 GroupWebRTC: toggleVideo called, enabled:', enabled);
+    
+    if (!this.localStream) {
+      console.log('🎥 GroupWebRTC: No local stream, cannot toggle video');
+      return;
+    }
+
+    const currentVideoTracks = this.localStream.getVideoTracks();
+    
+    if (enabled) {
+      // Re-enable video - ALWAYS get a new video track and replace it in all peer connections
+      // This is necessary because just enabling the track doesn't properly update remote peers
+      console.log('🎥 GroupWebRTC: Getting new video track for re-enable...');
+      try {
+        // Get a new video stream
+        const newVideoStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            width: { ideal: 640 },
+            height: { ideal: 480 },
+            facingMode: 'user'
+          }
+        });
+        
+        const newVideoTrack = newVideoStream.getVideoTracks()[0];
+        console.log('🎥 GroupWebRTC: Got new video track:', newVideoTrack.id);
+        
+        // Remove old video tracks from local stream and stop them
+        currentVideoTracks.forEach(track => {
+          this.localStream!.removeTrack(track);
+          track.stop();
+        });
+        
+        // Add new video track to local stream
+        this.localStream.addTrack(newVideoTrack);
+        
+        // Replace the video track in all peer connections
+        await this.replaceVideoTrackInAllPeers(newVideoTrack);
+        
+        // Notify local stream callback so UI updates
+        this.onLocalStreamCallback?.(this.localStream);
+        
+        console.log('🎥 GroupWebRTC: Video track replaced in all peers successfully');
+      } catch (error) {
+        console.error('🎥 GroupWebRTC: Error getting new video track:', error);
+      }
+    } else {
+      // Disable video - stop the tracks completely (we'll get new ones when re-enabling)
+      console.log('🎥 GroupWebRTC: Stopping video tracks');
+      currentVideoTracks.forEach(track => {
+        track.stop();
+        this.localStream!.removeTrack(track);
       });
+      
+      // Notify local stream callback so UI updates (shows avatar)
+      this.onLocalStreamCallback?.(this.localStream);
+    }
+  }
+
+  // Replace video track in all peer connections
+  private async replaceVideoTrackInAllPeers(newTrack: MediaStreamTrack): Promise<void> {
+    console.log('🎥 GroupWebRTC: Replacing video track in', this.participants.size, 'peer connections');
+    
+    for (const [participantId, participant] of this.participants) {
+      if (participant.peerConnection) {
+        const senders = participant.peerConnection.getSenders();
+        const videoSender = senders.find(sender => sender.track?.kind === 'video');
+        
+        if (videoSender) {
+          try {
+            await videoSender.replaceTrack(newTrack);
+            console.log('🎥 GroupWebRTC: Replaced video track for participant:', participantId);
+          } catch (error) {
+            console.error('🎥 GroupWebRTC: Error replacing track for participant:', participantId, error);
+          }
+        } else {
+          // No video sender exists, we need to add the track
+          console.log('🎥 GroupWebRTC: No video sender for participant:', participantId, '- adding track');
+          try {
+            participant.peerConnection.addTrack(newTrack, this.localStream!);
+          } catch (error) {
+            console.error('🎥 GroupWebRTC: Error adding track for participant:', participantId, error);
+          }
+        }
+      }
     }
   }
 

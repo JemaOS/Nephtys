@@ -37,6 +37,28 @@ import { PinnedMessageBanner } from '@/components/PinnedMessageBanner'
 import { DeleteMessageDialog } from '@/components/DeleteMessageDialog'
 import { ForwardMessageModal } from '@/components/ForwardMessageModal'
 import { QuickReactionBar } from '@/components/QuickReactionBar'
+import { CallMessage } from '@/components/CallMessage'
+
+// Call log interface for displaying call messages in chat
+interface CallLog {
+  id: string
+  conversation_id: string
+  caller_id: string
+  callee_id: string | null
+  type: 'audio' | 'video'
+  status: 'initiated' | 'answered' | 'missed' | 'rejected' | 'ended'
+  started_at: string
+  ended_at: string | null
+  duration: number | null
+  participant_count: number | null
+}
+
+// Combined message type for timeline display
+interface TimelineItem {
+  type: 'message' | 'call'
+  timestamp: string
+  data: Message | CallLog
+}
 
 // Utility function to detect emoji-only messages (1-3 emojis without other text)
 // Uses a comprehensive regex pattern to match emojis including compound emojis
@@ -119,6 +141,7 @@ export function ChatViewPage() {
   const [messages, setMessages] = useState<Message[]>(() =>
     conversationId ? getCache<Message[]>(`msgs_${conversationId}`) || [] : []
   )
+  const [callLogs, setCallLogs] = useState<CallLog[]>([])
   const [filteredMessages, setFilteredMessages] = useState<Message[]>([])
   const [newMessage, setNewMessage] = useState('')
   const [loading, setLoading] = useState(() => {
@@ -130,6 +153,8 @@ export function ChatViewPage() {
   const [otherUser, setOtherUser] = useState<Profile | null>(() =>
     conversationId ? getCache<Profile>(`user_${conversationId}`) : null
   )
+  // Map of group member profiles (user_id -> Profile) for group conversations
+  const [groupMemberProfiles, setGroupMemberProfiles] = useState<Map<string, Profile>>(new Map())
   const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null)
   const [replyToMessage, setReplyToMessage] = useState<Message | null>(null)
   const [isSearching, setIsSearching] = useState(false)
@@ -207,6 +232,39 @@ export function ChatViewPage() {
   
   const displayedMessages = filteredMessages.length > 0 ? filteredMessages : messages
 
+  // Helper function to get sender info for a message (works for both direct and group conversations)
+  const getSenderInfo = useCallback((senderId: string): { name: string; avatar?: string } => {
+    // If it's the current user
+    if (senderId === user?.id) {
+      return {
+        name: profile?.display_name || profile?.username || 'Vous',
+        avatar: profile?.avatar_url
+      }
+    }
+    
+    // For group conversations, look up in groupMemberProfiles
+    if (conversation?.type === 'group') {
+      const memberProfile = groupMemberProfiles.get(senderId)
+      if (memberProfile) {
+        return {
+          name: memberProfile.display_name || memberProfile.username || 'Utilisateur',
+          avatar: memberProfile.avatar_url
+        }
+      }
+    }
+    
+    // For direct conversations, use otherUser
+    if (otherUser) {
+      return {
+        name: otherUser.display_name || otherUser.username || 'Utilisateur',
+        avatar: otherUser.avatar_url
+      }
+    }
+    
+    // Fallback
+    return { name: 'Utilisateur', avatar: undefined }
+  }, [user?.id, profile, conversation?.type, groupMemberProfiles, otherUser])
+
   // Collect all media from messages for navigation in MediaViewer
   const allMediaItems = useMemo(() => {
     return messages
@@ -245,9 +303,7 @@ export function ChatViewPage() {
           }
         }
         
-        const senderInfo = m.sender_id === user?.id
-          ? { name: profile?.display_name || profile?.username || 'Vous', avatar: profile?.avatar_url }
-          : { name: otherUser?.display_name || otherUser?.username || 'Utilisateur', avatar: otherUser?.avatar_url }
+        const senderInfo = getSenderInfo(m.sender_id)
         
         return {
           url: mediaUrl,
@@ -259,7 +315,7 @@ export function ChatViewPage() {
           messageId: m.id,
         }
       })
-  }, [messages, user?.id, profile, otherUser])
+  }, [messages, user?.id, getSenderInfo])
 
   // Handler for media navigation
   const handleMediaNavigate = useCallback((index: number) => {
@@ -288,10 +344,76 @@ export function ChatViewPage() {
     }
   }
 
+  // Load call logs for this conversation
+  const loadCallLogs = async () => {
+    if (!conversationId) return
+    
+    console.log('[ChatViewPage] Loading call logs for conversation:', conversationId)
+    
+    const { data, error } = await supabase
+      .from('call_logs')
+      .select('*')
+      .eq('conversation_id', conversationId)
+      .order('started_at', { ascending: true })
+    
+    console.log('[ChatViewPage] Call logs query result:', { data, error, count: data?.length })
+    console.log('[ChatViewPage] Call logs raw data:', JSON.stringify(data, null, 2))
+    
+    if (error) {
+      console.error('[ChatViewPage] Error loading call logs:', error)
+    }
+    
+    if (!error && data) {
+      setCallLogs(data)
+      console.log('[ChatViewPage] Call logs set:', data.length, 'logs')
+      
+      // Debug: Log each call log
+      data.forEach((log, index) => {
+        console.log(`[ChatViewPage] Call log ${index}:`, {
+          id: log.id,
+          caller_id: log.caller_id,
+          callee_id: log.callee_id,
+          status: log.status,
+          type: log.type,
+          isGroupCall: log.caller_id === log.callee_id
+        })
+      })
+    }
+  }
+
+  // Merge messages and call logs into a unified timeline
+  const timelineItems = useMemo((): TimelineItem[] => {
+    const items: TimelineItem[] = []
+    
+    // Add messages to timeline
+    for (const message of displayedMessages) {
+      items.push({
+        type: 'message',
+        timestamp: message.created_at,
+        data: message
+      })
+    }
+    
+    // Add call logs to timeline
+    for (const call of callLogs) {
+      items.push({
+        type: 'call',
+        timestamp: call.started_at,
+        data: call
+      })
+    }
+    
+    // Sort by timestamp
+    items.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+    
+    return items
+  }, [displayedMessages, callLogs])
+
   useEffect(() => {
     if (!conversationId || !user) return
     loadConversation()
     loadMessages()
+    loadCallLogs()
     loadEphemeralSetting()
     if (permission === 'default') requestPermission()
     subscribeToConversation(conversationId)
@@ -301,18 +423,48 @@ export function ChatViewPage() {
       setLoading(false)
     }, 10000)
     
+    // Subscribe to call logs changes in real-time
+    const callLogsChannel = supabase
+      .channel(`call_logs:${conversationId}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'call_logs',
+        filter: `conversation_id=eq.${conversationId}`
+      }, (payload) => {
+        console.log('[ChatViewPage] Call log change detected:', payload.eventType, payload)
+        console.log('[ChatViewPage] Call log payload.new:', payload.new)
+        // Reload call logs when any change occurs
+        loadCallLogs()
+      })
+      .subscribe((status) => {
+        console.log('[ChatViewPage] Call logs channel subscription status:', status)
+        if (status === 'SUBSCRIBED') {
+          console.log('[ChatViewPage] Successfully subscribed to call_logs changes for conversation:', conversationId)
+        }
+      })
+    
     const messagesChannel = supabase
-      .channel(`messages:${conversationId}`, { config: { broadcast: { self: true } } })
+      .channel(`messages:${conversationId}`, {
+        config: {
+          broadcast: { self: true },
+          presence: { key: user?.id || 'anonymous' }
+        }
+      })
       .on('postgres_changes', {
         event: 'INSERT', schema: 'public', table: 'messages',
         filter: `conversation_id=eq.${conversationId}`
       }, (payload) => {
+        console.log('[ChatViewPage] Realtime INSERT received:', payload.new?.id)
         const newMsg = payload.new as Message
         // Avoid duplicates: check if message already exists (including temp messages)
         setMessages(prev => {
           // Check if this message ID already exists
           const exists = prev.some(m => m.id === newMsg.id)
-          if (exists) return prev
+          if (exists) {
+            console.log('[ChatViewPage] Message already exists, skipping:', newMsg.id)
+            return prev
+          }
           
           // Check if there's a temp message that should be replaced
           // Temp messages start with 'temp-' and have the same media_url
@@ -324,11 +476,13 @@ export function ChatViewPage() {
           
           if (tempIndex !== -1) {
             // Replace temp message with real one
+            console.log('[ChatViewPage] Replacing temp message with real one:', newMsg.id)
             const newMessages = [...prev]
             newMessages[tempIndex] = newMsg
             return newMessages
           }
           
+          console.log('[ChatViewPage] Adding new message:', newMsg.id)
           return [...prev, newMsg]
         })
         if (newMsg.sender_id !== user.id) {
@@ -340,7 +494,27 @@ export function ChatViewPage() {
           }
         }
       })
-      .subscribe()
+      .on('postgres_changes', {
+        event: 'UPDATE', schema: 'public', table: 'messages',
+        filter: `conversation_id=eq.${conversationId}`
+      }, (payload) => {
+        console.log('[ChatViewPage] Realtime UPDATE received:', payload.new?.id)
+        const updatedMsg = payload.new as Message
+        setMessages(prev => prev.map(m => m.id === updatedMsg.id ? updatedMsg : m))
+      })
+      .on('postgres_changes', {
+        event: 'DELETE', schema: 'public', table: 'messages',
+        filter: `conversation_id=eq.${conversationId}`
+      }, (payload) => {
+        console.log('[ChatViewPage] Realtime DELETE received:', payload.old?.id)
+        const deletedId = (payload.old as any)?.id
+        if (deletedId) {
+          setMessages(prev => prev.filter(m => m.id !== deletedId))
+        }
+      })
+      .subscribe((status) => {
+        console.log('[ChatViewPage] Messages channel subscription status:', status)
+      })
 
     // Subscribe to profile changes for real-time avatar updates
     const profilesChannel = supabase
@@ -381,14 +555,27 @@ export function ChatViewPage() {
     }
     
     window.addEventListener('supabase-reconnected', handleSupabaseReconnect)
+    
+    // Handle call log created event (triggered by CallContext when a call log is created)
+    const handleCallLogCreated = (event: CustomEvent) => {
+      console.log('[ChatViewPage] Call log created event received:', event.detail)
+      if (event.detail.conversationId === conversationId) {
+        console.log('[ChatViewPage] Reloading call logs for this conversation')
+        loadCallLogs()
+      }
+    }
+    
+    window.addEventListener('call-log-created', handleCallLogCreated as EventListener)
 
     return () => {
       clearTimeout(loadingTimeout)
+      supabase.removeChannel(callLogsChannel)
       supabase.removeChannel(messagesChannel)
       supabase.removeChannel(profilesChannel)
       unsubscribeFromConversation(conversationId)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       window.removeEventListener('supabase-reconnected', handleSupabaseReconnect)
+      window.removeEventListener('call-log-created', handleCallLogCreated as EventListener)
     }
   }, [conversationId, user?.id, permission, otherUser?.id])
 
@@ -510,7 +697,27 @@ export function ChatViewPage() {
       setConversation(data)
       setCache(`conv_${conversationId}`, data) // Cache conversation
       
-      if (data.type === 'direct') {
+      if (data.type === 'group') {
+        // Load all group member profiles
+        const { data: members } = await supabase
+          .from('conversation_members')
+          .select('user_id')
+          .eq('conversation_id', conversationId!)
+        
+        if (members && members.length > 0) {
+          const memberIds = members.map(m => m.user_id)
+          const { data: profiles } = await supabase
+            .from('profiles')
+            .select('*')
+            .in('id', memberIds)
+          
+          if (profiles) {
+            const profileMap = new Map<string, Profile>()
+            profiles.forEach(p => profileMap.set(p.id, p))
+            setGroupMemberProfiles(profileMap)
+          }
+        }
+      } else if (data.type === 'direct') {
         // First, get all members of this conversation
         const { data: allMembers } = await supabase.from('conversation_members').select('user_id').eq('conversation_id', conversationId!)
         
@@ -1729,7 +1936,38 @@ export function ChatViewPage() {
           ) : (
             <>
               <div>
-              {displayedMessages.map((message) => {
+              {timelineItems.map((item) => {
+                // Render call messages
+                if (item.type === 'call') {
+                  const call = item.data as CallLog
+                  const isOutgoing = call.caller_id === user?.id
+                  // Group calls are identified by caller_id === callee_id (self-reference)
+                  const isGroupCall = call.caller_id === call.callee_id
+                  
+                  return (
+                    <CallMessage
+                      key={`call-${call.id}`}
+                      type={call.type}
+                      status={call.status}
+                      isOutgoing={isOutgoing}
+                      duration={call.duration}
+                      timestamp={call.started_at}
+                      isGroupCall={isGroupCall}
+                      participantCount={call.participant_count ?? undefined}
+                      isOwn={isOutgoing}
+                      onClick={() => {
+                        if (call.type === 'video') {
+                          handleStartVideoCall()
+                        } else {
+                          handleStartAudioCall()
+                        }
+                      }}
+                    />
+                  )
+                }
+                
+                // Render regular messages
+                const message = item.data as Message
                 const isOwn = message.sender_id === user?.id
                 const messageReactions = reactions.filter(r => r.message_id === message.id)
                 const isSelected = selectedMessages.has(message.id)
@@ -1997,9 +2235,7 @@ export function ChatViewPage() {
                           {isGifMessage && gifMatch && (() => {
                             const caption = gifMatch[1]
                             const gifUrl = gifMatch[2]
-                            const senderInfo = message.sender_id === user?.id
-                              ? { name: profile?.display_name || profile?.username || 'Vous', avatar: profile?.avatar_url }
-                              : { name: otherUser?.display_name || otherUser?.username || 'Utilisateur', avatar: otherUser?.avatar_url }
+                            const senderInfo = getSenderInfo(message.sender_id)
                             return (
                               <div className="space-y-1">
                                 <div
@@ -2037,9 +2273,7 @@ export function ChatViewPage() {
                           {isStickerMessage && stickerMatch && (() => {
                             const caption = stickerMatch[1]
                             const stickerUrl = stickerMatch[2]
-                            const senderInfo = message.sender_id === user?.id
-                              ? { name: profile?.display_name || profile?.username || 'Vous', avatar: profile?.avatar_url }
-                              : { name: otherUser?.display_name || otherUser?.username || 'Utilisateur', avatar: otherUser?.avatar_url }
+                            const senderInfo = getSenderInfo(message.sender_id)
                             return (
                               <div className="space-y-1">
                                 <div
@@ -2113,6 +2347,9 @@ export function ChatViewPage() {
                         </div>
                       ) : isMediaMessage ? (
                         /* Image/Video message - WhatsApp style: no bubble, floating on chat background */
+                        (() => {
+                          const mediaSenderInfo = getSenderInfo(message.sender_id)
+                          return (
                         <div className="relative">
                           {/* Media display - no background bubble */}
                           <div className="space-y-1">
@@ -2125,14 +2362,8 @@ export function ChatViewPage() {
                                 width={message.media_width ?? undefined}
                                 height={message.media_height ?? undefined}
                                 thumbnail={message.media_thumbnail ?? undefined}
-                                senderName={message.sender_id === user?.id
-                                  ? (profile?.display_name || profile?.username || 'Vous')
-                                  : (otherUser?.display_name || otherUser?.username || 'Utilisateur')
-                                }
-                                senderAvatar={message.sender_id === user?.id
-                                  ? profile?.avatar_url
-                                  : otherUser?.avatar_url
-                                }
+                                senderName={mediaSenderInfo.name}
+                                senderAvatar={mediaSenderInfo.avatar}
                                 timestamp={message.created_at}
                                 isOwn={message.sender_id === user?.id}
                                 isStarred={message.is_starred || false}
@@ -2157,8 +2388,13 @@ export function ChatViewPage() {
                               />
                           </div>
                         </div>
+                          )
+                        })()
                       ) : isDocumentMessage ? (
                         /* Document/File message - WhatsApp style document card */
+                        (() => {
+                          const docSenderInfo = getSenderInfo(message.sender_id)
+                          return (
                         <div className="relative">
                           {/* Hover Actions for document messages */}
                           <MessageHoverActions
@@ -2180,10 +2416,7 @@ export function ChatViewPage() {
                             fileSize={message.file_size}
                             caption={message.content}
                             thumbnail={message.media_thumbnail ?? undefined}
-                            senderName={message.sender_id === user?.id
-                              ? (profile?.display_name || profile?.username || 'Vous')
-                              : (otherUser?.display_name || otherUser?.username || 'Utilisateur')
-                            }
+                            senderName={docSenderInfo.name}
                             timestamp={message.created_at}
                             isOwn={message.sender_id === user?.id}
                             isStarred={message.is_starred || false}
@@ -2204,6 +2437,8 @@ export function ChatViewPage() {
                             }}
                           />
                         </div>
+                          )
+                        })()
                       ) : (
                       <div className={`relative px-3 py-2 rounded-2xl ${isOwn ? 'bg-[#787add] text-white rounded-br-none' : 'bg-bg-surface text-text-primary rounded-bl-none'}`}>
                         {/* Hover Actions (Chevron dropdown) - Inside message bubble */}

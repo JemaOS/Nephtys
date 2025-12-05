@@ -8,7 +8,7 @@ import { groupCallManager, Participant, GroupCallConfig } from '@/lib/groupWebRT
 import { useAuth } from './AuthContext'
 
 interface CallSignal {
-  type: 'offer' | 'answer' | 'ice-candidate' | 'call-end'
+  type: 'offer' | 'answer' | 'ice-candidate' | 'call-end' | 'group-call-invite'
   from: string
   to: string
   data: any
@@ -54,7 +54,7 @@ interface CallContextType {
   startCall: (userId: string, conversationId: string, config: CallConfig) => Promise<void>
   startGroupCall: (conversationId: string, config: GroupCallConfig) => Promise<void>
   answerCall: () => Promise<void>
-  endCall: () => void
+  endCall: (sendEndSignal?: boolean) => void
   toggleAudio: () => void
   toggleVideo: () => void
   rejectCall: () => void
@@ -203,6 +203,83 @@ export function CallProvider({ children }: { children: ReactNode }) {
         }
         break
 
+      case 'group-call-invite':
+        console.log('🔔 CallContext: Incoming GROUP call invite')
+        // Appel de groupe entrant - afficher la notification
+        setIsRinging(true)
+        
+        // Récupérer le nom et l'avatar de l'appelant
+        const { data: callerProfile } = await supabase
+          .from('profiles')
+          .select('display_name, username, avatar_url')
+          .eq('id', signal.from)
+          .maybeSingle()
+
+        // Récupérer les infos du groupe
+        const { data: groupConversation } = await supabase
+          .from('conversations')
+          .select('name, avatar_url')
+          .eq('id', signal.conversation_id)
+          .maybeSingle()
+
+        const groupCallerName = callerProfile?.display_name || callerProfile?.username || 'Quelqu\'un'
+        const groupName = groupConversation?.name || 'Groupe'
+        const groupAvatar = groupConversation?.avatar_url || undefined
+        const isGroupVideo = signal.data?.video || false
+
+        // Store the group call info for joining
+        setIncomingCallSignal(signal)
+        setIncomingCall({
+          from: signal.from,
+          conversationId: signal.conversation_id,
+          isVideo: isGroupVideo,
+          callerName: `${groupCallerName} (${groupName})`,
+          callerAvatar: groupAvatar,
+          isGroupCall: true
+        })
+
+        // Envoyer une notification
+        if ('Notification' in window && Notification.permission === 'granted') {
+          const callType = isGroupVideo ? '📹 Appel vidéo de groupe' : '📞 Appel de groupe'
+          
+          if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+            navigator.serviceWorker.ready.then((registration) => {
+              registration.showNotification(`${callType} entrant`, {
+                body: `${groupCallerName} vous appelle dans ${groupName}...`,
+                icon: '/icon-192.png',
+                badge: '/icon-192.png',
+                tag: 'incoming-group-call',
+                requireInteraction: true,
+                actions: [
+                  { action: 'answer', title: 'Rejoindre' },
+                  { action: 'reject', title: 'Ignorer' },
+                ],
+                data: {
+                  conversationId: signal.conversation_id,
+                  callerId: signal.from,
+                  url: `/chat/${signal.conversation_id}`,
+                  isGroupCall: true,
+                },
+              } as any)
+              
+              if ('vibrate' in navigator) {
+                navigator.vibrate([200, 100, 200, 100, 200])
+              }
+            })
+          } else {
+            new Notification(`${callType} entrant`, {
+              body: `${groupCallerName} vous appelle dans ${groupName}...`,
+              icon: '/icon-192.png',
+              tag: 'incoming-group-call',
+            })
+            
+            if ('vibrate' in navigator) {
+              navigator.vibrate([200, 100, 200, 100, 200])
+            }
+          }
+        }
+        break
+
       case 'answer':
         console.log('🔔 CallContext: Call answered')
         if (webrtcManager) {
@@ -233,7 +310,8 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
       case 'call-end':
         console.log('🔔 CallContext: Call ended by remote')
-        endCall()
+        // Pass false to avoid sending another call-end signal back (would cause infinite loop)
+        endCall(false)
         break
     }
   }
@@ -342,13 +420,20 @@ export function CallProvider({ children }: { children: ReactNode }) {
         endCall()
       })
 
-      await supabase.from('call_logs').insert({
+      const { data: callLogData, error: callLogError } = await supabase.from('call_logs').insert({
         conversation_id: conversationId,
         caller_id: user!.id,
         callee_id: userId,
         type: config.video ? 'video' : 'audio',
         status: 'initiated',
-      })
+      }).select()
+      
+      if (!callLogError && callLogData) {
+        // Dispatch a custom event to notify ChatViewPage to reload call logs
+        window.dispatchEvent(new CustomEvent('call-log-created', {
+          detail: { conversationId, callLog: callLogData?.[0] }
+        }))
+      }
     } catch (error) {
       console.error('Error starting call:', error)
       setIsCalling(false)
@@ -359,11 +444,22 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const answerCall = async () => {
     if (!incomingCallSignal) return
 
+    // If it's a group call, use the group call answer flow
+    if (incomingCall?.isGroupCall) {
+      await answerGroupCall()
+      return
+    }
+
     try {
-      console.log('📞 Answering call')
+      console.log('📞 Answering call from:', incomingCallSignal.from)
       setIsRinging(false)
       setIsInCall(true)
       setIsPeerConnectionReady(false)
+      
+      // IMPORTANT: Save the caller info BEFORE clearing incomingCallSignal
+      // This is needed so endCall() can send the call-end signal to the right person
+      setCurrentCallUserId(incomingCallSignal.from)
+      setCurrentCallConversationId(incomingCallSignal.conversation_id)
 
       const config: CallConfig = {
         audio: true,
@@ -414,13 +510,20 @@ export function CallProvider({ children }: { children: ReactNode }) {
         conversation_id: incomingCallSignal.conversation_id,
       })
 
-      await supabase.from('call_logs').insert({
+      const { data: answerCallLogData, error: answerCallLogError } = await supabase.from('call_logs').insert({
         conversation_id: incomingCallSignal.conversation_id,
         caller_id: incomingCallSignal.from,
         callee_id: user!.id,
         type: config.video ? 'video' : 'audio',
         status: 'answered',
-      })
+      }).select()
+      
+      if (!answerCallLogError && answerCallLogData) {
+        // Dispatch a custom event to notify ChatViewPage to reload call logs
+        window.dispatchEvent(new CustomEvent('call-log-created', {
+          detail: { conversationId: incomingCallSignal.conversation_id, callLog: answerCallLogData?.[0] }
+        }))
+      }
 
       setIncomingCallSignal(null)
       // NE PAS effacer incomingCall - on en a besoin pour afficher le nom pendant l'appel
@@ -433,17 +536,44 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
   const rejectCall = async () => {
     if (incomingCallSignal) {
-      await sendSignal({
-        type: 'call-end',
-        from: user!.id,
-        to: incomingCallSignal.from,
-        data: { reason: 'rejected' },
-        conversation_id: incomingCallSignal.conversation_id,
-      })
+      // For group calls, we just dismiss the notification without sending a signal
+      if (!incomingCall?.isGroupCall) {
+        await sendSignal({
+          type: 'call-end',
+          from: user!.id,
+          to: incomingCallSignal.from,
+          data: { reason: 'rejected' },
+          conversation_id: incomingCallSignal.conversation_id,
+        })
+      }
 
       setIsRinging(false)
       setIncomingCallSignal(null)
       setIncomingCall(null)
+    }
+  }
+
+  // Answer a group call (join the existing call)
+  const answerGroupCall = async () => {
+    if (!incomingCallSignal || !incomingCall?.isGroupCall) return
+
+    try {
+      console.log('📞 Joining group call for conversation:', incomingCallSignal.conversation_id)
+      setIsRinging(false)
+      
+      const config: GroupCallConfig = {
+        audio: true,
+        video: incomingCall.isVideo,
+      }
+      
+      // Start the group call (which will join the existing one)
+      await startGroupCall(incomingCallSignal.conversation_id, config)
+      
+      setIncomingCallSignal(null)
+    } catch (error) {
+      console.error('Error joining group call:', error)
+      setIsRinging(false)
+      throw error
     }
   }
 
@@ -457,10 +587,15 @@ export function CallProvider({ children }: { children: ReactNode }) {
     setAudioEnabled(newState)
   }
 
-  const toggleVideo = () => {
+  const toggleVideo = async () => {
     const newState = !videoEnabled
     if (isGroupCall) {
-      groupCallManager.toggleVideo(newState)
+      await groupCallManager.toggleVideo(newState)
+      // Update local stream reference in case it was modified
+      const updatedStream = groupCallManager.getLocalStream()
+      if (updatedStream) {
+        setLocalStream(updatedStream)
+      }
     } else {
       webrtcManager.toggleVideo(newState)
     }
@@ -505,12 +640,18 @@ export function CallProvider({ children }: { children: ReactNode }) {
       setIsGroupCall(true)
       setCurrentCallConversationId(conversationId)
 
-      // Get conversation info for the call
+      // Get conversation info and members for the call
       const { data: conversation } = await supabase
         .from('conversations')
         .select('name, avatar_url')
         .eq('id', conversationId)
         .maybeSingle()
+
+      // Get all members of the group to notify them
+      const { data: members } = await supabase
+        .from('conversation_members')
+        .select('user_id')
+        .eq('conversation_id', conversationId)
 
       setIncomingCall({
         from: conversationId,
@@ -558,14 +699,55 @@ export function CallProvider({ children }: { children: ReactNode }) {
       setIsCalling(false)
       setIsInCall(true)
 
-      // Log the call
-      await supabase.from('call_logs').insert({
+      // Send group call invite to all other members
+      if (members && members.length > 0) {
+        console.log('📞 Sending group call invites to', members.length - 1, 'members')
+        for (const member of members) {
+          // Don't send to ourselves
+          if (member.user_id !== user!.id) {
+            console.log('📞 Sending group call invite to:', member.user_id)
+            await sendSignal({
+              type: 'group-call-invite',
+              from: user!.id,
+              to: member.user_id,
+              data: {
+                video: config.video,
+                conversationName: conversation?.name || 'Groupe',
+                conversationAvatar: conversation?.avatar_url,
+              },
+              conversation_id: conversationId,
+            })
+          }
+        }
+      }
+
+      // Log the call - For group calls, use caller_id as callee_id (self-reference indicates group call)
+      // This satisfies the NOT NULL constraint on callee_id while allowing us to identify group calls
+      console.log('📞 Creating call log for group call:', {
         conversation_id: conversationId,
         caller_id: user!.id,
+        callee_id: user!.id, // Self-reference indicates group call
         type: config.video ? 'video' : 'audio',
         status: 'initiated',
-        is_group_call: true,
       })
+      
+      const { data: callLogData, error: callLogError } = await supabase.from('call_logs').insert({
+        conversation_id: conversationId,
+        caller_id: user!.id,
+        callee_id: user!.id, // Self-reference indicates group call (caller_id === callee_id)
+        type: config.video ? 'video' : 'audio',
+        status: 'initiated',
+      }).select()
+      
+      if (callLogError) {
+        console.error('📞 Error creating group call log:', callLogError)
+      } else {
+        console.log('📞 Group call log created successfully:', callLogData)
+        // Dispatch a custom event to notify ChatViewPage to reload call logs
+        window.dispatchEvent(new CustomEvent('call-log-created', {
+          detail: { conversationId, callLog: callLogData?.[0] }
+        }))
+      }
     } catch (error) {
       console.error('Error starting group call:', error)
       setIsCalling(false)
@@ -575,21 +757,57 @@ export function CallProvider({ children }: { children: ReactNode }) {
   }
 
   // End call - handles both group and 1-to-1 calls
-  const endCall = () => {
+  const endCall = async (sendEndSignal: boolean = true) => {
+    console.log('🔔 CallContext: endCall called, sendEndSignal:', sendEndSignal)
+    
     if (isGroupCall) {
+      // Get participant count before leaving
+      const participantCount = groupCallManager.getParticipantCount()
+      const conversationId = currentCallConversationId
+      
       // End group call
       groupCallManager.leaveCall()
       setGroupParticipants([])
       setIsGroupCall(false)
+      
+      // Update call log with participant count (if we have a conversation ID)
+      if (conversationId && user) {
+        try {
+          // Find the most recent call log for this conversation and update it
+          const { data: callLog } = await supabase
+            .from('call_logs')
+            .select('id')
+            .eq('conversation_id', conversationId)
+            .eq('caller_id', user.id)
+            .order('started_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+          
+          if (callLog) {
+            await supabase
+              .from('call_logs')
+              .update({
+                status: 'ended',
+                ended_at: new Date().toISOString(),
+                participant_count: participantCount
+              })
+              .eq('id', callLog.id)
+          }
+        } catch (e) {
+          console.log('Could not update group call log with participant count:', e)
+        }
+      }
     } else {
       // End 1-to-1 call
       const otherUserId = incomingCallSignal?.from || currentCallUserId
       const conversationId = incomingCallSignal?.conversation_id || currentCallConversationId
       
-      if (otherUserId && conversationId) {
+      // Only send end signal if we initiated the hang up (not if we received call-end from remote)
+      if (sendEndSignal && otherUserId && conversationId && user) {
+        console.log('🔔 CallContext: Sending call-end signal to:', otherUserId)
         sendSignal({
           type: 'call-end',
-          from: user!.id,
+          from: user.id,
           to: otherUserId,
           data: { reason: 'ended' },
           conversation_id: conversationId,

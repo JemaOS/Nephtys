@@ -7,8 +7,9 @@ import { MainLayout } from '@/components/MainLayout'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { useWebRTCCall } from '../hooks/useWebRTCCall'
+import { useCall } from '@/context/CallContext'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { Phone, Video, PhoneIncoming, PhoneOutgoing, PhoneMissed, Search, Star, Link2, Plus, MessageCircle, X, Trash2, UserPlus, Check, ArrowLeft, CheckCheck } from 'lucide-react'
+import { Phone, Video, PhoneIncoming, PhoneOutgoing, PhoneMissed, Search, Star, Link2, Plus, MessageCircle, X, Trash2, UserPlus, Check, ArrowLeft, CheckCheck, Users } from 'lucide-react'
 import { CallScreen } from '@/components/CallScreen'
 
 // Cache helpers for instant display like WhatsApp
@@ -45,7 +46,7 @@ interface CallLog {
   id: string
   conversation_id: string
   caller_id: string
-  callee_id: string
+  callee_id: string | null
   type: 'audio' | 'video'
   status: 'initiated' | 'answered' | 'missed' | 'rejected' | 'ended'
   started_at: string
@@ -53,6 +54,10 @@ interface CallLog {
   duration: number | null
   caller_profile?: any
   callee_profile?: any
+  // Group call info
+  is_group_call?: boolean
+  conversation_name?: string
+  conversation_avatar?: string
 }
 
 export function CallsPage() {
@@ -72,6 +77,7 @@ export function CallsPage() {
   const [contacts, setContacts] = useState<any[]>(() => getCache<any[]>('calls_contacts') || [])
   const [selectedCall, setSelectedCall] = useState<CallLog | null>(null)
   const [favorites, setFavorites] = useState<string[]>([])
+  const [favoriteGroups, setFavoriteGroups] = useState<Map<string, { name: string; avatar_url: string | null }>>(new Map())
   const [contextMenuCall, setContextMenuCall] = useState<CallLog | null>(null)
   const [contextMenuPosition, setContextMenuPosition] = useState<{ x: number; y: number } | null>(null)
   const [callerName, setCallerName] = useState<string>('')
@@ -98,6 +104,9 @@ export function CallsPage() {
     startCall, answerCall, endCall,
     toggleAudio, toggleVideo, rejectCall,
   } = useWebRTCCall(user?.id || '')
+  
+  // Use CallContext for group calls
+  const { startGroupCall } = useCall()
 
   // Debug: afficher les états du hook
   useEffect(() => {
@@ -342,20 +351,72 @@ export function CallsPage() {
     }
   }
 
-  const loadFavorites = () => {
+  const loadFavorites = async () => {
     const saved = localStorage.getItem('anu_call_favorites')
     if (saved) {
-      setFavorites(JSON.parse(saved))
+      const favIds: string[] = JSON.parse(saved)
+      setFavorites(favIds)
+      
+      // Load group conversation info for favorites that are conversation IDs
+      // Group conversation IDs are UUIDs that don't match any contact_user_id
+      const groupConvIds: string[] = []
+      for (const favId of favIds) {
+        // Check if this is a contact or a group conversation
+        const isContact = contacts.some(c => c.contact_user_id === favId)
+        if (!isContact) {
+          groupConvIds.push(favId)
+        }
+      }
+      
+      if (groupConvIds.length > 0) {
+        const { data: conversations } = await supabase
+          .from('conversations')
+          .select('id, name, avatar_url, type')
+          .in('id', groupConvIds)
+          .eq('type', 'group')
+        
+        if (conversations) {
+          const groupMap = new Map<string, { name: string; avatar_url: string | null }>()
+          conversations.forEach(conv => {
+            groupMap.set(conv.id, { name: conv.name || 'Groupe', avatar_url: conv.avatar_url })
+          })
+          setFavoriteGroups(groupMap)
+        }
+      }
     }
   }
 
-  const toggleFavorite = (contactId: string) => {
-    const newFavorites = favorites.includes(contactId)
-      ? favorites.filter(id => id !== contactId)
-      : [...favorites, contactId]
+  const toggleFavorite = async (id: string, isGroupConversation: boolean = false) => {
+    const newFavorites = favorites.includes(id)
+      ? favorites.filter(fid => fid !== id)
+      : [...favorites, id]
     
     setFavorites(newFavorites)
     localStorage.setItem('anu_call_favorites', JSON.stringify(newFavorites))
+    
+    // If adding a group conversation, load its info
+    if (isGroupConversation && !favorites.includes(id)) {
+      const { data: conversation } = await supabase
+        .from('conversations')
+        .select('id, name, avatar_url')
+        .eq('id', id)
+        .maybeSingle()
+      
+      if (conversation) {
+        setFavoriteGroups(prev => {
+          const newMap = new Map(prev)
+          newMap.set(conversation.id, { name: conversation.name || 'Groupe', avatar_url: conversation.avatar_url })
+          return newMap
+        })
+      }
+    } else if (isGroupConversation && favorites.includes(id)) {
+      // Removing a group from favorites
+      setFavoriteGroups(prev => {
+        const newMap = new Map(prev)
+        newMap.delete(id)
+        return newMap
+      })
+    }
   }
 
   const loadCalls = async () => {
@@ -368,17 +429,69 @@ export function CallsPage() {
     }
 
     try {
-      // Step 1: Fetch all calls (single query)
       console.log('📞 Loading calls for user:', user.id)
       
-      const { data: callsData, error } = await supabase
+      // Step 1: Get all conversations the user is a member of (for group calls)
+      const { data: memberConversations } = await supabase
+        .from('conversation_members')
+        .select('conversation_id')
+        .eq('user_id', user.id)
+      
+      const userConversationIds = memberConversations?.map(m => m.conversation_id) || []
+      console.log('📞 User is member of conversations:', userConversationIds.length)
+      
+      // Step 2: Fetch all calls - both direct calls and group calls
+      // Direct calls: caller_id or callee_id matches user
+      // Group calls: callee_id is null AND conversation_id is in user's conversations
+      
+      // First, fetch direct calls (where user is caller or callee)
+      const { data: directCalls, error: directError } = await supabase
         .from('call_logs')
         .select('*')
         .or(`caller_id.eq.${user.id},callee_id.eq.${user.id}`)
         .order('started_at', { ascending: false })
         .limit(100)
+      
+      // Then, fetch group calls (caller_id === callee_id, conversation_id in user's conversations)
+      // Group calls are identified by self-reference: caller_id equals callee_id
+      let groupCalls: any[] = []
+      if (userConversationIds.length > 0) {
+        // We need to fetch calls where caller_id = callee_id (group calls)
+        // Since Supabase doesn't support comparing two columns directly, we fetch all calls
+        // from user's conversations and filter client-side
+        const { data: conversationCalls, error: groupError } = await supabase
+          .from('call_logs')
+          .select('*')
+          .in('conversation_id', userConversationIds)
+          .order('started_at', { ascending: false })
+          .limit(200)
+        
+        if (!groupError && conversationCalls) {
+          // Filter for group calls (caller_id === callee_id)
+          groupCalls = conversationCalls.filter(call => call.caller_id === call.callee_id)
+        }
+        console.log('📞 Group calls found:', groupCalls.length, 'Error:', groupError)
+      }
+      
+      // Merge and deduplicate (in case a group call was also matched by caller_id)
+      const allCallsMap = new Map<string, any>()
+      
+      // Add direct calls first
+      if (directCalls) {
+        directCalls.forEach(call => allCallsMap.set(call.id, call))
+      }
+      
+      // Add group calls (will overwrite duplicates)
+      groupCalls.forEach(call => allCallsMap.set(call.id, call))
+      
+      // Convert back to array and sort by started_at
+      const callsData = Array.from(allCallsMap.values())
+        .sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime())
+        .slice(0, 100)
+      
+      const error = directError
 
-      console.log('📞 Calls data:', callsData)
+      console.log('📞 Calls data:', callsData?.length || 0, 'calls')
       console.log('📞 Error:', error)
 
       if (error) {
@@ -394,14 +507,23 @@ export function CallsPage() {
         return
       }
 
-      // Step 2: Collect all unique user IDs
+      // Step 3: Collect all unique user IDs and conversation IDs for group calls
       const userIds = new Set<string>()
+      const groupCallConversationIds = new Set<string>()
+      
       callsData.forEach(call => {
         userIds.add(call.caller_id)
-        userIds.add(call.callee_id)
+        if (call.callee_id) {
+          userIds.add(call.callee_id)
+        }
+        // Group calls are identified by caller_id === callee_id (self-reference)
+        if (call.caller_id === call.callee_id) {
+          // This is a group call - we need conversation info
+          groupCallConversationIds.add(call.conversation_id)
+        }
       })
 
-      // Step 3: Batch fetch all profiles (single query)
+      // Step 4: Batch fetch all profiles (single query)
       const { data: profiles } = await supabase
         .from('profiles')
         .select('*')
@@ -409,12 +531,32 @@ export function CallsPage() {
 
       const profileMap = new Map(profiles?.map(p => [p.id, p]) || [])
 
-      // Step 4: Enrich calls with profiles (no additional queries)
-      const enrichedCalls = callsData.map(call => ({
-        ...call,
-        caller_profile: profileMap.get(call.caller_id) || null,
-        callee_profile: profileMap.get(call.callee_id) || null
-      }))
+      // Step 5: Fetch conversation info for group calls
+      let conversationMap = new Map<string, { name: string; avatar_url: string | null }>()
+      if (groupCallConversationIds.size > 0) {
+        const { data: conversations } = await supabase
+          .from('conversations')
+          .select('id, name, avatar_url')
+          .in('id', Array.from(groupCallConversationIds))
+        
+        conversationMap = new Map(conversations?.map(c => [c.id, { name: c.name, avatar_url: c.avatar_url }]) || [])
+      }
+
+      // Step 6: Enrich calls with profiles and conversation info
+      const enrichedCalls = callsData.map(call => {
+        // Group calls are identified by caller_id === callee_id (self-reference)
+        const isGroupCall = call.caller_id === call.callee_id
+        const conversationInfo = conversationMap.get(call.conversation_id)
+        
+        return {
+          ...call,
+          caller_profile: profileMap.get(call.caller_id) || null,
+          callee_profile: call.callee_id ? profileMap.get(call.callee_id) : null,
+          is_group_call: isGroupCall,
+          conversation_name: isGroupCall ? (conversationInfo?.name || 'Groupe') : null,
+          conversation_avatar: isGroupCall ? conversationInfo?.avatar_url : null,
+        }
+      })
 
       setCalls(enrichedCalls)
       setCache('calls', enrichedCalls) // Cache for instant display
@@ -820,6 +962,14 @@ export function CallsPage() {
 
   const filteredCalls = calls.filter(call => {
     if (!searchQuery.trim()) return true
+    
+    // For group calls, search by conversation name
+    if (call.is_group_call) {
+      const groupName = call.conversation_name || 'Groupe'
+      return groupName.toLowerCase().includes(searchQuery.toLowerCase())
+    }
+    
+    // For direct calls, search by user name
     const otherProfile = call.caller_id === user?.id ? call.callee_profile : call.caller_profile
     const name = otherProfile?.display_name || otherProfile?.username || ''
     return name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -927,39 +1077,92 @@ export function CallsPage() {
           {favorites.length > 0 && (
             <div className="space-y-1">
               {favorites.map(favId => {
+                // Check if it's a contact
                 const contact = contacts.find(c => c.contact_user_id === favId)
-                if (!contact) return null
-                return (
-                  <div
-                    key={favId}
-                    className="px-4 py-3 flex items-center gap-3 hover:bg-bg-surface transition-colors rounded-lg cursor-pointer"
-                    onClick={() => handleCallContact(favId)}
-                  >
-                    {contact.profile.avatar_url ? (
-                      <img
-                        src={contact.profile.avatar_url}
-                        alt={contact.profile.display_name || contact.profile.username}
-                        className="w-12 h-12 rounded-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold">
-                        {contact.profile.username[0].toUpperCase()}
-                      </div>
-                    )}
-                    <div className="flex-1">
-                      <span className="text-text-primary">{contact.profile.display_name || contact.profile.username}</span>
-                    </div>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        toggleFavorite(favId)
-                      }}
-                      className="w-8 h-8 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors"
+                
+                // Check if it's a group conversation
+                const groupInfo = favoriteGroups.get(favId)
+                
+                if (contact) {
+                  // Render contact favorite
+                  return (
+                    <div
+                      key={favId}
+                      className="px-4 py-3 flex items-center gap-3 hover:bg-bg-surface transition-colors rounded-lg cursor-pointer"
+                      onClick={() => handleCallContact(favId)}
                     >
-                      <Star size={16} className="text-accent fill-[#6b6fdb]" />
-                    </button>
-                  </div>
-                )
+                      {contact.profile.avatar_url ? (
+                        <img
+                          src={contact.profile.avatar_url}
+                          alt={contact.profile.display_name || contact.profile.username}
+                          className="w-12 h-12 rounded-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold">
+                          {contact.profile.username[0].toUpperCase()}
+                        </div>
+                      )}
+                      <div className="flex-1">
+                        <span className="text-text-primary">{contact.profile.display_name || contact.profile.username}</span>
+                      </div>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          toggleFavorite(favId, false)
+                        }}
+                        className="w-8 h-8 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors"
+                      >
+                        <Star size={16} className="text-accent fill-[#6b6fdb]" />
+                      </button>
+                    </div>
+                  )
+                } else if (groupInfo) {
+                  // Render group conversation favorite
+                  return (
+                    <div
+                      key={favId}
+                      className="px-4 py-3 flex items-center gap-3 hover:bg-bg-surface transition-colors rounded-lg cursor-pointer"
+                      onClick={async () => {
+                        // Start group call
+                        try {
+                          await startGroupCall(favId, { audio: true, video: false })
+                        } catch (error) {
+                          console.error('Erreur lors de l\'appel de groupe:', error)
+                          alert('Impossible de démarrer l\'appel de groupe')
+                        }
+                      }}
+                    >
+                      {groupInfo.avatar_url ? (
+                        <img
+                          src={groupInfo.avatar_url}
+                          alt={groupInfo.name}
+                          className="w-12 h-12 rounded-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-accent to-primary-600 flex items-center justify-center text-white">
+                          <Users size={24} />
+                        </div>
+                      )}
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <Users size={14} className="text-text-secondary" />
+                          <span className="text-text-primary">{groupInfo.name}</span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          toggleFavorite(favId, true)
+                        }}
+                        className="w-8 h-8 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors"
+                      >
+                        <Star size={16} className="text-accent fill-[#6b6fdb]" />
+                      </button>
+                    </div>
+                  )
+                }
+                
+                return null
               })}
             </div>
           )}
@@ -988,8 +1191,20 @@ export function CallsPage() {
           ) : (
             filteredCalls.map((call) => {
               const isOutgoing = call.caller_id === user?.id
-              const otherProfile = isOutgoing ? call.callee_profile : call.caller_profile
-              const displayName = otherProfile?.display_name || otherProfile?.username || 'Utilisateur'
+              const isGroupCall = call.is_group_call
+              
+              // For group calls, use conversation info; for direct calls, use profile
+              let displayName: string
+              let avatarUrl: string | null | undefined
+              
+              if (isGroupCall) {
+                displayName = call.conversation_name || 'Groupe'
+                avatarUrl = call.conversation_avatar
+              } else {
+                const otherProfile = isOutgoing ? call.callee_profile : call.caller_profile
+                displayName = otherProfile?.display_name || otherProfile?.username || 'Utilisateur'
+                avatarUrl = otherProfile?.avatar_url
+              }
               
               const isMissed = call.status === 'missed' || call.status === 'rejected'
               const isAnswered = call.status === 'answered' || call.status === 'ended'
@@ -1037,12 +1252,16 @@ export function CallsPage() {
                     )}
                     
                     {/* Avatar */}
-                    {otherProfile?.avatar_url ? (
+                    {avatarUrl ? (
                       <img
-                        src={otherProfile.avatar_url}
+                        src={avatarUrl}
                         alt={displayName}
                         className="w-12 h-12 rounded-full object-cover flex-shrink-0"
                       />
+                    ) : isGroupCall ? (
+                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-accent to-primary-600 flex items-center justify-center text-white flex-shrink-0">
+                        <Users size={24} />
+                      </div>
                     ) : (
                       <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold text-lg flex-shrink-0">
                         {displayName[0]?.toUpperCase()}
@@ -1052,6 +1271,7 @@ export function CallsPage() {
                     {/* Info */}
                     <div className="flex-1 min-w-0 border-b border-bg-hover pb-3">
                       <div className="flex items-center gap-2 mb-1">
+                        {isGroupCall && <Users size={14} className="text-text-secondary flex-shrink-0" />}
                         <h3 className={`truncate ${isMissed ? 'text-[#ea4335]' : 'text-text-primary'}`}>
                           {displayName}
                         </h3>
@@ -1069,6 +1289,9 @@ export function CallsPage() {
                         
                         {/* Type d'appel */}
                         {call.type === 'video' && <Video size={14} />}
+                        
+                        {/* Indicateur appel de groupe */}
+                        {isGroupCall && <span className="text-xs">Groupe</span>}
                         
                         {/* Statut */}
                         <span>
@@ -1108,10 +1331,20 @@ export function CallsPage() {
               <div className="bg-bg-hover rounded-2xl p-6">
                 <div className="flex flex-col items-center gap-4">
                   {(() => {
+                    const isGroupCall = selectedCall.is_group_call
                     const isOutgoing = selectedCall.caller_id === user?.id
-                    const otherProfile = isOutgoing ? selectedCall.callee_profile : selectedCall.caller_profile
-                    const displayName = otherProfile?.display_name || otherProfile?.username || 'U'
-                    const avatarUrl = otherProfile?.avatar_url
+                    
+                    let displayName: string
+                    let avatarUrl: string | null | undefined
+                    
+                    if (isGroupCall) {
+                      displayName = selectedCall.conversation_name || 'Groupe'
+                      avatarUrl = selectedCall.conversation_avatar
+                    } else {
+                      const otherProfile = isOutgoing ? selectedCall.callee_profile : selectedCall.caller_profile
+                      displayName = otherProfile?.display_name || otherProfile?.username || 'U'
+                      avatarUrl = otherProfile?.avatar_url
+                    }
                     
                     return avatarUrl ? (
                       <img
@@ -1119,6 +1352,10 @@ export function CallsPage() {
                         alt={displayName}
                         className="w-20 h-20 rounded-full object-cover"
                       />
+                    ) : isGroupCall ? (
+                      <div className="w-20 h-20 rounded-full bg-gradient-to-br from-accent to-primary-600 flex items-center justify-center text-white">
+                        <Users size={36} />
+                      </div>
                     ) : (
                       <div className="w-20 h-20 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-2xl">
                         {displayName[0]?.toUpperCase()}
@@ -1126,15 +1363,21 @@ export function CallsPage() {
                     )
                   })()}
                   <div className="text-center">
-                    <h3 className="text-lg font-medium text-text-primary mb-1">
+                    <h3 className="text-lg font-medium text-text-primary mb-1 flex items-center justify-center gap-2">
+                      {selectedCall.is_group_call && <Users size={18} className="text-text-secondary" />}
                       {(() => {
+                        if (selectedCall.is_group_call) {
+                          return selectedCall.conversation_name || 'Groupe'
+                        }
                         const isOutgoing = selectedCall.caller_id === user?.id
                         const otherProfile = isOutgoing ? selectedCall.callee_profile : selectedCall.caller_profile
                         return otherProfile?.display_name || otherProfile?.username || 'Utilisateur'
                       })()}
                     </h3>
                     <p className="text-sm text-text-secondary">
-                      {selectedCall.caller_id === user?.id ? 'Appel sortant' : 'Appel entrant'}
+                      {selectedCall.is_group_call
+                        ? 'Appel de groupe'
+                        : (selectedCall.caller_id === user?.id ? 'Appel sortant' : 'Appel entrant')}
                     </p>
                   </div>
                 </div>
@@ -1145,8 +1388,13 @@ export function CallsPage() {
                 <div className="flex items-center justify-between">
                   <span className="text-text-secondary">Type</span>
                   <div className="flex items-center gap-2">
+                    {selectedCall.is_group_call && <Users size={16} className="text-accent" />}
                     {selectedCall.type === 'video' ? <Video size={16} className="text-accent" /> : <Phone size={16} className="text-accent" />}
-                    <span className="text-gray-800 dark:text-white">{selectedCall.type === 'video' ? 'Appel vidéo' : 'Appel vocal'}</span>
+                    <span className="text-gray-800 dark:text-white">
+                      {selectedCall.is_group_call
+                        ? (selectedCall.type === 'video' ? 'Appel vidéo de groupe' : 'Appel de groupe')
+                        : (selectedCall.type === 'video' ? 'Appel vidéo' : 'Appel vocal')}
+                    </span>
                   </div>
                 </div>
 
@@ -1177,21 +1425,31 @@ export function CallsPage() {
 
               {/* Actions */}
               <div className="space-y-3">
+                {/* Favoris */}
                 <button
                   onClick={() => {
-                    const isOutgoing = selectedCall.caller_id === user?.id
-                    const otherProfile = isOutgoing ? selectedCall.callee_profile : selectedCall.caller_profile
-                    if (otherProfile) {
-                      toggleFavorite(otherProfile.id)
+                    if (selectedCall.is_group_call) {
+                      // For group calls, toggle favorite on conversation_id
+                      toggleFavorite(selectedCall.conversation_id, true)
+                    } else {
+                      const isOutgoing = selectedCall.caller_id === user?.id
+                      const otherProfile = isOutgoing ? selectedCall.callee_profile : selectedCall.caller_profile
+                      if (otherProfile) {
+                        toggleFavorite(otherProfile.id, false)
+                      }
                     }
                   }}
                   className="w-full py-3 rounded-xl bg-bg-hover hover:bg-bg-surface text-text-primary font-medium flex items-center justify-center gap-2"
                 >
                   <Star size={20} className={favorites.includes(
-                    selectedCall.caller_id === user?.id ? selectedCall.callee_profile?.id : selectedCall.caller_profile?.id
+                    selectedCall.is_group_call
+                      ? selectedCall.conversation_id
+                      : (selectedCall.caller_id === user?.id ? selectedCall.callee_profile?.id : selectedCall.caller_profile?.id)
                   ) ? 'fill-[#6b6fdb] text-accent' : ''} />
                   {favorites.includes(
-                    selectedCall.caller_id === user?.id ? selectedCall.callee_profile?.id : selectedCall.caller_profile?.id
+                    selectedCall.is_group_call
+                      ? selectedCall.conversation_id
+                      : (selectedCall.caller_id === user?.id ? selectedCall.callee_profile?.id : selectedCall.caller_profile?.id)
                   ) ? 'Retirer des favoris' : 'Ajouter aux favoris'}
                 </button>
                 <button
@@ -1204,9 +1462,24 @@ export function CallsPage() {
                   <MessageCircle size={20} />
                   Ouvrir la conversation
                 </button>
+                {/* Rappeler */}
                 <button
-                  onClick={() => {
-                    handleRecall()
+                  onClick={async () => {
+                    if (selectedCall.is_group_call) {
+                      // For group calls, start a new group call directly
+                      try {
+                        await startGroupCall(selectedCall.conversation_id, {
+                          audio: true,
+                          video: selectedCall.type === 'video'
+                        })
+                        setSelectedCall(null)
+                      } catch (error) {
+                        console.error('Erreur lors du rappel de groupe:', error)
+                        alert('Impossible de démarrer l\'appel de groupe')
+                      }
+                    } else {
+                      handleRecall()
+                    }
                   }}
                   className="w-full py-3 rounded-xl bg-bg-hover hover:bg-bg-surface text-text-primary font-medium flex items-center justify-center gap-2"
                 >
@@ -1238,10 +1511,20 @@ export function CallsPage() {
             <div className="bg-bg-surface rounded-2xl p-6 mb-4">
               <div className="flex flex-col items-center gap-4">
                 {(() => {
+                  const isGroupCall = selectedCall.is_group_call
                   const isOutgoing = selectedCall.caller_id === user?.id
-                  const otherProfile = isOutgoing ? selectedCall.callee_profile : selectedCall.caller_profile
-                  const displayName = otherProfile?.display_name || otherProfile?.username || 'U'
-                  const avatarUrl = otherProfile?.avatar_url
+                  
+                  let displayName: string
+                  let avatarUrl: string | null | undefined
+                  
+                  if (isGroupCall) {
+                    displayName = selectedCall.conversation_name || 'Groupe'
+                    avatarUrl = selectedCall.conversation_avatar
+                  } else {
+                    const otherProfile = isOutgoing ? selectedCall.callee_profile : selectedCall.caller_profile
+                    displayName = otherProfile?.display_name || otherProfile?.username || 'U'
+                    avatarUrl = otherProfile?.avatar_url
+                  }
                   
                   return avatarUrl ? (
                     <img
@@ -1249,6 +1532,10 @@ export function CallsPage() {
                       alt={displayName}
                       className="w-24 h-24 rounded-full object-cover"
                     />
+                  ) : isGroupCall ? (
+                    <div className="w-24 h-24 rounded-full bg-gradient-to-br from-accent to-primary-600 flex items-center justify-center text-white">
+                      <Users size={40} />
+                    </div>
                   ) : (
                     <div className="w-24 h-24 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-3xl">
                       {displayName[0]?.toUpperCase()}
@@ -1256,15 +1543,21 @@ export function CallsPage() {
                   )
                 })()}
                 <div className="text-center">
-                  <h3 className="text-xl font-medium text-text-primary mb-1">
+                  <h3 className="text-xl font-medium text-text-primary mb-1 flex items-center justify-center gap-2">
+                    {selectedCall.is_group_call && <Users size={20} className="text-text-secondary" />}
                     {(() => {
+                      if (selectedCall.is_group_call) {
+                        return selectedCall.conversation_name || 'Groupe'
+                      }
                       const isOutgoing = selectedCall.caller_id === user?.id
                       const otherProfile = isOutgoing ? selectedCall.callee_profile : selectedCall.caller_profile
                       return otherProfile?.display_name || otherProfile?.username || 'Utilisateur'
                     })()}
                   </h3>
                   <p className="text-sm text-text-secondary">
-                    {selectedCall.caller_id === user?.id ? 'Appel sortant' : 'Appel entrant'}
+                    {selectedCall.is_group_call
+                      ? 'Appel de groupe'
+                      : (selectedCall.caller_id === user?.id ? 'Appel sortant' : 'Appel entrant')}
                   </p>
                 </div>
               </div>
@@ -1275,8 +1568,13 @@ export function CallsPage() {
               <div className="flex items-center justify-between">
                 <span className="text-text-secondary">Type</span>
                 <div className="flex items-center gap-2">
+                  {selectedCall.is_group_call && <Users size={16} className="text-accent" />}
                   {selectedCall.type === 'video' ? <Video size={16} className="text-accent" /> : <Phone size={16} className="text-accent" />}
-                  <span className="text-gray-800 dark:text-white">{selectedCall.type === 'video' ? 'Appel vidéo' : 'Appel vocal'}</span>
+                  <span className="text-gray-800 dark:text-white">
+                    {selectedCall.is_group_call
+                      ? (selectedCall.type === 'video' ? 'Appel vidéo de groupe' : 'Appel de groupe')
+                      : (selectedCall.type === 'video' ? 'Appel vidéo' : 'Appel vocal')}
+                  </span>
                 </div>
               </div>
 
@@ -1307,21 +1605,31 @@ export function CallsPage() {
 
             {/* Actions */}
             <div className="space-y-3">
+              {/* Favoris */}
               <button
                 onClick={() => {
-                  const isOutgoing = selectedCall.caller_id === user?.id
-                  const otherProfile = isOutgoing ? selectedCall.callee_profile : selectedCall.caller_profile
-                  if (otherProfile) {
-                    toggleFavorite(otherProfile.id)
+                  if (selectedCall.is_group_call) {
+                    // For group calls, toggle favorite on conversation_id
+                    toggleFavorite(selectedCall.conversation_id, true)
+                  } else {
+                    const isOutgoing = selectedCall.caller_id === user?.id
+                    const otherProfile = isOutgoing ? selectedCall.callee_profile : selectedCall.caller_profile
+                    if (otherProfile) {
+                      toggleFavorite(otherProfile.id, false)
+                    }
                   }
                 }}
                 className="w-full py-3 rounded-xl bg-bg-surface hover:bg-bg-hover text-text-primary font-medium flex items-center justify-center gap-2"
               >
                 <Star size={20} className={favorites.includes(
-                  selectedCall.caller_id === user?.id ? selectedCall.callee_profile?.id : selectedCall.caller_profile?.id
+                  selectedCall.is_group_call
+                    ? selectedCall.conversation_id
+                    : (selectedCall.caller_id === user?.id ? selectedCall.callee_profile?.id : selectedCall.caller_profile?.id)
                 ) ? 'fill-[#6b6fdb] text-accent' : ''} />
                 {favorites.includes(
-                  selectedCall.caller_id === user?.id ? selectedCall.callee_profile?.id : selectedCall.caller_profile?.id
+                  selectedCall.is_group_call
+                    ? selectedCall.conversation_id
+                    : (selectedCall.caller_id === user?.id ? selectedCall.callee_profile?.id : selectedCall.caller_profile?.id)
                 ) ? 'Retirer des favoris' : 'Ajouter aux favoris'}
               </button>
               <button
@@ -1331,8 +1639,25 @@ export function CallsPage() {
                 <MessageCircle size={20} />
                 Ouvrir la conversation
               </button>
+              {/* Rappeler */}
               <button
-                onClick={handleRecall}
+                onClick={async () => {
+                  if (selectedCall.is_group_call) {
+                    // For group calls, start a new group call directly
+                    try {
+                      await startGroupCall(selectedCall.conversation_id, {
+                        audio: true,
+                        video: selectedCall.type === 'video'
+                      })
+                      setSelectedCall(null)
+                    } catch (error) {
+                      console.error('Erreur lors du rappel de groupe:', error)
+                      alert('Impossible de démarrer l\'appel de groupe')
+                    }
+                  } else {
+                    handleRecall()
+                  }
+                }}
                 className="w-full py-3 rounded-xl bg-bg-surface hover:bg-bg-hover text-text-primary font-medium flex items-center justify-center gap-2"
               >
                 <Phone size={20} />
@@ -1503,7 +1828,7 @@ export function CallsPage() {
                       key={contact.id}
                       className="px-6 py-3 cursor-pointer hover:bg-bg-hover transition-colors"
                       onClick={() => {
-                        toggleFavorite(contact.contact_user_id)
+                        toggleFavorite(contact.contact_user_id, false)
                       }}
                     >
                       <div className="flex items-center gap-3">

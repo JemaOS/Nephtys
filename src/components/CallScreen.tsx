@@ -168,6 +168,9 @@ export const CallScreen: React.FC<CallScreenProps> = ({
     }
   };
 
+  // State to track if remote video is enabled
+  const [remoteVideoEnabled, setRemoteVideoEnabled] = useState(false);
+
   // Attacher les streams aux éléments vidéo
   useEffect(() => {
     if (localVideoRef.current && localStream) {
@@ -193,6 +196,34 @@ export const CallScreen: React.FC<CallScreenProps> = ({
           console.log('📹 Video dimensions:', remoteVideoRef.current.videoWidth, 'x', remoteVideoRef.current.videoHeight);
         }
       };
+
+      // Listen for video track enabled/disabled changes
+      const videoTracks = remoteStream.getVideoTracks();
+      const checkVideoEnabled = () => {
+        const hasActiveVideo = videoTracks.some(track => track.enabled && track.readyState === 'live');
+        setRemoteVideoEnabled(hasActiveVideo);
+      };
+      
+      // Initial check
+      checkVideoEnabled();
+      
+      // Listen for track mute/unmute events
+      videoTracks.forEach(track => {
+        track.onmute = () => {
+          console.log('📹 CallScreen: Remote video track muted');
+          setRemoteVideoEnabled(false);
+        };
+        track.onunmute = () => {
+          console.log('📹 CallScreen: Remote video track unmuted');
+          setRemoteVideoEnabled(true);
+        };
+        track.onended = () => {
+          console.log('📹 CallScreen: Remote video track ended');
+          setRemoteVideoEnabled(false);
+        };
+      });
+    } else {
+      setRemoteVideoEnabled(false);
     }
     
     // Attacher également le stream audio à un élément audio pour les appels audio
@@ -313,7 +344,8 @@ export const CallScreen: React.FC<CallScreenProps> = ({
   const renderOneToOneCallUI = () => {
     return (
       <div className="flex-1 relative flex items-center justify-center bg-black overflow-hidden">
-        {isVideoCall && remoteStream ? (
+        {/* Show video only if it's a video call AND remote stream has active video */}
+        {isVideoCall && remoteStream && remoteVideoEnabled ? (
           <>
             {/* Remote video with proper aspect ratio preservation (pillarbox/letterbox) */}
             <video
@@ -331,6 +363,7 @@ export const CallScreen: React.FC<CallScreenProps> = ({
             {console.log('📹 CallScreen: Rendering remote video element')}
           </>
         ) : (
+          /* Show avatar when: not a video call, OR no remote stream, OR remote video is disabled */
           <div className="w-full h-full flex flex-col items-center justify-center">
             {callerAvatar ? (
               <img
@@ -356,16 +389,25 @@ export const CallScreen: React.FC<CallScreenProps> = ({
           </div>
         )}
 
-        {/* Local Video (Picture-in-Picture) - Toujours visible pendant l'appel vidéo */}
+        {/* Local Video (Picture-in-Picture) - Show when video is enabled */}
         {isVideoCall && localStream && (isCalling || isInCall) && (
           <div className="absolute top-4 right-4 w-32 h-48 rounded-xl overflow-hidden shadow-2xl border-2 border-white/20 bg-gray-900">
-            <video
-              ref={localVideoRef}
-              autoPlay
-              playsInline
-              muted
-              className="w-full h-full object-contain transform scale-x-[-1]"
-            />
+            {videoEnabled ? (
+              <video
+                ref={localVideoRef}
+                autoPlay
+                playsInline
+                muted
+                className="w-full h-full object-contain transform scale-x-[-1]"
+              />
+            ) : (
+              /* Show avatar when local video is disabled */
+              <div className="w-full h-full flex items-center justify-center bg-gray-800">
+                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-xl">
+                  Vous
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
