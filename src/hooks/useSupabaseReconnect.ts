@@ -14,7 +14,8 @@ const SESSION_CHECK_INTERVAL = 60000 // Check session every 60 seconds when visi
 const KEEPALIVE_INTERVAL = 30000 // Send keepalive to SW every 30 seconds
 const RECONNECT_DEBOUNCE = 2000 // Minimum time between reconnections (2 seconds)
 const RECONNECT_TIMEOUT = 10000 // Maximum time for a reconnection attempt (10 seconds)
-const ACTIVITY_CHECK_INTERVAL = 30000 // Check connection health every 30 seconds during active use
+const ACTIVITY_CHECK_INTERVAL = 45000 // Check connection health every 45 seconds during active use
+const STALE_CONNECTION_THRESHOLD = 90000 // Consider connection stale after 90 seconds of no successful queries
 
 // CRITICAL: Force page reload after this duration in background (Android PWA fix)
 // This is the nuclear option - if the app was in background for more than 2 minutes,
@@ -36,9 +37,12 @@ export function useSupabaseReconnect(userId: string | null) {
   const lastVisibleTime = useRef<number>(Date.now())
   const lastBackgroundTime = useRef<number | null>(null)
   const lastReconnectTime = useRef<number>(0) // Track last reconnection time for debouncing
+  const lastActivityTime = useRef<number>(Date.now()) // Track last user activity
+  const lastHealthCheckTime = useRef<number>(Date.now()) // Track last health check
   const reconnectAttempts = useRef<number>(0)
   const sessionCheckInterval = useRef<NodeJS.Timeout | null>(null)
   const keepaliveInterval = useRef<NodeJS.Timeout | null>(null)
+  const activityCheckInterval = useRef<NodeJS.Timeout | null>(null) // Activity-based health check
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null) // Safety timeout
   const isReconnecting = useRef<boolean>(false)
   const isPWARef = useRef<boolean>(false)
@@ -408,6 +412,50 @@ export function useSupabaseReconnect(userId: string | null) {
     }
   }, [performReconnect])
 
+  // Track user activity (touch, click, scroll)
+  const handleUserActivity = useCallback(() => {
+    lastActivityTime.current = Date.now()
+  }, [])
+
+  // Activity-based health check - runs periodically when user is active
+  const performActivityHealthCheck = useCallback(async () => {
+    // Only check if document is visible and user was recently active
+    if (document.hidden) return
+    
+    const now = Date.now()
+    const timeSinceActivity = now - lastActivityTime.current
+    const timeSinceHealthCheck = now - lastHealthCheckTime.current
+    
+    // Only check if user was active in the last 2 minutes AND we haven't checked recently
+    if (timeSinceActivity > 120000 || timeSinceHealthCheck < ACTIVITY_CHECK_INTERVAL) {
+      return
+    }
+    
+    // Check if connection seems stale (no successful query in a while)
+    if (isConnectionStale()) {
+      console.log('[Reconnect] Connection seems stale during active use, testing health...')
+      lastHealthCheckTime.current = now
+      
+      const isHealthy = await testConnectionHealth()
+      
+      if (!isHealthy) {
+        console.log('[Reconnect] Connection unhealthy during active use, reconnecting...')
+        await performReconnect()
+        
+        // If still unhealthy after reconnect on PWA, force reload
+        if (isPWARef.current) {
+          const stillHealthy = await testConnectionHealth()
+          if (!stillHealthy) {
+            console.log('[Reconnect] Still unhealthy after reconnect on PWA, forcing reload...')
+            forcePageReload()
+          }
+        }
+      } else {
+        console.log('[Reconnect] Connection healthy during active use')
+      }
+    }
+  }, [testConnectionHealth, performReconnect, forcePageReload])
+
   // Setup event listeners
   useEffect(() => {
     if (!userId) return
@@ -427,6 +475,11 @@ export function useSupabaseReconnect(userId: string | null) {
     
     // Focus as additional trigger for PWAs
     window.addEventListener('focus', handleFocus)
+    
+    // Track user activity for health checks
+    document.addEventListener('touchstart', handleUserActivity, { passive: true })
+    document.addEventListener('click', handleUserActivity, { passive: true })
+    document.addEventListener('scroll', handleUserActivity, { passive: true })
 
     // Start periodic session check
     sessionCheckInterval.current = setInterval(async () => {
@@ -441,6 +494,11 @@ export function useSupabaseReconnect(userId: string | null) {
       sendToServiceWorker('KEEPALIVE')
     }, KEEPALIVE_INTERVAL)
     
+    // Start activity-based health check (more aggressive for PWA)
+    activityCheckInterval.current = setInterval(() => {
+      performActivityHealthCheck()
+    }, ACTIVITY_CHECK_INTERVAL)
+    
     // Send initial keepalive
     sendToServiceWorker('KEEPALIVE')
 
@@ -449,6 +507,9 @@ export function useSupabaseReconnect(userId: string | null) {
       window.removeEventListener('online', handleOnline)
       window.removeEventListener('pageshow', handlePageShow)
       window.removeEventListener('focus', handleFocus)
+      document.removeEventListener('touchstart', handleUserActivity)
+      document.removeEventListener('click', handleUserActivity)
+      document.removeEventListener('scroll', handleUserActivity)
       
       if (sessionCheckInterval.current) {
         clearInterval(sessionCheckInterval.current)
@@ -459,8 +520,13 @@ export function useSupabaseReconnect(userId: string | null) {
         clearInterval(keepaliveInterval.current)
         keepaliveInterval.current = null
       }
+      
+      if (activityCheckInterval.current) {
+        clearInterval(activityCheckInterval.current)
+        activityCheckInterval.current = null
+      }
     }
-  }, [userId, handleVisibilityChange, handleOnline, handlePageShow, handleFocus, refreshSession, checkIsPWA, sendToServiceWorker])
+  }, [userId, handleVisibilityChange, handleOnline, handlePageShow, handleFocus, handleUserActivity, performActivityHealthCheck, refreshSession, checkIsPWA, sendToServiceWorker])
 
   // Return a manual reconnect function for components to use if needed
   return {

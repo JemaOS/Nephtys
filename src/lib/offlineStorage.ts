@@ -1,15 +1,21 @@
 // Copyright (c) 2025 Jema Technology.
 // Distributed under the license specified in the root directory of this project.
 
-// Offline Storage with IndexedDB
+// Offline Storage with IndexedDB + localStorage
 // Permet de stocker les messages localement pour le mode hors ligne
 // Optimized for PWA performance with non-blocking initialization
+// Uses localStorage as a fast synchronous cache layer for instant display
 
 const DB_NAME = 'nephtys-offline-db';
 const DB_VERSION = 1;
 const MESSAGES_STORE = 'messages';
 const CONVERSATIONS_STORE = 'conversations';
 const PENDING_STORE = 'pending-messages';
+
+// localStorage keys for instant cache (survives page refresh)
+const LS_CONVERSATIONS_KEY = 'nephtys_conversations_cache';
+const LS_CONVERSATIONS_TIMESTAMP_KEY = 'nephtys_conversations_cache_ts';
+const LS_CACHE_MAX_AGE = 24 * 60 * 60 * 1000; // 24 hours max cache age
 
 // Timeout for IndexedDB operations
 const DB_TIMEOUT = 3000;
@@ -59,11 +65,110 @@ class OfflineStorage {
   };
 
   constructor() {
-    // Start initialization immediately but don't block
+    // Load from localStorage immediately (synchronous, survives page refresh)
+    this.loadFromLocalStorage();
+    
+    // Start IndexedDB initialization but don't block
     this.initPromise = this.init().catch((error) => {
       console.warn('[OfflineStorage] Initialization failed:', error);
       this.initFailed = true;
     });
+  }
+  
+  // Load conversations from localStorage (synchronous, instant)
+  private loadFromLocalStorage(): void {
+    try {
+      const timestampStr = localStorage.getItem(LS_CONVERSATIONS_TIMESTAMP_KEY);
+      if (!timestampStr) {
+        console.log('[OfflineStorage] No localStorage cache found');
+        return;
+      }
+      
+      const timestamp = parseInt(timestampStr, 10);
+      const age = Date.now() - timestamp;
+      
+      // Check if cache is too old
+      if (age > LS_CACHE_MAX_AGE) {
+        console.log('[OfflineStorage] localStorage cache expired, clearing');
+        localStorage.removeItem(LS_CONVERSATIONS_KEY);
+        localStorage.removeItem(LS_CONVERSATIONS_TIMESTAMP_KEY);
+        return;
+      }
+      
+      const cached = localStorage.getItem(LS_CONVERSATIONS_KEY);
+      if (cached) {
+        const conversations = JSON.parse(cached);
+        if (Array.isArray(conversations) && conversations.length > 0) {
+          this.memoryCache.conversations = conversations;
+          console.log(`[OfflineStorage] Loaded ${conversations.length} conversations from localStorage (age: ${Math.round(age / 1000)}s)`);
+        }
+      }
+    } catch (error) {
+      console.warn('[OfflineStorage] Error loading from localStorage:', error);
+      // Clear corrupted cache
+      try {
+        localStorage.removeItem(LS_CONVERSATIONS_KEY);
+        localStorage.removeItem(LS_CONVERSATIONS_TIMESTAMP_KEY);
+      } catch (e) {
+        // Ignore
+      }
+    }
+  }
+  
+  // Save conversations to localStorage (for instant load on page refresh)
+  private saveToLocalStorage(conversations: any[]): void {
+    try {
+      // Only save essential data to keep localStorage small
+      // Strip out large fields like lastMessage content to save space
+      const minimalConversations = conversations.map(conv => ({
+        id: conv.id,
+        type: conv.type,
+        name: conv.name,
+        avatar_url: conv.avatar_url,
+        last_message_at: conv.last_message_at,
+        is_pinned: conv.is_pinned,
+        is_muted: conv.is_muted,
+        unreadCount: conv.unreadCount,
+        // Keep profile info for instant display (no "Utilisateur" flash)
+        otherUserProfile: conv.otherUserProfile ? {
+          id: conv.otherUserProfile.id,
+          username: conv.otherUserProfile.username,
+          display_name: conv.otherUserProfile.display_name,
+          avatar_url: conv.otherUserProfile.avatar_url
+        } : undefined,
+        // Keep minimal last message info
+        lastMessage: conv.lastMessage ? {
+          id: conv.lastMessage.id,
+          type: conv.lastMessage.type,
+          content: conv.lastMessage.content?.substring(0, 100), // Truncate content
+          created_at: conv.lastMessage.created_at,
+          sender_id: conv.lastMessage.sender_id
+        } : undefined
+      }));
+      
+      const json = JSON.stringify(minimalConversations);
+      
+      // Check size (localStorage has ~5MB limit)
+      if (json.length > 2 * 1024 * 1024) { // 2MB limit for safety
+        console.warn('[OfflineStorage] Conversations too large for localStorage, skipping');
+        return;
+      }
+      
+      localStorage.setItem(LS_CONVERSATIONS_KEY, json);
+      localStorage.setItem(LS_CONVERSATIONS_TIMESTAMP_KEY, Date.now().toString());
+      console.log(`[OfflineStorage] Saved ${conversations.length} conversations to localStorage (${Math.round(json.length / 1024)}KB)`);
+    } catch (error) {
+      console.warn('[OfflineStorage] Error saving to localStorage:', error);
+      // If quota exceeded, clear old cache
+      if (error instanceof DOMException && error.name === 'QuotaExceededError') {
+        try {
+          localStorage.removeItem(LS_CONVERSATIONS_KEY);
+          localStorage.removeItem(LS_CONVERSATIONS_TIMESTAMP_KEY);
+        } catch (e) {
+          // Ignore
+        }
+      }
+    }
   }
 
   async init(): Promise<void> {
@@ -361,6 +466,10 @@ class OfflineStorage {
     // Always update memory cache immediately (instant)
     this.memoryCache.conversations = conversations;
     
+    // Also save to localStorage for instant load on page refresh
+    // This is synchronous and survives page refresh
+    this.saveToLocalStorage(conversations);
+    
     const ready = await this.ensureReady();
     if (!ready) {
       console.warn('[OfflineStorage] Cannot save conversations to IndexedDB - DB not ready');
@@ -435,6 +544,18 @@ class OfflineStorage {
 
   // Clear all data
   async clearAll(): Promise<void> {
+    // Clear memory cache
+    this.memoryCache.conversations = null;
+    this.memoryCache.messages.clear();
+    
+    // Clear localStorage cache
+    try {
+      localStorage.removeItem(LS_CONVERSATIONS_KEY);
+      localStorage.removeItem(LS_CONVERSATIONS_TIMESTAMP_KEY);
+    } catch (e) {
+      // Ignore localStorage errors
+    }
+    
     const ready = await this.ensureReady();
     if (!ready) {
       return;
