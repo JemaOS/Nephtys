@@ -1591,7 +1591,11 @@ export function SettingsPage() {
       if (result.success) {
         setBackupPassword('')
         setShowPasswordInput(false)
-        alert('✅ Restauration terminée avec succès !\n\nVos données ont été restaurées.')
+        const stats = result.stats
+        const statsMessage = stats
+          ? `\n\n📊 Statistiques :\n• ${stats.conversations} conversations\n• ${stats.messages} messages\n• ${stats.contacts} contacts\n• ${stats.media} fichiers médias`
+          : ''
+        alert(`✅ Restauration terminée avec succès !${statsMessage}\n\nL'application va se recharger.`)
         window.location.reload()
       } else {
         throw new Error(result.error || 'Erreur lors de la restauration')
