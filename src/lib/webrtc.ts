@@ -1,3 +1,6 @@
+// Copyright (c) 2025 Jema Technology.
+// Distributed under the license specified in the root directory of this project.
+
 // WebRTC Manager for Audio/Video Calls
 // Version simplifiée utilisant des serveurs STUN publics
 

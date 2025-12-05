@@ -1,3 +1,6 @@
+// Copyright (c) 2025 Jema Technology.
+// Distributed under the license specified in the root directory of this project.
+
 /**
  * WebRTC E2EE using Insertable Streams (Encoded Transform)
  * 

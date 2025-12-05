@@ -1,3 +1,6 @@
+// Copyright (c) 2025 Jema Technology.
+// Distributed under the license specified in the root directory of this project.
+
 import { ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 import { Loader2 } from 'lucide-react'

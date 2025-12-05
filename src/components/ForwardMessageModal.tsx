@@ -1,3 +1,6 @@
+// Copyright (c) 2025 Jema Technology.
+// Distributed under the license specified in the root directory of this project.
+
 import React, { useEffect, useState } from 'react';
 import { X, Search, Check } from 'lucide-react';
 import { supabase, Conversation, Profile } from '@/lib/supabase';

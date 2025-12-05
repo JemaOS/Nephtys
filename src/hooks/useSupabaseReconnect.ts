@@ -1,3 +1,6 @@
+// Copyright (c) 2025 Jema Technology.
+// Distributed under the license specified in the root directory of this project.
+
 import { useEffect, useRef, useCallback } from 'react'
 import { supabase, updateLastSuccessfulQuery, isConnectionStale, forceReconnectRealtime } from '@/lib/supabase'
 import { initializePresence, cleanupPresence } from '@/hooks/usePresence'

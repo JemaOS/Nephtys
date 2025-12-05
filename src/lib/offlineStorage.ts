@@ -1,3 +1,6 @@
+// Copyright (c) 2025 Jema Technology.
+// Distributed under the license specified in the root directory of this project.
+
 // Offline Storage with IndexedDB
 // Permet de stocker les messages localement pour le mode hors ligne
 // Optimized for PWA performance with non-blocking initialization

@@ -1,3 +1,6 @@
+// Copyright (c) 2025 Jema Technology.
+// Distributed under the license specified in the root directory of this project.
+
 import { useEffect, useRef, useState } from 'react'
 import { Pin, Archive, Trash2, X, Volume2, VolumeX, Edit, ArrowLeft, MoreVertical, CheckSquare } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'

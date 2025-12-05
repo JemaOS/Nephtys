@@ -1,3 +1,6 @@
+// Copyright (c) 2025 Jema Technology.
+// Distributed under the license specified in the root directory of this project.
+
 /**
  * Migration Utility for Transitioning to Military-Grade E2EE
  * 

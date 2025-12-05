@@ -1,3 +1,6 @@
+// Copyright (c) 2025 Jema Technology.
+// Distributed under the license specified in the root directory of this project.
+
 // Group WebRTC Manager for Audio/Video Group Calls
 // Uses mesh topology where each participant connects to every other participant
 

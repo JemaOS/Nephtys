@@ -1,3 +1,6 @@
+// Copyright (c) 2025 Jema Technology.
+// Distributed under the license specified in the root directory of this project.
+
 import React, { useState } from 'react';
 import { Star, Ban, Trash2, MessageCircle, Phone, Video } from 'lucide-react';
 import { supabase } from '@/lib/supabase';

@@ -1,3 +1,6 @@
+// Copyright (c) 2025 Jema Technology.
+// Distributed under the license specified in the root directory of this project.
+
 import { useEffect, useRef } from 'react'
 import { useCall } from '@/context/CallContext'
 import { Phone, Video, Mic, MicOff, VideoOff, PhoneOff } from 'lucide-react'

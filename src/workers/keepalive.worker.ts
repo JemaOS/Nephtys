@@ -1,3 +1,6 @@
+// Copyright (c) 2025 Jema Technology.
+// Distributed under the license specified in the root directory of this project.
+
 // Keep-Alive Web Worker for PWA
 // This worker runs in a separate thread and maintains connection health
 // even when the main thread is throttled by Android

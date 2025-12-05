@@ -1,3 +1,6 @@
+// Copyright (c) 2025 Jema Technology.
+// Distributed under the license specified in the root directory of this project.
+
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { Play, Pause, SkipBack, SkipForward } from 'lucide-react';
 

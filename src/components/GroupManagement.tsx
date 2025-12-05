@@ -1,3 +1,6 @@
+// Copyright (c) 2025 Jema Technology.
+// Distributed under the license specified in the root directory of this project.
+
 import React, { useState } from 'react';
 import { Users, UserPlus, UserMinus, Edit, Trash2, LogOut, Crown, Camera } from 'lucide-react';
 import { supabase } from '@/lib/supabase';

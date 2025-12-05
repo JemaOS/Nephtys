@@ -1,3 +1,6 @@
+// Copyright (c) 2025 Jema Technology.
+// Distributed under the license specified in the root directory of this project.
+
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Send, Trash2, Pause, Play } from 'lucide-react';
 

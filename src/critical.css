@@ -1,3 +1,7 @@
+/* Copyright (c) 2025 Jema Technology.
+ * Distributed under the license specified in the root directory of this project.
+ */
+
 /* Critical CSS for initial loading state */
 /* Prevent flash of unstyled content */
 html, body {

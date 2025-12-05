@@ -1,3 +1,6 @@
+// Copyright (c) 2025 Jema Technology.
+// Distributed under the license specified in the root directory of this project.
+
 /**
  * @deprecated This module uses P-256 ECDH which is not military-grade.
  * Use the new crypto modules in ./crypto/ instead:

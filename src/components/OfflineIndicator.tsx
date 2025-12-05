@@ -1,3 +1,6 @@
+// Copyright (c) 2025 Jema Technology.
+// Distributed under the license specified in the root directory of this project.
+
 import React from 'react';
 import { WifiOff, Wifi, RefreshCw } from 'lucide-react';
 import { useOfflineSync } from '@/hooks/useOfflineSync';

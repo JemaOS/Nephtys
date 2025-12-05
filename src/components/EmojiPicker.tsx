@@ -1,3 +1,6 @@
+// Copyright (c) 2025 Jema Technology.
+// Distributed under the license specified in the root directory of this project.
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Smile } from 'lucide-react';
 

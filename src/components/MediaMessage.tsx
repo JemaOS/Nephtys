@@ -1,3 +1,6 @@
+// Copyright (c) 2025 Jema Technology.
+// Distributed under the license specified in the root directory of this project.
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Download, File, Play, Copy, ChevronDown, FileText, FileSpreadsheet, FileImage, FileArchive } from 'lucide-react';
 import { MediaViewer } from './MediaViewer';

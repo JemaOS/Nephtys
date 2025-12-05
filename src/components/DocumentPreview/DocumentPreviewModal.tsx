@@ -1,3 +1,6 @@
+// Copyright (c) 2025 Jema Technology.
+// Distributed under the license specified in the root directory of this project.
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { X, Send, Plus, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RotateCw, Loader2, FileText, FileSpreadsheet, Presentation, File, FileArchive } from 'lucide-react';
 import { Document, Page, pdfjs } from 'react-pdf';

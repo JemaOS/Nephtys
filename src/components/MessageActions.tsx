@@ -1,3 +1,6 @@
+// Copyright (c) 2025 Jema Technology.
+// Distributed under the license specified in the root directory of this project.
+
 import React, { useState } from 'react';
 import { Star, Trash2, Edit, Copy, Forward, MoreVertical } from 'lucide-react';
 import { DeleteMessageDialog } from './DeleteMessageDialog';

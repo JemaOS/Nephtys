@@ -1,3 +1,6 @@
+// Copyright (c) 2025 Jema Technology.
+// Distributed under the license specified in the root directory of this project.
+
 import React, { useState, useEffect } from 'react';
 import { Shield, Check, Copy } from 'lucide-react';
 import { e2eeManager } from '@/lib/encryption';

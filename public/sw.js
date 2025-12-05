@@ -1,3 +1,6 @@
+// Copyright (c) 2025 Jema Technology.
+// Distributed under the license specified in the root directory of this project.
+
 // Service Worker for Nephtys PWA
 // Version: 6.0.0 - FORCE RELOAD STRATEGY for stuck PWA on Android
 
