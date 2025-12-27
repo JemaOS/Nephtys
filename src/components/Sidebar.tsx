@@ -70,7 +70,7 @@ export function Sidebar() {
           />
         ) : (
           <div className="w-full h-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-sm">
-            {profile?.username?.[0]?.toUpperCase() || 'A'}
+            {profile?.username?.[0]?.toUpperCase() || 'N'}
           </div>
         )}
       </div>

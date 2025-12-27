@@ -274,11 +274,11 @@ export function ChatViewPage() {
           return true
         }
         // Include GIF messages
-        if (m.type === 'text' && m.content && m.content.match(/^\[GIF\]\(https?:\/\/[^\)]+\)$/)) {
+        if (m.type === 'text' && m.content && m.content.match(/^(?:\[Transféré\]\s*)?([\s\S]*?)\[GIF\]\(https?:\/\/[^\)]+\)$/)) {
           return true
         }
         // Include Sticker messages
-        if (m.type === 'text' && m.content && m.content.match(/^\[STICKER\]\(https?:\/\/[^\)]+\)$/)) {
+        if (m.type === 'text' && m.content && m.content.match(/^(?:\[Transféré\]\s*)?([\s\S]*?)\[STICKER\]\(https?:\/\/[^\)]+\)$/)) {
           return true
         }
         return false
@@ -292,13 +292,13 @@ export function ChatViewPage() {
           mediaUrl = m.media_url
           mediaType = m.media_type as 'image' | 'video'
         } else if (m.content) {
-          const gifMatch = m.content.match(/^\[GIF\]\((https?:\/\/[^\)]+)\)$/)
-          const stickerMatch = m.content.match(/^\[STICKER\]\((https?:\/\/[^\)]+)\)$/)
+          const gifMatch = m.content.match(/^(?:\[Transféré\]\s*)?([\s\S]*?)\[GIF\]\((https?:\/\/[^\)]+)\)$/)
+          const stickerMatch = m.content.match(/^(?:\[Transféré\]\s*)?([\s\S]*?)\[STICKER\]\((https?:\/\/[^\)]+)\)$/)
           if (gifMatch) {
-            mediaUrl = gifMatch[1]
+            mediaUrl = gifMatch[2]
             mediaType = 'gif'
           } else if (stickerMatch) {
-            mediaUrl = stickerMatch[1]
+            mediaUrl = stickerMatch[2]
             mediaType = 'sticker'
           }
         }
@@ -584,6 +584,12 @@ export function ChatViewPage() {
   const hasScrolledInitially = useRef(false)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   
+  // Reset initial scroll flag when conversation changes - MUST run before scroll effect
+  useLayoutEffect(() => {
+    hasScrolledInitially.current = false
+    prevMessageCountRef.current = 0
+  }, [conversationId])
+
   // Scroll to bottom INSTANTLY when conversation loads (initial load)
   // Like WhatsApp/Telegram: scroll instantly, no animation, no delay
   useLayoutEffect(() => {
@@ -594,17 +600,28 @@ export function ChatViewPage() {
     
     hasScrolledInitially.current = true
     
-    // Small timeout to ensure all content (including images) has been laid out
+    // Timeout to ensure all content (including images) has been laid out
+    // Increased to 150ms to handle image loading better
     const timeoutId = setTimeout(() => {
       if (messagesContainerRef.current) {
         // Scroll to the absolute bottom of the container
         messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
       }
-    }, 50)
+    }, 150)
+
+    // Secondary scroll attempt to catch late rendering (e.g. images)
+    const timeoutId2 = setTimeout(() => {
+      if (messagesContainerRef.current) {
+        messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
+      }
+    }, 300)
     
     prevMessageCountRef.current = messages.length
     
-    return () => clearTimeout(timeoutId)
+    return () => {
+      clearTimeout(timeoutId)
+      clearTimeout(timeoutId2)
+    }
   }, [loading, messages.length, conversationId])
   
   // Handle new messages with smooth scroll (after initial load)
@@ -617,12 +634,6 @@ export function ChatViewPage() {
       }
     }
   }, [loading, messages.length])
-  
-  // Reset initial scroll flag when conversation changes - MUST run before scroll effect
-  useLayoutEffect(() => {
-    hasScrolledInitially.current = false
-    prevMessageCountRef.current = 0
-  }, [conversationId])
   
   const scrollToBottom = (behavior: 'smooth' | 'instant' = 'smooth') => {
     messagesEndRef.current?.scrollIntoView({ behavior })
@@ -838,10 +849,38 @@ export function ChatViewPage() {
   ) => {
     if (!user) return
     setSending(true)
+    
+    // Optimistic update
+    const tempId = `temp-${Date.now()}`
+    const optimisticMessage = {
+      id: tempId,
+      conversation_id: conversationId!,
+      sender_id: user.id,
+      content: newMessage.trim() || '',
+      type,
+      status: 'sent',
+      created_at: new Date().toISOString(),
+      media_url: url,
+      media_type: type,
+      file_name: fileName,
+      file_size: fileSize,
+      media_width: width,
+      media_height: height,
+      media_thumbnail: thumbnail,
+      reply_to_id: replyToMessage?.id || null,
+      is_starred: false,
+      is_pinned: false,
+    } as unknown as Message
+
+    setMessages(prev => [...prev, optimisticMessage])
+    setNewMessage('')
+    setReplyToMessage(null)
+    setShowMediaUploader(false)
+
     try {
       const messageData: any = {
-        conversation_id: conversationId!, sender_id: user.id, content: newMessage.trim() || '',
-        type, status: 'sent', reply_to_id: replyToMessage?.id || null,
+        conversation_id: conversationId!, sender_id: user.id, content: optimisticMessage.content,
+        type, status: 'sent', reply_to_id: optimisticMessage.reply_to_id,
         media_url: url, media_type: type, file_name: fileName, file_size: fileSize,
       }
       
@@ -854,13 +893,22 @@ export function ChatViewPage() {
         messageData.media_thumbnail = thumbnail
       }
       
-      const { error } = await supabase.from('messages').insert(messageData)
-      if (!error) {
-        setNewMessage('')
-        setReplyToMessage(null)
-        setShowMediaUploader(false)
+      const { data, error } = await supabase.from('messages').insert(messageData).select().single()
+      
+      if (!error && data) {
+        // Replace optimistic message with real one
+        setMessages(prev => prev.map(m => m.id === tempId ? data : m))
         await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conversationId!)
+      } else {
+        // Remove optimistic message on error
+        setMessages(prev => prev.filter(m => m.id !== tempId))
+        console.error('Error sending message:', error)
+        alert('Erreur lors de l\'envoi du message')
       }
+    } catch (err) {
+      console.error('Error sending message:', err)
+      setMessages(prev => prev.filter(m => m.id !== tempId))
+      alert('Erreur lors de l\'envoi du message')
     } finally { setSending(false) }
   }
 
@@ -2016,10 +2064,10 @@ export function ChatViewPage() {
                 
                 // Check if this is a GIF or Sticker message (should be rendered without bubble like WhatsApp)
                 const gifMatch = message.type === 'text' && message.content && !message.media_url
-                  ? message.content.match(/^(?:([\s\S]*?)\n)?\[GIF\]\((https?:\/\/[^\)]+)\)$/)
+                  ? message.content.match(/^(?:\[Transféré\]\s*)?([\s\S]*?)\[GIF\]\((https?:\/\/[^\)]+)\)$/)
                   : null
                 const stickerMatch = message.type === 'text' && message.content && !message.media_url
-                  ? message.content.match(/^(?:([\s\S]*?)\n)?\[STICKER\]\((https?:\/\/[^\)]+)\)$/)
+                  ? message.content.match(/^(?:\[Transféré\]\s*)?([\s\S]*?)\[STICKER\]\((https?:\/\/[^\)]+)\)$/)
                   : null
                 const isGifMessage = !!gifMatch
                 const isStickerMessage = !!stickerMatch
@@ -2775,9 +2823,47 @@ export function ChatViewPage() {
           onMultipleUploadComplete={async (files) => {
             if (!user) return
             setSending(true)
+            
+            const tempMessages: Message[] = []
+            const now = Date.now()
+            
+            // Create optimistic messages
+            files.forEach((file, index) => {
+                const tempId = `temp-${now}-${index}`
+                const optimisticMessage = {
+                  id: tempId,
+                  conversation_id: conversationId!,
+                  sender_id: user.id,
+                  content: '',
+                  type: file.type,
+                  status: 'sent',
+                  created_at: new Date().toISOString(),
+                  media_url: file.url,
+                  media_type: file.type,
+                  file_name: file.fileName,
+                  file_size: file.fileSize,
+                  media_width: file.width,
+                  media_height: file.height,
+                  media_thumbnail: file.thumbnail,
+                  reply_to_id: replyToMessage?.id || null,
+                  is_starred: false,
+                  is_pinned: false
+                } as unknown as Message
+                tempMessages.push(optimisticMessage)
+            })
+            
+            // Update state immediately
+            setMessages(prev => [...prev, ...tempMessages])
+            setNewMessage('')
+            setReplyToMessage(null)
+            setShowMediaUploader(false)
+
             try {
               // Send each file as a separate message
-              for (const file of files) {
+              for (let i = 0; i < files.length; i++) {
+                const file = files[i]
+                const tempId = tempMessages[i].id
+                
                 const messageData: any = {
                   conversation_id: conversationId!,
                   sender_id: user.id,
@@ -2800,11 +2886,16 @@ export function ChatViewPage() {
                   messageData.media_thumbnail = file.thumbnail
                 }
                 
-                await supabase.from('messages').insert(messageData)
+                const { data, error } = await supabase.from('messages').insert(messageData).select().single()
+                
+                if (!error && data) {
+                     setMessages(prev => prev.map(m => m.id === tempId ? data : m))
+                } else {
+                    // Remove failed message
+                    setMessages(prev => prev.filter(m => m.id !== tempId))
+                }
               }
-              setNewMessage('')
-              setReplyToMessage(null)
-              setShowMediaUploader(false)
+              
               await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conversationId!)
             } finally {
               setSending(false)
@@ -2818,24 +2909,46 @@ export function ChatViewPage() {
           onGifStickerSend={async (url, type, caption) => {
             if (!user) return
             setSending(true)
+            
+            const prefix = type === 'gif' ? 'GIF' : 'STICKER'
+            const content = caption ? `${caption}\n[${prefix}](${url})` : `[${prefix}](${url})`
+            
+            // Optimistic update
+            const tempId = `temp-${Date.now()}`
+            const optimisticMessage = {
+              id: tempId,
+              conversation_id: conversationId!,
+              sender_id: user.id,
+              content: content,
+              type: 'text',
+              status: 'sent',
+              created_at: new Date().toISOString(),
+              reply_to_id: replyToMessage?.id || null,
+              is_starred: false,
+              is_pinned: false,
+            } as unknown as Message
+
+            setMessages(prev => [...prev, optimisticMessage])
+            setReplyToMessage(null)
+            setShowMediaUploader(false)
+
             try {
-              const prefix = type === 'gif' ? 'GIF' : 'STICKER'
-              const content = caption ? `${caption}\n[${prefix}](${url})` : `[${prefix}](${url})`
-              
               const messageData: any = {
                 conversation_id: conversationId!,
                 sender_id: user.id,
                 content: content,
                 type: 'text',
                 status: 'sent',
-                reply_to_id: replyToMessage?.id || null,
+                reply_to_id: optimisticMessage.reply_to_id,
               }
               
-              const { error } = await supabase.from('messages').insert(messageData)
-              if (!error) {
-                setReplyToMessage(null)
-                setShowMediaUploader(false)
+              const { data, error } = await supabase.from('messages').insert(messageData).select().single()
+              
+              if (!error && data) {
+                setMessages(prev => prev.map(m => m.id === tempId ? data : m))
                 await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conversationId!)
+              } else {
+                setMessages(prev => prev.filter(m => m.id !== tempId))
               }
             } finally {
               setSending(false)

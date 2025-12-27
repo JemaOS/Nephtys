@@ -1,0 +1,65 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - generic [ref=e5]:
+    - generic [ref=e7] [cursor=pointer]: T
+    - generic [ref=e9]:
+      - button "Discussions" [ref=e10] [cursor=pointer]:
+        - img [ref=e11]
+        - generic: Discussions
+      - button "Appels" [ref=e13] [cursor=pointer]:
+        - img [ref=e14]
+        - generic: Appels
+      - button "Archivées" [ref=e16] [cursor=pointer]:
+        - img [ref=e17]
+        - generic: Archivées
+      - button "Contacts" [ref=e20] [cursor=pointer]:
+        - img [ref=e21]
+        - generic: Contacts
+      - button "Paramètres" [ref=e26] [cursor=pointer]:
+        - img [ref=e27]
+        - generic: Paramètres
+  - generic [ref=e30]:
+    - generic [ref=e31]:
+      - generic [ref=e32]:
+        - generic [ref=e33]:
+          - heading "Discussions" [level=1] [ref=e34]
+          - generic [ref=e35]:
+            - button "Nouveau" [ref=e37] [cursor=pointer]:
+              - img [ref=e38]
+            - button "Filtres" [ref=e40] [cursor=pointer]:
+              - img [ref=e41]
+        - generic [ref=e45]:
+          - img [ref=e46]
+          - textbox "Rechercher ou démarrer une discussion" [ref=e49]
+        - generic [ref=e50]:
+          - button "Tous" [ref=e51] [cursor=pointer]
+          - button "Non lus" [ref=e52] [cursor=pointer]
+          - button "Groupes" [ref=e53] [cursor=pointer]
+      - generic [ref=e55]:
+        - img [ref=e56]
+        - heading "Aucune conversation" [level=3] [ref=e58]
+        - paragraph [ref=e59]: Commencez une nouvelle discussion
+    - generic [ref=e61]:
+      - heading "Nephtys pour JemaOS" [level=2] [ref=e62]
+      - paragraph [ref=e63]:
+        - text: Messagerie décentralisée qui protège votre vie privée.
+        - text: Vos conversations sont chiffrées de bout en bout et transitent directement entre vous et vos contacts, sans serveur intermédiaire.
+      - generic [ref=e64]:
+        - generic [ref=e65]:
+          - img [ref=e66]
+          - generic [ref=e68]:
+            - paragraph [ref=e69]: Chiffrement de bout en bout
+            - paragraph [ref=e70]: Personne ne peut lire vos messages, même pas nous
+        - generic [ref=e71]:
+          - img [ref=e72]
+          - generic [ref=e78]:
+            - paragraph [ref=e79]: Peer-to-peer décentralisé
+            - paragraph [ref=e80]: Vos messages transitent directement entre appareils
+        - generic [ref=e81]:
+          - img [ref=e82]
+          - generic [ref=e86]:
+            - paragraph [ref=e87]: Zéro collecte de données
+            - paragraph [ref=e88]: Aucun tracking, aucune publicité, aucun log
+```

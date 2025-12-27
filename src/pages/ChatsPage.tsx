@@ -1458,12 +1458,12 @@ export function ChatsPage() {
       </div>
 
       {/* Zone de chat vide - Style JemaOS - Desktop only */}
-      <div className="hidden md:flex flex-1 bg-bg-primary flex-col items-center justify-center">
+      <div className="hidden md:flex flex-1 bg-bg-primary flex-col items-center justify-center relative">
         <div className="text-center">
           <h2 className="text-3xl font-light text-text-secondary mb-4">Nephtys pour JemaOS</h2>
           <p className="text-text-secondary max-w-lg mx-auto leading-relaxed mb-6">
-            Messagerie décentralisée qui protège votre vie privée.<br/>
-            Vos conversations sont chiffrées de bout en bout et transitent directement entre vous et vos contacts, sans serveur intermédiaire.
+            Messagerie sécurisée qui protège votre vie privée.<br/>
+            Vos conversations sont chiffrées de bout en bout. Une architecture hybride conçue pour garantir votre confidentialité absolue.
           </p>
           
           <div className="space-y-3 max-w-md mx-auto">
@@ -1486,8 +1486,8 @@ export function ChatsPage() {
                 <path d="M13.6 8.4L17.4 6.6"/>
               </svg>
               <div>
-                <p className="text-sm text-text-secondary font-medium">Peer-to-peer décentralisé</p>
-                <p className="text-xs text-text-secondary">Vos messages transitent directement entre appareils</p>
+                <p className="text-sm text-text-secondary font-medium">Architecture Hybride & Appels P2P</p>
+                <p className="text-xs text-text-secondary">Messagerie sécurisée via le cloud, et appels audio/vidéo en Peer-to-Peer direct sans intermédiaire.</p>
               </div>
             </div>
             
@@ -1503,6 +1503,12 @@ export function ChatsPage() {
               </div>
             </div>
           </div>
+        </div>
+
+        <div className="absolute bottom-6 text-center">
+          <p className="text-xs text-gray-500">
+            Développé par <a href="https://www.jematechnology.fr/" target="_blank" rel="noopener noreferrer" className="text-[#6b6fdb] hover:underline">Jema Technology</a> © 2025 • Open Source & sous licence AGPL
+          </p>
         </div>
       </div>
 

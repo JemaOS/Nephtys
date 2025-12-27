@@ -8,6 +8,7 @@ import {
   Trash2, UserPlus, Crown, Download, ExternalLink, Loader2, Search, Timer
 } from 'lucide-react';
 import { supabase, Profile, Message } from '@/lib/supabase';
+import { MediaViewer } from './MediaViewer';
 
 interface ConversationInfoProps {
   conversationId: string;
@@ -78,6 +79,10 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
   const [loadingLinks, setLoadingLinks] = useState(false);
 
   const [directParticipants, setDirectParticipants] = useState<{user: Profile, isCurrentUser: boolean}[]>([]);
+
+  // Media Viewer State
+  const [selectedMedia, setSelectedMedia] = useState<Message | null>(null);
+  const [isMediaViewerOpen, setIsMediaViewerOpen] = useState(false);
 
   useEffect(() => {
     if (conversationType === 'group') {
@@ -363,7 +368,10 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
         const urlRegex = /(https?:\/\/[^\s]+)/g;
         const messagesWithLinks = data
           .map(message => {
-            const urls = message.content?.match(urlRegex) || [];
+            // Remove GIF and Sticker markdown before extracting links
+            // Pattern: [GIF](url) or [STICKER](url)
+            const cleanContent = message.content?.replace(/\[(GIF|STICKER)\]\([^)]+\)/g, '') || '';
+            const urls = cleanContent.match(urlRegex) || [];
             return { message, urls };
           })
           .filter(item => item.urls.length > 0);
@@ -735,17 +743,26 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
           ) : (
             <div className="grid grid-cols-3 gap-2">
               {mediaMessages.map((media) => (
-                <a
+                <div
                   key={media.id}
-                  href={media.media_url || media.file_url || '#'}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="aspect-square rounded-lg overflow-hidden bg-bg-hover hover:opacity-80 transition-opacity"
+                  onClick={() => {
+                    setSelectedMedia(media);
+                    setIsMediaViewerOpen(true);
+                  }}
+                  className="aspect-square rounded-lg overflow-hidden bg-bg-hover hover:opacity-80 transition-opacity cursor-pointer relative group"
                 >
                   {(media.type === 'video' || media.media_type === 'video') ? (
-                    <div className="w-full h-full flex items-center justify-center bg-bg-surface">
-                      <Video size={32} className="text-text-secondary" />
-                    </div>
+                    <>
+                      <video
+                        src={`${media.media_url || media.file_url}#t=0.1`}
+                        className="w-full h-full object-cover"
+                        muted
+                        preload="metadata"
+                      />
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/30 transition-colors">
+                        <Video size={32} className="text-white drop-shadow-lg" />
+                      </div>
+                    </>
                   ) : (
                     <img
                       src={media.media_url || media.file_url || ''}
@@ -753,7 +770,7 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
                       className="w-full h-full object-cover"
                     />
                   )}
-                </a>
+                </div>
               ))}
             </div>
           )}
@@ -1087,6 +1104,67 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Media Viewer */}
+      {isMediaViewerOpen && selectedMedia && (
+        <MediaViewer
+          isOpen={isMediaViewerOpen}
+          mediaUrl={selectedMedia.media_url || selectedMedia.file_url || ''}
+          mediaType={(selectedMedia.type === 'video' || selectedMedia.media_type === 'video') ? 'video' : 'image'}
+          senderName={(() => {
+            if (conversationType === 'group') {
+              const member = members.find(m => m.user_id === selectedMedia.sender_id);
+              return member?.display_name || member?.username || 'Utilisateur';
+            } else {
+              const participant = directParticipants.find(p => p.user.id === selectedMedia.sender_id);
+              return participant?.user.display_name || participant?.user.username || 'Utilisateur';
+            }
+          })()}
+          senderAvatar={(() => {
+            if (conversationType === 'group') {
+              const member = members.find(m => m.user_id === selectedMedia.sender_id);
+              return member?.avatar_url || undefined;
+            } else {
+              const participant = directParticipants.find(p => p.user.id === selectedMedia.sender_id);
+              return participant?.user.avatar_url || undefined;
+            }
+          })()}
+          timestamp={selectedMedia.created_at}
+          isOwn={selectedMedia.sender_id === currentUserId}
+          onClose={() => setIsMediaViewerOpen(false)}
+          allMedia={mediaMessages.map(m => {
+            const isVideo = m.type === 'video' || m.media_type === 'video';
+            let name = 'Utilisateur';
+            let avatar = undefined;
+            
+            if (conversationType === 'group') {
+              const member = members.find(mem => mem.user_id === m.sender_id);
+              if (member) {
+                name = member.display_name || member.username;
+                avatar = member.avatar_url || undefined;
+              }
+            } else {
+              const participant = directParticipants.find(p => p.user.id === m.sender_id);
+              if (participant) {
+                name = participant.user.display_name || participant.user.username;
+                avatar = participant.user.avatar_url || undefined;
+              }
+            }
+
+            return {
+              url: m.media_url || m.file_url || '',
+              type: isVideo ? 'video' : 'image',
+              senderName: name,
+              senderAvatar: avatar,
+              timestamp: m.created_at,
+              isOwn: m.sender_id === currentUserId,
+              messageId: m.id
+            };
+          })}
+          currentIndex={mediaMessages.findIndex(m => m.id === selectedMedia.id)}
+          onNavigate={(index) => setSelectedMedia(mediaMessages[index])}
+        />
       )}
 
       {/* Ephemeral Duration Menu - Rendered as a modal outside the main content */}

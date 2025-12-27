@@ -5,20 +5,21 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { ThemeProvider } from './context/ThemeContext'
 import { CallProvider } from './context/CallContext'
-import { AuthPage } from './pages/AuthPage'
-import { ChatsPage } from './pages/ChatsPage'
-import { ChatViewPage } from './pages/ChatViewPage'
-import { ContactsPage } from './pages/ContactsPage'
-import { GroupsPage } from './pages/GroupsPage'
-import { CallsPage } from './pages/CallsPage'
-import { ArchivedPage } from './pages/ArchivedPage'
-import { SettingsPage } from './pages/SettingsPage'
 import { OfflineIndicator } from './components/OfflineIndicator'
 import { PersistentCallScreen } from './components/PersistentCallScreen'
 import { useSupabaseReconnect } from './hooks/useSupabaseReconnect'
 import { useKeepAlive } from './hooks/useKeepAlive'
 import { startConnectionMonitoring, stopConnectionMonitoring } from './lib/supabase'
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, lazy, Suspense } from 'react'
+
+const AuthPage = lazy(() => import('./pages/AuthPage').then(module => ({ default: module.AuthPage })))
+const ChatsPage = lazy(() => import('./pages/ChatsPage').then(module => ({ default: module.ChatsPage })))
+const ChatViewPage = lazy(() => import('./pages/ChatViewPage').then(module => ({ default: module.ChatViewPage })))
+const ContactsPage = lazy(() => import('./pages/ContactsPage').then(module => ({ default: module.ContactsPage })))
+const GroupsPage = lazy(() => import('./pages/GroupsPage').then(module => ({ default: module.GroupsPage })))
+const CallsPage = lazy(() => import('./pages/CallsPage').then(module => ({ default: module.CallsPage })))
+const ArchivedPage = lazy(() => import('./pages/ArchivedPage').then(module => ({ default: module.ArchivedPage })))
+const SettingsPage = lazy(() => import('./pages/SettingsPage').then(module => ({ default: module.SettingsPage })))
 
 // Optimized loading component that shows quickly and doesn't block
 function LoadingScreen({ message = 'Chargement...' }: { message?: string }) {
@@ -138,57 +139,59 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
 
 function AppRoutes() {
   return (
-    <Routes>
-      <Route path="/auth" element={
-        <PublicRoute>
-          <AuthPage />
-        </PublicRoute>
-      } />
-      
-      <Route path="/chats" element={
-        <PrivateRoute>
-          <ChatsPage />
-        </PrivateRoute>
-      } />
-      
-      <Route path="/chat/:conversationId" element={
-        <PrivateRoute>
-          <ChatViewPage />
-        </PrivateRoute>
-      } />
-      
-      <Route path="/contacts" element={
-        <PrivateRoute>
-          <ContactsPage />
-        </PrivateRoute>
-      } />
-      
-      <Route path="/groups/new" element={
-        <PrivateRoute>
-          <GroupsPage />
-        </PrivateRoute>
-      } />
-      
-      <Route path="/calls" element={
-        <PrivateRoute>
-          <CallsPage />
-        </PrivateRoute>
-      } />
-      
-      <Route path="/archived" element={
-        <PrivateRoute>
-          <ArchivedPage />
-        </PrivateRoute>
-      } />
-      
-      <Route path="/settings" element={
-        <PrivateRoute>
-          <SettingsPage />
-        </PrivateRoute>
-      } />
-      
-      <Route path="/" element={<Navigate to="/chats" />} />
-    </Routes>
+    <Suspense fallback={<LoadingScreen />}>
+      <Routes>
+        <Route path="/auth" element={
+          <PublicRoute>
+            <AuthPage />
+          </PublicRoute>
+        } />
+        
+        <Route path="/chats" element={
+          <PrivateRoute>
+            <ChatsPage />
+          </PrivateRoute>
+        } />
+        
+        <Route path="/chat/:conversationId" element={
+          <PrivateRoute>
+            <ChatViewPage />
+          </PrivateRoute>
+        } />
+        
+        <Route path="/contacts" element={
+          <PrivateRoute>
+            <ContactsPage />
+          </PrivateRoute>
+        } />
+        
+        <Route path="/groups/new" element={
+          <PrivateRoute>
+            <GroupsPage />
+          </PrivateRoute>
+        } />
+        
+        <Route path="/calls" element={
+          <PrivateRoute>
+            <CallsPage />
+          </PrivateRoute>
+        } />
+        
+        <Route path="/archived" element={
+          <PrivateRoute>
+            <ArchivedPage />
+          </PrivateRoute>
+        } />
+        
+        <Route path="/settings" element={
+          <PrivateRoute>
+            <SettingsPage />
+          </PrivateRoute>
+        } />
+        
+        <Route path="/" element={<Navigate to="/chats" />} />
+      </Routes>
+    </Suspense>
   )
 }
 

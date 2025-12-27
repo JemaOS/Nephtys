@@ -1320,6 +1320,18 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
                 >
                   x {playbackRate.toFixed(1).replace('.0', ',0')}
                 </button>
+
+                {/* Fullscreen toggle */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleFullscreen();
+                  }}
+                  className="text-white hover:bg-white/10 p-1.5 rounded transition-colors ml-1"
+                  title={isFullscreen ? "Quitter le plein écran" : "Plein écran"}
+                >
+                  <Maximize2 size={20} className={isFullscreen ? 'rotate-45' : ''} />
+                </button>
               </div>
             </div>
           </div>

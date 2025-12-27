@@ -15,9 +15,8 @@
         fill="white" 
         fill-opacity="0.95"/>
   
-  <!-- Lettre A minimaliste -->
-  <path d="M 256 180 L 220 280 L 240 280 L 246 260 L 266 260 L 272 280 L 292 280 L 256 180 Z M 250 245 L 256 225 L 262 245 L 250 245 Z" 
-        fill="#6b6fdb"/>
+  <!-- Lettre N minimaliste -->
+  <text x="256" y="280" font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="120" font-weight="800" fill="#6b6fdb" text-anchor="middle">N</text>
   
   <!-- Point de notification (style JemaOS) -->
   <circle cx="370" cy="140" r="35" fill="#00a884"/>
