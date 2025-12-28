@@ -27,13 +27,17 @@ let heartbeatInterval: NodeJS.Timeout | null = null
 // Update last_seen in database periodically
 const updateLastSeen = async (userId: string) => {
   try {
+    // TODO: Enable this when 'is_online' and 'last_seen' columns are added to profiles table
+    // Currently disabled to prevent 400 Bad Request errors
+    /*
     await supabase
       .from('profiles')
-      .update({ 
+      .update({
         is_online: true,
-        last_seen: new Date().toISOString() 
+        last_seen: new Date().toISOString()
       })
       .eq('id', userId)
+    */
   } catch (error) {
     console.error('Error updating last_seen:', error)
   }
@@ -42,13 +46,17 @@ const updateLastSeen = async (userId: string) => {
 // Set user as offline in database
 const setOffline = async (userId: string) => {
   try {
+    // TODO: Enable this when 'is_online' and 'last_seen' columns are added to profiles table
+    // Currently disabled to prevent 400 Bad Request errors
+    /*
     await supabase
       .from('profiles')
-      .update({ 
+      .update({
         is_online: false,
-        last_seen: new Date().toISOString() 
+        last_seen: new Date().toISOString()
       })
       .eq('id', userId)
+    */
   } catch (error) {
     console.error('Error setting offline:', error)
   }

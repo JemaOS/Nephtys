@@ -285,12 +285,12 @@ export function ChatViewPage() {
       })
       .map(m => {
         // Determine the media URL and type
-        let mediaUrl = m.media_url || ''
+        let mediaUrl = m.media_url || m.file_url || ''
         let mediaType: 'image' | 'video' | 'audio' | 'gif' | 'sticker' = 'image'
         
-        if (m.media_url && m.media_type) {
-          mediaUrl = m.media_url
-          mediaType = m.media_type as 'image' | 'video'
+        if ((m.media_url || m.file_url) && (m.media_type || m.type)) {
+          mediaUrl = m.media_url || m.file_url || ''
+          mediaType = (m.media_type || m.type) as 'image' | 'video'
         } else if (m.content) {
           const gifMatch = m.content.match(/^(?:\[Transféré\]\s*)?([\s\S]*?)\[GIF\]\((https?:\/\/[^\)]+)\)$/)
           const stickerMatch = m.content.match(/^(?:\[Transféré\]\s*)?([\s\S]*?)\[STICKER\]\((https?:\/\/[^\)]+)\)$/)
@@ -882,6 +882,7 @@ export function ChatViewPage() {
         conversation_id: conversationId!, sender_id: user.id, content: optimisticMessage.content,
         type, status: 'sent', reply_to_id: optimisticMessage.reply_to_id,
         media_url: url, media_type: type, file_name: fileName, file_size: fileSize,
+        file_url: url, // Fallback for older schema
       }
       
       // Add image dimensions if available
@@ -947,6 +948,7 @@ export function ChatViewPage() {
         conversation_id: conversationId!, sender_id: user.id, content: '', type: 'audio', status: 'sent',
         reply_to_id: replyToMessage?.id || null, media_url: publicUrl, media_type: 'audio',
         file_name: `voice-${Date.now()}.${fileExtension}`, file_size: audioBlob.size,
+        file_url: publicUrl, // Fallback for older schema
       }
       
       // Optimistic update - add message to local state immediately
@@ -2074,9 +2076,12 @@ export function ChatViewPage() {
                 const isGifOrStickerMessage = isGifMessage || isStickerMessage
                 
                 // Check if this is an image or video message (should be rendered without bubble like WhatsApp)
-                const isMediaMessage = message.media_url && message.media_type && (message.media_type === 'image' || message.media_type === 'video') && message.type !== 'audio'
+                const mediaUrl = message.media_url || message.file_url
+                const mediaType = message.media_type || message.type
+                
+                const isMediaMessage = mediaUrl && (mediaType === 'image' || mediaType === 'video') && message.type !== 'audio'
                 // Check if this is a document/file message
-                const isDocumentMessage = message.media_url && message.media_type === 'file'
+                const isDocumentMessage = mediaUrl && mediaType === 'file'
                 // Long press handlers for mobile
                 const handleTouchStart = (msg: Message) => {
                   if (!isMobile) return
@@ -2402,8 +2407,8 @@ export function ChatViewPage() {
                           {/* Media display - no background bubble */}
                           <div className="space-y-1">
                             <MediaMessage
-                                url={message.media_url!}
-                                type={message.media_type as 'image' | 'video' | 'file'}
+                                url={mediaUrl!}
+                                type={mediaType as 'image' | 'video' | 'file'}
                                 fileName={message.file_name}
                                 fileSize={message.file_size}
                                 caption={message.content}
@@ -2458,7 +2463,7 @@ export function ChatViewPage() {
                             }}
                           />
                           <MediaMessage
-                            url={message.media_url!}
+                            url={mediaUrl!}
                             type="file"
                             fileName={message.file_name}
                             fileSize={message.file_size}
@@ -2543,21 +2548,21 @@ export function ChatViewPage() {
                           }
                           return null
                         })()}
-                        {message.type === 'audio' && message.media_url && (
+                        {message.type === 'audio' && (message.media_url || message.file_url) && (
                           // Check if it's a voice message (recorded) or an audio file (uploaded)
                           // Voice messages have file names starting with 'voice-'
                           message.file_name?.startsWith('voice-') ? (
-                            <VoiceMessage url={message.media_url} duration={message.ephemeral_duration || 0} isOwn={isOwn} />
+                            <VoiceMessage url={message.media_url || message.file_url || ''} duration={message.ephemeral_duration || 0} isOwn={isOwn} />
                           ) : (
                             <AudioFilePlayer
-                              url={message.media_url}
+                              url={message.media_url || message.file_url || ''}
                               fileName={message.file_name || undefined}
                               duration={message.ephemeral_duration || undefined}
                               isOwn={isOwn}
                             />
                           )
                         )}
-                        {(!message.media_url && message.content) && (
+                        {(!(message.media_url || message.file_url) && message.content) && (
                           <>
                             {/* Regular text message - if there's a link preview, don't show the URL in text */}
                             {(() => {
@@ -2601,7 +2606,7 @@ export function ChatViewPage() {
                           </>
                         )}
                         {/* Only show timestamp in message bubble for non-media messages (media messages show timestamp via MediaTimestampOverlay) */}
-                        {!(message.media_url && message.media_type && message.type !== 'audio') && (
+                        {!(mediaUrl && (mediaType === 'image' || mediaType === 'video') && message.type !== 'audio') && (
                         <div className={`flex items-center justify-end gap-1 mt-1 text-xs ${isOwn ? 'text-[#2d2f6e]' : 'text-text-secondary'}`}>
                           {message.is_starred && (
                             <Star size={12} className="fill-current" />
@@ -2875,6 +2880,7 @@ export function ChatViewPage() {
                   media_type: file.type,
                   file_name: file.fileName,
                   file_size: file.fileSize,
+                  file_url: file.url, // Fallback for older schema
                 }
                 
                 // Add image dimensions if available
