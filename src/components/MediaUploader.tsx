@@ -6,6 +6,7 @@ import { Image, Video, File as FileIcon, X, Loader2, Camera, Smile, Sticker, Fil
 import { supabase } from '@/lib/supabase';
 import { ImageEditor } from './ImageEditor';
 import { processImageForUpload, ProcessedImage } from '@/lib/imageUtils';
+import { compressVideo } from '@/lib/videoCompression';
 import { DocumentPreviewModal, generatePDFThumbnail } from './DocumentPreview';
 
 // Helper function to format file size
@@ -267,12 +268,14 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
   onGifStickerSend,
 }) => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFileType, setSelectedFileType] = useState<'image' | 'video' | 'file' | 'audio' | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   // Multiple files selection state
   const [selectedFiles, setSelectedFiles] = useState<Array<{ file: File; preview: string; type: 'image' | 'video' | 'file' | 'audio' }>>([]);
   const [multipleSelectionMode, setMultipleSelectionMode] = useState(false);
   const [multipleCaption, setMultipleCaption] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [uploadPhase, setUploadPhase] = useState<'idle' | 'compressing' | 'uploading'>('idle');
   const [uploadProgress, setUploadProgress] = useState(0);
   const [activeTab, setActiveTab] = useState<'attach' | 'emoji' | 'sticker' | 'gif'>('attach');
   const [cameraMode, setCameraMode] = useState<'photo' | 'video' | null>(null);
@@ -295,6 +298,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
   const [showDocumentPreview, setShowDocumentPreview] = useState(false);
   const [documentFile, setDocumentFile] = useState<File | null>(null);
   const [documentUploading, setDocumentUploading] = useState(false);
+  const [documentUploadPhase, setDocumentUploadPhase] = useState<'idle' | 'compressing' | 'uploading'>('idle');
   const [documentUploadProgress, setDocumentUploadProgress] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -315,21 +319,38 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
+    const isDocumentUpload = e.target === fileInputRef.current;
+
     // Check if multiple files selected (for images)
     if (files.length > 1) {
-      handleMultipleFileSelect(files);
+      handleMultipleFileSelect(files, isDocumentUpload ? 'file' : undefined);
       return;
     }
 
     const file = files[0];
 
-    // Vérifier la taille (max 50MB)
-    if (file.size > 50 * 1024 * 1024) {
-      alert('Le fichier est trop volumineux (max 50MB)');
+    const type = isDocumentUpload ? 'file' : getFileType(file);
+
+    // WhatsApp Limits
+    const VIDEO_SIZE_LIMIT = 200 * 1024 * 1024; // 200MB
+    const DOC_SIZE_LIMIT = 2 * 1024 * 1024 * 1024; // 2GB
+    const GLOBAL_LIMIT = 2 * 1024 * 1024 * 1024; // 2GB
+
+    // Check limits based on type
+    if (type === 'video' && file.size > VIDEO_SIZE_LIMIT) {
+      alert('La vidéo est trop volumineuse (max 200 Mo).');
       return;
     }
 
-    const type = getFileType(file);
+    if (type === 'file' && file.size > DOC_SIZE_LIMIT) {
+      alert('Le document est trop volumineux (max 2 Go).');
+      return;
+    }
+
+    if (file.size > GLOBAL_LIMIT) {
+      alert('Le fichier est trop volumineux (max 2GB)');
+      return;
+    }
 
     // Special handling for document files - show document preview modal
     // Includes PDF, Word, Excel, PowerPoint, and other document types
@@ -356,6 +377,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
     }
 
     setSelectedFile(file);
+    setSelectedFileType(type);
     onMediaSelect(file, type);
 
     // Créer une preview pour les images, vidéos et audio
@@ -378,19 +400,33 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
   };
 
   // Handle multiple file selection (WhatsApp-like)
-  const handleMultipleFileSelect = async (files: FileList) => {
+  const handleMultipleFileSelect = async (files: FileList, forcedType?: 'image' | 'video' | 'file' | 'audio') => {
     const newFiles: Array<{ file: File; preview: string; type: 'image' | 'video' | 'file' | 'audio' }> = [];
     
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       
-      // Vérifier la taille (max 50MB per file)
-      if (file.size > 50 * 1024 * 1024) {
-        alert(`Le fichier "${file.name}" est trop volumineux (max 50MB)`);
+      const type = forcedType || getFileType(file);
+
+      // WhatsApp Limits
+      const VIDEO_SIZE_LIMIT = 200 * 1024 * 1024; // 200MB
+      const DOC_SIZE_LIMIT = 2 * 1024 * 1024 * 1024; // 2GB
+
+      if (type === 'video' && file.size > VIDEO_SIZE_LIMIT) {
+        alert(`La vidéo "${file.name}" est trop volumineuse (max 200 Mo).`);
         continue;
       }
 
-      const type = getFileType(file);
+      if (type === 'file' && file.size > DOC_SIZE_LIMIT) {
+        alert(`Le document "${file.name}" est trop volumineux (max 2 Go).`);
+        continue;
+      }
+
+      // Vérifier la taille (max 2GB per file)
+      if (file.size > 2 * 1024 * 1024 * 1024) {
+        alert(`Le fichier "${file.name}" est trop volumineux (max 2GB)`);
+        continue;
+      }
       
       // Create preview
       const preview = await new Promise<string>((resolve) => {
@@ -455,6 +491,33 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
             fileToUpload = processedImage.blob;
           } catch (err) {
             console.warn('Image compression failed, using original:', err);
+          }
+        }
+
+        // Compress video if needed
+        if (type === 'video') {
+          try {
+            const shouldCompress = await new Promise<boolean>((resolve) => {
+              const video = document.createElement('video');
+              video.preload = 'metadata';
+              video.onloadedmetadata = () => {
+                const height = video.videoHeight;
+                resolve(height > 720);
+              };
+              video.onerror = () => resolve(false);
+              // Use the preview URL which is already generated
+              video.src = selectedFiles[i].preview;
+            });
+
+            if (shouldCompress) {
+              console.log(`Compressing video ${file.name}...`);
+              // We don't have granular progress for individual files in multiple upload,
+              // but we can log it or just wait.
+              const compressedBlob = await compressVideo(file);
+              fileToUpload = compressedBlob;
+            }
+          } catch (err) {
+            console.warn('Video compression failed, using original:', err);
           }
         }
         
@@ -568,6 +631,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
           if (blob) {
             const file = new File([blob], `photo-${Date.now()}.jpg`, { type: 'image/jpeg' });
             setSelectedFile(file);
+            setSelectedFileType('image');
             setPreview(canvas.toDataURL('image/jpeg'));
             onMediaSelect(file, 'image');
             stopCamera();
@@ -583,6 +647,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
     
     setSelectedFile(file);
     const type = getFileType(file);
+    setSelectedFileType(type);
     onMediaSelect(file, type);
     
     const reader = new FileReader();
@@ -596,25 +661,62 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
     if (!selectedFile) return;
 
     setUploading(true);
+    setUploadPhase('idle');
     setUploadProgress(0);
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('User not authenticated');
 
-      const fileType = getFileType(selectedFile);
+      const fileType = selectedFileType || getFileType(selectedFile);
       let fileToUpload: Blob = selectedFile;
       let processedImage: ProcessedImage | null = null;
       
       // Compress images before upload
       if (fileType === 'image') {
         try {
-          setUploadProgress(5); // Show some progress during compression
+          setUploadPhase('compressing');
+          setUploadProgress(0); // Indeterminate or start
           processedImage = await processImageForUpload(selectedFile);
           fileToUpload = processedImage.blob;
-          setUploadProgress(15);
+          setUploadProgress(100);
         } catch (err) {
           console.warn('Image compression failed, using original:', err);
+        }
+      }
+
+      // Compress video if needed (1080p/4K -> 720p)
+      if (fileType === 'video') {
+        try {
+          // Check dimensions
+          const shouldCompress = await new Promise<boolean>((resolve) => {
+            const video = document.createElement('video');
+            video.preload = 'metadata';
+            video.onloadedmetadata = () => {
+              const height = video.videoHeight;
+              // Clean up if we created a URL
+              if (!preview) window.URL.revokeObjectURL(video.src);
+              resolve(height > 720);
+            };
+            video.onerror = () => resolve(false);
+            video.src = preview || URL.createObjectURL(selectedFile);
+          });
+
+          if (shouldCompress) {
+            console.log('Video is larger than 720p, compressing...');
+            setUploadPhase('compressing');
+            setUploadProgress(0);
+            
+            const compressedBlob = await compressVideo(selectedFile, (progress) => {
+              // Direct progress from compression (0-100)
+              setUploadProgress(progress);
+            });
+            fileToUpload = compressedBlob;
+            console.log('Video compression complete');
+            setUploadProgress(100);
+          }
+        } catch (err) {
+          console.warn('Video compression failed, using original:', err);
         }
       }
       
@@ -643,18 +745,25 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
         }
       }
 
-      // Simulate progress for better UX
+      // Start Upload Phase
+      setUploadPhase('uploading');
+      setUploadProgress(0);
+
+      // Simulate progress for better UX (since Supabase doesn't give us upload progress easily)
       const progressInterval = setInterval(() => {
         setUploadProgress(prev => {
           if (prev >= 90) {
-            clearInterval(progressInterval);
-            return prev;
+            // Don't clear interval here, let it sit at 90 until done
+            return 90;
           }
           return prev + 10;
         });
       }, 200);
 
       // Upload vers Supabase Storage
+      console.log(`[MediaUploader] Starting upload: ${fileName}, size: ${fileToUpload.size}, type: ${selectedFile.type}`);
+      const uploadStartTime = Date.now();
+
       const { data, error } = await supabase.storage
         .from(bucket)
         .upload(fileName, fileToUpload, {
@@ -663,10 +772,17 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
           contentType: selectedFile.type || 'application/octet-stream',
         });
 
+      const uploadDuration = Date.now() - uploadStartTime;
+      console.log(`[MediaUploader] Upload finished in ${uploadDuration}ms`);
+
       clearInterval(progressInterval);
 
       if (error) {
-        console.error('Upload error details:', error);
+        console.error('[MediaUploader] Upload error details:', error);
+        // Log specific error properties that might help diagnose
+        if ('statusCode' in error) console.error('[MediaUploader] Status code:', (error as any).statusCode);
+        if ('error' in error) console.error('[MediaUploader] Inner error:', (error as any).error);
+        
         throw new Error(error.message || 'Upload failed');
       }
 
@@ -691,19 +807,23 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       
       // Reset
       setSelectedFile(null);
+      setSelectedFileType(null);
       setPreview(null);
+      setUploadPhase('idle');
     } catch (error: any) {
       console.error('Error uploading file:', error);
       const errorMessage = error?.message || 'Erreur inconnue';
       alert(`Erreur lors de l'upload du fichier: ${errorMessage}`);
     } finally {
       setUploading(false);
+      setUploadPhase('idle');
     }
   };
 
   const handleCancel = () => {
     stopCamera();
     setSelectedFile(null);
+    setSelectedFileType(null);
     setPreview(null);
     setSelectedFiles([]);
     setMultipleSelectionMode(false);
@@ -714,6 +834,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
     setShowDocumentPreview(false);
     setDocumentFile(null);
     setDocumentUploading(false);
+    setDocumentUploadPhase('idle');
     setDocumentUploadProgress(0);
     onCancel();
   };
@@ -723,6 +844,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
     if (!documentFile) return;
 
     setDocumentUploading(true);
+    setDocumentUploadPhase('idle');
     setDocumentUploadProgress(0);
 
     try {
@@ -736,6 +858,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       let thumbnailUrl: string | undefined;
       if (isPDF) {
         try {
+          setDocumentUploadPhase('compressing');
           setDocumentUploadProgress(5);
           const thumbnailDataUrl = await generatePDFThumbnail(documentFile, 300);
           setDocumentUploadProgress(15);
@@ -770,6 +893,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       }
 
       // Upload the document
+      setDocumentUploadPhase('uploading');
       const folder = 'documents';
       const fileName = `${user.id}/${folder}/${Date.now()}_${documentFile.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
 
@@ -777,8 +901,8 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       const progressInterval = setInterval(() => {
         setDocumentUploadProgress(prev => {
           if (prev >= 90) {
-            clearInterval(progressInterval);
-            return prev;
+            // Don't clear interval here, let it sit at 90 until done
+            return 90;
           }
           return prev + 10;
         });
@@ -821,12 +945,14 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       setShowDocumentPreview(false);
       setDocumentFile(null);
       setDocumentUploading(false);
+      setDocumentUploadPhase('idle');
       setDocumentUploadProgress(0);
     } catch (error: any) {
       console.error('Error uploading document:', error);
       const errorMessage = error?.message || 'Erreur inconnue';
       alert(`Erreur lors de l'upload du document: ${errorMessage}`);
       setDocumentUploading(false);
+      setDocumentUploadPhase('idle');
     }
   };
 
@@ -835,6 +961,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
     // Create a File from the Blob
     const editedFile = new File([editedBlob], fileName, { type: 'image/png' });
     setSelectedFile(editedFile);
+    setSelectedFileType('image');
     
     // Create preview
     const reader = new FileReader();
@@ -850,6 +977,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
   // Handle send from ImageEditor
   const handleImageEditorSend = async (editedBlob: Blob, fileName: string, caption: string) => {
     setUploading(true);
+    setUploadPhase('idle');
     setUploadProgress(0);
 
     try {
@@ -861,9 +989,10 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       // Process the edited image to get dimensions and thumbnail
       let processedImage: ProcessedImage | null = null;
       try {
-        setUploadProgress(5);
+        setUploadPhase('compressing');
+        setUploadProgress(0);
         processedImage = await processImageForUpload(editedFile);
-        setUploadProgress(15);
+        setUploadProgress(100);
       } catch (err) {
         console.warn('Image processing failed:', err);
       }
@@ -872,12 +1001,15 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       const folder = 'images';
       const uploadFileName = `${user.id}/${folder}/${Date.now()}_${fileName.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
 
+      setUploadPhase('uploading');
+      setUploadProgress(0);
+
       // Simulate progress for better UX
       const progressInterval = setInterval(() => {
         setUploadProgress(prev => {
           if (prev >= 90) {
-            clearInterval(progressInterval);
-            return prev;
+            // Don't clear interval here, let it sit at 90 until done
+            return 90;
           }
           return prev + 10;
         });
@@ -915,21 +1047,24 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       
       // Reset
       setSelectedFile(null);
+      setSelectedFileType(null);
       setPreview(null);
       setShowImageEditor(false);
       setImageToEdit(null);
+      setUploadPhase('idle');
     } catch (error: any) {
       console.error('Error uploading file:', error);
       const errorMessage = error?.message || 'Erreur inconnue';
       alert(`Erreur lors de l'upload du fichier: ${errorMessage}`);
     } finally {
       setUploading(false);
+      setUploadPhase('idle');
     }
   };
 
   // Open image editor for existing preview
   const openImageEditor = () => {
-    if (preview && selectedFile && getFileType(selectedFile) === 'image') {
+    if (preview && selectedFile && (selectedFileType || getFileType(selectedFile)) === 'image') {
       setImageToEdit({
         url: preview,
         fileName: selectedFile.name,
@@ -1135,6 +1270,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
           onSend={handleDocumentSend}
           uploading={documentUploading}
           uploadProgress={documentUploadProgress}
+          uploadPhase={documentUploadPhase}
         />
       )}
 
@@ -1676,7 +1812,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
               ref={fileInputRef}
               type="file"
               onChange={handleFileSelect}
-              accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar,.7z"
+              accept="*"
               className="hidden"
             />
             <input
@@ -1729,7 +1865,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
               <h3 className="text-lg font-semibold text-text-primary">Aperçu</h3>
               <div className="flex items-center gap-2">
                 {/* Edit button for images */}
-                {preview && getFileType(selectedFile) === 'image' && (
+                {preview && (selectedFileType || getFileType(selectedFile)) === 'image' && (
                   <button
                     onClick={openImageEditor}
                     className="p-2 rounded-full hover:bg-bg-hover transition-colors text-accent"
@@ -1749,7 +1885,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
 
             {/* Preview */}
             <div className="mb-4 rounded-xl overflow-hidden bg-bg-surface relative group">
-              {preview && getFileType(selectedFile) === 'image' && (
+              {preview && (selectedFileType || getFileType(selectedFile)) === 'image' && (
                 <>
                   <img src={preview} alt="Preview" className="w-full h-auto max-h-96 object-contain" />
                   {/* Edit overlay on hover */}
@@ -1764,16 +1900,16 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
                   </div>
                 </>
               )}
-              {preview && getFileType(selectedFile) === 'video' && (
+              {preview && (selectedFileType || getFileType(selectedFile)) === 'video' && (
                 <video src={preview} controls className="w-full h-auto max-h-96" />
               )}
-              {getFileType(selectedFile) === 'audio' && (
+              {(selectedFileType || getFileType(selectedFile)) === 'audio' && (
                 <AudioPreviewPlayer
                   file={selectedFile}
                   preview={preview}
                 />
               )}
-              {getFileType(selectedFile) === 'file' && (
+              {(selectedFileType || getFileType(selectedFile)) === 'file' && (
                 <div className="p-4">
                   {/* WhatsApp-style document preview card */}
                   <div className="bg-bg-hover rounded-xl border border-bg-hover overflow-hidden">
@@ -1818,7 +1954,9 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
             {uploading && (
               <div className="mb-4">
                 <div className="flex items-center justify-between text-sm mb-2 text-text-primary">
-                  <span>Upload en cours...</span>
+                  <span>
+                    {uploadPhase === 'compressing' ? 'Compression en cours...' : 'Envoi en cours...'}
+                  </span>
                   <span>{uploadProgress}%</span>
                 </div>
                 <div className="h-2 bg-bg-surface rounded-full overflow-hidden">

@@ -73,6 +73,14 @@ export const ForwardMessageModal: React.FC<ForwardMessageModalProps> = ({
         return;
       }
 
+      // Get user's contacts to filter direct conversations
+      const { data: contactsData } = await supabase
+        .from('contacts')
+        .select('contact_user_id')
+        .eq('user_id', user.id);
+
+      const contactIds = new Set(contactsData?.map(c => c.contact_user_id) || []);
+
       // Get details for each conversation
       const conversationsWithDetails = await Promise.all(
         conversationsData.map(async (conv) => {
@@ -115,7 +123,16 @@ export const ForwardMessageModal: React.FC<ForwardMessageModalProps> = ({
         })
       );
 
-      setConversations(conversationsWithDetails);
+      // Filter out direct conversations with users who are not in contacts
+      const validConversations = conversationsWithDetails.filter(conv => {
+        if (conv.type === 'group') return true;
+        if (conv.type === 'direct' && conv.otherUser) {
+          return contactIds.has(conv.otherUser.id);
+        }
+        return false;
+      });
+
+      setConversations(validConversations);
     } catch (error) {
       console.error('Error loading conversations:', error);
     } finally {

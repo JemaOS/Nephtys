@@ -40,6 +40,7 @@ interface DocumentPreviewModalProps {
   onSend: (caption: string) => void;
   uploading?: boolean;
   uploadProgress?: number;
+  uploadPhase?: 'idle' | 'compressing' | 'uploading';
 }
 
 export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
@@ -48,6 +49,7 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
   onSend,
   uploading = false,
   uploadProgress = 0,
+  uploadPhase = 'uploading',
 }) => {
   const [numPages, setNumPages] = useState<number>(0);
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -519,7 +521,9 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
         {uploading && (
           <div className="mb-2 sm:mb-3">
             <div className="flex items-center justify-between text-xs sm:text-sm mb-1 text-white">
-              <span>Envoi en cours...</span>
+              <span>
+                {uploadPhase === 'compressing' ? 'Compression en cours...' : 'Envoi en cours...'}
+              </span>
               <span>{uploadProgress}%</span>
             </div>
             <div className="h-1 sm:h-1.5 bg-white/20 rounded-full overflow-hidden">

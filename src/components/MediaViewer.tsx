@@ -123,6 +123,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   const isMobile = useIsMobile();
   const { orientation, isLandscape } = useScreenOrientation();
   const [showControls, setShowControls] = useState(true);
+  const [isHoveringControls, setIsHoveringControls] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
@@ -156,12 +157,14 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   const [navigationDirection, setNavigationDirection] = useState<'left' | 'right' | null>(null);
   
   const videoRef = useRef<HTMLVideoElement>(null);
+  const videoContainerRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const imageContainerRef = useRef<HTMLDivElement>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const swipeVelocityRef = useRef<number>(0);
   const lastTouchTimeRef = useRef<number>(0);
   const lastTouchXRef = useRef<number>(0);
+  const lastClickTimeRef = useRef<number>(0);
 
   const MIN_ZOOM = 0.5;
   const MAX_ZOOM = 5;
@@ -186,19 +189,43 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
     });
   };
 
-  // Auto-hide controls after 3 seconds
-  useEffect(() => {
-    if (showControls && (mediaType === 'video' || mediaType === 'audio')) {
+  // Helper to start the auto-hide timer
+  const startHideTimer = useCallback(() => {
+    if (controlsTimeoutRef.current) {
+      clearTimeout(controlsTimeoutRef.current);
+    }
+    if (mediaType === 'video' || mediaType === 'audio') {
       controlsTimeoutRef.current = setTimeout(() => {
         setShowControls(false);
       }, 3000);
+    }
+  }, [mediaType]);
+
+  // Auto-hide controls logic
+  useEffect(() => {
+    if (showControls && !isHoveringControls) {
+      startHideTimer();
+    } else {
+      if (controlsTimeoutRef.current) {
+        clearTimeout(controlsTimeoutRef.current);
+      }
     }
     return () => {
       if (controlsTimeoutRef.current) {
         clearTimeout(controlsTimeoutRef.current);
       }
     };
-  }, [showControls, mediaType]);
+  }, [showControls, isHoveringControls, startHideTimer]);
+
+  // Handle mouse move to show controls
+  const handleContainerMouseMove = useCallback(() => {
+    if (!showControls) {
+      setShowControls(true);
+    } else if (!isHoveringControls) {
+      // Reset timer if controls are already shown and not hovering controls
+      startHideTimer();
+    }
+  }, [showControls, isHoveringControls, startHideTimer]);
 
   // Handle keyboard navigation
   useEffect(() => {
@@ -257,6 +284,21 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
     setIsNavigating(false);
     setNavigationDirection(null);
   }, [mediaUrl, isOpen]);
+
+  // Auto-play when media changes or viewer opens
+  useEffect(() => {
+    if (isOpen) {
+      // Small timeout to ensure DOM is ready
+      const timer = setTimeout(() => {
+        if (mediaType === 'video' && videoRef.current) {
+          videoRef.current.play().catch(e => console.log("Auto-play failed:", e));
+        } else if (mediaType === 'audio' && audioRef.current) {
+          audioRef.current.play().catch(e => console.log("Auto-play failed:", e));
+        }
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen, mediaUrl, mediaType]);
 
   // Handle mouse wheel zoom
   const handleWheel = useCallback((e: WheelEvent) => {
@@ -685,8 +727,16 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
             }
           }
           
-          // Desktop fallback - standard fullscreen on video element
-          if (video.requestFullscreen) {
+          // Desktop fallback - prefer container fullscreen to keep custom controls
+          if (videoContainerRef.current?.requestFullscreen) {
+            await videoContainerRef.current.requestFullscreen();
+          } else if ((videoContainerRef.current as any)?.webkitRequestFullscreen) {
+            await (videoContainerRef.current as any).webkitRequestFullscreen();
+          } else if ((videoContainerRef.current as any)?.mozRequestFullScreen) {
+            await (videoContainerRef.current as any).mozRequestFullScreen();
+          } else if ((videoContainerRef.current as any)?.msRequestFullscreen) {
+            await (videoContainerRef.current as any).msRequestFullscreen();
+          } else if (video.requestFullscreen) {
             await video.requestFullscreen();
           } else if (video.webkitRequestFullscreen) {
             await video.webkitRequestFullscreen();
@@ -926,8 +976,9 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
     <div
       className={`fixed inset-0 z-[200] bg-black flex flex-col media-viewer-fullscreen ${
         isLandscape && isMobile ? 'landscape-mode' : ''
-      } ${isFullscreen ? 'fullscreen-active' : ''}`}
+      } ${isFullscreen ? 'fullscreen-active' : ''} ${!showControls ? 'cursor-none' : ''}`}
       onClick={() => setShowControls(true)}
+      onMouseMove={handleContainerMouseMove}
       style={{
         // Ensure the viewer takes full screen on mobile in any orientation
         width: '100%',
@@ -941,6 +992,8 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
         className={`absolute top-0 left-0 right-0 z-10 transition-opacity duration-300 ${
           showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
+        onMouseEnter={() => setIsHoveringControls(true)}
+        onMouseLeave={() => setIsHoveringControls(false)}
       >
         <div className="flex items-center justify-between p-3 md:p-4 bg-gradient-to-b from-black/80 to-transparent">
           {/* Left side - Sender info */}
@@ -1196,11 +1249,27 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
 
         {/* Video */}
         {mediaType === 'video' && (
-          <div className={`relative flex flex-col ${isLandscape && isMobile ? 'w-full h-full' : 'max-w-full max-h-full w-full'}`}>
+          <div
+            ref={videoContainerRef}
+            className={`relative flex flex-col ${isLandscape && isMobile ? 'w-full h-full' : 'max-w-full max-h-full w-full'} ${isFullscreen ? 'bg-black' : ''}`}
+            onClick={(e) => {
+              // Smart click handling: Single click toggles play/pause immediately, double click toggles fullscreen
+              const now = Date.now();
+              if (now - lastClickTimeRef.current < 300) {
+                toggleFullscreen();
+                lastClickTimeRef.current = 0;
+              } else {
+                togglePlayPause();
+                lastClickTimeRef.current = now;
+              }
+            }}
+          >
             <div className="flex-1 flex items-center justify-center relative">
               <video
                 ref={videoRef}
                 src={mediaUrl}
+                autoPlay
+                muted={isMuted}
                 className={`object-contain ${
                   isLandscape && isMobile
                     ? 'w-full h-full max-w-none max-h-none'
@@ -1218,7 +1287,15 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
                 allowsInlineMediaPlayback={true}
                 onClick={(e) => {
                   e.stopPropagation();
-                  togglePlayPause();
+                  // Smart click handling
+                  const now = Date.now();
+                  if (now - lastClickTimeRef.current < 300) {
+                    toggleFullscreen();
+                    lastClickTimeRef.current = 0;
+                  } else {
+                    togglePlayPause();
+                    lastClickTimeRef.current = now;
+                  }
                 }}
                 onPlay={() => setIsPlaying(true)}
                 onPause={() => setIsPlaying(false)}
@@ -1232,7 +1309,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
               
               {/* Video controls overlay - Play/Pause button in center */}
               <div
-                className={`absolute inset-0 flex items-center justify-center transition-opacity ${
+                className={`absolute inset-0 z-40 flex items-center justify-center transition-opacity pointer-events-none ${
                   showControls || !isPlaying ? 'opacity-100' : 'opacity-0'
                 }`}
               >
@@ -1241,7 +1318,9 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
                     e.stopPropagation();
                     togglePlayPause();
                   }}
-                  className="w-16 h-16 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center transition-colors"
+                  className={`w-16 h-16 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center transition-colors ${
+                    showControls || !isPlaying ? 'pointer-events-auto' : 'pointer-events-none'
+                  }`}
                 >
                   {isPlaying ? (
                     <Pause size={32} className="text-white" />
@@ -1257,7 +1336,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
                   e.stopPropagation();
                   toggleMute();
                 }}
-                className={`absolute top-4 right-4 w-10 h-10 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center transition-all ${
+                className={`absolute top-4 right-4 z-50 w-10 h-10 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center transition-all ${
                   showControls ? 'opacity-100' : 'opacity-0'
                 }`}
               >
@@ -1271,10 +1350,12 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
 
             {/* Video progress bar - WhatsApp style at bottom */}
             <div
-              className={`w-full px-4 py-3 bg-gradient-to-t from-black/80 to-transparent transition-opacity ${
+              className={`absolute bottom-0 left-0 right-0 z-50 w-full px-4 py-3 bg-gradient-to-t from-black/80 to-transparent transition-opacity ${
                 showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
               }`}
               onClick={(e) => e.stopPropagation()}
+              onMouseEnter={() => setIsHoveringControls(true)}
+              onMouseLeave={() => setIsHoveringControls(false)}
             >
               <div className="flex items-center gap-3">
                 {/* Current time */}
@@ -1343,6 +1424,8 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
             <audio
               ref={audioRef}
               src={mediaUrl}
+              autoPlay
+              muted={isMuted}
               onPlay={() => setIsPlaying(true)}
               onPause={() => setIsPlaying(false)}
               onEnded={() => setIsPlaying(false)}
