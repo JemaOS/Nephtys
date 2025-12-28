@@ -285,19 +285,46 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
     setNavigationDirection(null);
   }, [mediaUrl, isOpen]);
 
-  // Auto-play when media changes or viewer opens
+  // Robust auto-play handling
   useEffect(() => {
-    if (isOpen) {
-      // Small timeout to ensure DOM is ready
-      const timer = setTimeout(() => {
-        if (mediaType === 'video' && videoRef.current) {
-          videoRef.current.play().catch(e => console.log("Auto-play failed:", e));
-        } else if (mediaType === 'audio' && audioRef.current) {
-          audioRef.current.play().catch(e => console.log("Auto-play failed:", e));
+    if (!isOpen || !mediaUrl) return;
+
+    const playMedia = async (element: HTMLMediaElement) => {
+      try {
+        // Check if source is valid
+        if (!element.src || element.src === window.location.href) {
+          console.warn("Media source is empty or invalid");
+          return;
         }
-      }, 100);
-      return () => clearTimeout(timer);
-    }
+
+        if (element.readyState >= 3) { // HAVE_FUTURE_DATA
+          await element.play();
+        } else {
+          // Wait for canplay event
+          const handleCanPlay = async () => {
+            try {
+              await element.play();
+            } catch (e) {
+              console.error("Auto-play failed in listener:", e);
+            }
+          };
+          element.addEventListener('canplay', handleCanPlay, { once: true });
+        }
+      } catch (error) {
+        console.error("Auto-play failed:", error);
+      }
+    };
+
+    // Small timeout to ensure ref is populated
+    const timer = setTimeout(() => {
+      if (mediaType === 'video' && videoRef.current) {
+        playMedia(videoRef.current);
+      } else if (mediaType === 'audio' && audioRef.current) {
+        playMedia(audioRef.current);
+      }
+    }, 50);
+
+    return () => clearTimeout(timer);
   }, [isOpen, mediaUrl, mediaType]);
 
   // Handle mouse wheel zoom
@@ -1268,7 +1295,6 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
               <video
                 ref={videoRef}
                 src={mediaUrl}
-                autoPlay
                 muted={isMuted}
                 className={`object-contain ${
                   isLandscape && isMobile
@@ -1424,7 +1450,6 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
             <audio
               ref={audioRef}
               src={mediaUrl}
-              autoPlay
               muted={isMuted}
               onPlay={() => setIsPlaying(true)}
               onPause={() => setIsPlaying(false)}
