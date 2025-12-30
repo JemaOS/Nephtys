@@ -379,6 +379,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Stocker en local que c'est un mode éphémère
       localStorage.setItem('anu_ephemeral_mode', 'true')
       localStorage.setItem('anu_ephemeral_user', uniqueUsername)
+      // CRITICAL: Store password to allow session recovery if token becomes invalid
+      localStorage.setItem('anu_ephemeral_password', randomPassword)
     } catch (err: any) {
       // Si c'est déjà notre erreur formatée, la relancer
       if (err.message.startsWith('❌')) {
@@ -411,6 +413,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Nettoyer le localStorage
         localStorage.removeItem('anu_ephemeral_mode')
         localStorage.removeItem('anu_ephemeral_email')
+        localStorage.removeItem('anu_ephemeral_user')
+        localStorage.removeItem('anu_ephemeral_password')
       } catch (err) {
         console.error('Error cleaning ephemeral data:', err)
       }

@@ -115,6 +115,38 @@ export function useSupabaseReconnect(userId: string | null) {
         // This happens when the session is invalid/revoked/expired and cannot be refreshed
         const errorMsg = result.error.message || ''
         if (errorMsg.includes('Invalid Refresh Token') || errorMsg.includes('Refresh Token Not Found')) {
+          
+          // Attempt recovery for ephemeral users
+          const isEphemeral = localStorage.getItem('anu_ephemeral_mode') === 'true'
+          const ephemeralUser = localStorage.getItem('anu_ephemeral_user')
+          const ephemeralPassword = localStorage.getItem('anu_ephemeral_password')
+          
+          if (isEphemeral && ephemeralUser && ephemeralPassword) {
+             console.log('[Reconnect] Ephemeral user detected with invalid token. Attempting recovery...')
+             try {
+                const { data, error } = await supabase.functions.invoke('auth-with-username', {
+                  body: { action: 'signin', username: ephemeralUser, password: ephemeralPassword }
+                })
+                
+                if (!error && data?.data?.session) {
+                   const { error: sessionError } = await supabase.auth.setSession({
+                      access_token: data.data.session.access_token,
+                      refresh_token: data.data.session.refresh_token
+                   })
+                   
+                   if (!sessionError) {
+                      console.log('[Reconnect] Ephemeral session recovered successfully!')
+                      reconnectAttempts.current = 0
+                      resetReconnectingState()
+                      return true
+                   }
+                }
+                console.error('[Reconnect] Ephemeral recovery failed:', error || 'No session')
+             } catch (recoveryErr) {
+                console.error('[Reconnect] Ephemeral recovery error:', recoveryErr)
+             }
+          }
+
           console.error('[Reconnect] CRITICAL: Invalid Refresh Token detected. Forcing logout to recover.')
           
           // Clear local storage to remove stale tokens
