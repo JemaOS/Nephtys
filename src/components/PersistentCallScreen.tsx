@@ -220,50 +220,35 @@ export function PersistentCallScreen() {
 
   // Handle remote stream attachment
   useEffect(() => {
-    console.log('📺 PersistentCallScreen: Remote stream effect triggered, remoteStream exists:', !!remoteStream);
     if (remoteStream) {
-      console.log('📺 PersistentCallScreen: Remote stream tracks:', remoteStream.getTracks().length);
-      remoteStream.getTracks().forEach((track, i) => {
-        console.log(`📺 PersistentCallScreen: Remote stream track ${i}:`, track.kind, 'enabled:', track.enabled, 'readyState:', track.readyState);
-      });
-      
       // FIX: Ensure video tracks are enabled when attaching to video element
       remoteStream.getVideoTracks().forEach(track => {
         if (!track.enabled) {
-          console.log('📺 PersistentCallScreen: Enabling disabled video track');
           track.enabled = true;
         }
       });
       
       if (remoteVideoRef.current) {
-        console.log('📺 PersistentCallScreen: Attaching remote stream to video element');
         remoteVideoRef.current.srcObject = remoteStream
         // FIX: Ensure the video element plays the stream
         remoteVideoRef.current.play().catch(err => {
-          console.warn('📺 PersistentCallScreen: Video play failed:', err);
+          console.warn('Video play failed:', err);
         });
-      } else {
-        console.warn('📺 PersistentCallScreen: remoteVideoRef.current is null, cannot attach stream');
       }
       
       if (remoteAudioRef.current) {
-        console.log('📺 PersistentCallScreen: Attaching remote stream to audio element');
         remoteAudioRef.current.srcObject = remoteStream
         remoteAudioRef.current.volume = 1.0
         // FIX: Ensure the audio element plays the stream
         remoteAudioRef.current.play().catch(err => {
-          console.warn('📺 PersistentCallScreen: Audio play failed:', err);
+          console.warn('Audio play failed:', err);
         });
-      } else {
-        console.warn('📺 PersistentCallScreen: remoteAudioRef.current is null, cannot attach stream');
       }
     }
   }, [remoteStream])
 
   // Toggle speaker (simulated for now as setSinkId is experimental/limited)
   const toggleSpeaker = (...args: any[]) => {
-    console.log('toggleSpeaker called with', args)
-    if (args.length > 1) console.error('toggleSpeaker called with multiple arguments!', args)
     setIsSpeakerOn(!isSpeakerOn)
     // In a real implementation with supported browser, we would use:
     // const audio = remoteAudioRef.current as any
@@ -366,15 +351,6 @@ export function PersistentCallScreen() {
   // The track might be disabled initially but will be enabled once the connection is established
   const hasRemoteVideo = isVideoCall && remoteStream && remoteStream.getVideoTracks().length > 0
   
-  // Debug logging for hasRemoteVideo
-  useEffect(() => {
-    console.log('📺 PersistentCallScreen: hasRemoteVideo check:');
-    console.log('  isVideoCall:', isVideoCall);
-    console.log('  remoteStream exists:', !!remoteStream);
-    console.log('  video tracks length:', remoteStream?.getVideoTracks().length || 0);
-    console.log('  first video track enabled:', remoteStream?.getVideoTracks()[0]?.enabled);
-    console.log('  hasRemoteVideo:', hasRemoteVideo);
-  }, [isVideoCall, remoteStream, hasRemoteVideo])
 
   return (
     <div className="fixed inset-0 z-[100] bg-gray-900 flex flex-col overflow-hidden">

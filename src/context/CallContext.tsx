@@ -87,58 +87,35 @@ export function CallProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!user) return
 
-    console.log('🔔 CallContext: Setting up global call listener for user:', user.id)
-
     const channel = supabase
       .channel('global-webrtc-signals')
       .on('broadcast', { event: 'call-signal' }, async (payload) => {
         const signal = payload.payload as CallSignal
         
-        // DEBUG: Log full details for diagnosis
-        console.log('🔔 CallContext: === SIGNAL RECEIVED ===')
-        console.log('🔔 CallContext: Signal type:', signal.type)
-        console.log('🔔 CallContext: Signal from:', signal.from)
-        console.log('🔔 CallContext: Signal to:', signal.to)
-        console.log('🔔 CallContext: Current user.id:', user?.id)
-        console.log('🔔 CallContext: user object:', user)
-        console.log('🔔 CallContext: Comparison (signal.from === user.id):', signal.from === user?.id)
-        console.log('🔔 CallContext: Comparison (signal.to === user.id):', signal.to === user?.id)
-        console.log('🔔 CallContext: typeof signal.from:', typeof signal.from)
-        console.log('🔔 CallContext: typeof user.id:', typeof user?.id)
-        
         // Ignorer nos propres signaux
         if (signal.from === user?.id) {
-          console.log('🔔 CallContext: ❌ Ignoring own signal (from matches our user.id)')
           return
         }
         
         // Traiter uniquement les signaux qui nous sont destinés
         if (signal.to !== user?.id) {
-          console.log('🔔 CallContext: ❌ Signal not for us (to does not match our user.id)')
           return
         }
 
-        console.log('🔔 CallContext: ✅ Processing signal for us')
         handleIncomingSignal(signal)
       })
-      .subscribe((status) => {
-        console.log('🔔 CallContext: Channel subscription status:', status)
-      })
+      .subscribe()
 
     setChannelRef(channel)
 
     return () => {
-      console.log('🔔 CallContext: Cleaning up channel')
-      supabase.removeChannel(channel).then(() => {})
+      supabase.removeChannel(channel).catch(() => {})
     }
   }, [user])
 
   const handleIncomingSignal = async (signal: CallSignal) => {
-    console.log('🔔 CallContext: handleIncomingSignal:', signal.type)
-
     switch (signal.type) {
       case 'offer':
-        console.log('🔔 CallContext: Incoming call offer')
         // Appel entrant
         setIncomingCallSignal(signal)
         setIsRinging(true)
@@ -204,7 +181,6 @@ export function CallProvider({ children }: { children: ReactNode }) {
         break
 
       case 'group-call-invite':
-        console.log('🔔 CallContext: Incoming GROUP call invite')
         // Appel de groupe entrant - afficher la notification
         setIsRinging(true)
         
@@ -281,7 +257,6 @@ export function CallProvider({ children }: { children: ReactNode }) {
         break
 
       case 'answer':
-        console.log('🔔 CallContext: Call answered')
         if (webrtcManager) {
           await webrtcManager.handleAnswer(signal.data)
           setIsCalling(false)
@@ -290,29 +265,24 @@ export function CallProvider({ children }: { children: ReactNode }) {
         break
 
       case 'ice-candidate':
-        console.log('🧊 CallContext: ICE candidate received, isPeerConnectionReady:', isPeerConnectionReady);
         if (signal.data) {
           if (isPeerConnectionReady) {
             try {
-              console.log('🧊 CallContext: Processing ICE candidate immediately');
               await webrtcManager.addIceCandidate(signal.data)
             } catch (error) {
-              console.error('🧊 CallContext: Error adding ICE candidate:', error)
+              console.error('Error adding ICE candidate:', error)
             }
           } else {
             // Utiliser une ref au lieu de state pour éviter les re-renders
-            console.log('🧊 CallContext: Queueing ICE candidate (peer connection not ready)');
             iceCandidateQueueRef.current.push({
               candidate: signal.data,
               timestamp: Date.now()
             })
-            console.log('🧊 CallContext: Queue size now:', iceCandidateQueueRef.current.length);
           }
         }
         break
 
       case 'call-end':
-        console.log('🔔 CallContext: Call ended by remote')
         // Pass false to avoid sending another call-end signal back (would cause infinite loop)
         endCall(false)
         break
@@ -331,12 +301,9 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
   const startCall = async (userId: string, conversationId: string, config: CallConfig) => {
     try {
-      console.log('📞 Starting call to:', userId)
-      
       // DEMANDER EXPLICITEMENT les permissions sur mobile
       if (typeof window !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
         try {
-          console.log('📱 Mobile: Requesting permissions explicitly...')
           const testStream = await navigator.mediaDevices.getUserMedia({
             audio: true,
             video: config.video
@@ -344,9 +311,8 @@ export function CallProvider({ children }: { children: ReactNode }) {
           
           // Arrêter le stream de test immédiatement
           testStream.getTracks().forEach(track => track.stop())
-          console.log('✅ Permissions granted')
         } catch (permError: any) {
-          console.error('❌ Permission denied:', permError.name, permError.message)
+          console.error('Permission denied:', permError.name, permError.message)
           
           let errorMsg = '❌ Permissions requises\n\nPour appeler, vous devez autoriser :\n'
           
@@ -415,8 +381,6 @@ export function CallProvider({ children }: { children: ReactNode }) {
       })
 
       webrtcManager.onRemoteStream((...args) => {
-        console.log('📞 Remote stream received (caller side)', args)
-        if (args.length > 1) console.error('Multiple arguments in onRemoteStream callback!', args)
         setRemoteStream(args[0])
       })
 
@@ -455,7 +419,6 @@ export function CallProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      console.log('📞 Answering call from:', incomingCallSignal.from)
       setIsRinging(false)
       setIsInCall(true)
       setIsPeerConnectionReady(false)
@@ -473,12 +436,6 @@ export function CallProvider({ children }: { children: ReactNode }) {
       // FIX: Set up callbacks BEFORE initializeCall to ensure we don't miss any events
       webrtcManager.onRemoteStream((...args) => {
         const stream = args[0];
-        console.log('📞 Remote stream received callback triggered', args);
-        if (args.length > 1) console.error('Multiple arguments in onRemoteStream callback!', args)
-        console.log('📞 Remote stream tracks:', stream.getTracks().length);
-        stream.getTracks().forEach((track: any, i: number) => {
-          console.log(`📞 Remote stream track ${i}:`, track.kind, 'enabled:', track.enabled, 'readyState:', track.readyState);
-        });
         setRemoteStream(stream)
       })
 
@@ -497,22 +454,18 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
       // FIX: Set isPeerConnectionReady to true immediately after initializeCall
       // This ensures ICE candidates can be processed as soon as they arrive
-      console.log('📞 Peer connection initialized, setting isPeerConnectionReady to true');
       setIsPeerConnectionReady(true)
 
       // Process any ICE candidates that arrived during initialization
       if (iceCandidateQueueRef.current.length > 0) {
-        console.log(`📞 Processing ${iceCandidateQueueRef.current.length} queued ICE candidates from before initialization`)
         for (const { candidate } of iceCandidateQueueRef.current) {
           try {
-            console.log('📞 Adding queued ICE candidate');
             await webrtcManager.addIceCandidate(candidate)
           } catch (error) {
-            console.error('📞 Error adding queued ICE candidate:', error)
+            console.error('Error adding queued ICE candidate:', error)
           }
         }
         // Vider la queue
-        console.log('📞 Clearing ICE candidate queue');
         iceCandidateQueueRef.current = []
       }
 
@@ -520,20 +473,15 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
       // Process any ICE candidates that arrived during createAnswer
       if (iceCandidateQueueRef.current.length > 0) {
-        console.log(`📞 Processing ${iceCandidateQueueRef.current.length} queued ICE candidates from during createAnswer`)
         for (const { candidate } of iceCandidateQueueRef.current) {
           try {
-            console.log('📞 Adding queued ICE candidate');
             await webrtcManager.addIceCandidate(candidate)
           } catch (error) {
-            console.error('📞 Error adding queued ICE candidate:', error)
+            console.error('Error adding queued ICE candidate:', error)
           }
         }
         // Vider la queue
-        console.log('📞 Clearing ICE candidate queue');
         iceCandidateQueueRef.current = []
-      } else {
-        console.log('📞 No queued ICE candidates to process');
       }
 
       await sendSignal({
@@ -592,7 +540,6 @@ export function CallProvider({ children }: { children: ReactNode }) {
     if (!incomingCallSignal || !incomingCall?.isGroupCall) return
 
     try {
-      console.log('📞 Joining group call for conversation:', incomingCallSignal.conversation_id)
       setIsRinging(false)
       
       const config: GroupCallConfig = {
@@ -612,8 +559,6 @@ export function CallProvider({ children }: { children: ReactNode }) {
   }
 
   const toggleAudio = (...args: any[]) => {
-    console.log('toggleAudio called with', args)
-    if (args.length > 1) console.error('toggleAudio called with multiple arguments!', args)
     const newState = !audioEnabled
     if (isGroupCall) {
       groupCallManager.toggleAudio(newState)
@@ -624,8 +569,6 @@ export function CallProvider({ children }: { children: ReactNode }) {
   }
 
   const toggleVideo = async (...args: any[]) => {
-    console.log('toggleVideo called with', args)
-    if (args.length > 1) console.error('toggleVideo called with multiple arguments!', args)
     const newState = !videoEnabled
     if (isGroupCall) {
       await groupCallManager.toggleVideo(newState)
@@ -643,12 +586,9 @@ export function CallProvider({ children }: { children: ReactNode }) {
   // Start a group call
   const startGroupCall = async (conversationId: string, config: GroupCallConfig) => {
     try {
-      console.log('📞 Starting group call for conversation:', conversationId)
-      
       // Request permissions explicitly on mobile
       if (typeof window !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
         try {
-          console.log('📱 Mobile: Requesting permissions explicitly...')
           const testStream = await navigator.mediaDevices.getUserMedia({
             audio: true,
             video: config.video
@@ -656,9 +596,8 @@ export function CallProvider({ children }: { children: ReactNode }) {
           
           // Stop test stream immediately
           testStream.getTracks().forEach(track => track.stop())
-          console.log('✅ Permissions granted')
         } catch (permError: any) {
-          console.error('❌ Permission denied:', permError.name, permError.message)
+          console.error('Permission denied:', permError.name, permError.message)
           
           let errorMsg = '❌ Permissions requises\n\nPour appeler, vous devez autoriser :\n'
           
@@ -713,8 +652,6 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
       // Set up callbacks
       groupCallManager.onParticipantUpdate((...args) => {
-        console.log('📞 Group participant update', args)
-        if (args.length > 1) console.error('Multiple arguments in onParticipantUpdate callback!', args)
         const participants = args[0]
         const participantArray: GroupCallParticipant[] = []
         participants.forEach((p: any) => {
@@ -742,11 +679,9 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
       // Send group call invite to all other members
       if (members && members.length > 0) {
-        console.log('📞 Sending group call invites to', members.length - 1, 'members')
         for (const member of members) {
           // Don't send to ourselves
           if (member.user_id !== user!.id) {
-            console.log('📞 Sending group call invite to:', member.user_id)
             await sendSignal({
               type: 'group-call-invite',
               from: user!.id,
@@ -764,14 +699,6 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
       // Log the call - For group calls, use caller_id as callee_id (self-reference indicates group call)
       // This satisfies the NOT NULL constraint on callee_id while allowing us to identify group calls
-      console.log('📞 Creating call log for group call:', {
-        conversation_id: conversationId,
-        caller_id: user!.id,
-        callee_id: user!.id, // Self-reference indicates group call
-        type: config.video ? 'video' : 'audio',
-        status: 'initiated',
-      })
-      
       const { data: callLogData, error: callLogError } = await supabase.from('call_logs').insert({
         conversation_id: conversationId,
         caller_id: user!.id,
@@ -781,9 +708,8 @@ export function CallProvider({ children }: { children: ReactNode }) {
       }).select()
       
       if (callLogError) {
-        console.error('📞 Error creating group call log:', callLogError)
-      } else {
-        console.log('📞 Group call log created successfully:', callLogData)
+        console.error('Error creating group call log:', callLogError)
+      } else if (callLogData) {
         // Dispatch a custom event to notify ChatViewPage to reload call logs
         window.dispatchEvent(new CustomEvent('call-log-created', {
           detail: { conversationId, callLog: callLogData?.[0] }
@@ -799,8 +725,6 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
   // End call - handles both group and 1-to-1 calls
   const endCall = async (sendEndSignal: boolean = true) => {
-    console.log('🔔 CallContext: endCall called, sendEndSignal:', sendEndSignal)
-    
     if (isGroupCall) {
       // Get participant count before leaving
       const participantCount = groupCallManager.getParticipantCount()
@@ -845,7 +769,6 @@ export function CallProvider({ children }: { children: ReactNode }) {
       
       // Only send end signal if we initiated the hang up (not if we received call-end from remote)
       if (sendEndSignal && otherUserId && conversationId && user) {
-        console.log('🔔 CallContext: Sending call-end signal to:', otherUserId)
         sendSignal({
           type: 'call-end',
           from: user.id,
