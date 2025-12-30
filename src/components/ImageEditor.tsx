@@ -858,7 +858,9 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
             className={`p-2 rounded-lg transition-colors ${hdQuality ? 'bg-accent text-white' : 'hover:bg-bg-hover text-text-primary'}`}
             title="Qualité HD"
           >
-            <span className="text-xs font-bold">HD</span>
+            <div className="w-5 h-5 flex items-center justify-center">
+              <span className="text-[10px] font-bold leading-none">HD</span>
+            </div>
           </button>
 
           {/* Download button */}
