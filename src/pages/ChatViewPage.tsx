@@ -2515,34 +2515,19 @@ export function ChatViewPage() {
                               ? 'Vous'
                               : otherUser?.display_name || otherUser?.username || 'Utilisateur'
                             return (
-                              <div
-                                className={`mb-2 rounded-lg overflow-hidden cursor-pointer hover:opacity-80 transition-opacity ${isOwn ? 'bg-[#5a5ab8]' : 'bg-bg-hover'}`}
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  scrollToMessage(replyMessage.id)
-                                }}
-                                role="button"
-                                tabIndex={0}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter' || e.key === ' ') {
-                                    e.preventDefault()
-                                    scrollToMessage(replyMessage.id)
-                                  }
-                                }}
-                                aria-label={`Aller au message de ${replySenderName}`}
-                              >
-                                <div className="flex items-stretch">
-                                  <div className="w-1 bg-accent flex-shrink-0" />
-                                  <div className="flex-1 min-w-0 px-3 py-2">
-                                    <div className="text-xs font-semibold text-accent mb-0.5">
-                                      {replySenderName}
-                                    </div>
-                                    <div className={`text-sm truncate ${isOwn ? 'text-white/70' : 'text-text-secondary'}`}>
-                                      {replyMessage.content?.substring(0, 100) || '[Média]'}
-                                      {replyMessage.content && replyMessage.content.length > 100 ? '...' : ''}
-                                    </div>
-                                  </div>
-                                </div>
+                              <div onClick={(e) => { e.stopPropagation(); scrollToMessage(replyMessage.id); }}>
+                                <MessageReply
+                                  replyToMessage={{
+                                    id: replyMessage.id,
+                                    content: replyMessage.content,
+                                    sender_id: replyMessage.sender_id,
+                                    senderName: replySenderName,
+                                    mediaUrl: replyMessage.media_url || replyMessage.file_url,
+                                    mediaType: replyMessage.media_type || replyMessage.type,
+                                    fileName: replyMessage.file_name
+                                  }}
+                                  isPreview={false}
+                                />
                               </div>
                             )
                           }
@@ -2743,7 +2728,19 @@ export function ChatViewPage() {
               )}
               
               {replyToMessage && (
-                <MessageReply replyToMessage={{ id: replyToMessage.id, content: replyToMessage.content, sender_id: replyToMessage.sender_id, senderName: replyToMessage.sender_id === user?.id ? 'Vous' : otherUser?.display_name || otherUser?.username || 'Utilisateur' }} onCancel={() => setReplyToMessage(null)} isPreview={true} />
+                <MessageReply
+                  replyToMessage={{
+                    id: replyToMessage.id,
+                    content: replyToMessage.content,
+                    sender_id: replyToMessage.sender_id,
+                    senderName: replyToMessage.sender_id === user?.id ? 'Vous' : otherUser?.display_name || otherUser?.username || 'Utilisateur',
+                    mediaUrl: replyToMessage.media_url || replyToMessage.file_url,
+                    mediaType: replyToMessage.media_type || replyToMessage.type,
+                    fileName: replyToMessage.file_name
+                  }}
+                  onCancel={() => setReplyToMessage(null)}
+                  isPreview={true}
+                />
               )}
               <form onSubmit={handleSendMessage} className="flex items-center gap-1 md:gap-2">
                 <div className="relative hidden md:block" ref={emojiPickerRef}>

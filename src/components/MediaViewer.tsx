@@ -1043,7 +1043,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
           </div>
 
           {/* Right side - Action buttons */}
-          <div className="flex items-center gap-0.5 md:gap-2 flex-shrink-0">
+          <div className="flex items-center gap-3 md:gap-4 flex-shrink-0">
             {/* Zoom controls - only for images, hidden on mobile (use pinch-to-zoom) */}
             {(mediaType === 'image' || mediaType === 'gif' || mediaType === 'sticker') && !isMobile && (
               <>

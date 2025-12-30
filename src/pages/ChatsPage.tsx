@@ -1460,7 +1460,7 @@ export function ChatsPage() {
       {/* Zone de chat vide - Style JemaOS - Desktop only */}
       <div className="hidden md:flex flex-1 bg-bg-primary flex-col items-center justify-center relative">
         <div className="text-center">
-          <h2 className="text-3xl font-light text-text-secondary mb-4">Nephtys pour JemaOS</h2>
+          <h2 className="text-3xl font-light text-text-secondary mb-4">Nephtys optimisé pour JemaOS</h2>
           <p className="text-text-secondary max-w-lg mx-auto leading-relaxed mb-6">
             Messagerie sécurisée qui protège votre vie privée.<br/>
             Vos conversations sont chiffrées de bout en bout. Une architecture hybride conçue pour garantir votre confidentialité absolue.

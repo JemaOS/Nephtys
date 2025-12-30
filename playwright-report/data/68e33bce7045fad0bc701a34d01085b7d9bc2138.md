@@ -42,7 +42,7 @@
         - heading "Aucune conversation" [level=3] [ref=e58]
         - paragraph [ref=e59]: Commencez une nouvelle discussion
     - generic [ref=e61]:
-      - heading "Nephtys pour JemaOS" [level=2] [ref=e62]
+      - heading "Nephtys optimisé pour JemaOS" [level=2] [ref=e62]
       - paragraph [ref=e63]:
         - text: Messagerie décentralisée qui protège votre vie privée.
         - text: Vos conversations sont chiffrées de bout en bout et transitent directement entre vous et vos contacts, sans serveur intermédiaire.

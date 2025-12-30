@@ -160,8 +160,8 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
     img.onload = () => {
       setImage(img);
       // Calculate canvas size to fit container while maintaining aspect ratio
-      const maxWidth = window.innerWidth * 0.9;
-      const maxHeight = window.innerHeight * 0.6;
+      const maxWidth = window.innerWidth * 0.95;
+      const maxHeight = window.innerHeight * 0.8;
       let width = img.width;
       let height = img.height;
       
@@ -809,7 +809,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
         </button>
 
         {/* Main toolbar */}
-        <div className="flex items-center gap-1 overflow-x-auto px-2">
+        <div className="flex items-center gap-4 overflow-x-auto px-4">
           {/* Crop/Rotate */}
           <button
             onClick={() => {
@@ -1098,8 +1098,8 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
       )}
 
       {/* Bottom bar with caption and send */}
-      <div className="p-3 border-t border-bg-hover bg-bg-surface safe-area-bottom">
-        <div className="flex items-center gap-2">
+      <div className="p-4 border-t border-bg-hover bg-bg-surface safe-area-bottom">
+        <div className="flex items-center gap-3">
           {/* Caption input */}
           <div className="flex-1">
             <input

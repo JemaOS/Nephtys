@@ -2,7 +2,7 @@
 // Distributed under the license specified in the root directory of this project.
 
 import React from 'react';
-import { X } from 'lucide-react';
+import { X, Image as ImageIcon, FileVideo, Sticker, FileText } from 'lucide-react';
 
 interface MessageReplyProps {
   replyToMessage: {
@@ -10,73 +10,138 @@ interface MessageReplyProps {
     content: string;
     sender_id: string;
     senderName?: string;
+    mediaUrl?: string | null;
+    mediaType?: string | null;
+    fileName?: string | null;
   } | null;
   onCancel?: () => void;
+  onClick?: () => void;
   isPreview?: boolean; // true = dans la barre d'input, false = dans le message
 }
 
 export const MessageReply: React.FC<MessageReplyProps> = ({
   replyToMessage,
   onCancel,
+  onClick,
   isPreview = false,
 }) => {
   if (!replyToMessage) return null;
 
   const truncateText = (text: string, maxLength: number = 100) => {
+    if (!text) return '';
     if (text.length <= maxLength) return text;
     return text.substring(0, maxLength) + '...';
   };
 
+  // Detect media type and content
+  let displayContent = replyToMessage.content;
+  let mediaUrl = replyToMessage.mediaUrl;
+  let mediaType = replyToMessage.mediaType;
+  let Icon = null;
+  let typeLabel = '';
+
+  // Check for GIF/Sticker in content (Markdown format)
+  const gifMatch = replyToMessage.content?.match(/^(?:\[Transféré\]\s*)?([\s\S]*?)\[GIF\]\((https?:\/\/[^\)]+)\)$/);
+  const stickerMatch = replyToMessage.content?.match(/^(?:\[Transféré\]\s*)?([\s\S]*?)\[STICKER\]\((https?:\/\/[^\)]+)\)$/);
+
+  if (gifMatch) {
+    displayContent = gifMatch[1] || ''; // Caption or empty
+    mediaUrl = gifMatch[2];
+    mediaType = 'gif';
+    Icon = ImageIcon; // Or a specific GIF icon if available
+    typeLabel = 'GIF';
+  } else if (stickerMatch) {
+    displayContent = stickerMatch[1] || '';
+    mediaUrl = stickerMatch[2];
+    mediaType = 'sticker';
+    Icon = Sticker;
+    typeLabel = 'Sticker';
+  } else if (mediaType === 'image') {
+    Icon = ImageIcon;
+    typeLabel = 'Photo';
+  } else if (mediaType === 'video') {
+    Icon = FileVideo;
+    typeLabel = 'Vidéo';
+  } else if (mediaType === 'file') {
+    Icon = FileText;
+    typeLabel = replyToMessage.fileName || 'Fichier';
+  }
+
+  // If there is a caption, show it. Otherwise show the type label.
+  const showTypeLabel = !displayContent || (mediaType && !displayContent);
+  
+  const renderContent = () => (
+    <div className="flex items-stretch">
+      {/* Left accent border - Green like WhatsApp */}
+      <div className="w-1 bg-[#35cd96] flex-shrink-0" />
+      
+      {/* Content */}
+      <div className="flex-1 min-w-0 px-3 py-2 flex justify-between items-center">
+        <div className="flex-1 min-w-0 mr-2">
+          <div className={`text-sm font-medium text-[#35cd96] mb-0.5 ${!isPreview ? 'text-xs font-semibold' : ''}`}>
+            {replyToMessage.senderName || 'Utilisateur'}
+          </div>
+          <div className={`text-sm truncate flex items-center gap-1.5 ${!isPreview ? 'text-text-primary/80' : 'text-text-secondary'}`}>
+            {Icon && (
+              <Icon size={16} className="flex-shrink-0" />
+            )}
+            <span className="truncate">
+              {displayContent ? truncateText(displayContent, isPreview ? 100 : 150) : typeLabel}
+            </span>
+          </div>
+        </div>
+
+        {/* Thumbnail for images/GIFs/Stickers */}
+        {mediaUrl && (mediaType === 'image' || mediaType === 'gif' || mediaType === 'sticker' || mediaType === 'video') && (
+          <div className="h-10 w-10 rounded overflow-hidden flex-shrink-0 bg-black/5 border border-white/10">
+            {mediaType === 'video' ? (
+              <div className="w-full h-full flex items-center justify-center bg-black/20">
+                <FileVideo size={20} className="text-text-secondary" />
+              </div>
+            ) : (
+              <img 
+                src={mediaUrl} 
+                alt="Thumbnail" 
+                className="h-full w-full object-cover"
+                onError={(e) => {
+                  // Fallback if image fails to load
+                  e.currentTarget.style.display = 'none';
+                }}
+              />
+            )}
+          </div>
+        )}
+      </div>
+      
+      {/* Close button (only for preview) */}
+      {isPreview && onCancel && (
+        <button
+          onClick={onCancel}
+          className="px-3 flex items-center justify-center hover:bg-bg-surface/50 transition-colors flex-shrink-0 border-l border-white/5"
+          aria-label="Annuler la réponse"
+        >
+          <X size={20} className="text-text-secondary" />
+        </button>
+      )}
+    </div>
+  );
+
   if (isPreview) {
     // Affichage dans la barre d'input (avant d'envoyer) - Style JemaOS
     return (
-      <div className="mb-2 mx-1 bg-bg-hover rounded-xl overflow-hidden">
-        <div className="flex items-stretch">
-          {/* Left accent border */}
-          <div className="w-1 bg-accent flex-shrink-0" />
-          
-          {/* Content */}
-          <div className="flex-1 min-w-0 px-3 py-2">
-            <div className="text-sm font-medium text-accent mb-0.5">
-              {replyToMessage.senderName || 'Utilisateur'}
-            </div>
-            <div className="text-sm text-text-secondary truncate">
-              {truncateText(replyToMessage.content)}
-            </div>
-          </div>
-          
-          {/* Close button */}
-          {onCancel && (
-            <button
-              onClick={onCancel}
-              className="px-3 flex items-center justify-center hover:bg-bg-surface/50 transition-colors flex-shrink-0"
-              aria-label="Annuler la réponse"
-            >
-              <X size={20} className="text-text-secondary" />
-            </button>
-          )}
-        </div>
+      <div className="mb-2 mx-1 bg-bg-hover rounded-xl overflow-hidden shadow-sm border border-white/5">
+        {renderContent()}
       </div>
     );
   }
 
   // Affichage dans le message (citation) - Style JemaOS
   return (
-    <div className="mb-2 rounded-lg overflow-hidden bg-black/10">
-      <div className="flex items-stretch">
-        {/* Left accent border */}
-        <div className="w-1 bg-accent flex-shrink-0" />
-        
-        {/* Content */}
-        <div className="flex-1 min-w-0 px-3 py-2">
-          <div className="text-xs font-semibold text-accent mb-0.5">
-            {replyToMessage.senderName || 'Utilisateur'}
-          </div>
-          <div className="text-sm text-text-primary/80 truncate">
-            {truncateText(replyToMessage.content, 150)}
-          </div>
-        </div>
-      </div>
+    <div
+      className="mb-2 rounded-lg overflow-hidden bg-black/20 border-l-0 cursor-pointer hover:opacity-80 transition-opacity"
+      onClick={onClick}
+    >
+      {renderContent()}
     </div>
   );
 };
