@@ -83,6 +83,33 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const [isGroupCall, setIsGroupCall] = useState(false)
   const [groupParticipants, setGroupParticipants] = useState<GroupCallParticipant[]>([])
 
+  const processIceCandidateQueue = async () => {
+    if (iceCandidateQueueRef.current.length === 0) return
+
+    console.log(`Processing ${iceCandidateQueueRef.current.length} queued ICE candidates`)
+    const remainingCandidates: QueuedIceCandidate[] = []
+    
+    for (const item of iceCandidateQueueRef.current) {
+      try {
+        // Only try to add if we have a remote description
+        if (webrtcManager.hasRemoteDescription()) {
+           await webrtcManager.addIceCandidate(item.candidate)
+        } else {
+           remainingCandidates.push(item)
+        }
+      } catch (error) {
+        console.error('Error adding queued ICE candidate:', error)
+        // If it failed, keep it in queue if it might work later?
+        // For now, we assume if it fails with hasRemoteDescription=true, it's a permanent error or race condition we can't easily fix
+        // But if the error is "Remote description not set", we should definitely keep it.
+        if (error instanceof Error && error.message === 'Remote description not set') {
+          remainingCandidates.push(item)
+        }
+      }
+    }
+    iceCandidateQueueRef.current = remainingCandidates
+  }
+
   // Subscribe to call signals globally
   useEffect(() => {
     if (!user) return
@@ -261,19 +288,29 @@ export function CallProvider({ children }: { children: ReactNode }) {
           await webrtcManager.handleAnswer(signal.data)
           setIsCalling(false)
           setIsInCall(true)
+          // Process any queued ICE candidates now that we have the remote description
+          await processIceCandidateQueue()
         }
         break
 
       case 'ice-candidate':
         if (signal.data) {
-          if (isPeerConnectionReady) {
+          // Check if we are ready to add candidates: PC ready AND remote description set
+          const canAddCandidate = isPeerConnectionReady && webrtcManager.hasRemoteDescription()
+          
+          if (canAddCandidate) {
             try {
               await webrtcManager.addIceCandidate(signal.data)
             } catch (error) {
               console.error('Error adding ICE candidate:', error)
+              // If it failed, queue it just in case
+              iceCandidateQueueRef.current.push({
+                candidate: signal.data,
+                timestamp: Date.now()
+              })
             }
           } else {
-            // Utiliser une ref au lieu de state pour éviter les re-renders
+            console.log('Queueing ICE candidate (PC not ready or no remote description)')
             iceCandidateQueueRef.current.push({
               candidate: signal.data,
               timestamp: Date.now()
@@ -456,33 +493,14 @@ export function CallProvider({ children }: { children: ReactNode }) {
       // This ensures ICE candidates can be processed as soon as they arrive
       setIsPeerConnectionReady(true)
 
-      // Process any ICE candidates that arrived during initialization
-      if (iceCandidateQueueRef.current.length > 0) {
-        for (const { candidate } of iceCandidateQueueRef.current) {
-          try {
-            await webrtcManager.addIceCandidate(candidate)
-          } catch (error) {
-            console.error('Error adding queued ICE candidate:', error)
-          }
-        }
-        // Vider la queue
-        iceCandidateQueueRef.current = []
-      }
+      // Note: We do NOT process the queue here yet because createAnswer hasn't been called,
+      // so the remote description hasn't been set.
 
       const answer = await webrtcManager.createAnswer(incomingCallSignal.data)
 
-      // Process any ICE candidates that arrived during createAnswer
-      if (iceCandidateQueueRef.current.length > 0) {
-        for (const { candidate } of iceCandidateQueueRef.current) {
-          try {
-            await webrtcManager.addIceCandidate(candidate)
-          } catch (error) {
-            console.error('Error adding queued ICE candidate:', error)
-          }
-        }
-        // Vider la queue
-        iceCandidateQueueRef.current = []
-      }
+      // Process any ICE candidates that arrived during initialization/createAnswer
+      // Now that createAnswer has set the remote description, we can safely add candidates
+      await processIceCandidateQueue()
 
       await sendSignal({
         type: 'answer',

@@ -140,9 +140,18 @@ export class WebRTCManager {
       throw new Error('Peer connection not initialized');
     }
 
+    if (!this.peerConnection.remoteDescription) {
+      console.warn('🧊 WebRTC: Remote description not set, cannot add ICE candidate yet');
+      throw new Error('Remote description not set');
+    }
+
     console.log('🧊 WebRTC: Adding ICE candidate, current signaling state:', this.peerConnection.signalingState);
     await this.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
     console.log('🧊 WebRTC: ICE candidate added successfully');
+  }
+
+  hasRemoteDescription(): boolean {
+    return !!this.peerConnection?.remoteDescription;
   }
 
   onIceCandidate(callback: (candidate: RTCIceCandidate) => void): void {
