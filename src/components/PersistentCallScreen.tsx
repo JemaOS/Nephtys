@@ -4,7 +4,46 @@
 import { useEffect, useRef, useState } from 'react'
 import { useCall } from '@/context/CallContext'
 import { useAuth } from '@/context/AuthContext'
-import { Phone, Video, Mic, MicOff, VideoOff, PhoneOff, Users } from 'lucide-react'
+import { 
+  Phone, 
+  Video, 
+  Mic, 
+  MicOff, 
+  VideoOff, 
+  PhoneOff, 
+  Users, 
+  Volume2, 
+  VolumeX,
+  Maximize2,
+  Minimize2
+} from 'lucide-react'
+
+// Helper component for call duration
+function CallDuration({ isActive }: { isActive: boolean }) {
+  const [duration, setDuration] = useState(0)
+
+  useEffect(() => {
+    if (!isActive) {
+      setDuration(0)
+      return
+    }
+
+    const startTime = Date.now()
+    const interval = setInterval(() => {
+      setDuration(Math.floor((Date.now() - startTime) / 1000))
+    }, 1000)
+
+    return () => clearInterval(interval)
+  }, [isActive])
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+  }
+
+  return <span className="font-mono text-white/80 text-sm tracking-wider">{formatTime(duration)}</span>
+}
 
 // Component for rendering a single participant's video in group call
 function ParticipantVideo({
@@ -19,13 +58,11 @@ function ParticipantVideo({
 
   useEffect(() => {
     if (videoRef.current && participant.stream) {
-      console.log(`🎥 ParticipantVideo: Attaching stream for ${participant.name} (${participant.id})`)
       videoRef.current.srcObject = participant.stream
     }
-  }, [participant.stream, participant.name, participant.id])
+  }, [participant.stream])
 
   useEffect(() => {
-    // For remote participants, also attach audio
     if (!isLocal && audioRef.current && participant.stream) {
       audioRef.current.srcObject = participant.stream
       audioRef.current.volume = 1.0
@@ -35,15 +72,9 @@ function ParticipantVideo({
   const hasVideo = participant.stream?.getVideoTracks().some(t => t.enabled) && participant.videoEnabled
 
   return (
-    <div className="relative bg-gray-800 rounded-xl overflow-hidden aspect-video flex items-center justify-center">
-      {/* Audio element for remote participants */}
+    <div className="relative bg-gray-800 rounded-2xl overflow-hidden aspect-[3/4] md:aspect-video flex items-center justify-center shadow-lg border border-white/10">
       {!isLocal && (
-        <audio
-          ref={audioRef}
-          autoPlay
-          playsInline
-          style={{ display: 'none' }}
-        />
+        <audio ref={audioRef} autoPlay playsInline style={{ display: 'none' }} />
       )}
       
       {hasVideo ? (
@@ -55,27 +86,26 @@ function ParticipantVideo({
           className={`w-full h-full object-cover ${isLocal ? 'transform scale-x-[-1]' : ''}`}
         />
       ) : (
-        <div className="flex flex-col items-center justify-center">
+        <div className="flex flex-col items-center justify-center p-4">
           {participant.avatar ? (
             <img
               src={participant.avatar}
               alt={participant.name}
-              className="w-16 h-16 rounded-full object-cover border-2 border-white/20"
+              className="w-16 h-16 md:w-20 md:h-20 rounded-full object-cover border-2 border-white/20 shadow-md mb-2"
             />
           ) : (
-            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-2xl">
+            <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-2xl mb-2 shadow-md">
               {participant.name[0]?.toUpperCase() || '?'}
             </div>
           )}
-          <span className="mt-2 text-white text-sm font-medium">{participant.name}</span>
+          <span className="text-white text-sm font-medium truncate max-w-[120px]">{participant.name}</span>
         </div>
       )}
       
-      {/* Participant name overlay */}
-      <div className="absolute bottom-2 left-2 bg-black/50 px-2 py-1 rounded text-white text-xs flex items-center gap-1">
+      <div className="absolute bottom-2 left-2 bg-black/40 backdrop-blur-sm px-2 py-1 rounded-lg text-white text-xs flex items-center gap-2 border border-white/10">
         {!participant.audioEnabled && <MicOff size={12} className="text-red-400" />}
         {!participant.videoEnabled && <VideoOff size={12} className="text-red-400" />}
-        <span>{isLocal ? 'Vous' : participant.name}</span>
+        <span className="font-medium">{isLocal ? 'Vous' : participant.name}</span>
       </div>
     </div>
   )
@@ -104,35 +134,38 @@ export function PersistentCallScreen() {
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
   const remoteAudioRef = useRef<HTMLAudioElement>(null)
-  const containerRef = useRef<HTMLDivElement>(null)
+  const [isSpeakerOn, setIsSpeakerOn] = useState(true)
 
-  // Attacher localStream
+  // Handle local stream attachment
   useEffect(() => {
     if (localVideoRef.current && localStream) {
-      console.log('🎥 Attaching local stream')
       localVideoRef.current.srcObject = localStream
     }
-  }, [localStream])
+  }, [localStream, isCalling, isInCall])
 
-  // Attacher remoteStream
+  // Handle remote stream attachment
   useEffect(() => {
     if (remoteStream) {
-      console.log('🎥 Attaching remote stream with', remoteStream.getTracks().length, 'tracks')
-      
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = remoteStream
-        console.log('📹 Remote video element updated')
       }
-      
       if (remoteAudioRef.current) {
         remoteAudioRef.current.srcObject = remoteStream
         remoteAudioRef.current.volume = 1.0
-        console.log('🔊 Remote audio element updated')
       }
     }
   }, [remoteStream])
 
-  // N'afficher que si un appel est actif
+  // Toggle speaker (simulated for now as setSinkId is experimental/limited)
+  const toggleSpeaker = () => {
+    setIsSpeakerOn(!isSpeakerOn)
+    // In a real implementation with supported browser, we would use:
+    // const audio = remoteAudioRef.current as any
+    // if (audio && audio.setSinkId) {
+    //   audio.setSinkId(isSpeakerOn ? 'earpiece-id' : 'speaker-id')
+    // }
+  }
+
   if (!isInCall && !isRinging && !isCalling) {
     return null
   }
@@ -144,21 +177,9 @@ export function PersistentCallScreen() {
     (localStream?.getVideoTracks().length ?? 0) > 0 ||
     (remoteStream?.getVideoTracks().length ?? 0) > 0
 
-  console.log('📹 PersistentCallScreen render - isInCall:', isInCall, 'isRinging:', isRinging, 'isCalling:', isCalling, 'isVideoCall:', isVideoCall, 'hasRemoteStream:', !!remoteStream, 'incomingCall:', !!incomingCall, 'callerAvatar:', callerAvatar, 'isGroupCall:', isGroupCall, 'groupParticipants:', groupParticipants.length)
-
-  // Calculate grid layout for group calls
-  const getGridClass = (count: number) => {
-    if (count <= 1) return 'grid-cols-1'
-    if (count <= 2) return 'grid-cols-2'
-    if (count <= 4) return 'grid-cols-2 grid-rows-2'
-    if (count <= 6) return 'grid-cols-3 grid-rows-2'
-    return 'grid-cols-3 grid-rows-3'
-  }
-
-  // Render group call UI
+  // --- GROUP CALL UI ---
   if (isGroupCall && (isInCall || isCalling)) {
     const allParticipants = [
-      // Add local user first with their avatar from profile
       {
         id: 'local',
         name: 'Vous',
@@ -167,72 +188,66 @@ export function PersistentCallScreen() {
         audioEnabled,
         videoEnabled,
       },
-      // Then add remote participants
       ...groupParticipants
     ]
 
     return (
-      <div ref={containerRef} className="fixed inset-0 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 z-[100] flex flex-col overflow-hidden">
-        {/* Header with group info */}
-        <div className="flex-shrink-0 p-4 flex items-center gap-3 bg-black/30">
-          {callerAvatar ? (
-            <img
-              src={callerAvatar}
-              alt={callerName}
-              className="w-10 h-10 rounded-full object-cover border-2 border-white/20"
-            />
-          ) : (
-            <div className="w-10 h-10 rounded-full bg-primary-500 flex items-center justify-center">
-              <Users size={20} className="text-white" />
+      <div className="fixed inset-0 z-[100] bg-gray-900 flex flex-col">
+        {/* Header */}
+        <div className="safe-area-top px-4 py-4 bg-gray-900/90 backdrop-blur-md flex items-center justify-between z-10 border-b border-white/5">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-primary-500/20 flex items-center justify-center text-primary-400">
+              <Users size={20} />
             </div>
-          )}
-          <div>
-            <h2 className="text-white font-semibold">{callerName}</h2>
-            <p className="text-white/60 text-sm">
-              {isCalling ? 'Connexion...' : `${allParticipants.length} participant${allParticipants.length > 1 ? 's' : ''}`}
-            </p>
+            <div>
+              <h2 className="text-white font-semibold text-lg leading-tight">{callerName}</h2>
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                <CallDuration isActive={isInCall} />
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Video Grid - use min-h-0 to allow shrinking and overflow-auto for scrolling if needed */}
-        <div className={`flex-1 min-h-0 p-2 grid gap-2 overflow-auto ${getGridClass(allParticipants.length)}`}>
-          {allParticipants.map((participant, index) => (
-            <ParticipantVideo
-              key={participant.id}
-              participant={participant}
-              isLocal={index === 0}
-            />
-          ))}
+        {/* Grid */}
+        <div className="flex-1 overflow-y-auto p-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 auto-rows-fr">
+            {allParticipants.map((participant, index) => (
+              <ParticipantVideo
+                key={participant.id}
+                participant={participant}
+                isLocal={index === 0}
+              />
+            ))}
+          </div>
         </div>
 
-        {/* Controls - always visible at bottom */}
-        <div className="flex-shrink-0 p-4 pb-safe bg-gradient-to-t from-black/80 to-black/30">
-          <div className="flex items-center justify-center gap-4">
+        {/* Controls */}
+        <div className="safe-area-bottom pt-6 px-6 bg-gray-900/90 backdrop-blur-md border-t border-white/5">
+          <div className="flex items-center justify-center gap-6 mb-8">
             <button
               onClick={toggleAudio}
-              className={`w-14 h-14 rounded-full flex items-center justify-center transition-all shadow-lg ${
-                audioEnabled ? 'bg-white/20 hover:bg-white/30' : 'bg-red-500 hover:bg-red-600'
+              className={`p-4 rounded-full transition-all duration-200 ${
+                audioEnabled ? 'bg-white/10 hover:bg-white/20 text-white' : 'bg-white text-black'
               }`}
             >
-              {audioEnabled ? <Mic size={24} className="text-white" /> : <MicOff size={24} className="text-white" />}
+              {audioEnabled ? <Mic size={24} /> : <MicOff size={24} />}
             </button>
 
-            {isVideoCall && (
-              <button
-                onClick={toggleVideo}
-                className={`w-14 h-14 rounded-full flex items-center justify-center transition-all shadow-lg ${
-                  videoEnabled ? 'bg-white/20 hover:bg-white/30' : 'bg-red-500 hover:bg-red-600'
-                }`}
-              >
-                {videoEnabled ? <Video size={24} className="text-white" /> : <VideoOff size={24} className="text-white" />}
-              </button>
-            )}
+            <button
+              onClick={toggleVideo}
+              className={`p-4 rounded-full transition-all duration-200 ${
+                videoEnabled ? 'bg-white/10 hover:bg-white/20 text-white' : 'bg-white text-black'
+              }`}
+            >
+              {videoEnabled ? <Video size={24} /> : <VideoOff size={24} />}
+            </button>
 
             <button
               onClick={() => endCall()}
-              className="w-16 h-16 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center transition-all shadow-lg"
+              className="p-4 rounded-full bg-red-500 hover:bg-red-600 text-white transition-all duration-200 shadow-lg shadow-red-500/20"
             >
-              <PhoneOff size={28} className="text-white" />
+              <PhoneOff size={28} />
             </button>
           </div>
         </div>
@@ -240,57 +255,94 @@ export function PersistentCallScreen() {
     )
   }
 
-  // Render 1-to-1 call UI (existing code)
+  // --- 1-TO-1 CALL UI ---
+  const hasRemoteVideo = isVideoCall && remoteStream && remoteStream.getVideoTracks().length > 0 && remoteStream.getVideoTracks()[0].enabled
+
   return (
-    <div ref={containerRef} className="fixed inset-0 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 z-[100] flex flex-col">
-      {/* Éléments audio/vidéo TOUJOURS présents dans le DOM */}
-      <audio
-        ref={remoteAudioRef}
-        autoPlay
-        playsInline
-        style={{ display: 'none' }}
-      />
-      
-      {/* Remote Video */}
-      <div className="flex-1 relative flex items-center justify-center bg-black overflow-hidden">
-        {isVideoCall && remoteStream ? (
+    <div className="fixed inset-0 z-[100] bg-gray-900 flex flex-col overflow-hidden">
+      <audio ref={remoteAudioRef} autoPlay playsInline style={{ display: 'none' }} />
+
+      {/* Background Layer */}
+      <div className="absolute inset-0 z-0">
+        {hasRemoteVideo ? (
           <video
             ref={remoteVideoRef}
             autoPlay
             playsInline
-            muted={false}
-            className="max-w-full max-h-full object-contain"
-            style={{
-              // Ensure the video maintains its natural aspect ratio
-              // Portrait videos from phones will show with black bars on sides (pillarbox)
-              // Landscape videos will show with black bars on top/bottom (letterbox)
-              width: 'auto',
-              height: 'auto',
-            }}
+            className="w-full h-full object-cover"
           />
         ) : (
-          <div className="w-full h-full flex flex-col items-center justify-center">
+          <>
+            {/* Blurred Avatar Background */}
             {callerAvatar ? (
-              <img
-                src={callerAvatar}
-                alt={callerName}
-                className="w-32 h-32 rounded-full object-cover mb-6 border-4 border-white/20 shadow-2xl"
+              <div 
+                className="absolute inset-0 bg-cover bg-center blur-3xl opacity-30 scale-110"
+                style={{ backgroundImage: `url(${callerAvatar})` }}
               />
             ) : (
-              <div className="w-32 h-32 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-5xl mb-6">
-                {callerName[0]?.toUpperCase() || '?'}
-              </div>
+              <div className="absolute inset-0 bg-gradient-to-br from-gray-800 to-gray-900" />
             )}
-            <h2 className="text-3xl font-bold text-white mb-2">{callerName}</h2>
-            <p className="text-lg text-white/70">
-              {isRinging ? 'Appel entrant...' : isCalling ? 'Appel en cours...' : 'En appel'}
-            </p>
-          </div>
+            <div className="absolute inset-0 bg-black/20" />
+          </>
         )}
+      </div>
 
-        {/* Local Video (Picture-in-Picture) */}
+      {/* Content Layer */}
+      <div className="relative z-10 flex-1 flex flex-col h-full">
+        
+        {/* Top Bar */}
+        <div className="safe-area-top mt-4 flex flex-col items-center justify-center text-center px-4">
+          <div className="flex flex-col items-center gap-1">
+            <h2 className="text-white text-2xl md:text-3xl font-semibold tracking-tight drop-shadow-md">
+              {callerName}
+            </h2>
+            <div className="flex items-center gap-2 text-white/80 text-sm md:text-base font-medium drop-shadow-md bg-black/20 px-3 py-1 rounded-full backdrop-blur-sm">
+              {isRinging ? (
+                <span className="animate-pulse">Appel entrant...</span>
+              ) : isCalling ? (
+                <span className="animate-pulse">Appel en cours...</span>
+              ) : (
+                <CallDuration isActive={isInCall} />
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Main Center Area (Avatar when no video) */}
+        <div className="flex-1 flex items-center justify-center p-8">
+          {!hasRemoteVideo && (
+            <div className="relative">
+              {/* Pulsing rings for incoming call */}
+              {isRinging && (
+                <>
+                  <div className="absolute inset-0 rounded-full bg-white/20 animate-ping" />
+                  <div className="absolute inset-0 rounded-full bg-white/10 animate-ping delay-150" />
+                </>
+              )}
+              
+              {/* Avatar */}
+              <div className="relative w-32 h-32 md:w-48 md:h-48 rounded-full overflow-hidden border-4 border-white/10 shadow-2xl">
+                {callerAvatar ? (
+                  <img
+                    src={callerAvatar}
+                    alt={callerName}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full bg-gradient-to-br from-gray-700 to-gray-600 flex items-center justify-center">
+                    <span className="text-4xl md:text-6xl font-bold text-white/50">
+                      {callerName[0]?.toUpperCase()}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Self View (PIP) */}
         {isVideoCall && localStream && (isCalling || isInCall) && (
-          <div className="absolute top-4 right-4 w-32 h-48 rounded-xl overflow-hidden shadow-2xl border-2 border-white/20 bg-gray-900">
+          <div className="absolute top-20 right-4 w-28 h-40 md:w-36 md:h-52 bg-black rounded-2xl overflow-hidden shadow-2xl border border-white/20 transition-all hover:scale-105 cursor-pointer">
             <video
               ref={localVideoRef}
               autoPlay
@@ -298,57 +350,100 @@ export function PersistentCallScreen() {
               muted
               className="w-full h-full object-cover transform scale-x-[-1]"
             />
+            <div className="absolute bottom-0 inset-x-0 p-2 bg-gradient-to-t from-black/60 to-transparent">
+              <p className="text-white text-[10px] font-medium text-center">Vous</p>
+            </div>
           </div>
         )}
-      </div>
 
-      {/* Controls */}
-      <div className="p-4 sm:p-8 pb-safe bg-gradient-to-t from-black/50 to-transparent">
-        {isRinging ? (
-          <div className="flex items-center justify-center gap-8">
-            <button
-              onClick={rejectCall}
-              className="w-16 h-16 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center transition-all shadow-lg"
-            >
-              <PhoneOff size={28} className="text-white" />
-            </button>
-            <button
-              onClick={answerCall}
-              className="w-20 h-20 rounded-full bg-green-500 hover:bg-green-600 flex items-center justify-center transition-all shadow-lg animate-pulse"
-            >
-              <Phone size={32} className="text-white" />
-            </button>
-          </div>
-        ) : (
-          <div className="flex items-center justify-center gap-4">
-            <button
-              onClick={toggleAudio}
-              className={`w-14 h-14 rounded-full flex items-center justify-center transition-all shadow-lg ${
-                audioEnabled ? 'bg-white/20' : 'bg-red-500'
-              }`}
-            >
-              {audioEnabled ? <Mic size={24} className="text-white" /> : <MicOff size={24} className="text-white" />}
-            </button>
+        {/* Bottom Controls */}
+        <div className="safe-area-bottom mb-8 px-6">
+          <div className="max-w-md mx-auto bg-black/40 backdrop-blur-xl rounded-[2rem] p-4 border border-white/10 shadow-2xl">
+            {isRinging ? (
+              <div className="flex items-center justify-around">
+                <div className="flex flex-col items-center gap-2">
+                  <button
+                    onClick={rejectCall}
+                    className="w-16 h-16 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center transition-all shadow-lg shadow-red-500/30 active:scale-95"
+                  >
+                    <PhoneOff size={28} className="text-white" />
+                  </button>
+                  <span className="text-white/80 text-xs font-medium">Refuser</span>
+                </div>
+                
+                <div className="flex flex-col items-center gap-2">
+                  <button
+                    onClick={answerCall}
+                    className="w-16 h-16 rounded-full bg-green-500 hover:bg-green-600 flex items-center justify-center transition-all shadow-lg shadow-green-500/30 animate-pulse active:scale-95"
+                  >
+                    <Phone size={28} className="text-white" />
+                  </button>
+                  <span className="text-white/80 text-xs font-medium">Accepter</span>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between px-2">
+                {/* Mute Toggle */}
+                <button
+                  onClick={toggleAudio}
+                  className={`flex flex-col items-center gap-1 group`}
+                >
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200 ${
+                    audioEnabled 
+                      ? 'bg-white/10 group-hover:bg-white/20 text-white' 
+                      : 'bg-white text-black'
+                  }`}>
+                    {audioEnabled ? <Mic size={20} /> : <MicOff size={20} />}
+                  </div>
+                  <span className="text-white/60 text-[10px] font-medium">Micro</span>
+                </button>
 
-            {isVideoCall && (
-              <button
-                onClick={toggleVideo}
-                className={`w-14 h-14 rounded-full flex items-center justify-center transition-all shadow-lg ${
-                  videoEnabled ? 'bg-white/20' : 'bg-red-500'
-                }`}
-              >
-                {videoEnabled ? <Video size={24} className="text-white" /> : <VideoOff size={24} className="text-white" />}
-              </button>
+                {/* Video Toggle */}
+                {isVideoCall && (
+                  <button
+                    onClick={toggleVideo}
+                    className={`flex flex-col items-center gap-1 group`}
+                  >
+                    <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200 ${
+                      videoEnabled 
+                        ? 'bg-white/10 group-hover:bg-white/20 text-white' 
+                        : 'bg-white text-black'
+                    }`}>
+                      {videoEnabled ? <Video size={20} /> : <VideoOff size={20} />}
+                    </div>
+                    <span className="text-white/60 text-[10px] font-medium">Caméra</span>
+                  </button>
+                )}
+
+                {/* Speaker Toggle (Visual only for now) */}
+                <button
+                  onClick={toggleSpeaker}
+                  className={`flex flex-col items-center gap-1 group`}
+                >
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200 ${
+                    isSpeakerOn 
+                      ? 'bg-white/10 group-hover:bg-white/20 text-white' 
+                      : 'bg-white/5 text-white/50'
+                  }`}>
+                    {isSpeakerOn ? <Volume2 size={20} /> : <VolumeX size={20} />}
+                  </div>
+                  <span className="text-white/60 text-[10px] font-medium">Haut-parleur</span>
+                </button>
+
+                {/* End Call */}
+                <button
+                  onClick={() => endCall()}
+                  className="flex flex-col items-center gap-1 group"
+                >
+                  <div className="w-14 h-14 rounded-full bg-red-500 group-hover:bg-red-600 flex items-center justify-center transition-all shadow-lg shadow-red-500/30 active:scale-95">
+                    <PhoneOff size={24} className="text-white" />
+                  </div>
+                  <span className="text-white/60 text-[10px] font-medium">Raccrocher</span>
+                </button>
+              </div>
             )}
-
-            <button
-              onClick={() => endCall()}
-              className="w-16 h-16 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center transition-all shadow-lg"
-            >
-              <PhoneOff size={28} className="text-white" />
-            </button>
           </div>
-        )}
+        </div>
       </div>
     </div>
   )
