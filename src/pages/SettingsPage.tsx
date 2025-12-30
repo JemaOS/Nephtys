@@ -510,8 +510,8 @@ export function SettingsPage() {
         ))}
       </div>
       <div className="px-6 py-8 text-center space-y-2">
-        <p className="text-sm text-text-secondary">Nephtys pour JemaOS</p>
-        <p className="text-xs text-text-secondary">Version 1.0.0</p>
+        <p className="text-sm text-text-secondary">Nephtys optimisé pour JemaOS</p>
+        <p className="text-xs text-text-secondary">Version 1.1.0</p>
       </div>
       <div className="px-6 pb-8">
         <button onClick={handleSignOut} className="w-full py-3 rounded-2xl bg-bg-surface hover:bg-bg-hover text-[#ea4335] font-medium transition-colors flex items-center justify-center gap-2">
@@ -1425,8 +1425,8 @@ export function SettingsPage() {
           <ChevronRight size={20} className="text-text-secondary" />
         </button>
         <div className="px-6 py-8 text-center space-y-2">
-          <p className="text-sm text-text-secondary">Nephtys pour JemaOS</p>
-          <p className="text-xs text-text-secondary">Version 1.0.0</p>
+          <p className="text-sm text-text-secondary">Nephtys optimisé pour JemaOS</p>
+          <p className="text-xs text-text-secondary">Version 1.1.0</p>
           <p className="text-xs text-text-secondary mt-4">© 2025 Nephtys. Tous droits réservés.</p>
         </div>
       </div>
@@ -1457,8 +1457,8 @@ export function SettingsPage() {
           <p className="text-sm text-text-secondary mb-4">Notre équipe est là pour vous aider</p>
         </div>
         <div className="space-y-3">
-          <a href="mailto:support@nephtys-app.com" className="block py-3 rounded-xl bg-accent hover:bg-[#5a5ec9] text-white font-medium">
-            support@nephtys-app.com
+          <a href="mailto:contact@jematechnology.fr" className="block py-3 rounded-xl bg-accent hover:bg-[#5a5ec9] text-white font-medium">
+            contact@jematechnology.fr
           </a>
         </div>
       </div>
