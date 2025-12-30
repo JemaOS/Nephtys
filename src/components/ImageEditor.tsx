@@ -799,7 +799,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
   return (
     <div className="fixed inset-0 bg-bg-primary z-[200] flex flex-col">
       {/* Header with tools */}
-      <div className="flex items-center justify-between px-2 py-2 bg-bg-surface border-b border-bg-hover safe-area-top">
+      <div className="flex items-center justify-between px-4 py-3 bg-bg-surface border-b border-bg-hover safe-area-top">
         {/* Close button */}
         <button
           onClick={onCancel}
@@ -809,7 +809,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
         </button>
 
         {/* Main toolbar */}
-        <div className="flex items-center gap-4 overflow-x-auto px-4">
+        <div className="flex items-center gap-4 overflow-x-auto">
           {/* Crop/Rotate */}
           <button
             onClick={() => {
@@ -860,16 +860,16 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
           >
             <span className="text-xs font-bold">HD</span>
           </button>
-        </div>
 
-        {/* Download button */}
-        <button
-          onClick={downloadImage}
-          className="p-2 rounded-full hover:bg-bg-hover transition-colors text-text-primary"
-          title="Télécharger"
-        >
-          <Download size={24} />
-        </button>
+          {/* Download button */}
+          <button
+            onClick={downloadImage}
+            className="p-2 rounded-lg hover:bg-bg-hover transition-colors text-text-primary"
+            title="Télécharger"
+          >
+            <Download size={20} />
+          </button>
+        </div>
       </div>
 
       {/* Secondary toolbar - context sensitive */}
@@ -1098,8 +1098,8 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
       )}
 
       {/* Bottom bar with caption and send */}
-      <div className="p-4 border-t border-bg-hover bg-bg-surface safe-area-bottom">
-        <div className="flex items-center gap-3">
+      <div className="px-4 py-3 border-t border-bg-hover bg-bg-surface safe-area-bottom">
+        <div className="flex items-center gap-4">
           {/* Caption input */}
           <div className="flex-1">
             <input
@@ -1107,7 +1107,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
               value={caption}
               onChange={(e) => setCaption(e.target.value)}
               placeholder="Entrez un message"
-              className="w-full px-4 py-2.5 rounded-full bg-bg-hover text-text-primary placeholder:text-text-secondary outline-none"
+              className="w-full px-4 h-11 rounded-full bg-bg-hover text-text-primary placeholder:text-text-secondary outline-none"
             />
           </div>
 
@@ -1115,7 +1115,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
           {onSend && (
             <button
               onClick={handleSend}
-              className="w-11 h-11 rounded-full bg-accent hover:bg-[#5a5ec9] flex items-center justify-center transition-colors"
+              className="w-11 h-11 rounded-full bg-accent hover:bg-[#5a5ec9] flex items-center justify-center transition-colors flex-shrink-0"
             >
               <Send size={20} className="text-white" />
             </button>
