@@ -626,56 +626,79 @@ export async function restoreBackup(
 
     onProgress?.(15, 'Restauration des conversations...')
     
-    // First, restore/create conversations that don't exist
-    const conversationIds = backupData.conversations.map(c => c.id)
-    const { data: existingConversations } = await supabase
-      .from('conversations')
-      .select('id')
-      .in('id', conversationIds)
-
-    const existingConvIds = new Set(existingConversations?.map(c => c.id) || [])
+    // Restore conversations and members
+    // We use upsert to ensure deleted conversations are restored and members are re-added
+    const existingConvIds = new Set<string>()
     
-    // Create missing conversations
     for (const conv of backupData.conversations) {
-      if (!existingConvIds.has(conv.id)) {
-        // Create the conversation
-        const { error: convError } = await supabase
-          .from('conversations')
-          .insert({
-            id: conv.id,
-            type: conv.type || 'direct',
-            name: conv.name,
-            avatar_url: conv.avatar_url,
-            created_by: conv.created_by || userId,
-            created_at: conv.created_at,
-            updated_at: conv.updated_at || new Date().toISOString()
-          })
-        
-        if (!convError) {
-          existingConvIds.add(conv.id)
-          stats.conversations++
-          
-          // Add conversation members
-          if (conv.members && conv.members.length > 0) {
-            for (const member of conv.members) {
-              await supabase
-                .from('conversation_members')
-                .upsert({
-                  conversation_id: conv.id,
-                  user_id: member.user_id,
-                  role: member.role || 'member',
-                  joined_at: member.joined_at || new Date().toISOString()
-                }, {
-                  onConflict: 'conversation_id,user_id',
-                  ignoreDuplicates: true
-                })
-            }
-          }
-        } else {
-          console.error('Conversation restore error:', convError, conv.id)
-        }
+      // 1. Upsert conversation
+      const { error: convError } = await supabase
+        .from('conversations')
+        .upsert({
+          id: conv.id,
+          type: conv.type || 'direct',
+          name: conv.name,
+          avatar_url: conv.avatar_url,
+          created_by: conv.created_by || userId,
+          created_at: conv.created_at,
+          updated_at: conv.updated_at || new Date().toISOString()
+        }, {
+          onConflict: 'id',
+          ignoreDuplicates: false
+        })
+      
+      if (convError) {
+        console.error('Conversation restore error (upsert):', convError, conv.id)
+        // Continue anyway to try restoring members (conversation might already exist and we just lack update permission)
+        // We assume it exists if upsert failed (likely due to RLS on update)
+        existingConvIds.add(conv.id)
       } else {
         stats.conversations++
+        existingConvIds.add(conv.id)
+      }
+
+      // 2. Restore members
+      // This is critical for "deleted" conversations where the user was removed or marked inactive
+      if (conv.members && conv.members.length > 0) {
+        for (const member of conv.members) {
+          // Only restore the current user or if we are the creator/admin
+          // But for simplicity and robustness, we try to restore everyone.
+          // RLS will block updates to others if we don't have permission, which is fine.
+          // We explicitly set is_active to true (or use backup value) to "undelete"
+          
+          const { error: memberError } = await supabase
+            .from('conversation_members')
+            .upsert({
+              conversation_id: conv.id,
+              user_id: member.user_id,
+              role: member.role || 'member',
+              joined_at: member.joined_at || new Date().toISOString(),
+              is_active: member.is_active ?? true // Ensure active unless explicitly false in backup
+            }, {
+              onConflict: 'conversation_id,user_id',
+              ignoreDuplicates: false // Force update
+            })
+            
+          if (memberError) {
+             // Ignore errors for other users (RLS), but log for debugging
+             if (member.user_id === userId) {
+                console.error('Failed to restore own membership:', memberError)
+             }
+          }
+        }
+      }
+      
+      // 3. Ensure current user is a member (safety net)
+      const isMember = conv.members?.some((m: any) => m.user_id === userId)
+      if (!isMember) {
+         await supabase
+          .from('conversation_members')
+          .upsert({
+            conversation_id: conv.id,
+            user_id: userId,
+            role: 'member',
+            is_active: true
+          }, { onConflict: 'conversation_id,user_id' })
       }
     }
 
