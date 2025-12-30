@@ -6,11 +6,9 @@ import { useNavigate } from 'react-router-dom'
 import { MainLayout } from '@/components/MainLayout'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
-import { useWebRTCCall } from '../hooks/useWebRTCCall'
 import { useCall } from '@/context/CallContext'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { Phone, Video, PhoneIncoming, PhoneOutgoing, PhoneMissed, Search, Star, Link2, Plus, MessageCircle, X, Trash2, UserPlus, Check, ArrowLeft, CheckCheck, Users } from 'lucide-react'
-import { CallScreen } from '@/components/CallScreen'
 
 // Cache helpers for instant display like WhatsApp
 const CACHE_PREFIX = 'anu_cache_'
@@ -97,28 +95,13 @@ export function CallsPage() {
   
   // Long press duration (ms) - WhatsApp uses ~500ms
   const LONG_PRESS_DURATION = 500
-  const {
-    isInCall, isRinging, isCalling,
-    localStream, remoteStream,
-    audioEnabled, videoEnabled,
-    startCall, answerCall, endCall,
-    toggleAudio, toggleVideo, rejectCall,
-  } = useWebRTCCall(user?.id || '')
   
-  // Use CallContext for group calls
-  const { startGroupCall } = useCall()
-
-  // Debug: afficher les états du hook
-  useEffect(() => {
-    console.log('🎯 WebRTC Hook States:', {
-      isInCall,
-      isRinging,
-      isCalling,
-      hasLocalStream: !!localStream,
-      hasRemoteStream: !!remoteStream,
-      callerName,
-    })
-  }, [isInCall, isRinging, isCalling, localStream, remoteStream, callerName])
+  // Use CallContext for all calls
+  const {
+    startCall,
+    startGroupCall,
+    // We don't need call state here as it's handled by PersistentCallScreen
+  } = useCall()
 
   // Cleanup long press timer on unmount
   useEffect(() => {
@@ -1952,27 +1935,6 @@ export function CallsPage() {
             </div>
           </div>
         </div>
-      )}
-
-      {/* Écran d'appel */}
-      {(isInCall || isRinging || isCalling) && (
-        <CallScreen
-          isInCall={isInCall}
-          isRinging={isRinging}
-          isCalling={isCalling}
-          localStream={localStream}
-          remoteStream={remoteStream}
-          audioEnabled={audioEnabled}
-          videoEnabled={videoEnabled}
-          callerName={callerName}
-          callerAvatar={callerAvatar}
-          isVideoCall={localStream?.getVideoTracks().length > 0 || false}
-          onAnswer={answerCall}
-          onReject={rejectCall}
-          onEnd={endCall}
-          onToggleAudio={toggleAudio}
-          onToggleVideo={toggleVideo}
-        />
       )}
 
       {/* Menu contextuel pour les appels - Only show when not in selection mode */}
