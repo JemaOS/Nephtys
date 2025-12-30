@@ -28,6 +28,13 @@ export class WebRTCManager {
 
   async initializeCall(config: CallConfig): Promise<MediaStream> {
     try {
+      console.log('🎥 WebRTC: initializeCall start');
+      
+      if (this.peerConnection) {
+        console.warn('🎥 WebRTC: PeerConnection already exists! Cleaning up previous connection...');
+        this.endCall();
+      }
+
       console.log('🎥 WebRTC: Requesting permissions for audio:', config.audio, 'video:', config.video);
       
       // Obtenir le stream local (audio/vidéo)
@@ -190,20 +197,47 @@ export class WebRTCManager {
   }
 
   endCall(): void {
-    // Arrêter tous les tracks
+    console.log('🎥 WebRTC: endCall called');
+    
+    // Arrêter tous les tracks locaux
     if (this.localStream) {
-      this.localStream.getTracks().forEach(track => track.stop());
+      console.log('🎥 WebRTC: Stopping local tracks');
+      this.localStream.getTracks().forEach(track => {
+        track.stop();
+        console.log(`🎥 WebRTC: Stopped local track ${track.kind}`);
+      });
+    }
+
+    // Arrêter tous les tracks distants
+    if (this.remoteStream) {
+      console.log('🎥 WebRTC: Stopping remote tracks');
+      this.remoteStream.getTracks().forEach(track => {
+        track.stop();
+        console.log(`🎥 WebRTC: Stopped remote track ${track.kind}`);
+      });
     }
 
     // Fermer la connexion peer
     if (this.peerConnection) {
+      console.log('🎥 WebRTC: Closing PeerConnection');
       this.peerConnection.close();
+      
+      // Remove listeners
+      this.peerConnection.ontrack = null;
+      this.peerConnection.onicecandidate = null;
+      this.peerConnection.onconnectionstatechange = null;
     }
 
     // Reset
     this.localStream = null;
     this.remoteStream = null;
     this.peerConnection = null;
+    
+    // Reset callbacks
+    this.onRemoteStreamCallback = null;
+    this.onCallEndCallback = null;
+    
+    console.log('🎥 WebRTC: Cleanup finished');
   }
 
   getLocalStream(): MediaStream | null {

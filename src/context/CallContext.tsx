@@ -476,6 +476,10 @@ export function CallProvider({ children }: { children: ReactNode }) {
         setRemoteStream(stream)
       })
 
+      webrtcManager.onCallEnd(() => {
+        endCall()
+      })
+
       webrtcManager.onIceCandidate(async (candidate) => {
         await sendSignal({
           type: 'ice-candidate',
@@ -743,6 +747,8 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
   // End call - handles both group and 1-to-1 calls
   const endCall = async (sendEndSignal: boolean = true) => {
+    console.log('📞 CallContext: endCall initiated', { isGroupCall, sendEndSignal });
+    
     if (isGroupCall) {
       // Get participant count before leaving
       const participantCount = groupCallManager.getParticipantCount()
@@ -788,6 +794,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       // Only send end signal if we initiated the hang up (not if we received call-end from remote)
       if (sendEndSignal && otherUserId && conversationId && user) {
         try {
+          console.log('📞 CallContext: Sending call-end signal');
           await sendSignal({
             type: 'call-end',
             from: user.id,
@@ -800,9 +807,11 @@ export function CallProvider({ children }: { children: ReactNode }) {
         }
       }
 
+      console.log('📞 CallContext: Calling webrtcManager.endCall()');
       webrtcManager.endCall()
     }
 
+    console.log('📞 CallContext: Resetting state');
     // Reset common state
     setIsInCall(false)
     setIsCalling(false)
