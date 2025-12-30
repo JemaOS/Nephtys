@@ -290,20 +290,23 @@ export function CallProvider({ children }: { children: ReactNode }) {
         break
 
       case 'ice-candidate':
-        // NE PAS logger pour éviter le spam
+        console.log('🧊 CallContext: ICE candidate received, isPeerConnectionReady:', isPeerConnectionReady);
         if (signal.data) {
           if (isPeerConnectionReady) {
             try {
+              console.log('🧊 CallContext: Processing ICE candidate immediately');
               await webrtcManager.addIceCandidate(signal.data)
             } catch (error) {
-              console.error('Error adding ICE candidate:', error)
+              console.error('🧊 CallContext: Error adding ICE candidate:', error)
             }
           } else {
             // Utiliser une ref au lieu de state pour éviter les re-renders
+            console.log('🧊 CallContext: Queueing ICE candidate (peer connection not ready)');
             iceCandidateQueueRef.current.push({
               candidate: signal.data,
               timestamp: Date.now()
             })
+            console.log('🧊 CallContext: Queue size now:', iceCandidateQueueRef.current.length);
           }
         }
         break
@@ -466,12 +469,13 @@ export function CallProvider({ children }: { children: ReactNode }) {
         video: incomingCallSignal.data.video || false,
       }
       
-      const stream = await webrtcManager.initializeCall(config)
-      setLocalStream(stream)
-
-      // Configurer les callbacks AVANT de créer l'answer
+      // FIX: Set up callbacks BEFORE initializeCall to ensure we don't miss any events
       webrtcManager.onRemoteStream((stream) => {
-        console.log('📞 Remote stream received')
+        console.log('📞 Remote stream received callback triggered');
+        console.log('📞 Remote stream tracks:', stream.getTracks().length);
+        stream.getTracks().forEach((track, i) => {
+          console.log(`📞 Remote stream track ${i}:`, track.kind, 'enabled:', track.enabled, 'readyState:', track.readyState);
+        });
         setRemoteStream(stream)
       })
 
@@ -485,21 +489,48 @@ export function CallProvider({ children }: { children: ReactNode }) {
         })
       })
 
-      const answer = await webrtcManager.createAnswer(incomingCallSignal.data)
+      const stream = await webrtcManager.initializeCall(config)
+      setLocalStream(stream)
 
+      // FIX: Set isPeerConnectionReady to true immediately after initializeCall
+      // This ensures ICE candidates can be processed as soon as they arrive
+      console.log('📞 Peer connection initialized, setting isPeerConnectionReady to true');
       setIsPeerConnectionReady(true)
 
+      // Process any ICE candidates that arrived during initialization
       if (iceCandidateQueueRef.current.length > 0) {
-        console.log(`Processing ${iceCandidateQueueRef.current.length} queued ICE candidates`)
+        console.log(`📞 Processing ${iceCandidateQueueRef.current.length} queued ICE candidates from before initialization`)
         for (const { candidate } of iceCandidateQueueRef.current) {
           try {
+            console.log('📞 Adding queued ICE candidate');
             await webrtcManager.addIceCandidate(candidate)
           } catch (error) {
-            console.error('Error adding queued ICE candidate:', error)
+            console.error('📞 Error adding queued ICE candidate:', error)
           }
         }
         // Vider la queue
+        console.log('📞 Clearing ICE candidate queue');
         iceCandidateQueueRef.current = []
+      }
+
+      const answer = await webrtcManager.createAnswer(incomingCallSignal.data)
+
+      // Process any ICE candidates that arrived during createAnswer
+      if (iceCandidateQueueRef.current.length > 0) {
+        console.log(`📞 Processing ${iceCandidateQueueRef.current.length} queued ICE candidates from during createAnswer`)
+        for (const { candidate } of iceCandidateQueueRef.current) {
+          try {
+            console.log('📞 Adding queued ICE candidate');
+            await webrtcManager.addIceCandidate(candidate)
+          } catch (error) {
+            console.error('📞 Error adding queued ICE candidate:', error)
+          }
+        }
+        // Vider la queue
+        console.log('📞 Clearing ICE candidate queue');
+        iceCandidateQueueRef.current = []
+      } else {
+        console.log('📞 No queued ICE candidates to process');
       }
 
       await sendSignal({

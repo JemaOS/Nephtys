@@ -57,7 +57,24 @@ export class WebRTCManager {
 
       // Écouter les tracks distants
       this.peerConnection.ontrack = (event) => {
+        console.log('🎥 WebRTC: ontrack event fired');
+        console.log('🎥 WebRTC: Track kind:', event.track.kind);
+        console.log('🎥 WebRTC: Track enabled:', event.track.enabled);
+        console.log('🎥 WebRTC: Track readyState:', event.track.readyState);
+        console.log('🎥 WebRTC: Number of streams:', event.streams?.length || 0);
+        
         if (event.streams && event.streams[0]) {
+          console.log('🎥 WebRTC: Remote stream received, tracks:', event.streams[0].getTracks().length);
+          event.streams[0].getTracks().forEach((track, i) => {
+            console.log(`🎥 WebRTC: Remote track ${i}:`, track.kind, 'enabled:', track.enabled, 'readyState:', track.readyState);
+            
+            // FIX: Ensure video tracks are enabled when received
+            // This fixes the issue where video tracks are disabled initially
+            if (track.kind === 'video' && !track.enabled) {
+              console.log('🎥 WebRTC: Enabling disabled video track');
+              track.enabled = true;
+            }
+          });
           this.remoteStream = event.streams[0];
           this.onRemoteStreamCallback?.(event.streams[0]);
         }
@@ -90,13 +107,21 @@ export class WebRTCManager {
   }
 
   async createAnswer(offer: RTCSessionDescriptionInit): Promise<RTCSessionDescriptionInit> {
+    console.log('🎥 WebRTC: createAnswer called');
     if (!this.peerConnection) {
       throw new Error('Peer connection not initialized');
     }
 
+    console.log('🎥 WebRTC: Setting remote description, current signaling state:', this.peerConnection.signalingState);
     await this.peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+    console.log('🎥 WebRTC: Remote description set, signaling state:', this.peerConnection.signalingState);
+    
     const answer = await this.peerConnection.createAnswer();
+    console.log('🎥 WebRTC: Answer created');
+    
     await this.peerConnection.setLocalDescription(answer);
+    console.log('🎥 WebRTC: Local description set, signaling state:', this.peerConnection.signalingState);
+    
     return answer;
   }
 
@@ -109,11 +134,15 @@ export class WebRTCManager {
   }
 
   async addIceCandidate(candidate: RTCIceCandidateInit): Promise<void> {
+    console.log('🧊 WebRTC: addIceCandidate called, peerConnection exists:', !!this.peerConnection);
     if (!this.peerConnection) {
+      console.error('🧊 WebRTC: Peer connection not initialized when adding ICE candidate');
       throw new Error('Peer connection not initialized');
     }
 
+    console.log('🧊 WebRTC: Adding ICE candidate, current signaling state:', this.peerConnection.signalingState);
     await this.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+    console.log('🧊 WebRTC: ICE candidate added successfully');
   }
 
   onIceCandidate(callback: (candidate: RTCIceCandidate) => void): void {
