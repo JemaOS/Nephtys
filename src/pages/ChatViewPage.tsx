@@ -1963,7 +1963,11 @@ export function ChatViewPage() {
         {/* Messages avec fond personnalisable */}
         <div
           ref={messagesContainerRef}
-          className="flex-1 overflow-y-auto p-2 sm:p-3 md:p-4 space-y-2 pb-40 md:pb-4 messages-container-mobile md:messages-container-mobile-reset"
+          className={`flex-1 overflow-y-auto p-2 sm:p-3 md:p-4 space-y-2 md:pb-4 md:messages-container-mobile-reset ${
+            (linkPreview || replyToMessage || isLoadingPreview)
+              ? 'pb-[calc(56px+56px+env(safe-area-inset-bottom,0px)+100px)]'
+              : 'pb-[calc(56px+56px+env(safe-area-inset-bottom,0px)+16px)]'
+          }`}
           style={getWallpaperStyle()}
           onContextMenu={handleBackgroundContextMenu}
         >
