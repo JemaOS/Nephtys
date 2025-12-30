@@ -787,13 +787,17 @@ export function CallProvider({ children }: { children: ReactNode }) {
       
       // Only send end signal if we initiated the hang up (not if we received call-end from remote)
       if (sendEndSignal && otherUserId && conversationId && user) {
-        sendSignal({
-          type: 'call-end',
-          from: user.id,
-          to: otherUserId,
-          data: { reason: 'ended' },
-          conversation_id: conversationId,
-        })
+        try {
+          await sendSignal({
+            type: 'call-end',
+            from: user.id,
+            to: otherUserId,
+            data: { reason: 'ended' },
+            conversation_id: conversationId,
+          })
+        } catch (error) {
+          console.error('Error sending call-end signal:', error)
+        }
       }
 
       webrtcManager.endCall()

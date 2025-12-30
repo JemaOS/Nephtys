@@ -34,8 +34,6 @@ export class WebRTCManager {
       this.localStream = await navigator.mediaDevices.getUserMedia({
         audio: config.audio,
         video: config.video ? {
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
           facingMode: 'user'
         } : false,
       });
@@ -68,10 +66,9 @@ export class WebRTCManager {
           event.streams[0].getTracks().forEach((track, i) => {
             console.log(`🎥 WebRTC: Remote track ${i}:`, track.kind, 'enabled:', track.enabled, 'readyState:', track.readyState);
             
-            // FIX: Ensure video tracks are enabled when received
-            // This fixes the issue where video tracks are disabled initially
-            if (track.kind === 'video' && !track.enabled) {
-              console.log('🎥 WebRTC: Enabling disabled video track');
+            // FIX: Ensure tracks are enabled when received
+            if (!track.enabled) {
+              console.log(`🎥 WebRTC: Enabling disabled ${track.kind} track`);
               track.enabled = true;
             }
           });

@@ -82,7 +82,7 @@ function ParticipantVideo({
           ref={videoRef}
           autoPlay
           playsInline
-          muted={isLocal}
+          muted={true}
           className={`w-full h-full object-cover ${isLocal ? 'transform scale-x-[-1]' : ''}`}
         />
       ) : (
@@ -363,6 +363,7 @@ export function PersistentCallScreen() {
             ref={remoteVideoRef}
             autoPlay
             playsInline
+            muted={true}
             className="w-full h-full object-contain bg-black"
           />
         ) : (
