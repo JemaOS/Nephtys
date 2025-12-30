@@ -72,13 +72,13 @@ export const MessageReply: React.FC<MessageReplyProps> = ({
   
   const renderContent = () => (
     <div className="flex items-stretch">
-      {/* Left accent border - Green like WhatsApp */}
-      <div className="w-1 bg-[#35cd96] flex-shrink-0" />
+      {/* Left accent border - Theme color */}
+      <div className="w-1 bg-accent flex-shrink-0" />
       
       {/* Content */}
       <div className="flex-1 min-w-0 px-3 py-2 flex justify-between items-center">
         <div className="flex-1 min-w-0 mr-2">
-          <div className={`text-sm font-medium text-[#35cd96] mb-0.5 ${!isPreview ? 'text-xs font-semibold' : ''}`}>
+          <div className={`text-sm font-medium text-primary-300 mb-0.5 ${!isPreview ? 'text-xs font-semibold' : ''}`}>
             {replyToMessage.senderName || 'Utilisateur'}
           </div>
           <div className={`text-sm truncate flex items-center gap-1.5 ${!isPreview ? 'text-text-primary/80' : 'text-text-secondary'}`}>
