@@ -1,7 +1,7 @@
 // Copyright (c) 2025 Jema Technology.
 // Distributed under the license specified in the root directory of this project.
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { useCall } from '@/context/CallContext'
 import { useAuth } from '@/context/AuthContext'
 import { 
@@ -136,6 +136,81 @@ export function PersistentCallScreen() {
   const remoteAudioRef = useRef<HTMLAudioElement>(null)
   const [isSpeakerOn, setIsSpeakerOn] = useState(true)
 
+  // Draggable self-view state
+  const [pipPosition, setPipPosition] = useState<{ x: number; y: number }>(() => {
+    if (typeof window !== 'undefined') {
+      const width = window.innerWidth < 768 ? 112 : 144 // w-28 (112px) or md:w-36 (144px)
+      return {
+        x: window.innerWidth - width - 16, // right-4
+        y: 80 // top-20
+      }
+    }
+    return { x: 0, y: 0 }
+  })
+  const [isDragging, setIsDragging] = useState(false)
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
+  const pipRef = useRef<HTMLDivElement>(null)
+
+  // Handle drag start
+  const handleDragStart = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    if (!pipRef.current) return
+    
+    setIsDragging(true)
+    
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
+    
+    setDragOffset({
+      x: clientX - pipPosition.x,
+      y: clientY - pipPosition.y,
+    })
+  }, [pipPosition])
+
+  // Handle drag move
+  const handleDragMove = useCallback((e: MouseEvent | TouchEvent) => {
+    if (!isDragging) return
+    
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
+    
+    const width = window.innerWidth < 768 ? 112 : 144
+    const height = window.innerWidth < 768 ? 160 : 208 // h-40 (160px) or md:h-52 (208px)
+    const windowWidth = window.innerWidth
+    const windowHeight = window.innerHeight
+    
+    // Calculate new position with bounds checking
+    let newX = clientX - dragOffset.x
+    let newY = clientY - dragOffset.y
+    
+    // Keep within screen bounds (with some padding)
+    newX = Math.max(16, Math.min(windowWidth - width - 16, newX))
+    newY = Math.max(16, Math.min(windowHeight - height - 100, newY)) // Bottom padding for controls
+    
+    setPipPosition({ x: newX, y: newY })
+  }, [isDragging, dragOffset])
+
+  // Handle drag end
+  const handleDragEnd = useCallback(() => {
+    setIsDragging(false)
+  }, [])
+
+  // Add/remove drag event listeners
+  useEffect(() => {
+    if (isDragging) {
+      window.addEventListener('mousemove', handleDragMove)
+      window.addEventListener('mouseup', handleDragEnd)
+      window.addEventListener('touchmove', handleDragMove)
+      window.addEventListener('touchend', handleDragEnd)
+    }
+    
+    return () => {
+      window.removeEventListener('mousemove', handleDragMove)
+      window.removeEventListener('mouseup', handleDragEnd)
+      window.removeEventListener('touchmove', handleDragMove)
+      window.removeEventListener('touchend', handleDragEnd)
+    }
+  }, [isDragging, handleDragMove, handleDragEnd])
+
   // Handle local stream attachment
   useEffect(() => {
     if (localVideoRef.current && localStream) {
@@ -269,7 +344,7 @@ export function PersistentCallScreen() {
             ref={remoteVideoRef}
             autoPlay
             playsInline
-            className="w-full h-full object-cover"
+            className="w-full h-full object-contain bg-black"
           />
         ) : (
           <>
@@ -342,15 +417,28 @@ export function PersistentCallScreen() {
 
         {/* Self View (PIP) */}
         {isVideoCall && localStream && (isCalling || isInCall) && (
-          <div className="absolute top-20 right-4 w-28 h-40 md:w-36 md:h-52 bg-black rounded-2xl overflow-hidden shadow-2xl border border-white/20 transition-all hover:scale-105 cursor-pointer">
+          <div
+            ref={pipRef}
+            className={`absolute w-28 h-40 md:w-36 md:h-52 bg-black rounded-2xl overflow-hidden shadow-2xl border border-white/20 transition-shadow ${
+              isDragging ? 'cursor-grabbing shadow-white/10' : 'cursor-grab hover:scale-105'
+            }`}
+            style={{
+              left: pipPosition.x,
+              top: pipPosition.y,
+              zIndex: 50,
+              touchAction: 'none' // Prevent scrolling while dragging
+            }}
+            onMouseDown={handleDragStart}
+            onTouchStart={handleDragStart}
+          >
             <video
               ref={localVideoRef}
               autoPlay
               playsInline
               muted
-              className="w-full h-full object-cover transform scale-x-[-1]"
+              className="w-full h-full object-cover transform scale-x-[-1] pointer-events-none"
             />
-            <div className="absolute bottom-0 inset-x-0 p-2 bg-gradient-to-t from-black/60 to-transparent">
+            <div className="absolute bottom-0 inset-x-0 p-2 bg-gradient-to-t from-black/60 to-transparent pointer-events-none">
               <p className="text-white text-[10px] font-medium text-center">Vous</p>
             </div>
           </div>
