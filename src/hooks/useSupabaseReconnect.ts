@@ -110,6 +110,27 @@ export function useSupabaseReconnect(userId: string | null) {
       
       if (result?.error) {
         console.error('[Reconnect] Session refresh error:', result.error)
+        
+        // CRITICAL FIX: Handle Invalid Refresh Token by forcing logout
+        // This happens when the session is invalid/revoked/expired and cannot be refreshed
+        const errorMsg = result.error.message || ''
+        if (errorMsg.includes('Invalid Refresh Token') || errorMsg.includes('Refresh Token Not Found')) {
+          console.error('[Reconnect] CRITICAL: Invalid Refresh Token detected. Forcing logout to recover.')
+          
+          // Clear local storage to remove stale tokens
+          localStorage.removeItem('nephtys-auth')
+          localStorage.removeItem('sb-nephtys-auth-token') // Just in case
+          localStorage.removeItem('anu_cached_user')
+          localStorage.removeItem('anu_cached_profile')
+          
+          // Force sign out
+          await supabase.auth.signOut()
+          
+          // Force reload to login page
+          window.location.href = '/'
+          return false
+        }
+
         // Try to get current session as fallback - but don't wait long
         try {
           const sessionPromise = supabase.auth.getSession()

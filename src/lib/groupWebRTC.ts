@@ -389,6 +389,12 @@ export class GroupCallManager {
     const participant = this.participants.get(participantId);
     if (!participant?.peerConnection) return;
 
+    // Safety check: Ensure remote description is set before adding candidates
+    if (!participant.peerConnection.remoteDescription) {
+      console.warn(`🎥 GroupWebRTC: Cannot process queued candidates for ${participantId} - remote description still missing`);
+      return;
+    }
+
     console.log(`🎥 GroupWebRTC: Processing ${queue.length} queued ICE candidates for:`, participantId);
 
     for (const candidate of queue) {
