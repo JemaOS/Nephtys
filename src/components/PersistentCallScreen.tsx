@@ -261,7 +261,9 @@ export function PersistentCallScreen() {
   }, [remoteStream])
 
   // Toggle speaker (simulated for now as setSinkId is experimental/limited)
-  const toggleSpeaker = () => {
+  const toggleSpeaker = (...args: any[]) => {
+    console.log('toggleSpeaker called with', args)
+    if (args.length > 1) console.error('toggleSpeaker called with multiple arguments!', args)
     setIsSpeakerOn(!isSpeakerOn)
     // In a real implementation with supported browser, we would use:
     // const audio = remoteAudioRef.current as any

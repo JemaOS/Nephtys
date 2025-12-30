@@ -156,7 +156,11 @@ export class WebRTCManager {
   }
 
   onRemoteStream(callback: (stream: MediaStream) => void): void {
-    this.onRemoteStreamCallback = callback;
+    this.onRemoteStreamCallback = (...args: any[]) => {
+      if (args.length > 1) console.error('WebRTCManager: onRemoteStreamCallback called with multiple arguments!', args);
+      // @ts-ignore
+      callback(...args);
+    };
   }
 
   onCallEnd(callback: () => void): void {

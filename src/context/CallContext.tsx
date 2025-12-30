@@ -129,7 +129,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
     return () => {
       console.log('🔔 CallContext: Cleaning up channel')
-      supabase.removeChannel(channel)
+      supabase.removeChannel(channel).then(() => {})
     }
   }, [user])
 
@@ -414,9 +414,10 @@ export function CallProvider({ children }: { children: ReactNode }) {
         })
       })
 
-      webrtcManager.onRemoteStream((stream) => {
-        console.log('📞 Remote stream received (caller side)')
-        setRemoteStream(stream)
+      webrtcManager.onRemoteStream((...args) => {
+        console.log('📞 Remote stream received (caller side)', args)
+        if (args.length > 1) console.error('Multiple arguments in onRemoteStream callback!', args)
+        setRemoteStream(args[0])
       })
 
       webrtcManager.onCallEnd(() => {
@@ -470,10 +471,12 @@ export function CallProvider({ children }: { children: ReactNode }) {
       }
       
       // FIX: Set up callbacks BEFORE initializeCall to ensure we don't miss any events
-      webrtcManager.onRemoteStream((stream) => {
-        console.log('📞 Remote stream received callback triggered');
+      webrtcManager.onRemoteStream((...args) => {
+        const stream = args[0];
+        console.log('📞 Remote stream received callback triggered', args);
+        if (args.length > 1) console.error('Multiple arguments in onRemoteStream callback!', args)
         console.log('📞 Remote stream tracks:', stream.getTracks().length);
-        stream.getTracks().forEach((track, i) => {
+        stream.getTracks().forEach((track: any, i: number) => {
           console.log(`📞 Remote stream track ${i}:`, track.kind, 'enabled:', track.enabled, 'readyState:', track.readyState);
         });
         setRemoteStream(stream)
@@ -608,7 +611,9 @@ export function CallProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const toggleAudio = () => {
+  const toggleAudio = (...args: any[]) => {
+    console.log('toggleAudio called with', args)
+    if (args.length > 1) console.error('toggleAudio called with multiple arguments!', args)
     const newState = !audioEnabled
     if (isGroupCall) {
       groupCallManager.toggleAudio(newState)
@@ -618,7 +623,9 @@ export function CallProvider({ children }: { children: ReactNode }) {
     setAudioEnabled(newState)
   }
 
-  const toggleVideo = async () => {
+  const toggleVideo = async (...args: any[]) => {
+    console.log('toggleVideo called with', args)
+    if (args.length > 1) console.error('toggleVideo called with multiple arguments!', args)
     const newState = !videoEnabled
     if (isGroupCall) {
       await groupCallManager.toggleVideo(newState)
@@ -705,9 +712,12 @@ export function CallProvider({ children }: { children: ReactNode }) {
       setVideoEnabled(config.video)
 
       // Set up callbacks
-      groupCallManager.onParticipantUpdate((participants) => {
+      groupCallManager.onParticipantUpdate((...args) => {
+        console.log('📞 Group participant update', args)
+        if (args.length > 1) console.error('Multiple arguments in onParticipantUpdate callback!', args)
+        const participants = args[0]
         const participantArray: GroupCallParticipant[] = []
-        participants.forEach((p) => {
+        participants.forEach((p: any) => {
           participantArray.push({
             id: p.id,
             name: p.name,
