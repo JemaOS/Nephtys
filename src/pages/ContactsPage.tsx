@@ -420,7 +420,7 @@ export function ContactsPage() {
           .from('conversation_members')
           .select(`
             conversation_id,
-            conversations!inner(id, type)
+            conversations!conversation_members_conversation_id_fkey!inner(id, type)
           `)
           .eq('user_id', contactId)
           .eq('conversations.type', 'direct')
