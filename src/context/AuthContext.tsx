@@ -149,9 +149,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // Initialize presence tracking
           initializePresence(session.user.id);
         } else if (!cachedUser) {
-          // No session and no cache - user needs to login
-          setUser(null);
-          setProfile(null);
+          // No session and no cache - check for ephemeral recovery
+          const ephemeralUser = localStorage.getItem('anu_ephemeral_user');
+          const ephemeralPassword = localStorage.getItem('anu_ephemeral_password');
+          
+          if (ephemeralUser && ephemeralPassword) {
+            console.log('[Auth] Attempting to recover ephemeral session...');
+            try {
+              await signIn(ephemeralUser, ephemeralPassword);
+              // signIn sets the user state, so we don't need to do it here
+            } catch (err) {
+              console.warn('[Auth] Ephemeral recovery failed:', err);
+              setUser(null);
+              setProfile(null);
+            }
+          } else {
+            // No session, no cache, no ephemeral credentials
+            setUser(null);
+            setProfile(null);
+          }
         }
       } catch (error) {
         console.warn('[Auth] Session fetch timed out or failed, using cached data');
@@ -334,12 +350,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInAsGuest = async (username: string) => {
     try {
+      // Check if we can reuse an existing ephemeral account
+      const storedUser = localStorage.getItem('anu_ephemeral_user');
+      const storedPassword = localStorage.getItem('anu_ephemeral_password');
+      const sanitizedInput = username.toLowerCase().replace(/[^a-z0-9]/g, '') || 'user';
+      
+      // If we have stored credentials and the username prefix matches, try to reuse
+      if (storedUser && storedPassword && storedUser.startsWith(sanitizedInput)) {
+        console.log('[Auth] Found existing ephemeral credentials, attempting reuse...');
+        try {
+          await signIn(storedUser, storedPassword);
+          console.log('[Auth] Successfully reused ephemeral account');
+          return; // Success!
+        } catch (err) {
+          console.warn('[Auth] Failed to reuse ephemeral account, creating new one:', err);
+          // Fall through to create new account
+        }
+      }
+
       // Créer un compte temporaire avec un email valide
       const timestamp = Date.now()
       const randomId = Math.random().toString(36).substring(2, 8)
       const randomPassword = Math.random().toString(36).substring(2) + Math.random().toString(36).substring(2) + '!A1'
       
-      const uniqueUsername = `${username.toLowerCase().replace(/[^a-z0-9]/g, '') || 'user'}${timestamp.toString(36)}`
+      const uniqueUsername = `${sanitizedInput}${timestamp.toString(36)}`
       
       // Créer le compte temporaire via l'edge function
       const { data, error } = await supabase.functions.invoke('auth-with-username', {
