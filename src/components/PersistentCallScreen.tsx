@@ -218,12 +218,16 @@ export function PersistentCallScreen() {
     }
   }, [isDragging, handleDragMove, handleDragEnd])
 
-  // Handle local stream attachment
+  // Handle local stream attachment - re-attach when stream changes or video is toggled
   useEffect(() => {
-    if (localVideoRef.current && localStream) {
-      localVideoRef.current.srcObject = localStream
+    if (localVideoRef.current && localStream && videoEnabled) {
+      console.log('PersistentCallScreen: Attaching local stream to video element');
+      localVideoRef.current.srcObject = localStream;
+      localVideoRef.current.play().catch(err => {
+        console.warn('Local video play failed:', err);
+      });
     }
-  }, [localStream, isCalling, isInCall])
+  }, [localStream, isCalling, isInCall, videoEnabled])
 
   // Handle remote stream attachment
   useEffect(() => {
