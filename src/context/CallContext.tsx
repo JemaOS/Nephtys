@@ -439,18 +439,8 @@ export function CallProvider({ children }: { children: ReactNode }) {
         setLocalStream(new MediaStream(updatedStream.getTracks()))
       })
 
-      // Handle renegotiation needed (e.g. when toggling video)
-      webrtcManager.onNegotiationNeeded(async () => {
-        console.log('📞 CallContext: Renegotiation needed');
-        const offer = await webrtcManager.createOffer();
-        await sendSignal({
-          type: 'offer',
-          from: user!.id,
-          to: userId,
-          data: { ...offer, video: videoEnabled }, // Include video state
-          conversation_id: conversationId,
-        });
-      });
+      // Note: Renegotiation is no longer needed for video toggle
+      // We use replaceTrack which doesn't require renegotiation
 
       setIsPeerConnectionReady(true)
 
@@ -540,18 +530,8 @@ export function CallProvider({ children }: { children: ReactNode }) {
         setLocalStream(new MediaStream(updatedStream.getTracks()))
       })
 
-      // Handle renegotiation needed
-      webrtcManager.onNegotiationNeeded(async () => {
-        console.log('📞 CallContext: Renegotiation needed (callee)');
-        const offer = await webrtcManager.createOffer();
-        await sendSignal({
-          type: 'offer',
-          from: user!.id,
-          to: incomingCallSignal.from,
-          data: { ...offer, video: videoEnabled },
-          conversation_id: incomingCallSignal.conversation_id,
-        });
-      });
+      // Note: Renegotiation is no longer needed for video toggle
+      // We use replaceTrack which doesn't require renegotiation
 
       // FIX: Set up callbacks AFTER initializeCall to ensure they aren't cleared by internal cleanup
       webrtcManager.onRemoteStream((...args) => {

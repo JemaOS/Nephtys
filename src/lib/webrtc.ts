@@ -245,7 +245,7 @@ export class WebRTCManager {
     }
 
     if (enabled) {
-      // Enable: Get a fresh video track to ensure reliability
+      // Enable: Get a fresh video track and use replaceTrack (NO renegotiation needed)
       try {
         const newStream = await navigator.mediaDevices.getUserMedia({
           video: {
@@ -257,37 +257,37 @@ export class WebRTCManager {
         });
         const newTrack = newStream.getVideoTracks()[0];
         
-        // Update local stream immediately
+        // Update local stream
         const oldTracks = this.localStream.getVideoTracks();
         oldTracks.forEach(t => {
           this.localStream!.removeTrack(t);
+          t.stop(); // Stop old track
         });
         this.localStream.addTrack(newTrack);
         this.onLocalStreamCallback?.(this.localStream);
 
-        // Replace in PeerConnection via Renegotiation (Most Reliable)
+        // Use replaceTrack - this does NOT trigger renegotiation
+        // This is how WhatsApp and other apps do it
         if (this.peerConnection) {
           const senders = this.peerConnection.getSenders();
-          const videoSender = senders.find(s => s.track?.kind === 'video');
+          const videoSender = senders.find(s => s.track?.kind === 'video' || s.track === null);
           
           if (videoSender) {
-            this.peerConnection.removeTrack(videoSender);
+            await videoSender.replaceTrack(newTrack);
+            console.log('🎥 WebRTC: Video track replaced successfully (no renegotiation)');
+          } else {
+            // No video sender exists, we need to add one
+            // This only happens if the call started without video
+            console.log('🎥 WebRTC: No video sender found, adding new track');
+            this.peerConnection.addTrack(newTrack, this.localStream);
           }
-          
-          this.peerConnection.addTrack(newTrack, this.localStream);
-          
-          // Trigger renegotiation
-          this.onNegotiationNeededCallback?.();
         }
-
-        // Stop old tracks immediately (since we removed them from PC)
-        oldTracks.forEach(t => t.stop());
 
       } catch (error) {
         console.error('Error enabling video:', error);
       }
     } else {
-      // Disable: Just mute the track
+      // Disable: Just disable the track (keeps the sender active for later)
       this.localStream.getVideoTracks().forEach(track => {
         track.enabled = false;
       });
