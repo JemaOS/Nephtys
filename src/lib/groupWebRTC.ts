@@ -544,44 +544,12 @@ export class GroupCallManager {
   async toggleVideo(enabled: boolean): Promise<void> {
     console.log('🎥 GroupWebRTC: toggleVideo called, enabled:', enabled);
     
-    if (!this.localStream) {
-      return;
-    }
-
-    if (enabled) {
-      // Enable: Get a fresh video track
-      try {
-        const newStream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            width: { ideal: 640 },
-            height: { ideal: 480 },
-            facingMode: 'user'
-          }
-        });
-        const newTrack = newStream.getVideoTracks()[0];
-        
-        // Update local stream immediately
-        const oldTracks = this.localStream.getVideoTracks();
-        oldTracks.forEach(t => {
-          this.localStream!.removeTrack(t);
-        });
-        this.localStream.addTrack(newTrack);
-        this.onLocalStreamCallback?.(this.localStream);
-
-        // Replace in all peers
-        await this.replaceVideoTrackInAllPeers(newTrack);
-
-        // Stop old tracks
-        oldTracks.forEach(t => t.stop());
-
-      } catch (error) {
-        console.error('Error enabling group video:', error);
-      }
-    } else {
-      // Disable: Just mute
+    if (this.localStream) {
       this.localStream.getVideoTracks().forEach(track => {
-        track.enabled = false;
+        track.enabled = enabled;
       });
+      
+      // Notify local stream callback so UI updates
       this.onLocalStreamCallback?.(this.localStream);
     }
 

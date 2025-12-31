@@ -82,7 +82,7 @@ function ParticipantVideo({
       
       {hasVideo ? (
         <video
-          key={participant.stream?.id} // Force recreation when stream changes
+          key={`${participant.stream?.id}-${participant.videoEnabled}`} // Force recreation when stream or state changes
           ref={videoRef}
           autoPlay
           playsInline
@@ -392,7 +392,7 @@ export function PersistentCallScreen() {
       <div className="absolute inset-0 z-0">
         {hasRemoteVideo ? (
           <video
-            key={remoteStream?.id} // Force recreation when stream changes
+            key={`${remoteStream?.id}-${remoteVideoEnabled}`} // Force recreation when stream or state changes
             ref={remoteVideoRef}
             autoPlay
             playsInline
@@ -499,7 +499,7 @@ export function PersistentCallScreen() {
             onTouchStart={handleDragStart}
           >
             <video
-              key={localStream.id} // Force recreation when stream changes
+              key={`${localStream.id}-${videoEnabled}`} // Force recreation when stream or state changes
               ref={localVideoRef}
               autoPlay
               playsInline
