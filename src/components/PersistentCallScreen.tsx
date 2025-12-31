@@ -370,7 +370,7 @@ export function PersistentCallScreen() {
             onClose={() => setShowAddParticipant(false)}
             onSelect={(contactId) => {
               addParticipant(contactId)
-              setShowAddParticipant(false)
+              // Don't close the modal - let user add multiple participants
             }}
             currentParticipants={allParticipants.map(p => p.id)}
           />
@@ -627,7 +627,7 @@ export function PersistentCallScreen() {
           onClose={() => setShowAddParticipant(false)}
           onSelect={(contactId) => {
             addParticipant(contactId)
-            setShowAddParticipant(false)
+            // Don't close the modal - let user add multiple participants
           }}
           currentParticipants={incomingCall?.from ? [incomingCall.from] : []}
         />

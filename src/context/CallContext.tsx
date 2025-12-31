@@ -622,35 +622,23 @@ export function CallProvider({ children }: { children: ReactNode }) {
     if (!user) return
 
     try {
-      // Determine if we are in a group call
-      // It's a group call if the flag is set OR if we are in a call without a specific peer ID (which implies group)
-      const isGroup = isGroupCall || (isInCall && !currentCallUserId && currentCallConversationId)
+      console.log('📞 addParticipant called, contactId:', contactId)
+      console.log('📞 Current state: isGroupCall:', isGroupCall, 'isInCall:', isInCall, 'currentCallUserId:', currentCallUserId)
+      
+      // Get the new participant's profile
+      const { data: newProfile } = await supabase
+        .from('profiles')
+        .select('display_name, username, avatar_url')
+        .eq('id', contactId)
+        .single()
+      
+      const newName = newProfile?.display_name || newProfile?.username || 'Nouveau'
 
-      if (isGroup && currentCallConversationId) {
+      if (isGroupCall && currentCallConversationId) {
         // --- SCENARIO 1: ALREADY IN GROUP CALL ---
-        console.log('Adding participant to existing group call:', contactId)
+        // Just send an invite to the new person
+        console.log('📞 Adding participant to existing group call:', contactId)
         
-        // 1. Check if user is already a member of the conversation
-        const { data: existingMember } = await supabase
-          .from('conversation_members')
-          .select('id')
-          .eq('conversation_id', currentCallConversationId)
-          .eq('user_id', contactId)
-          .maybeSingle()
-        
-        // 2. If not, add them
-        if (!existingMember) {
-          await supabase
-            .from('conversation_members')
-            .insert({
-              conversation_id: currentCallConversationId,
-              user_id: contactId,
-              role: 'member',
-              is_active: true
-            })
-        }
-
-        // 3. Send invite signal
         // Get conversation info for the invite
         const { data: conversation } = await supabase
           .from('conversations')
@@ -664,73 +652,52 @@ export function CallProvider({ children }: { children: ReactNode }) {
           to: contactId,
           data: {
             video: videoEnabled,
-            conversationName: conversation?.name || 'Groupe',
+            conversationName: conversation?.name || 'Appel de groupe',
             conversationAvatar: conversation?.avatar_url,
           },
           conversation_id: currentCallConversationId,
         })
 
-        console.log('Invite sent to:', contactId)
+        console.log('📞 Invite sent to:', contactId)
 
       } else if (isInCall && currentCallUserId && currentCallConversationId) {
-        // --- SCENARIO 2: 1-ON-1 CALL -> UPGRADE TO GROUP ---
-        console.log('Upgrading 1-on-1 call to group call with:', contactId)
+        // --- SCENARIO 2: 1-ON-1 CALL -> INVITE NEW PERSON ---
+        // DON'T end the current call! Just send an invite to the new person
+        // They will join as a third participant
+        console.log('📞 Inviting new participant to 1-on-1 call:', contactId)
         
-        // 1. Create a new group conversation
-        // Get names for the group title
-        const { data: myProfile } = await supabase.from('profiles').select('display_name, username').eq('id', user.id).single()
-        const { data: peerProfile } = await supabase.from('profiles').select('display_name, username').eq('id', currentCallUserId).single()
-        const { data: newProfile } = await supabase.from('profiles').select('display_name, username').eq('id', contactId).single()
-        
-        const myName = myProfile?.display_name || myProfile?.username || 'Moi'
-        const peerName = peerProfile?.display_name || peerProfile?.username || 'Utilisateur'
-        const newName = newProfile?.display_name || newProfile?.username || 'Nouveau'
-        
-        const groupName = `Appel: ${myName}, ${peerName}, ${newName}`.substring(0, 50)
-
-        const { data: newConversation, error: createError } = await supabase
-          .from('conversations')
-          .insert({
-            type: 'group',
-            name: groupName,
-            created_by: user.id,
-            is_encrypted: true,
-            last_message_at: new Date().toISOString()
-          })
-          .select()
+        // Get current peer's profile for the invite message
+        const { data: peerProfile } = await supabase
+          .from('profiles')
+          .select('display_name, username')
+          .eq('id', currentCallUserId)
           .single()
-
-        if (createError || !newConversation) {
-          throw new Error('Failed to create group conversation')
-        }
-
-        // 2. Add all members
-        await supabase.from('conversation_members').insert([
-          { conversation_id: newConversation.id, user_id: user.id, role: 'admin', is_active: true },
-          { conversation_id: newConversation.id, user_id: currentCallUserId, role: 'member', is_active: true },
-          { conversation_id: newConversation.id, user_id: contactId, role: 'member', is_active: true }
-        ])
-
-        // 3. End current 1-on-1 call
-        // We send a special reason so the other peer knows we are switching to group?
-        // For now, just end it. The user experience might be a bit abrupt but it's safe.
-        endCall(true)
-
-        // 4. Start the group call immediately
-        // We need a small delay to ensure the endCall cleanup is done
-        // Determine if we should have video based on current stream or state
-        const shouldHaveVideo = videoEnabled || (localStream?.getVideoTracks().length ?? 0) > 0;
         
-        // Explicitly sync video state for the new call
-        setVideoEnabled(shouldHaveVideo);
+        const peerName = peerProfile?.display_name || peerProfile?.username || 'Utilisateur'
+        
+        // Send a group call invite to the new person
+        // Use the current conversation ID so they can join
+        await sendSignal({
+          type: 'group-call-invite',
+          from: user.id,
+          to: contactId,
+          data: {
+            video: videoEnabled,
+            conversationName: `Appel avec ${peerName}`,
+            existingCallPeer: currentCallUserId, // Let them know who else is in the call
+          },
+          conversation_id: currentCallConversationId,
+        })
 
-        setTimeout(async () => {
-          console.log('Starting group call after upgrade, video:', shouldHaveVideo)
-          await startGroupCall(newConversation.id, {
-            audio: audioEnabled,
-            video: shouldHaveVideo
-          })
-        }, 1000) // Increased delay to 1s to ensure camera is released
+        console.log('📞 Invite sent to:', contactId, 'to join call with', peerName)
+        
+        // Update the UI to show we're now in a "group-like" call
+        // But keep the existing WebRTC connection with the first peer
+        setIncomingCall(prev => prev ? {
+          ...prev,
+          callerName: `${prev.callerName}, ${newName}`,
+          isGroupCall: true
+        } : null)
       }
     } catch (error) {
       console.error('Error adding participant:', error)

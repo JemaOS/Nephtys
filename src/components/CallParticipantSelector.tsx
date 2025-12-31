@@ -2,7 +2,7 @@
 // Distributed under the license specified in the root directory of this project.
 
 import React, { useState, useEffect } from 'react'
-import { Search, X, UserPlus } from 'lucide-react'
+import { Search, X, UserPlus, Check, Loader2 } from 'lucide-react'
 import { supabase, Contact, Profile } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 
@@ -16,6 +16,8 @@ export function CallParticipantSelector({ onClose, onSelect, currentParticipants
   const [contacts, setContacts] = useState<(Contact & { profile: Profile })[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [loading, setLoading] = useState(true)
+  const [invitedIds, setInvitedIds] = useState<Set<string>>(new Set()) // Track who we've invited
+  const [invitingId, setInvitingId] = useState<string | null>(null) // Currently inviting
   const { user } = useAuth()
 
   useEffect(() => {
@@ -113,17 +115,38 @@ export function CallParticipantSelector({ onClose, onSelect, currentParticipants
     contact.profile.display_name?.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
+  const handleInvite = async (contactId: string) => {
+    if (invitedIds.has(contactId) || invitingId === contactId) return
+    
+    setInvitingId(contactId)
+    try {
+      await onSelect(contactId)
+      setInvitedIds(prev => new Set([...prev, contactId]))
+    } catch (error) {
+      console.error('Error inviting participant:', error)
+    } finally {
+      setInvitingId(null)
+    }
+  }
+
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-[150]">
       <div className="w-full max-w-md bg-gray-900 border border-white/10 rounded-2xl flex flex-col max-h-[80vh] shadow-2xl">
         {/* Header */}
         <div className="p-4 border-b border-white/10 flex items-center justify-between">
-          <h2 className="text-xl font-semibold text-white">Ajouter un participant</h2>
+          <div>
+            <h2 className="text-xl font-semibold text-white">Ajouter des participants</h2>
+            {invitedIds.size > 0 && (
+              <p className="text-xs text-green-400 mt-1">
+                {invitedIds.size} invitation{invitedIds.size > 1 ? 's' : ''} envoyée{invitedIds.size > 1 ? 's' : ''}
+              </p>
+            )}
+          </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors text-white/70"
+            className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-sm font-medium transition-colors"
           >
-            <X size={20} />
+            Fermer
           </button>
         </div>
 
@@ -155,42 +178,63 @@ export function CallParticipantSelector({ onClose, onSelect, currentParticipants
             </div>
           ) : (
             <div className="space-y-1">
-              {filteredContacts.map((contact) => (
-                <button
-                  key={contact.id}
-                  onClick={async () => {
-                    await onSelect(contact.contact_user_id)
-                    // Optional: Add visual feedback here if needed, but onSelect usually closes the modal
-                  }}
-                  className="w-full px-3 py-3 hover:bg-white/5 rounded-xl transition-colors flex items-center gap-3 text-left group"
-                >
-                  {/* Avatar */}
-                  {contact.profile.avatar_url ? (
-                    <img
-                      src={contact.profile.avatar_url}
-                      alt={contact.profile.display_name || contact.profile.username}
-                      className="w-10 h-10 rounded-full object-cover flex-shrink-0 border border-white/10"
-                    />
-                  ) : (
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold text-sm flex-shrink-0 shadow-lg">
-                      {(contact.profile.display_name || contact.profile.username)[0].toUpperCase()}
+              {filteredContacts.map((contact) => {
+                const isInvited = invitedIds.has(contact.contact_user_id)
+                const isInviting = invitingId === contact.contact_user_id
+                
+                return (
+                  <button
+                    key={contact.id}
+                    onClick={() => handleInvite(contact.contact_user_id)}
+                    disabled={isInvited || isInviting}
+                    className={`w-full px-3 py-3 rounded-xl transition-colors flex items-center gap-3 text-left group ${
+                      isInvited
+                        ? 'bg-green-500/10 cursor-default'
+                        : 'hover:bg-white/5'
+                    }`}
+                  >
+                    {/* Avatar */}
+                    {contact.profile.avatar_url ? (
+                      <img
+                        src={contact.profile.avatar_url}
+                        alt={contact.profile.display_name || contact.profile.username}
+                        className="w-10 h-10 rounded-full object-cover flex-shrink-0 border border-white/10"
+                      />
+                    ) : (
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold text-sm flex-shrink-0 shadow-lg">
+                        {(contact.profile.display_name || contact.profile.username)[0].toUpperCase()}
+                      </div>
+                    )}
+                    
+                    <div className="flex-1 min-w-0">
+                      <h3 className={`font-medium truncate transition-colors ${
+                        isInvited ? 'text-green-400' : 'text-white group-hover:text-primary-400'
+                      }`}>
+                        {contact.nickname || contact.profile.display_name || contact.profile.username}
+                      </h3>
+                      <p className="text-xs text-white/50 truncate">
+                        {isInvited ? 'Invitation envoyée ✓' : `@${contact.profile.username}`}
+                      </p>
                     </div>
-                  )}
-                  
-                  <div className="flex-1 min-w-0">
-                    <h3 className="text-white font-medium truncate group-hover:text-primary-400 transition-colors">
-                      {contact.nickname || contact.profile.display_name || contact.profile.username}
-                    </h3>
-                    <p className="text-xs text-white/50 truncate">
-                      @{contact.profile.username}
-                    </p>
-                  </div>
-                  
-                  <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-white/50 group-hover:bg-primary-500 group-hover:text-white transition-all">
-                    <UserPlus size={16} />
-                  </div>
-                </button>
-              ))}
+                    
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
+                      isInvited
+                        ? 'bg-green-500 text-white'
+                        : isInviting
+                          ? 'bg-white/10 text-white'
+                          : 'bg-white/5 text-white/50 group-hover:bg-primary-500 group-hover:text-white'
+                    }`}>
+                      {isInviting ? (
+                        <Loader2 size={16} className="animate-spin" />
+                      ) : isInvited ? (
+                        <Check size={16} />
+                      ) : (
+                        <UserPlus size={16} />
+                      )}
+                    </div>
+                  </button>
+                )
+              })}
             </div>
           )}
         </div>
