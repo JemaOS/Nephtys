@@ -245,12 +245,21 @@ export class WebRTCManager {
       return;
     }
 
-    // Find the video sender first
-    const senders = this.peerConnection.getSenders();
-    const videoSender = senders.find(s => s.track?.kind === 'video' || s.track === null);
+    const videoTracks = this.localStream.getVideoTracks();
     
     if (enabled) {
-      // Enable: Get a fresh video track and use replaceTrack (NO renegotiation needed)
+      // Check if we have an existing video track that's just disabled
+      if (videoTracks.length > 0 && videoTracks[0].readyState === 'live') {
+        // Just re-enable the existing track
+        console.log('🎥 WebRTC: Re-enabling existing video track');
+        videoTracks.forEach(track => {
+          track.enabled = true;
+        });
+        this.onLocalStreamCallback?.(this.localStream);
+        return;
+      }
+      
+      // Need to get a new video track
       try {
         console.log('🎥 WebRTC: Getting new video track from camera...');
         const newStream = await navigator.mediaDevices.getUserMedia({
@@ -264,25 +273,29 @@ export class WebRTCManager {
         const newTrack = newStream.getVideoTracks()[0];
         console.log('🎥 WebRTC: New video track obtained, id:', newTrack.id, 'readyState:', newTrack.readyState);
         
-        // Update local stream - remove old tracks first
+        // Remove old tracks from local stream
         const oldTracks = this.localStream.getVideoTracks();
         oldTracks.forEach(t => {
           console.log('🎥 WebRTC: Removing old track from local stream, id:', t.id);
           this.localStream!.removeTrack(t);
-          t.stop(); // Stop old track to release camera
+          t.stop();
         });
+        
+        // Add new track to local stream
         this.localStream.addTrack(newTrack);
         this.onLocalStreamCallback?.(this.localStream);
 
-        // Use replaceTrack - this does NOT trigger renegotiation
+        // Find video sender and replace track
+        const senders = this.peerConnection.getSenders();
+        const videoSender = senders.find(s => s.track?.kind === 'video' || s.track === null);
+        
         if (videoSender) {
-          console.log('🎥 WebRTC: Replacing track in sender, old track:', videoSender.track?.id);
+          console.log('🎥 WebRTC: Replacing track in sender');
           await videoSender.replaceTrack(newTrack);
-          console.log('🎥 WebRTC: Video track replaced successfully (no renegotiation)');
+          console.log('🎥 WebRTC: Video track replaced successfully');
         } else {
-          // No video sender exists, we need to add one
-          // This only happens if the call started without video
-          console.log('🎥 WebRTC: No video sender found, adding new track to peer connection');
+          // No video sender exists - this happens if call started without video
+          console.log('🎥 WebRTC: No video sender found, adding new track');
           this.peerConnection.addTrack(newTrack, this.localStream);
         }
 
@@ -290,20 +303,12 @@ export class WebRTCManager {
         console.error('🎥 WebRTC: Error enabling video:', error);
       }
     } else {
-      // Disable: Replace with null track to stop sending video
-      // This is cleaner than just disabling the track
-      if (videoSender) {
-        console.log('🎥 WebRTC: Replacing video track with null to stop sending');
-        await videoSender.replaceTrack(null);
-        console.log('🎥 WebRTC: Video sender track set to null');
-      }
-      
-      // Also disable and stop the local track
-      this.localStream.getVideoTracks().forEach(track => {
-        console.log('🎥 WebRTC: Stopping local video track, id:', track.id);
+      // Disable: Just set enabled = false on the track
+      // This sends black frames but keeps the sender active
+      // This is the most reliable method (like WhatsApp)
+      console.log('🎥 WebRTC: Disabling video track (sending black frames)');
+      videoTracks.forEach(track => {
         track.enabled = false;
-        track.stop();
-        this.localStream!.removeTrack(track);
       });
       this.onLocalStreamCallback?.(this.localStream);
     }
