@@ -147,7 +147,8 @@ export function CallProvider({ children }: { children: ReactNode }) {
     switch (signal.type) {
       case 'offer':
         // Check if this is a renegotiation for the current call
-        if (isInCall && signal.conversation_id === currentCallConversationId) {
+        // It is a renegotiation if we are in a call AND (conversation ID matches OR sender matches current peer)
+        if (isInCall && (signal.conversation_id === currentCallConversationId || signal.from === currentCallUserId)) {
           console.log('📞 CallContext: Received renegotiation offer');
           if (webrtcManager) {
             const answer = await webrtcManager.createAnswer(signal.data);
