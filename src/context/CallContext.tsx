@@ -502,6 +502,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       
       const stream = await webrtcManager.initializeCall(config)
       setLocalStream(stream)
+      setVideoEnabled(config.video) // Sync video state with accepted call config
       setRemoteVideoEnabled(incomingCallSignal.data.video !== false)
 
       // Listen for local stream updates
