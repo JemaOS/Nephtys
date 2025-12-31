@@ -376,12 +376,12 @@ export function PersistentCallScreen() {
   }
 
   // --- 1-TO-1 CALL UI ---
-  // FIX: Check if video track exists AND is enabled/live
+  // Check if remote video should be displayed
+  // We show video only if: it's a video call, we have a stream, AND the remote has video enabled
   const hasRemoteVideo = isVideoCall &&
     remoteStream &&
     remoteStream.getVideoTracks().length > 0 &&
-    remoteVideoEnabled &&
-    remoteStream.getVideoTracks().some(t => t.readyState === 'live')
+    remoteVideoEnabled
   
 
   return (
@@ -498,14 +498,30 @@ export function PersistentCallScreen() {
             onMouseDown={handleDragStart}
             onTouchStart={handleDragStart}
           >
-            <video
-              key={`${localStream.id}-${videoEnabled}`} // Force recreation when stream or state changes
-              ref={localVideoRef}
-              autoPlay
-              playsInline
-              muted
-              className="w-full h-full object-cover transform scale-x-[-1] pointer-events-none"
-            />
+            {videoEnabled ? (
+              <video
+                key={`${localStream.id}-${videoEnabled}`} // Force recreation when stream or state changes
+                ref={localVideoRef}
+                autoPlay
+                playsInline
+                muted
+                className="w-full h-full object-cover transform scale-x-[-1] pointer-events-none"
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center bg-gray-800">
+                {profile?.avatar_url ? (
+                  <img
+                    src={profile.avatar_url}
+                    alt="Vous"
+                    className="w-16 h-16 md:w-20 md:h-20 rounded-full object-cover border-2 border-white/20"
+                  />
+                ) : (
+                  <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-2xl">
+                    {profile?.display_name?.[0]?.toUpperCase() || profile?.username?.[0]?.toUpperCase() || '?'}
+                  </div>
+                )}
+              </div>
+            )}
             <div className="absolute bottom-0 inset-x-0 p-2 bg-gradient-to-t from-black/60 to-transparent pointer-events-none">
               <p className="text-white text-[10px] font-medium text-center">Vous</p>
             </div>
