@@ -10,6 +10,9 @@ const ICE_SERVERS = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
   { urls: 'stun:stun2.l.google.com:19302' },
+  { urls: 'stun:stun3.l.google.com:19302' },
+  { urls: 'stun:stun4.l.google.com:19302' },
+  { urls: 'stun:global.stun.twilio.com:3478' },
 ];
 
 export interface GroupCallConfig {
@@ -544,12 +547,46 @@ export class GroupCallManager {
   async toggleVideo(enabled: boolean): Promise<void> {
     console.log('🎥 GroupWebRTC: toggleVideo called, enabled:', enabled);
     
-    if (this.localStream) {
+    if (!this.localStream) {
+      return;
+    }
+
+    if (enabled) {
+      // Enable: Get a fresh video track
+      try {
+        const newStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            width: { ideal: 640 },
+            height: { ideal: 480 },
+            facingMode: 'user'
+          }
+        });
+        const newTrack = newStream.getVideoTracks()[0];
+        
+        // Update local stream immediately
+        const oldTracks = this.localStream.getVideoTracks();
+        oldTracks.forEach(t => {
+          this.localStream!.removeTrack(t);
+        });
+        this.localStream.addTrack(newTrack);
+        this.onLocalStreamCallback?.(this.localStream);
+
+        // Replace in all peers
+        await this.replaceVideoTrackInAllPeers(newTrack);
+
+        // Stop old tracks with delay
+        setTimeout(() => {
+          oldTracks.forEach(t => t.stop());
+        }, 2000);
+
+      } catch (error) {
+        console.error('Error enabling group video:', error);
+      }
+    } else {
+      // Disable: Just mute
       this.localStream.getVideoTracks().forEach(track => {
-        track.enabled = enabled;
+        track.enabled = false;
       });
-      
-      // Notify local stream callback so UI updates
       this.onLocalStreamCallback?.(this.localStream);
     }
 
