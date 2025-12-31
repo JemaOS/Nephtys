@@ -66,6 +66,7 @@ function ParticipantVideo({
     if (!isLocal && audioRef.current && participant.stream) {
       audioRef.current.srcObject = participant.stream
       audioRef.current.volume = 1.0
+      audioRef.current.play().catch(err => console.warn('Group audio play failed:', err))
     }
   }, [participant.stream, isLocal])
 
@@ -221,16 +222,21 @@ export function PersistentCallScreen() {
   // Handle remote stream attachment
   useEffect(() => {
     if (remoteStream) {
-      // FIX: Ensure video tracks are enabled when attaching to video element
-      remoteStream.getVideoTracks().forEach(track => {
+      console.log('PersistentCallScreen: Attaching remote stream', {
+        audioTracks: remoteStream.getAudioTracks().length,
+        videoTracks: remoteStream.getVideoTracks().length
+      });
+
+      // Ensure all tracks are enabled
+      remoteStream.getTracks().forEach(track => {
         if (!track.enabled) {
+          console.log(`PersistentCallScreen: Enabling ${track.kind} track`);
           track.enabled = true;
         }
       });
       
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = remoteStream
-        // FIX: Ensure the video element plays the stream
         remoteVideoRef.current.play().catch(err => {
           console.warn('Video play failed:', err);
         });
@@ -239,7 +245,6 @@ export function PersistentCallScreen() {
       if (remoteAudioRef.current) {
         remoteAudioRef.current.srcObject = remoteStream
         remoteAudioRef.current.volume = 1.0
-        // FIX: Ensure the audio element plays the stream
         remoteAudioRef.current.play().catch(err => {
           console.warn('Audio play failed:', err);
         });

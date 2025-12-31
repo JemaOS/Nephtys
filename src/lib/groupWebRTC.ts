@@ -460,6 +460,11 @@ export class GroupCallManager {
       console.log('🎥 GroupWebRTC: Received remote track from:', participantId);
       
       if (event.streams && event.streams[0]) {
+        // Ensure all tracks are enabled
+        event.streams[0].getTracks().forEach(track => {
+          if (!track.enabled) track.enabled = true;
+        });
+
         const participant = this.participants.get(participantId);
         if (participant) {
           participant.stream = event.streams[0];

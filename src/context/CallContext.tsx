@@ -428,7 +428,10 @@ export function CallProvider({ children }: { children: ReactNode }) {
       })
 
       webrtcManager.onRemoteStream((...args) => {
-        setRemoteStream(args[0])
+        // Create a new MediaStream object to force React to detect the change
+        // This is crucial when tracks are added to an existing stream
+        const stream = args[0];
+        setRemoteStream(new MediaStream(stream.getTracks()));
       })
 
       webrtcManager.onCallEnd(() => {
@@ -480,10 +483,14 @@ export function CallProvider({ children }: { children: ReactNode }) {
         video: incomingCallSignal.data.video || false,
       }
       
-      // FIX: Set up callbacks BEFORE initializeCall to ensure we don't miss any events
+      const stream = await webrtcManager.initializeCall(config)
+      setLocalStream(stream)
+
+      // FIX: Set up callbacks AFTER initializeCall to ensure they aren't cleared by internal cleanup
       webrtcManager.onRemoteStream((...args) => {
         const stream = args[0];
-        setRemoteStream(stream)
+        // Create a new MediaStream object to force React to detect the change
+        setRemoteStream(new MediaStream(stream.getTracks()));
       })
 
       webrtcManager.onCallEnd(() => {
@@ -499,9 +506,6 @@ export function CallProvider({ children }: { children: ReactNode }) {
           conversation_id: incomingCallSignal.conversation_id,
         })
       })
-
-      const stream = await webrtcManager.initializeCall(config)
-      setLocalStream(stream)
 
       // FIX: Set isPeerConnectionReady to true immediately after initializeCall
       // This ensures ICE candidates can be processed as soon as they arrive

@@ -69,23 +69,24 @@ export class WebRTCManager {
       this.peerConnection.ontrack = (event) => {
         console.log('🎥 WebRTC: ontrack event fired');
         console.log('🎥 WebRTC: Track kind:', event.track.kind);
-        console.log('🎥 WebRTC: Track enabled:', event.track.enabled);
-        console.log('🎥 WebRTC: Track readyState:', event.track.readyState);
-        console.log('🎥 WebRTC: Number of streams:', event.streams?.length || 0);
         
+        // Ensure the track is enabled
+        if (!event.track.enabled) {
+          console.log(`🎥 WebRTC: Enabling disabled ${event.track.kind} track`);
+          event.track.enabled = true;
+        }
+
         if (event.streams && event.streams[0]) {
-          console.log('🎥 WebRTC: Remote stream received, tracks:', event.streams[0].getTracks().length);
-          event.streams[0].getTracks().forEach((track, i) => {
-            console.log(`🎥 WebRTC: Remote track ${i}:`, track.kind, 'enabled:', track.enabled, 'readyState:', track.readyState);
-            
-            // FIX: Ensure tracks are enabled when received
-            if (!track.enabled) {
-              console.log(`🎥 WebRTC: Enabling disabled ${track.kind} track`);
-              track.enabled = true;
-            }
+          const stream = event.streams[0];
+          console.log('🎥 WebRTC: Remote stream received, tracks:', stream.getTracks().length);
+          
+          // Ensure all tracks in the stream are enabled
+          stream.getTracks().forEach(track => {
+            if (!track.enabled) track.enabled = true;
           });
-          this.remoteStream = event.streams[0];
-          this.onRemoteStreamCallback?.(event.streams[0]);
+
+          this.remoteStream = stream;
+          this.onRemoteStreamCallback?.(stream);
         }
       };
 
@@ -234,25 +235,26 @@ export class WebRTCManager {
       });
     }
 
+    // Reset callbacks first to prevent re-entry during close
+    this.onRemoteStreamCallback = null;
+    this.onCallEndCallback = null;
+
     // Fermer la connexion peer
     if (this.peerConnection) {
       console.log('🎥 WebRTC: Closing PeerConnection');
-      this.peerConnection.close();
       
-      // Remove listeners
+      // Remove listeners before closing
       this.peerConnection.ontrack = null;
       this.peerConnection.onicecandidate = null;
       this.peerConnection.onconnectionstatechange = null;
+      
+      this.peerConnection.close();
     }
 
     // Reset
     this.localStream = null;
     this.remoteStream = null;
     this.peerConnection = null;
-    
-    // Reset callbacks
-    this.onRemoteStreamCallback = null;
-    this.onCallEndCallback = null;
     
     console.log('🎥 WebRTC: Cleanup finished');
   }
