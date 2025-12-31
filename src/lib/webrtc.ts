@@ -232,12 +232,53 @@ export class WebRTCManager {
   async toggleVideo(enabled: boolean): Promise<void> {
     console.log('🎥 WebRTC: toggleVideo called, enabled:', enabled);
     
-    if (this.localStream) {
+    if (!this.localStream) {
+      return;
+    }
+
+    if (enabled) {
+      // Enable: Get a fresh video track to ensure reliability
+      try {
+        const newStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: 'user',
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            frameRate: { ideal: 60 }
+          }
+        });
+        const newTrack = newStream.getVideoTracks()[0];
+        
+        // Update local stream immediately
+        const oldTracks = this.localStream.getVideoTracks();
+        oldTracks.forEach(t => {
+          this.localStream!.removeTrack(t);
+          // Don't stop yet, wait until replaced
+        });
+        this.localStream.addTrack(newTrack);
+        this.onLocalStreamCallback?.(this.localStream);
+
+        // Replace in PeerConnection
+        if (this.peerConnection) {
+          const sender = this.peerConnection.getSenders().find(s => s.track?.kind === 'video');
+          if (sender) {
+            await sender.replaceTrack(newTrack);
+          } else {
+            this.peerConnection.addTrack(newTrack, this.localStream);
+          }
+        }
+
+        // Now stop old tracks
+        oldTracks.forEach(t => t.stop());
+
+      } catch (error) {
+        console.error('Error enabling video:', error);
+      }
+    } else {
+      // Disable: Just mute the track, don't stop it (keeps connection alive)
       this.localStream.getVideoTracks().forEach(track => {
-        track.enabled = enabled;
+        track.enabled = false;
       });
-      
-      // Notify local stream callback so UI updates
       this.onLocalStreamCallback?.(this.localStream);
     }
   }
