@@ -124,6 +124,7 @@ export function PersistentCallScreen() {
     remoteStream,
     audioEnabled,
     videoEnabled,
+    remoteVideoEnabled,
     incomingCall,
     answerCall,
     rejectCall,
@@ -374,9 +375,12 @@ export function PersistentCallScreen() {
   }
 
   // --- 1-TO-1 CALL UI ---
-  // FIX: Check if video track exists, regardless of enabled state
-  // The track might be disabled initially but will be enabled once the connection is established
-  const hasRemoteVideo = isVideoCall && remoteStream && remoteStream.getVideoTracks().length > 0
+  // FIX: Check if video track exists AND is enabled/live
+  const hasRemoteVideo = isVideoCall &&
+    remoteStream &&
+    remoteStream.getVideoTracks().length > 0 &&
+    remoteVideoEnabled &&
+    remoteStream.getVideoTracks().some(t => t.readyState === 'live')
   
 
   return (

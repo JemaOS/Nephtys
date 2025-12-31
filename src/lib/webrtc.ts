@@ -20,6 +20,7 @@ export class WebRTCManager {
   private localStream: MediaStream | null = null;
   private remoteStream: MediaStream | null = null;
   private onRemoteStreamCallback: ((stream: MediaStream) => void) | null = null;
+  private onLocalStreamCallback: ((stream: MediaStream) => void) | null = null;
   private onCallEndCallback: (() => void) | null = null;
 
   constructor() {
@@ -212,6 +213,10 @@ export class WebRTCManager {
     };
   }
 
+  onLocalStream(callback: (stream: MediaStream) => void): void {
+    this.onLocalStreamCallback = callback;
+  }
+
   onCallEnd(callback: () => void): void {
     this.onCallEndCallback = callback;
   }
@@ -224,11 +229,72 @@ export class WebRTCManager {
     }
   }
 
-  toggleVideo(enabled: boolean): void {
-    if (this.localStream) {
-      this.localStream.getVideoTracks().forEach(track => {
-        track.enabled = enabled;
+  async toggleVideo(enabled: boolean): Promise<void> {
+    console.log('🎥 WebRTC: toggleVideo called, enabled:', enabled);
+    
+    if (!this.localStream) {
+      console.log('🎥 WebRTC: No local stream, cannot toggle video');
+      return;
+    }
+
+    const currentVideoTracks = this.localStream.getVideoTracks();
+    
+    if (enabled) {
+      // Re-enable video - ALWAYS get a new video track and replace it
+      console.log('🎥 WebRTC: Getting new video track for re-enable...');
+      try {
+        // Get a new video stream
+        const newVideoStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: 'user',
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            frameRate: { ideal: 60 }
+          }
+        });
+        
+        const newVideoTrack = newVideoStream.getVideoTracks()[0];
+        console.log('🎥 WebRTC: Got new video track:', newVideoTrack.id);
+        
+        // Remove old video tracks from local stream and stop them
+        currentVideoTracks.forEach(track => {
+          this.localStream!.removeTrack(track);
+          track.stop();
+        });
+        
+        // Add new video track to local stream
+        this.localStream.addTrack(newVideoTrack);
+        
+        // Replace the video track in peer connection
+        if (this.peerConnection) {
+          const senders = this.peerConnection.getSenders();
+          const videoSender = senders.find(sender => sender.track?.kind === 'video');
+          
+          if (videoSender) {
+            await videoSender.replaceTrack(newVideoTrack);
+            console.log('🎥 WebRTC: Replaced video track in peer connection');
+          } else {
+            console.log('🎥 WebRTC: No video sender found, adding track');
+            this.peerConnection.addTrack(newVideoTrack, this.localStream);
+          }
+        }
+        
+        // Notify local stream callback so UI updates
+        this.onLocalStreamCallback?.(this.localStream);
+        
+      } catch (error) {
+        console.error('🎥 WebRTC: Error getting new video track:', error);
+      }
+    } else {
+      // Disable video - stop the tracks completely
+      console.log('🎥 WebRTC: Stopping video tracks');
+      currentVideoTracks.forEach(track => {
+        track.stop();
+        this.localStream!.removeTrack(track);
       });
+      
+      // Notify local stream callback so UI updates (shows avatar)
+      this.onLocalStreamCallback?.(this.localStream);
     }
   }
 

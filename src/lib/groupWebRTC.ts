@@ -28,7 +28,7 @@ export interface Participant {
 }
 
 export interface GroupCallSignal {
-  type: 'group-offer' | 'group-answer' | 'group-ice-candidate' | 'group-join' | 'group-leave' | 'group-end';
+  type: 'group-offer' | 'group-answer' | 'group-ice-candidate' | 'group-join' | 'group-leave' | 'group-end' | 'group-media-state-update';
   from: string;
   to?: string; // Optional - if not set, broadcast to all
   conversationId: string;
@@ -163,6 +163,9 @@ export class GroupCallManager {
         break;
       case 'group-end':
         this.endCall();
+        break;
+      case 'group-media-state-update':
+        this.handleMediaStateUpdate(signal);
         break;
     }
   }
@@ -408,6 +411,22 @@ export class GroupCallManager {
     this.iceCandidateQueues.set(participantId, []);
   }
 
+  // Handle media state update
+  private handleMediaStateUpdate(signal: GroupCallSignal): void {
+    const participantId = signal.from;
+    const participant = this.participants.get(participantId);
+    if (participant) {
+      if (typeof signal.data.video !== 'undefined') {
+        participant.videoEnabled = signal.data.video;
+      }
+      if (typeof signal.data.audio !== 'undefined') {
+        participant.audioEnabled = signal.data.audio;
+      }
+      this.participants.set(participantId, participant);
+      this.notifyParticipantUpdate();
+    }
+  }
+
   // Handle participant leaving
   private handleParticipantLeave(participantId: string): void {
     console.log('🎥 GroupWebRTC: Participant leaving:', participantId);
@@ -510,6 +529,14 @@ export class GroupCallManager {
       this.localStream.getAudioTracks().forEach(track => {
         track.enabled = enabled;
       });
+      
+      // Broadcast state change
+      this.sendSignal({
+        type: 'group-media-state-update',
+        from: this.currentUserId,
+        conversationId: this.conversationId,
+        data: { audio: enabled }
+      }).catch(err => console.error('Error sending audio state:', err));
     }
   }
 
@@ -571,6 +598,14 @@ export class GroupCallManager {
       // Notify local stream callback so UI updates (shows avatar)
       this.onLocalStreamCallback?.(this.localStream);
     }
+
+    // Broadcast state change
+    await this.sendSignal({
+      type: 'group-media-state-update',
+      from: this.currentUserId,
+      conversationId: this.conversationId,
+      data: { video: enabled }
+    });
   }
 
   // Replace video track in all peer connections

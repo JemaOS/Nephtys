@@ -8,7 +8,7 @@ import { groupCallManager, Participant, GroupCallConfig } from '@/lib/groupWebRT
 import { useAuth } from './AuthContext'
 
 interface CallSignal {
-  type: 'offer' | 'answer' | 'ice-candidate' | 'call-end' | 'group-call-invite'
+  type: 'offer' | 'answer' | 'ice-candidate' | 'call-end' | 'group-call-invite' | 'media-state-update'
   from: string
   to: string
   data: any
@@ -46,6 +46,7 @@ interface CallContextType {
   remoteStream: MediaStream | null
   audioEnabled: boolean
   videoEnabled: boolean
+  remoteVideoEnabled: boolean
   incomingCall: IncomingCall | null
   // Group call specific
   isGroupCall: boolean
@@ -72,6 +73,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null)
   const [audioEnabled, setAudioEnabled] = useState(true)
   const [videoEnabled, setVideoEnabled] = useState(true)
+  const [remoteVideoEnabled, setRemoteVideoEnabled] = useState(true)
   const [incomingCall, setIncomingCall] = useState<IncomingCall | null>(null)
   const [incomingCallSignal, setIncomingCallSignal] = useState<CallSignal | null>(null)
   const [currentCallUserId, setCurrentCallUserId] = useState<string | null>(null)
@@ -324,6 +326,14 @@ export function CallProvider({ children }: { children: ReactNode }) {
         // Pass false to avoid sending another call-end signal back (would cause infinite loop)
         endCall(false)
         break
+
+      case 'media-state-update':
+        if (signal.data) {
+          if (typeof signal.data.video !== 'undefined') {
+            setRemoteVideoEnabled(signal.data.video)
+          }
+        }
+        break
     }
   }
 
@@ -405,6 +415,12 @@ export function CallProvider({ children }: { children: ReactNode }) {
       setLocalStream(stream)
       setAudioEnabled(config.audio)
       setVideoEnabled(config.video)
+      setRemoteVideoEnabled(true) // Reset remote video state
+
+      // Listen for local stream updates (e.g. when toggling video)
+      webrtcManager.onLocalStream((updatedStream) => {
+        setLocalStream(new MediaStream(updatedStream.getTracks()))
+      })
 
       setIsPeerConnectionReady(true)
 
@@ -486,6 +502,12 @@ export function CallProvider({ children }: { children: ReactNode }) {
       
       const stream = await webrtcManager.initializeCall(config)
       setLocalStream(stream)
+      setRemoteVideoEnabled(incomingCallSignal.data.video !== false)
+
+      // Listen for local stream updates
+      webrtcManager.onLocalStream((updatedStream) => {
+        setLocalStream(new MediaStream(updatedStream.getTracks()))
+      })
 
       // FIX: Set up callbacks AFTER initializeCall to ensure they aren't cleared by internal cleanup
       webrtcManager.onRemoteStream((...args) => {
@@ -724,7 +746,18 @@ export function CallProvider({ children }: { children: ReactNode }) {
         setLocalStream(updatedStream)
       }
     } else {
-      webrtcManager.toggleVideo(newState)
+      await webrtcManager.toggleVideo(newState)
+      
+      // Send signal to remote peer
+      if (currentCallUserId && currentCallConversationId) {
+        await sendSignal({
+          type: 'media-state-update',
+          from: user!.id,
+          to: currentCallUserId,
+          data: { video: newState },
+          conversation_id: currentCallConversationId,
+        })
+      }
     }
     setVideoEnabled(newState)
   }
@@ -795,6 +828,11 @@ export function CallProvider({ children }: { children: ReactNode }) {
       setLocalStream(stream)
       setAudioEnabled(config.audio)
       setVideoEnabled(config.video)
+
+      // Listen for local stream updates
+      groupCallManager.onLocalStream((updatedStream) => {
+        setLocalStream(new MediaStream(updatedStream.getTracks()))
+      })
 
       // Set up callbacks
       groupCallManager.onParticipantUpdate((...args) => {
@@ -959,6 +997,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       remoteStream,
       audioEnabled,
       videoEnabled,
+      remoteVideoEnabled,
       incomingCall,
       isGroupCall,
       groupParticipants,
