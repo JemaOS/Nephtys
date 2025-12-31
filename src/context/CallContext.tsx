@@ -598,7 +598,11 @@ export function CallProvider({ children }: { children: ReactNode }) {
     if (!user) return
 
     try {
-      if (isGroupCall && currentCallConversationId) {
+      // Determine if we are in a group call
+      // It's a group call if the flag is set OR if we are in a call without a specific peer ID (which implies group)
+      const isGroup = isGroupCall || (isInCall && !currentCallUserId && currentCallConversationId)
+
+      if (isGroup && currentCallConversationId) {
         // --- SCENARIO 1: ALREADY IN GROUP CALL ---
         console.log('Adding participant to existing group call:', contactId)
         
@@ -691,11 +695,12 @@ export function CallProvider({ children }: { children: ReactNode }) {
         // 4. Start the group call immediately
         // We need a small delay to ensure the endCall cleanup is done
         setTimeout(async () => {
+          console.log('Starting group call after upgrade, video:', videoEnabled)
           await startGroupCall(newConversation.id, {
             audio: audioEnabled,
             video: videoEnabled
           })
-        }, 500)
+        }, 1000) // Increased delay to 1s to ensure camera is released
       }
     } catch (error) {
       console.error('Error adding participant:', error)
