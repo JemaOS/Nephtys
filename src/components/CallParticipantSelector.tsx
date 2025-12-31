@@ -158,7 +158,10 @@ export function CallParticipantSelector({ onClose, onSelect, currentParticipants
               {filteredContacts.map((contact) => (
                 <button
                   key={contact.id}
-                  onClick={() => onSelect(contact.contact_user_id)}
+                  onClick={async () => {
+                    await onSelect(contact.contact_user_id)
+                    // Optional: Add visual feedback here if needed, but onSelect usually closes the modal
+                  }}
                   className="w-full px-3 py-3 hover:bg-white/5 rounded-xl transition-colors flex items-center gap-3 text-left group"
                 >
                   {/* Avatar */}
