@@ -11,6 +11,7 @@ import { useSupabaseReconnect } from './hooks/useSupabaseReconnect'
 import { useKeepAlive } from './hooks/useKeepAlive'
 import { startConnectionMonitoring, stopConnectionMonitoring } from './lib/supabase'
 import { useEffect, useState, useCallback, lazy, Suspense } from 'react'
+import { ErrorBoundary } from './components/ErrorBoundary'
 
 const AuthPage = lazy(() => import('./pages/AuthPage').then(module => ({ default: module.AuthPage })))
 const ChatsPage = lazy(() => import('./pages/ChatsPage').then(module => ({ default: module.ChatsPage })))
@@ -139,9 +140,10 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
 
 function AppRoutes() {
   return (
-    <Suspense fallback={<LoadingScreen />}>
-      <Routes>
-        <Route path="/auth" element={
+    <ErrorBoundary>
+      <Suspense fallback={<LoadingScreen />}>
+        <Routes>
+          <Route path="/auth" element={
           <PublicRoute>
             <AuthPage />
           </PublicRoute>
@@ -189,9 +191,10 @@ function AppRoutes() {
           </PrivateRoute>
         } />
         
-        <Route path="/" element={<Navigate to="/chats" />} />
-      </Routes>
-    </Suspense>
+          <Route path="/" element={<Navigate to="/chats" />} />
+        </Routes>
+      </Suspense>
+    </ErrorBoundary>
   )
 }
 

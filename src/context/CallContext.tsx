@@ -695,11 +695,14 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
         // 4. Start the group call immediately
         // We need a small delay to ensure the endCall cleanup is done
+        // Determine if we should have video based on current stream or state
+        const shouldHaveVideo = videoEnabled || (localStream?.getVideoTracks().length ?? 0) > 0;
+        
         setTimeout(async () => {
-          console.log('Starting group call after upgrade, video:', videoEnabled)
+          console.log('Starting group call after upgrade, video:', shouldHaveVideo)
           await startGroupCall(newConversation.id, {
             audio: audioEnabled,
-            video: videoEnabled
+            video: shouldHaveVideo
           })
         }, 1000) // Increased delay to 1s to ensure camera is released
       }
