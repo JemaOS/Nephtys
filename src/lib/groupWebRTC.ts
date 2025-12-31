@@ -577,11 +577,11 @@ export class GroupCallManager {
         // Add new video track to local stream
         this.localStream.addTrack(newVideoTrack);
         
+        // Notify local stream callback so UI updates immediately
+        this.onLocalStreamCallback?.(this.localStream);
+
         // Replace the video track in all peer connections
         await this.replaceVideoTrackInAllPeers(newVideoTrack);
-        
-        // Notify local stream callback so UI updates
-        this.onLocalStreamCallback?.(this.localStream);
         
         console.log('🎥 GroupWebRTC: Video track replaced in all peers successfully');
       } catch (error) {
@@ -590,6 +590,10 @@ export class GroupCallManager {
     } else {
       // Disable video - stop the tracks completely (we'll get new ones when re-enabling)
       console.log('🎥 GroupWebRTC: Stopping video tracks');
+      
+      // Replace track with null in all peers to keep connection alive
+      await this.replaceVideoTrackInAllPeers(null);
+
       currentVideoTracks.forEach(track => {
         track.stop();
         this.localStream!.removeTrack(track);
@@ -609,7 +613,7 @@ export class GroupCallManager {
   }
 
   // Replace video track in all peer connections
-  private async replaceVideoTrackInAllPeers(newTrack: MediaStreamTrack): Promise<void> {
+  private async replaceVideoTrackInAllPeers(newTrack: MediaStreamTrack | null): Promise<void> {
     console.log('🎥 GroupWebRTC: Replacing video track in', this.participants.size, 'peer connections');
     
     for (const [participantId, participant] of this.participants) {
@@ -624,8 +628,8 @@ export class GroupCallManager {
           } catch (error) {
             console.error('🎥 GroupWebRTC: Error replacing track for participant:', participantId, error);
           }
-        } else {
-          // No video sender exists, we need to add the track
+        } else if (newTrack) {
+          // No video sender exists, we need to add the track (only if newTrack is not null)
           console.log('🎥 GroupWebRTC: No video sender for participant:', participantId, '- adding track');
           try {
             participant.peerConnection.addTrack(newTrack, this.localStream!);

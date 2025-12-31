@@ -287,6 +287,17 @@ export class WebRTCManager {
     } else {
       // Disable video - stop the tracks completely
       console.log('🎥 WebRTC: Stopping video tracks');
+      
+      // First replace track with null to keep the sender active but sending nothing
+      // This prevents the remote track from ending, allowing us to resume later
+      if (this.peerConnection) {
+        const senders = this.peerConnection.getSenders();
+        const videoSender = senders.find(sender => sender.track?.kind === 'video');
+        if (videoSender) {
+          videoSender.replaceTrack(null).catch(err => console.error('Error replacing track with null:', err));
+        }
+      }
+
       currentVideoTracks.forEach(track => {
         track.stop();
         this.localStream!.removeTrack(track);
