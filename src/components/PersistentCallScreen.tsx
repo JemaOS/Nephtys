@@ -230,11 +230,14 @@ export function PersistentCallScreen() {
   }, [localStream, isCalling, isInCall, videoEnabled])
 
   // Handle remote stream attachment
+  // Re-attach when remoteStream changes OR when local videoEnabled changes (to ensure remote video stays attached)
   useEffect(() => {
     if (remoteStream) {
       console.log('PersistentCallScreen: Attaching remote stream', {
         audioTracks: remoteStream.getAudioTracks().length,
-        videoTracks: remoteStream.getVideoTracks().length
+        videoTracks: remoteStream.getVideoTracks().length,
+        videoEnabled,
+        remoteVideoEnabled
       });
 
       // Ensure all tracks are enabled
@@ -246,6 +249,7 @@ export function PersistentCallScreen() {
       });
       
       if (remoteVideoRef.current) {
+        // Always re-attach the stream to ensure video displays correctly
         remoteVideoRef.current.srcObject = remoteStream
         remoteVideoRef.current.play().catch(err => {
           console.warn('Video play failed:', err);
@@ -260,7 +264,7 @@ export function PersistentCallScreen() {
         });
       }
     }
-  }, [remoteStream])
+  }, [remoteStream, videoEnabled, remoteVideoEnabled])
 
   // Toggle speaker (simulated for now as setSinkId is experimental/limited)
   const toggleSpeaker = (...args: any[]) => {
