@@ -232,78 +232,12 @@ export class WebRTCManager {
   async toggleVideo(enabled: boolean): Promise<void> {
     console.log('🎥 WebRTC: toggleVideo called, enabled:', enabled);
     
-    if (!this.localStream) {
-      console.log('🎥 WebRTC: No local stream, cannot toggle video');
-      return;
-    }
-
-    const currentVideoTracks = this.localStream.getVideoTracks();
-    
-    if (enabled) {
-      // Re-enable video - ALWAYS get a new video track and replace it
-      console.log('🎥 WebRTC: Getting new video track for re-enable...');
-      try {
-        // Get a new video stream
-        const newVideoStream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: 'user',
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-            frameRate: { ideal: 60 }
-          }
-        });
-        
-        const newVideoTrack = newVideoStream.getVideoTracks()[0];
-        console.log('🎥 WebRTC: Got new video track:', newVideoTrack.id);
-        
-        // Remove old video tracks from local stream and stop them
-        currentVideoTracks.forEach(track => {
-          this.localStream!.removeTrack(track);
-          track.stop();
-        });
-        
-        // Add new video track to local stream
-        this.localStream.addTrack(newVideoTrack);
-        
-        // Notify local stream callback so UI updates immediately
-        this.onLocalStreamCallback?.(this.localStream);
-
-        // Replace the video track in peer connection
-        if (this.peerConnection) {
-          const senders = this.peerConnection.getSenders();
-          const videoSender = senders.find(sender => sender.track?.kind === 'video');
-          
-          if (videoSender) {
-            await videoSender.replaceTrack(newVideoTrack);
-            console.log('🎥 WebRTC: Replaced video track in peer connection');
-          } else {
-            console.log('🎥 WebRTC: No video sender found, adding track');
-            this.peerConnection.addTrack(newVideoTrack, this.localStream);
-          }
-        }
-      } catch (error) {
-        console.error('🎥 WebRTC: Error getting new video track:', error);
-      }
-    } else {
-      // Disable video - stop the tracks completely
-      console.log('🎥 WebRTC: Stopping video tracks');
-      
-      // First replace track with null to keep the sender active but sending nothing
-      // This prevents the remote track from ending, allowing us to resume later
-      if (this.peerConnection) {
-        const senders = this.peerConnection.getSenders();
-        const videoSender = senders.find(sender => sender.track?.kind === 'video');
-        if (videoSender) {
-          videoSender.replaceTrack(null).catch(err => console.error('Error replacing track with null:', err));
-        }
-      }
-
-      currentVideoTracks.forEach(track => {
-        track.stop();
-        this.localStream!.removeTrack(track);
+    if (this.localStream) {
+      this.localStream.getVideoTracks().forEach(track => {
+        track.enabled = enabled;
       });
       
-      // Notify local stream callback so UI updates (shows avatar)
+      // Notify local stream callback so UI updates
       this.onLocalStreamCallback?.(this.localStream);
     }
   }

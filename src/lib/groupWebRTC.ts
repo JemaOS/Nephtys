@@ -544,62 +544,12 @@ export class GroupCallManager {
   async toggleVideo(enabled: boolean): Promise<void> {
     console.log('🎥 GroupWebRTC: toggleVideo called, enabled:', enabled);
     
-    if (!this.localStream) {
-      console.log('🎥 GroupWebRTC: No local stream, cannot toggle video');
-      return;
-    }
-
-    const currentVideoTracks = this.localStream.getVideoTracks();
-    
-    if (enabled) {
-      // Re-enable video - ALWAYS get a new video track and replace it in all peer connections
-      // This is necessary because just enabling the track doesn't properly update remote peers
-      console.log('🎥 GroupWebRTC: Getting new video track for re-enable...');
-      try {
-        // Get a new video stream
-        const newVideoStream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            width: { ideal: 640 },
-            height: { ideal: 480 },
-            facingMode: 'user'
-          }
-        });
-        
-        const newVideoTrack = newVideoStream.getVideoTracks()[0];
-        console.log('🎥 GroupWebRTC: Got new video track:', newVideoTrack.id);
-        
-        // Remove old video tracks from local stream and stop them
-        currentVideoTracks.forEach(track => {
-          this.localStream!.removeTrack(track);
-          track.stop();
-        });
-        
-        // Add new video track to local stream
-        this.localStream.addTrack(newVideoTrack);
-        
-        // Notify local stream callback so UI updates immediately
-        this.onLocalStreamCallback?.(this.localStream);
-
-        // Replace the video track in all peer connections
-        await this.replaceVideoTrackInAllPeers(newVideoTrack);
-        
-        console.log('🎥 GroupWebRTC: Video track replaced in all peers successfully');
-      } catch (error) {
-        console.error('🎥 GroupWebRTC: Error getting new video track:', error);
-      }
-    } else {
-      // Disable video - stop the tracks completely (we'll get new ones when re-enabling)
-      console.log('🎥 GroupWebRTC: Stopping video tracks');
-      
-      // Replace track with null in all peers to keep connection alive
-      await this.replaceVideoTrackInAllPeers(null);
-
-      currentVideoTracks.forEach(track => {
-        track.stop();
-        this.localStream!.removeTrack(track);
+    if (this.localStream) {
+      this.localStream.getVideoTracks().forEach(track => {
+        track.enabled = enabled;
       });
       
-      // Notify local stream callback so UI updates (shows avatar)
+      // Notify local stream callback so UI updates
       this.onLocalStreamCallback?.(this.localStream);
     }
 
