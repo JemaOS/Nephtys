@@ -240,13 +240,19 @@ export class WebRTCManager {
   async toggleVideo(enabled: boolean): Promise<void> {
     console.log('🎥 WebRTC: toggleVideo called, enabled:', enabled);
     
-    if (!this.localStream) {
+    if (!this.localStream || !this.peerConnection) {
+      console.warn('🎥 WebRTC: No local stream or peer connection');
       return;
     }
 
+    // Find the video sender first
+    const senders = this.peerConnection.getSenders();
+    const videoSender = senders.find(s => s.track?.kind === 'video' || s.track === null);
+    
     if (enabled) {
       // Enable: Get a fresh video track and use replaceTrack (NO renegotiation needed)
       try {
+        console.log('🎥 WebRTC: Getting new video track from camera...');
         const newStream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: 'user',
@@ -256,40 +262,48 @@ export class WebRTCManager {
           }
         });
         const newTrack = newStream.getVideoTracks()[0];
+        console.log('🎥 WebRTC: New video track obtained, id:', newTrack.id, 'readyState:', newTrack.readyState);
         
-        // Update local stream
+        // Update local stream - remove old tracks first
         const oldTracks = this.localStream.getVideoTracks();
         oldTracks.forEach(t => {
+          console.log('🎥 WebRTC: Removing old track from local stream, id:', t.id);
           this.localStream!.removeTrack(t);
-          t.stop(); // Stop old track
+          t.stop(); // Stop old track to release camera
         });
         this.localStream.addTrack(newTrack);
         this.onLocalStreamCallback?.(this.localStream);
 
         // Use replaceTrack - this does NOT trigger renegotiation
-        // This is how WhatsApp and other apps do it
-        if (this.peerConnection) {
-          const senders = this.peerConnection.getSenders();
-          const videoSender = senders.find(s => s.track?.kind === 'video' || s.track === null);
-          
-          if (videoSender) {
-            await videoSender.replaceTrack(newTrack);
-            console.log('🎥 WebRTC: Video track replaced successfully (no renegotiation)');
-          } else {
-            // No video sender exists, we need to add one
-            // This only happens if the call started without video
-            console.log('🎥 WebRTC: No video sender found, adding new track');
-            this.peerConnection.addTrack(newTrack, this.localStream);
-          }
+        if (videoSender) {
+          console.log('🎥 WebRTC: Replacing track in sender, old track:', videoSender.track?.id);
+          await videoSender.replaceTrack(newTrack);
+          console.log('🎥 WebRTC: Video track replaced successfully (no renegotiation)');
+        } else {
+          // No video sender exists, we need to add one
+          // This only happens if the call started without video
+          console.log('🎥 WebRTC: No video sender found, adding new track to peer connection');
+          this.peerConnection.addTrack(newTrack, this.localStream);
         }
 
       } catch (error) {
-        console.error('Error enabling video:', error);
+        console.error('🎥 WebRTC: Error enabling video:', error);
       }
     } else {
-      // Disable: Just disable the track (keeps the sender active for later)
+      // Disable: Replace with null track to stop sending video
+      // This is cleaner than just disabling the track
+      if (videoSender) {
+        console.log('🎥 WebRTC: Replacing video track with null to stop sending');
+        await videoSender.replaceTrack(null);
+        console.log('🎥 WebRTC: Video sender track set to null');
+      }
+      
+      // Also disable and stop the local track
       this.localStream.getVideoTracks().forEach(track => {
+        console.log('🎥 WebRTC: Stopping local video track, id:', track.id);
         track.enabled = false;
+        track.stop();
+        this.localStream!.removeTrack(track);
       });
       this.onLocalStreamCallback?.(this.localStream);
     }
