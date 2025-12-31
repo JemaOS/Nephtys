@@ -58,6 +58,7 @@ interface CallContextType {
   toggleAudio: () => void
   toggleVideo: () => void
   rejectCall: () => void
+  addParticipant: (contactId: string) => Promise<void>
 }
 
 const CallContext = createContext<CallContextType | undefined>(undefined)
@@ -571,6 +572,115 @@ export function CallProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  const addParticipant = async (contactId: string) => {
+    if (!user) return
+
+    try {
+      if (isGroupCall && currentCallConversationId) {
+        // --- SCENARIO 1: ALREADY IN GROUP CALL ---
+        console.log('Adding participant to existing group call:', contactId)
+        
+        // 1. Check if user is already a member of the conversation
+        const { data: existingMember } = await supabase
+          .from('conversation_members')
+          .select('id')
+          .eq('conversation_id', currentCallConversationId)
+          .eq('user_id', contactId)
+          .maybeSingle()
+        
+        // 2. If not, add them
+        if (!existingMember) {
+          await supabase
+            .from('conversation_members')
+            .insert({
+              conversation_id: currentCallConversationId,
+              user_id: contactId,
+              role: 'member',
+              is_active: true
+            })
+        }
+
+        // 3. Send invite signal
+        // Get conversation info for the invite
+        const { data: conversation } = await supabase
+          .from('conversations')
+          .select('name, avatar_url')
+          .eq('id', currentCallConversationId)
+          .single()
+
+        await sendSignal({
+          type: 'group-call-invite',
+          from: user.id,
+          to: contactId,
+          data: {
+            video: videoEnabled,
+            conversationName: conversation?.name || 'Groupe',
+            conversationAvatar: conversation?.avatar_url,
+          },
+          conversation_id: currentCallConversationId,
+        })
+
+        console.log('Invite sent to:', contactId)
+
+      } else if (isInCall && currentCallUserId && currentCallConversationId) {
+        // --- SCENARIO 2: 1-ON-1 CALL -> UPGRADE TO GROUP ---
+        console.log('Upgrading 1-on-1 call to group call with:', contactId)
+        
+        // 1. Create a new group conversation
+        // Get names for the group title
+        const { data: myProfile } = await supabase.from('profiles').select('display_name, username').eq('id', user.id).single()
+        const { data: peerProfile } = await supabase.from('profiles').select('display_name, username').eq('id', currentCallUserId).single()
+        const { data: newProfile } = await supabase.from('profiles').select('display_name, username').eq('id', contactId).single()
+        
+        const myName = myProfile?.display_name || myProfile?.username || 'Moi'
+        const peerName = peerProfile?.display_name || peerProfile?.username || 'Utilisateur'
+        const newName = newProfile?.display_name || newProfile?.username || 'Nouveau'
+        
+        const groupName = `Appel: ${myName}, ${peerName}, ${newName}`.substring(0, 50)
+
+        const { data: newConversation, error: createError } = await supabase
+          .from('conversations')
+          .insert({
+            type: 'group',
+            name: groupName,
+            created_by: user.id,
+            is_encrypted: true,
+            last_message_at: new Date().toISOString()
+          })
+          .select()
+          .single()
+
+        if (createError || !newConversation) {
+          throw new Error('Failed to create group conversation')
+        }
+
+        // 2. Add all members
+        await supabase.from('conversation_members').insert([
+          { conversation_id: newConversation.id, user_id: user.id, role: 'admin', is_active: true },
+          { conversation_id: newConversation.id, user_id: currentCallUserId, role: 'member', is_active: true },
+          { conversation_id: newConversation.id, user_id: contactId, role: 'member', is_active: true }
+        ])
+
+        // 3. End current 1-on-1 call
+        // We send a special reason so the other peer knows we are switching to group?
+        // For now, just end it. The user experience might be a bit abrupt but it's safe.
+        endCall(true)
+
+        // 4. Start the group call immediately
+        // We need a small delay to ensure the endCall cleanup is done
+        setTimeout(async () => {
+          await startGroupCall(newConversation.id, {
+            audio: audioEnabled,
+            video: videoEnabled
+          })
+        }, 500)
+      }
+    } catch (error) {
+      console.error('Error adding participant:', error)
+      alert('Impossible d\'ajouter le participant')
+    }
+  }
+
   // Answer a group call (join the existing call)
   const answerGroupCall = async () => {
     if (!incomingCallSignal || !incomingCall?.isGroupCall) return
@@ -859,6 +969,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       toggleAudio,
       toggleVideo,
       rejectCall,
+      addParticipant,
     }}>
       {children}
     </CallContext.Provider>

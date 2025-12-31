@@ -4,18 +4,20 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useCall } from '@/context/CallContext'
 import { useAuth } from '@/context/AuthContext'
-import { 
-  Phone, 
-  Video, 
-  Mic, 
-  MicOff, 
-  VideoOff, 
-  PhoneOff, 
-  Users, 
-  Volume2, 
+import { CallParticipantSelector } from './CallParticipantSelector'
+import {
+  Phone,
+  Video,
+  Mic,
+  MicOff,
+  VideoOff,
+  PhoneOff,
+  Users,
+  Volume2,
   VolumeX,
   Maximize2,
-  Minimize2
+  Minimize2,
+  UserPlus
 } from 'lucide-react'
 
 // Helper component for call duration
@@ -130,12 +132,14 @@ export function PersistentCallScreen() {
     toggleVideo,
     isGroupCall,
     groupParticipants,
+    addParticipant,
   } = useCall()
 
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
   const remoteAudioRef = useRef<HTMLAudioElement>(null)
   const [isSpeakerOn, setIsSpeakerOn] = useState(true)
+  const [showAddParticipant, setShowAddParticipant] = useState(false)
 
   // Draggable self-view state
   const [pipPosition, setPipPosition] = useState<{ x: number; y: number }>(() => {
@@ -303,6 +307,13 @@ export function PersistentCallScreen() {
               </div>
             </div>
           </div>
+          
+          <button
+            onClick={() => setShowAddParticipant(true)}
+            className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors"
+          >
+            <UserPlus size={20} />
+          </button>
         </div>
 
         {/* Grid */}
@@ -347,6 +358,17 @@ export function PersistentCallScreen() {
             </button>
           </div>
         </div>
+
+        {showAddParticipant && (
+          <CallParticipantSelector
+            onClose={() => setShowAddParticipant(false)}
+            onSelect={(contactId) => {
+              addParticipant(contactId)
+              setShowAddParticipant(false)
+            }}
+            currentParticipants={allParticipants.map(p => p.id)}
+          />
+        )}
       </div>
     )
   }
@@ -391,19 +413,33 @@ export function PersistentCallScreen() {
       <div className="relative z-10 flex-1 flex flex-col h-full">
         
         {/* Top Bar */}
-        <div className="safe-area-top mt-4 flex flex-col items-center justify-center text-center px-4">
-          <div className="flex flex-col items-center gap-1">
-            <h2 className="text-white text-2xl md:text-3xl font-semibold tracking-tight drop-shadow-md">
-              {callerName}
-            </h2>
-            <div className="flex items-center gap-2 text-white/80 text-sm md:text-base font-medium drop-shadow-md bg-black/20 px-3 py-1 rounded-full backdrop-blur-sm">
-              {isRinging ? (
-                <span className="animate-pulse">Appel entrant...</span>
-              ) : isCalling ? (
-                <span className="animate-pulse">Appel en cours...</span>
-              ) : (
-                <CallDuration isActive={isInCall} />
-              )}
+        <div className="safe-area-top mt-4 px-4 relative">
+          {/* Add Participant Button (Top Right) */}
+          {!isRinging && (isInCall || isCalling) && (
+            <div className="absolute right-4 top-0 z-20">
+              <button
+                onClick={() => setShowAddParticipant(true)}
+                className="w-10 h-10 rounded-full bg-black/20 backdrop-blur-md border border-white/10 flex items-center justify-center text-white hover:bg-black/40 transition-colors"
+              >
+                <UserPlus size={20} />
+              </button>
+            </div>
+          )}
+
+          <div className="flex flex-col items-center justify-center text-center">
+            <div className="flex flex-col items-center gap-1">
+              <h2 className="text-white text-2xl md:text-3xl font-semibold tracking-tight drop-shadow-md">
+                {callerName}
+              </h2>
+              <div className="flex items-center gap-2 text-white/80 text-sm md:text-base font-medium drop-shadow-md bg-black/20 px-3 py-1 rounded-full backdrop-blur-sm">
+                {isRinging ? (
+                  <span className="animate-pulse">Appel entrant...</span>
+                ) : isCalling ? (
+                  <span className="animate-pulse">Appel en cours...</span>
+                ) : (
+                  <CallDuration isActive={isInCall} />
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -558,6 +594,17 @@ export function PersistentCallScreen() {
           </div>
         </div>
       </div>
+
+      {showAddParticipant && (
+        <CallParticipantSelector
+          onClose={() => setShowAddParticipant(false)}
+          onSelect={(contactId) => {
+            addParticipant(contactId)
+            setShowAddParticipant(false)
+          }}
+          currentParticipants={incomingCall?.from ? [incomingCall.from] : []}
+        />
+      )}
     </div>
   )
 }
