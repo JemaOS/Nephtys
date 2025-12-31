@@ -146,6 +146,22 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const handleIncomingSignal = async (signal: CallSignal) => {
     switch (signal.type) {
       case 'offer':
+        // Check if this is a renegotiation for the current call
+        if (isInCall && signal.conversation_id === currentCallConversationId) {
+          console.log('📞 CallContext: Received renegotiation offer');
+          if (webrtcManager) {
+            const answer = await webrtcManager.createAnswer(signal.data);
+            await sendSignal({
+              type: 'answer',
+              from: user!.id,
+              to: signal.from,
+              data: answer,
+              conversation_id: signal.conversation_id,
+            });
+          }
+          return;
+        }
+
         // Appel entrant
         setIncomingCallSignal(signal)
         setIsRinging(true)
@@ -422,6 +438,19 @@ export function CallProvider({ children }: { children: ReactNode }) {
         setLocalStream(new MediaStream(updatedStream.getTracks()))
       })
 
+      // Handle renegotiation needed (e.g. when toggling video)
+      webrtcManager.onNegotiationNeeded(async () => {
+        console.log('📞 CallContext: Renegotiation needed');
+        const offer = await webrtcManager.createOffer();
+        await sendSignal({
+          type: 'offer',
+          from: user!.id,
+          to: userId,
+          data: { ...offer, video: videoEnabled }, // Include video state
+          conversation_id: conversationId,
+        });
+      });
+
       setIsPeerConnectionReady(true)
 
       const offer = await webrtcManager.createOffer()
@@ -509,6 +538,19 @@ export function CallProvider({ children }: { children: ReactNode }) {
       webrtcManager.onLocalStream((updatedStream) => {
         setLocalStream(new MediaStream(updatedStream.getTracks()))
       })
+
+      // Handle renegotiation needed
+      webrtcManager.onNegotiationNeeded(async () => {
+        console.log('📞 CallContext: Renegotiation needed (callee)');
+        const offer = await webrtcManager.createOffer();
+        await sendSignal({
+          type: 'offer',
+          from: user!.id,
+          to: incomingCallSignal.from,
+          data: { ...offer, video: videoEnabled },
+          conversation_id: incomingCallSignal.conversation_id,
+        });
+      });
 
       // FIX: Set up callbacks AFTER initializeCall to ensure they aren't cleared by internal cleanup
       webrtcManager.onRemoteStream((...args) => {

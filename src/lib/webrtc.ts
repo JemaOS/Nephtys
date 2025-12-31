@@ -25,6 +25,7 @@ export class WebRTCManager {
   private onRemoteStreamCallback: ((stream: MediaStream) => void) | null = null;
   private onLocalStreamCallback: ((stream: MediaStream) => void) | null = null;
   private onCallEndCallback: (() => void) | null = null;
+  private onNegotiationNeededCallback: (() => void) | null = null;
 
   constructor() {
     this.peerConnection = null;
@@ -220,6 +221,10 @@ export class WebRTCManager {
     this.onLocalStreamCallback = callback;
   }
 
+  onNegotiationNeeded(callback: () => void): void {
+    this.onNegotiationNeededCallback = callback;
+  }
+
   onCallEnd(callback: () => void): void {
     this.onCallEndCallback = callback;
   }
@@ -260,20 +265,23 @@ export class WebRTCManager {
         this.localStream.addTrack(newTrack);
         this.onLocalStreamCallback?.(this.localStream);
 
-        // Replace in PeerConnection
+        // Replace in PeerConnection via Renegotiation (Most Reliable)
         if (this.peerConnection) {
-          const sender = this.peerConnection.getSenders().find(s => s.track?.kind === 'video');
-          if (sender) {
-            await sender.replaceTrack(newTrack);
-          } else {
-            this.peerConnection.addTrack(newTrack, this.localStream);
+          const senders = this.peerConnection.getSenders();
+          const videoSender = senders.find(s => s.track?.kind === 'video');
+          
+          if (videoSender) {
+            this.peerConnection.removeTrack(videoSender);
           }
+          
+          this.peerConnection.addTrack(newTrack, this.localStream);
+          
+          // Trigger renegotiation
+          this.onNegotiationNeededCallback?.();
         }
 
-        // Stop old tracks with a delay to prevent cutting off the receiver
-        setTimeout(() => {
-          oldTracks.forEach(t => t.stop());
-        }, 2000);
+        // Stop old tracks immediately (since we removed them from PC)
+        oldTracks.forEach(t => t.stop());
 
       } catch (error) {
         console.error('Error enabling video:', error);

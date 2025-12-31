@@ -293,11 +293,8 @@ export class GroupCallManager {
         videoEnabled: this.config.video,
       });
     } else {
-      // Check if we already have a stable connection - ignore duplicate offers
-      if (peerConnection.signalingState === 'stable' && peerConnection.connectionState === 'connected') {
-        console.log('🎥 GroupWebRTC: Ignoring duplicate offer - already connected to:', participantId);
-        return;
-      }
+      // Allow renegotiation (even if connected)
+      console.log('🎥 GroupWebRTC: Processing offer (possible renegotiation) from:', participantId);
       
       // If we're in the middle of negotiation, check if we should handle this offer
       // Use "polite peer" pattern - the peer with the lower ID is polite and yields
@@ -571,13 +568,11 @@ export class GroupCallManager {
         this.localStream.addTrack(newTrack);
         this.onLocalStreamCallback?.(this.localStream);
 
-        // Replace in all peers
-        await this.replaceVideoTrackInAllPeers(newTrack);
+        // Renegotiate with all peers
+        await this.renegotiateVideoTrackInAllPeers(newTrack);
 
-        // Stop old tracks with delay
-        setTimeout(() => {
-          oldTracks.forEach(t => t.stop());
-        }, 2000);
+        // Stop old tracks immediately
+        oldTracks.forEach(t => t.stop());
 
       } catch (error) {
         console.error('Error enabling group video:', error);
@@ -599,9 +594,9 @@ export class GroupCallManager {
     });
   }
 
-  // Replace video track in all peer connections
-  private async replaceVideoTrackInAllPeers(newTrack: MediaStreamTrack | null): Promise<void> {
-    console.log('🎥 GroupWebRTC: Replacing video track in', this.participants.size, 'peer connections');
+  // Renegotiate video track in all peer connections
+  private async renegotiateVideoTrackInAllPeers(newTrack: MediaStreamTrack): Promise<void> {
+    console.log('🎥 GroupWebRTC: Renegotiating video track in', this.participants.size, 'peer connections');
     
     for (const [participantId, participant] of this.participants) {
       if (participant.peerConnection) {
@@ -609,20 +604,25 @@ export class GroupCallManager {
         const videoSender = senders.find(sender => sender.track?.kind === 'video');
         
         if (videoSender) {
-          try {
-            await videoSender.replaceTrack(newTrack);
-            console.log('🎥 GroupWebRTC: Replaced video track for participant:', participantId);
-          } catch (error) {
-            console.error('🎥 GroupWebRTC: Error replacing track for participant:', participantId, error);
-          }
-        } else if (newTrack) {
-          // No video sender exists, we need to add the track (only if newTrack is not null)
-          console.log('🎥 GroupWebRTC: No video sender for participant:', participantId, '- adding track');
-          try {
-            participant.peerConnection.addTrack(newTrack, this.localStream!);
-          } catch (error) {
-            console.error('🎥 GroupWebRTC: Error adding track for participant:', participantId, error);
-          }
+          participant.peerConnection.removeTrack(videoSender);
+        }
+        
+        participant.peerConnection.addTrack(newTrack, this.localStream!);
+        
+        // Create and send offer
+        try {
+          const offer = await participant.peerConnection.createOffer();
+          await participant.peerConnection.setLocalDescription(offer);
+          
+          await this.sendSignal({
+            type: 'group-offer',
+            from: this.currentUserId,
+            to: participantId,
+            conversationId: this.conversationId,
+            data: offer,
+          });
+        } catch (error) {
+          console.error('🎥 GroupWebRTC: Error renegotiating with participant:', participantId, error);
         }
       }
     }
