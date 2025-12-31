@@ -265,6 +265,9 @@ export class WebRTCManager {
         // Add new video track to local stream
         this.localStream.addTrack(newVideoTrack);
         
+        // Notify local stream callback so UI updates immediately
+        this.onLocalStreamCallback?.(this.localStream);
+
         // Replace the video track in peer connection
         if (this.peerConnection) {
           const senders = this.peerConnection.getSenders();
@@ -278,10 +281,6 @@ export class WebRTCManager {
             this.peerConnection.addTrack(newVideoTrack, this.localStream);
           }
         }
-        
-        // Notify local stream callback so UI updates
-        this.onLocalStreamCallback?.(this.localStream);
-        
       } catch (error) {
         console.error('🎥 WebRTC: Error getting new video track:', error);
       }

@@ -698,6 +698,9 @@ export function CallProvider({ children }: { children: ReactNode }) {
         // Determine if we should have video based on current stream or state
         const shouldHaveVideo = videoEnabled || (localStream?.getVideoTracks().length ?? 0) > 0;
         
+        // Explicitly sync video state for the new call
+        setVideoEnabled(shouldHaveVideo);
+
         setTimeout(async () => {
           console.log('Starting group call after upgrade, video:', shouldHaveVideo)
           await startGroupCall(newConversation.id, {
