@@ -38,8 +38,13 @@ export class WebRTCManager {
       console.log('🎥 WebRTC: Requesting permissions for audio:', config.audio, 'video:', config.video);
       
       // Obtenir le stream local (audio/vidéo)
+      // Configuration audio améliorée pour la fiabilité
       this.localStream = await navigator.mediaDevices.getUserMedia({
-        audio: config.audio,
+        audio: config.audio ? {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        } : false,
         video: config.video ? {
           facingMode: 'user'
         } : false,
@@ -86,10 +91,22 @@ export class WebRTCManager {
 
       // Gérer la fermeture de connexion
       this.peerConnection.onconnectionstatechange = () => {
+        console.log('🎥 WebRTC: Connection state changed:', this.peerConnection?.connectionState);
         if (this.peerConnection?.connectionState === 'disconnected' ||
             this.peerConnection?.connectionState === 'failed' ||
             this.peerConnection?.connectionState === 'closed') {
           this.onCallEndCallback?.();
+        }
+      };
+
+      // Monitor ICE connection state for debugging reliability issues
+      this.peerConnection.oniceconnectionstatechange = () => {
+        const iceState = this.peerConnection?.iceConnectionState;
+        console.log('🧊 WebRTC: ICE connection state changed:', iceState);
+        
+        if (iceState === 'failed' || iceState === 'disconnected') {
+          console.warn('🧊 WebRTC: ICE connection issues detected!');
+          // We could trigger a restart here in the future
         }
       };
 

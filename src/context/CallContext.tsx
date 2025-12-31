@@ -328,11 +328,21 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
   const sendSignal = async (signal: CallSignal) => {
     if (channelRef) {
-      await channelRef.send({
-        type: 'broadcast',
-        event: 'call-signal',
-        payload: signal,
-      })
+      try {
+        const status = await channelRef.send({
+          type: 'broadcast',
+          event: 'call-signal',
+          payload: signal,
+        })
+
+        if (status !== 'ok') {
+          console.error('❌ CallContext: Failed to send signal', signal.type, 'status:', status)
+        }
+      } catch (error) {
+        console.error('❌ CallContext: Error sending signal:', error)
+      }
+    } else {
+      console.warn('⚠️ CallContext: Cannot send signal, channel not initialized', signal.type)
     }
   }
 
