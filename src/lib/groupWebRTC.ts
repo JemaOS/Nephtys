@@ -51,7 +51,6 @@ export class GroupCallManager {
   private config: GroupCallConfig = { audio: true, video: false };
   private channel: any = null;
   private iceCandidateQueues: Map<string, RTCIceCandidateInit[]> = new Map();
-  private oldTracks: MediaStreamTrack[] = [];
   
   // Callbacks
   private onParticipantUpdateCallback: ParticipantUpdateCallback | null = null;
@@ -552,6 +551,14 @@ export class GroupCallManager {
     if (enabled) {
       // Enable: Get a fresh video track
       try {
+        // 1. Stop old tracks FIRST
+        const oldTracks = this.localStream.getVideoTracks();
+        oldTracks.forEach(t => {
+          this.localStream!.removeTrack(t);
+          t.stop();
+        });
+
+        // 2. Get new stream
         const newStream = await navigator.mediaDevices.getUserMedia({
           video: {
             width: { ideal: 640 },
@@ -561,20 +568,12 @@ export class GroupCallManager {
         });
         const newTrack = newStream.getVideoTracks()[0];
         
-        // Update local stream immediately
-        const currentTracks = this.localStream.getVideoTracks();
-        currentTracks.forEach(t => {
-          this.localStream!.removeTrack(t);
-          // Store old track to stop it later
-          t.enabled = false;
-          this.oldTracks.push(t);
-        });
-        
+        // 3. Update local stream
         this.localStream.addTrack(newTrack);
         this.onLocalStreamCallback?.(this.localStream);
 
-        // Replace in all peers
-        await this.replaceVideoTrackInAllPeers(newTrack);
+        // 4. Renegotiate with all peers
+        await this.renegotiateVideoTrackInAllPeers(newTrack);
 
       } catch (error) {
         console.error('Error enabling group video:', error);
@@ -596,9 +595,9 @@ export class GroupCallManager {
     });
   }
 
-  // Replace video track in all peer connections
-  private async replaceVideoTrackInAllPeers(newTrack: MediaStreamTrack): Promise<void> {
-    console.log('🎥 GroupWebRTC: Replacing video track in', this.participants.size, 'peer connections');
+  // Renegotiate video track in all peer connections
+  private async renegotiateVideoTrackInAllPeers(newTrack: MediaStreamTrack): Promise<void> {
+    console.log('🎥 GroupWebRTC: Renegotiating video track in', this.participants.size, 'peer connections');
     
     for (const [participantId, participant] of this.participants) {
       if (participant.peerConnection) {
@@ -606,20 +605,25 @@ export class GroupCallManager {
         const videoSender = senders.find(sender => sender.track?.kind === 'video');
         
         if (videoSender) {
-          try {
-            await videoSender.replaceTrack(newTrack);
-            console.log('🎥 GroupWebRTC: Replaced video track for participant:', participantId);
-          } catch (error) {
-            console.error('🎥 GroupWebRTC: Error replacing track for participant:', participantId, error);
-          }
-        } else {
-          // No video sender exists, we need to add the track
-          console.log('🎥 GroupWebRTC: No video sender for participant:', participantId, '- adding track');
-          try {
-            participant.peerConnection.addTrack(newTrack, this.localStream!);
-          } catch (error) {
-            console.error('🎥 GroupWebRTC: Error adding track for participant:', participantId, error);
-          }
+          participant.peerConnection.removeTrack(videoSender);
+        }
+        
+        participant.peerConnection.addTrack(newTrack, this.localStream!);
+        
+        // Create and send offer
+        try {
+          const offer = await participant.peerConnection.createOffer();
+          await participant.peerConnection.setLocalDescription(offer);
+          
+          await this.sendSignal({
+            type: 'group-offer',
+            from: this.currentUserId,
+            to: participantId,
+            conversationId: this.conversationId,
+            data: offer,
+          });
+        } catch (error) {
+          console.error('🎥 GroupWebRTC: Error renegotiating with participant:', participantId, error);
         }
       }
     }
@@ -658,10 +662,6 @@ export class GroupCallManager {
 
   // Cleanup resources
   private cleanup(): void {
-    // Stop old tracks
-    this.oldTracks.forEach(t => t.stop());
-    this.oldTracks = [];
-
     // Stop local stream
     if (this.localStream) {
       this.localStream.getTracks().forEach(track => track.stop());

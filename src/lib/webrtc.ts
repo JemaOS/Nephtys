@@ -25,7 +25,7 @@ export class WebRTCManager {
   private onRemoteStreamCallback: ((stream: MediaStream) => void) | null = null;
   private onLocalStreamCallback: ((stream: MediaStream) => void) | null = null;
   private onCallEndCallback: (() => void) | null = null;
-  private oldTracks: MediaStreamTrack[] = [];
+  private onNegotiationNeededCallback: (() => void) | null = null;
 
   constructor() {
     this.peerConnection = null;
@@ -219,6 +219,10 @@ export class WebRTCManager {
 
   onLocalStream(callback: (stream: MediaStream) => void): void {
     this.onLocalStreamCallback = callback;
+  }
+
+  onNegotiationNeeded(callback: () => void): void {
+    this.onNegotiationNeededCallback = callback;
   }
 
   onCallEnd(callback: () => void): void {
