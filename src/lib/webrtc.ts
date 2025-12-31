@@ -46,7 +46,10 @@ export class WebRTCManager {
           autoGainControl: true,
         } : false,
         video: config.video ? {
-          facingMode: 'user'
+          facingMode: 'user',
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          frameRate: { ideal: 60 }
         } : false,
       });
 
@@ -62,7 +65,22 @@ export class WebRTCManager {
 
       // Ajouter les tracks locaux
       this.localStream.getTracks().forEach(track => {
-        this.peerConnection!.addTrack(track, this.localStream!);
+        const sender = this.peerConnection!.addTrack(track, this.localStream!);
+        
+        // Increase video bitrate if possible
+        if (track.kind === 'video') {
+          const params = sender.getParameters();
+          if (!params.encodings) {
+            params.encodings = [{}];
+          }
+          
+          // Set maxBitrate to 4 Mbps (4000000 bps)
+          params.encodings[0].maxBitrate = 4000000;
+          
+          sender.setParameters(params).catch(err => {
+            console.warn('🎥 WebRTC: Failed to set video bitrate parameters:', err);
+          });
+        }
       });
 
       // Écouter les tracks distants
