@@ -3,44 +3,28 @@
 -- Date: 2025-11-30
 
 -- Table name constant to avoid duplication
--- Ajouter la colonne is_archived si elle n'existe pas
-DO $$ 
+DO $
+DECLARE
+  tbl_name TEXT := 'conversation_members';
 BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM information_schema.columns 
-        WHERE table_name = 'conversation_members' 
-        AND column_name = 'is_archived'
-    ) THEN
-        ALTER TABLE public.conversation_members 
-        ADD COLUMN is_archived BOOLEAN DEFAULT false;
-    END IF;
-END $$;
+  -- Ajouter la colonne is_archived si elle n'existe pas
+  EXECUTE format(
+    'DO $ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = %L AND column_name = %L) THEN ALTER TABLE public.%I ADD COLUMN is_archived BOOLEAN DEFAULT false; END IF; END $',
+    tbl_name, 'is_archived', tbl_name
+  );
 
--- Ajouter la colonne is_muted si elle n'existe pas
-DO $$ 
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM information_schema.columns 
-        WHERE table_name = 'conversation_members' 
-        AND column_name = 'is_muted'
-    ) THEN
-        ALTER TABLE public.conversation_members 
-        ADD COLUMN is_muted BOOLEAN DEFAULT false;
-    END IF;
-END $$;
+  -- Ajouter la colonne is_muted si elle n'existe pas
+  EXECUTE format(
+    'DO $ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = %L AND column_name = %L) THEN ALTER TABLE public.%I ADD COLUMN is_muted BOOLEAN DEFAULT false; END IF; END $',
+    tbl_name, 'is_muted', tbl_name
+  );
 
--- Ajouter la colonne is_pinned si elle n'existe pas
-DO $$ 
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM information_schema.columns 
-        WHERE table_name = 'conversation_members' 
-        AND column_name = 'is_pinned'
-    ) THEN
-        ALTER TABLE public.conversation_members 
-        ADD COLUMN is_pinned BOOLEAN DEFAULT false;
-    END IF;
-END $$;
+  -- Ajouter la colonne is_pinned si elle n'existe pas
+  EXECUTE format(
+    'DO $ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = %L AND column_name = %L) THEN ALTER TABLE public.%I ADD COLUMN is_pinned BOOLEAN DEFAULT false; END IF; END $',
+    tbl_name, 'is_pinned', tbl_name
+  );
+END $;
 
 -- Créer un index pour améliorer les performances
 CREATE INDEX IF NOT EXISTS idx_conversation_members_archived 

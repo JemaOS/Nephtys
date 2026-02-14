@@ -2,52 +2,56 @@
 -- Description: Bucket pour stocker les images et vidéos
 -- Date: 2025-11-30
 
--- Create media bucket if not exists
-INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-SELECT 'media', 'media', true, 52428800, ARRAY[
-  'image/jpeg',
-  'image/png',
-  'image/gif',
-  'image/webp',
-  'image/svg+xml',
-  'video/mp4',
-  'video/webm',
-  'video/quicktime'
-]
-WHERE NOT EXISTS (SELECT 1 FROM storage.buckets WHERE id = 'media');
+-- Define constants to avoid duplication
+DO $
+DECLARE
+  bucket_id_val TEXT := 'media';
+BEGIN
+  -- Create media bucket if not exists
+  INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+  SELECT bucket_id_val, bucket_id_val, true, 52428800, ARRAY[
+    'image/jpeg',
+    'image/png',
+    'image/gif',
+    'image/webp',
+    'image/svg+xml',
+    'video/mp4',
+    'video/webm',
+    'video/quicktime'
+  ]
+  WHERE NOT EXISTS (SELECT 1 FROM storage.buckets WHERE id = bucket_id_val);
 
--- RLS Policies for media bucket
--- Policy: Users can upload their own media
-DROP POLICY IF EXISTS "Users can upload their own media" ON storage.objects;
-CREATE POLICY "Users can upload their own media"
-ON storage.objects
-FOR INSERT
-TO authenticated
-WITH CHECK (
-  bucket_id = 'media'
-  AND (storage.foldername(name))[1] = auth.uid()::text
-);
+  -- RLS Policies for media bucket
+  -- Policy: Users can upload their own media
+  EXECUTE format('DROP POLICY IF EXISTS "Users can upload their own media" ON storage.objects');
+  EXECUTE format('CREATE POLICY "Users can upload their own media"
+  ON storage.objects
+  FOR INSERT
+  TO authenticated
+  WITH CHECK (
+    bucket_id = %L
+    AND (storage.foldername(name))[1] = auth.uid()::text
+  )', bucket_id_val);
 
--- Policy: Users can view media in their conversations
-DROP POLICY IF EXISTS "Users can view media in their conversations" ON storage.objects;
-CREATE POLICY "Users can view media in their conversations"
-ON storage.objects
-FOR SELECT
-TO authenticated
-USING (
-  bucket_id = 'media'
-);
+  -- Policy: Users can view media in their conversations
+  EXECUTE format('DROP POLICY IF EXISTS "Users can view media in their conversations" ON storage.objects');
+  EXECUTE format('CREATE POLICY "Users can view media in their conversations"
+  ON storage.objects
+  FOR SELECT
+  TO authenticated
+  USING (bucket_id = %L)', bucket_id_val);
 
--- Policy: Users can delete their own media
-DROP POLICY IF EXISTS "Users can delete their own media" ON storage.objects;
-CREATE POLICY "Users can delete their own media"
-ON storage.objects
-FOR DELETE
-TO authenticated
-USING (
-  bucket_id = 'media'
-  AND (storage.foldername(name))[1] = auth.uid()::text
-);
+  -- Policy: Users can delete their own media
+  EXECUTE format('DROP POLICY IF EXISTS "Users can delete their own media" ON storage.objects');
+  EXECUTE format('CREATE POLICY "Users can delete their own media"
+  ON storage.objects
+  FOR DELETE
+  TO authenticated
+  USING (
+    bucket_id = %L
+    AND (storage.foldername(name))[1] = auth.uid()::text
+  )', bucket_id_val);
+END $;
 
 -- Add media-related columns to messages table if not exists
 ALTER TABLE public.messages

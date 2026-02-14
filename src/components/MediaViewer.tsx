@@ -738,7 +738,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
     );
   };
 
-  // Helper: Request fullscreen for video element on mobile
+  // Helper: Request fullscreen for video element on mobile - extracted to reduce complexity
   const requestVideoFullscreen = async (video: HTMLVideoElement & { webkitEnterFullscreen?: () => void; webkitRequestFullscreen?: () => Promise<void>; mozRequestFullScreen?: () => Promise<void>; msRequestFullscreen?: () => Promise<void>; webkitSupportsFullscreen?: boolean; webkitDisplayingFullscreen?: boolean; }, isCurrentlyFullscreen: boolean): Promise<boolean> => {
     // iOS Safari native fullscreen
     if (video.webkitEnterFullscreen && video.webkitSupportsFullscreen !== false) {
@@ -761,25 +761,37 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
       }
     }
 
-    // Other mobile browsers
+    // Other mobile browsers - try standard fullscreen
     if (video.requestFullscreen) {
       await video.requestFullscreen();
-      
-      // Only try orientation lock on non-PWA mobile browsers
-      if (!isPWA && window.screen?.orientation) {
-        try {
-          // @ts-ignore - lock is experimental
-          await window.screen.orientation.lock('landscape');
-        } catch (e) {
-          console.log('Orientation lock not available:', e);
-        }
-      }
       return true;
     } else if (video.webkitRequestFullscreen) {
       await video.webkitRequestFullscreen();
       return true;
     }
 
+    return false;
+  };
+
+  // Helper: Try different fullscreen methods - extracted
+  const tryContainerFullscreen = async (video: HTMLVideoElement): Promise<boolean> => {
+    const methods = [
+      () => video.requestFullscreen(),
+      () => (video as any).webkitRequestFullscreen(),
+      () => (video as any).mozRequestFullScreen(),
+      () => (video as any).msRequestFullscreen(),
+    ];
+    
+    for (const method of methods) {
+      try {
+        if (method()) {
+          await method();
+          return true;
+        }
+      } catch {
+        // Continue to next method
+      }
+    }
     return false;
   };
 
@@ -857,6 +869,18 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
     }
   };
 
+  // Try orientation lock - extracted to reduce complexity
+  const tryOrientationLock = async (): Promise<void> => {
+    if (!isPWA && window.screen?.orientation) {
+      try {
+        // @ts-ignore - lock is experimental
+        await window.screen.orientation.lock('landscape');
+      } catch (e) {
+        console.log('Orientation lock not available:', e);
+      }
+    }
+  };
+
   // Toggle fullscreen mode - refactored for reduced complexity
   const toggleFullscreen = useCallback(async () => {
     try {
@@ -881,16 +905,14 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
           }
           
           // Last resort: try video.requestFullscreen
-          if (video.requestFullscreen) {
-            await video.requestFullscreen();
-          } else if (video.webkitRequestFullscreen) {
-            await video.webkitRequestFullscreen();
-          } else if (video.mozRequestFullScreen) {
-            await video.mozRequestFullScreen();
-          } else if (video.msRequestFullscreen) {
-            await video.msRequestFullscreen();
+          const methodSuccess = await tryContainerFullscreen(video);
+          if (methodSuccess) {
+            setIsFullscreen(true);
+            return;
           }
           
+          // Try orientation lock if fullscreen succeeded
+          await tryOrientationLock();
           setIsFullscreen(true);
         } else {
           // For images, use document fullscreen
