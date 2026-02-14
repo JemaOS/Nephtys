@@ -116,7 +116,7 @@ export function AuthPage() {
 
           <form onSubmit={handleSubmit} className="space-y-1.5 sm:space-y-2">
             <div className="space-y-0.5 sm:space-y-1">
-              <label className="text-[9px] sm:text-[10px] text-accent">Pseudo</label>
+              <label className="text-[9px] sm:text-[10px] text-text-secondary font-medium">Pseudo</label>
               <div className="relative">
                 <User size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" />
                 <input
@@ -132,7 +132,7 @@ export function AuthPage() {
 
             {mode !== 'guest' && (
               <div className="space-y-0.5 sm:space-y-1">
-                <label className="text-[9px] sm:text-[10px] text-accent">Mot de passe</label>
+                <label className="text-[9px] sm:text-[10px] text-text-secondary font-medium">Mot de passe</label>
                 <div className="relative">
                   <Lock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" />
                   <input
@@ -188,7 +188,7 @@ export function AuthPage() {
         {/* Footer */}
         <div className="text-center pt-1 sm:pt-2">
           <p className="text-[9px] sm:text-[10px] text-gray-500">
-            Développé par <a href="https://www.jematechnology.fr/" target="_blank" rel="noopener noreferrer" className="text-[#6b6fdb] hover:underline">Jema Technology</a> © 2025 • Open Source & sous licence AGPL
+            Développé par <a href="https://www.jematechnology.fr/" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">Jema Technology</a> © 2025 • Open Source & sous licence AGPL
           </p>
         </div>
       </div>
