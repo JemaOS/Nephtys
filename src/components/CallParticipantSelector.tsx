@@ -2,7 +2,7 @@
 // Distributed under the license specified in the root directory of this project.
 
 import React, { useState, useEffect } from 'react'
-import { Search, X, UserPlus, Check, Loader2 } from 'lucide-react'
+import { Search, UserPlus, Check, Loader2 } from 'lucide-react'
 import { supabase, Contact, Profile } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 

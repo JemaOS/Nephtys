@@ -4,7 +4,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   X, Camera, Video, Phone, Users, Image, FileText, Link as LinkIcon,
-  Calendar, Lock, Edit2, Check, ChevronRight, Bell, BellOff, Archive,
+  Lock, Edit2, Check, ChevronRight, Bell, BellOff, Archive,
   Trash2, UserPlus, Crown, Download, ExternalLink, Loader2, Search, Timer
 } from 'lucide-react';
 import { supabase, Profile, Message } from '@/lib/supabase';
@@ -448,7 +448,7 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
       
       setCurrentAvatar(publicUrl);
       alert('✅ Photo mise à jour !');
-      window.location.reload();
+      globalThis.location.reload();
     } catch (err) {
       console.error('Photo upload error:', err);
       alert('❌ Erreur lors de l\'upload de la photo');
@@ -523,7 +523,7 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
     if (!error) {
       alert('✅ Conversation supprimée');
       onClose();
-      window.location.href = '/chats';
+      globalThis.location.href = '/chats';
     }
   };
 
