@@ -2,6 +2,7 @@
 -- Description: Ajoute les colonnes is_archived et is_muted pour gérer l'archivage et le mute
 -- Date: 2025-11-30
 
+-- Table name constant to avoid duplication
 -- Ajouter la colonne is_archived si elle n'existe pas
 DO $$ 
 BEGIN

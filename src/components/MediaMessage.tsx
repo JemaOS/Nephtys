@@ -262,6 +262,196 @@ const MediaTimestampOverlay: React.FC<{
   );
 };
 
+// Extracted Image renderer component to reduce main component complexity
+const ImageRenderer: React.FC<{
+  url: string;
+  thumbnail?: string;
+  caption?: string;
+  imageDimensions: { width: number; height: number } | null;
+  propWidth?: number;
+  propHeight?: number;
+  imageLoaded: boolean;
+  imageError: boolean;
+  timestamp: string;
+  status?: 'sent' | 'delivered' | 'read';
+  isOwn: boolean;
+  isStarred: boolean;
+  showHoverActions: boolean;
+  onOpenMenu?: (e: React.MouseEvent) => void;
+  onImageLoad: () => void;
+  onImageError: () => void;
+  onImageClick: () => void;
+}> = ({
+  url, thumbnail, caption, imageDimensions, propWidth, propHeight,
+  imageLoaded, imageError, timestamp, status, isOwn, isStarred,
+  showHoverActions, onOpenMenu, onImageLoad, onImageError, onImageClick
+}) => {
+  const getContainerStyle = (): React.CSSProperties => {
+    if (imageDimensions) {
+      const displayDims = calculateDisplayDimensions(imageDimensions);
+      const aspectRatio = imageDimensions.width / imageDimensions.height;
+      return {
+        width: '100%',
+        maxWidth: `${displayDims.width}px`,
+        aspectRatio: `${aspectRatio}`,
+        maxHeight: '400px',
+      };
+    }
+    return {
+      width: '100%',
+      maxWidth: '200px',
+      aspectRatio: '1',
+      maxHeight: '400px',
+    };
+  };
+
+  const containerStyle = getContainerStyle();
+  const hasKnownDimensions = !!imageDimensions;
+  
+  return (
+    <>
+      <div
+        className="relative cursor-pointer overflow-hidden rounded-xl border-[3px] border-[#787add] group message-media-container"
+        style={{ ...containerStyle, boxSizing: 'border-box' }}
+        onClick={onImageClick}
+      >
+        {onOpenMenu && (
+          <MessageHoverActions
+            isVisible={showHoverActions}
+            isOwn={isOwn}
+            onOpenMenu={onOpenMenu}
+          />
+        )}
+        {!imageLoaded && !imageError && thumbnail && (
+          <div
+            className="absolute inset-0 bg-cover bg-center"
+            style={{
+              backgroundImage: `url(${thumbnail})`,
+              filter: 'blur(10px)',
+              transform: 'scale(1.1)',
+            }}
+          />
+        )}
+        {!imageLoaded && !imageError && !thumbnail && (
+          <div
+            className="absolute inset-0 bg-gradient-to-br from-[#1a1a1a] to-[#2a2a2a] animate-pulse"
+            style={hasKnownDimensions ? {} : { aspectRatio: '4/3' }}
+          />
+        )}
+        {!imageLoaded && !imageError && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/20 z-10">
+            <div className="w-8 h-8 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+          </div>
+        )}
+        {imageError && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#1a1a1a] text-text-secondary">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+              <circle cx="8.5" cy="8.5" r="1.5"/>
+              <polyline points="21 15 16 10 5 21"/>
+            </svg>
+            <span className="text-xs mt-2">Image non disponible</span>
+          </div>
+        )}
+        <img
+          src={url}
+          alt="Image"
+          className={`w-full h-full object-cover transition-opacity duration-300 ${
+            imageLoaded ? 'opacity-100' : 'opacity-0'
+          }`}
+          loading="lazy"
+          onLoad={onImageLoad}
+          onError={onImageError}
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent pointer-events-none" />
+        {imageLoaded && !imageError && (
+          <MediaTimestampOverlay
+            timestamp={timestamp}
+            status={status}
+            isOwn={isOwn}
+          />
+        )}
+      </div>
+      {caption && (
+        <p className="mt-1.5 text-sm whitespace-pre-wrap break-words">{caption}</p>
+      )}
+    </>
+  );
+};
+
+// Extracted Video renderer component to reduce main component complexity
+const VideoRenderer: React.FC<{
+  url: string;
+  caption?: string;
+  videoDuration: string;
+  timestamp: string;
+  status?: 'sent' | 'delivered' | 'read';
+  isOwn: boolean;
+  showHoverActions: boolean;
+  onOpenMenu?: (e: React.MouseEvent) => void;
+  onVideoClick: () => void;
+}> = ({
+  url, caption, videoDuration, timestamp, status, isOwn,
+  showHoverActions, onOpenMenu, onVideoClick
+}) => {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  
+  return (
+    <>
+      <div
+        className="relative cursor-pointer overflow-hidden rounded-xl border-[3px] border-[#787add] max-w-[280px] group message-media-container"
+        onClick={onVideoClick}
+      >
+        {onOpenMenu && (
+          <MessageHoverActions
+            isVisible={showHoverActions}
+            isOwn={isOwn}
+            onOpenMenu={onOpenMenu}
+          />
+        )}
+        <div className="relative bg-black" style={{ borderRadius: '9px' }}>
+          <video
+            ref={videoRef}
+            src={url}
+            className="w-full h-auto object-cover"
+            style={{ maxHeight: '400px' }}
+            muted
+            playsInline
+            preload="metadata"
+          />
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="w-14 h-14 rounded-full bg-black/60 flex items-center justify-center backdrop-blur-sm">
+              <Play size={28} className="text-white ml-1" fill="white" />
+            </div>
+          </div>
+          <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent pointer-events-none" />
+          <div className="absolute bottom-2 left-2 flex items-center gap-1.5">
+            <span className="px-1.5 py-0.5 bg-white/90 text-black text-[10px] font-bold rounded">
+              HD
+            </span>
+            {videoDuration && (
+              <span className="text-white text-xs font-medium drop-shadow-lg">
+                {videoDuration}
+              </span>
+            )}
+          </div>
+          <MediaTimestampOverlay
+            timestamp={timestamp}
+            status={status}
+            isOwn={isOwn}
+          />
+          <div className="absolute top-2 left-2">
+            <Copy size={16} className="text-white drop-shadow-lg" />
+          </div>
+        </div>
+      </div>
+      {caption && (
+        <p className="mt-1.5 text-sm whitespace-pre-wrap break-words">{caption}</p>
+      )}
+    </>
+  );
+};
+
 export const MediaMessage: React.FC<MediaMessageProps> = ({
   url,
   type,

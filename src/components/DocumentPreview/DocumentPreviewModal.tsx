@@ -74,6 +74,44 @@ const getTouchDistance = (touches: React.TouchList): number => {
   return Math.sqrt(dx * dx + dy * dy);
 };
 
+// Load file and get URL
+const loadFileUrl = async (file: File, isText: boolean): Promise<{ url: string; textContent: string | null; error: string | null }> => {
+  const url = URL.createObjectURL(file);
+  
+  if (isText) {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        resolve({ url, textContent: e.target?.result as string, error: null });
+      };
+      reader.onerror = () => {
+        resolve({ url, textContent: null, error: 'Impossible de lire le fichier' });
+      };
+      reader.readAsText(file);
+    });
+  }
+  
+  return { url, textContent: null, error: null };
+};
+
+// Update container dimensions
+const updateContainerDimensions = (
+  containerRef: React.RefObject<HTMLDivElement>,
+  setContainerWidth: (width: number) => void,
+  setIsMobile: (mobile: boolean) => void
+): void => {
+  const windowWidth = window.innerWidth;
+  const mobile = windowWidth < 768;
+  setIsMobile(mobile);
+  
+  if (containerRef.current) {
+    const padding = mobile ? 16 : 64;
+    const width = containerRef.current.clientWidth - padding;
+    const maxWidth = mobile ? windowWidth - 16 : Math.min(800, windowWidth - 100);
+    setContainerWidth(Math.min(width, maxWidth));
+  }
+};
+
 export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
   file,
   onClose,

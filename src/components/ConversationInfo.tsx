@@ -50,6 +50,7 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
   initialTab = 'overview',
   openAddMemberModal = false,
 }) => {
+  // Initialize state
   const [activeTab, setActiveTab] = useState<'overview' | 'members' | 'media' | 'files' | 'links'>(initialTab);
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [isEditingDescription, setIsEditingDescription] = useState(false);
@@ -84,10 +85,15 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
   const [selectedMedia, setSelectedMedia] = useState<Message | null>(null);
   const [isMediaViewerOpen, setIsMediaViewerOpen] = useState(false);
 
+  // Helper to determine if initial data load is needed
+  const shouldLoadMembers = conversationType === 'group';
+  const shouldLoadDirectParticipants = conversationType === 'direct';
+
+  // Load initial conversation data
   useEffect(() => {
-    if (conversationType === 'group') {
+    if (shouldLoadMembers) {
       loadMembers();
-    } else if (conversationType === 'direct') {
+    } else if (shouldLoadDirectParticipants) {
       loadDirectParticipants();
     }
     loadMuteStatus();
@@ -96,7 +102,7 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
     if (conversationType === 'direct' && otherUser?.avatar_url) {
       setCurrentAvatar(otherUser.avatar_url);
     }
-  }, [conversationId, otherUser?.avatar_url, conversationType]);
+  }, [conversationId, otherUser?.avatar_url, conversationType, shouldLoadMembers, shouldLoadDirectParticipants]);
 
   useEffect(() => {
     if (openAddMemberModal && conversationType === 'group' && isAdmin) {

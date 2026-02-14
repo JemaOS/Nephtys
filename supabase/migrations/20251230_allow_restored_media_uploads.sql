@@ -1,9 +1,13 @@
 -- Allow uploads to restored/ folder for authenticated users (matching their user ID)
 
--- Drop existing policies to recreate them with updated logic
+-- Drop existing policies (handle case where old policy names exist)
 DROP POLICY IF EXISTS "Users can upload media" ON storage.objects;
 DROP POLICY IF EXISTS "Users can update media" ON storage.objects;
 DROP POLICY IF EXISTS "Users can delete media" ON storage.objects;
+
+-- Also drop old policy names if they exist
+DROP POLICY IF EXISTS "Users can upload their own media" ON storage.objects;
+DROP POLICY IF EXISTS "Users can delete their own media" ON storage.objects;
 
 -- Policy: Users can upload media (avatars, group photos, their own files, and restored backups)
 CREATE POLICY "Users can upload media"
@@ -13,16 +17,12 @@ TO authenticated
 WITH CHECK (
   bucket_id = 'media'
   AND (
-    -- Allow avatars folder for any authenticated user
     (storage.foldername(name))[1] = 'avatars'
     OR
-    -- Allow groups folder for any authenticated user
     (storage.foldername(name))[1] = 'groups'
     OR
-    -- Allow user's own folder
     (storage.foldername(name))[1] = auth.uid()::text
     OR
-    -- Allow restored folder matching user ID
     (
       (storage.foldername(name))[1] = 'restored'
       AND
@@ -39,16 +39,12 @@ TO authenticated
 USING (
   bucket_id = 'media'
   AND (
-    -- Allow avatars folder
     (storage.foldername(name))[1] = 'avatars'
     OR
-    -- Allow groups folder
     (storage.foldername(name))[1] = 'groups'
     OR
-    -- Allow user's own folder
     (storage.foldername(name))[1] = auth.uid()::text
     OR
-    -- Allow restored folder matching user ID
     (
       (storage.foldername(name))[1] = 'restored'
       AND
@@ -65,16 +61,12 @@ TO authenticated
 USING (
   bucket_id = 'media'
   AND (
-    -- Allow avatars folder
     (storage.foldername(name))[1] = 'avatars'
     OR
-    -- Allow groups folder
     (storage.foldername(name))[1] = 'groups'
     OR
-    -- Allow user's own folder
     (storage.foldername(name))[1] = auth.uid()::text
     OR
-    -- Allow restored folder matching user ID
     (
       (storage.foldername(name))[1] = 'restored'
       AND

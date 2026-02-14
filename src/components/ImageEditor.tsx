@@ -259,28 +259,32 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
   const [draggingItem, setDraggingItem] = useState<{ type: 'text' | 'emoji' | 'shape'; id: string } | null>(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
 
-  // Load image
+  // Calculate canvas size to fit container while maintaining aspect ratio
+  const calculateCanvasSize = (imgWidth: number, imgHeight: number): { width: number; height: number } => {
+    const maxWidth = window.innerWidth * 0.95;
+    const maxHeight = window.innerHeight * 0.8;
+    let width = imgWidth;
+    let height = imgHeight;
+    
+    if (width > maxWidth) {
+      height = (maxWidth / width) * height;
+      width = maxWidth;
+    }
+    if (height > maxHeight) {
+      width = (maxHeight / height) * width;
+      height = maxHeight;
+    }
+    
+    return { width, height };
+  };
+
+  // Load image - extracted to reduce component complexity
   useEffect(() => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => {
       setImage(img);
-      // Calculate canvas size to fit container while maintaining aspect ratio
-      const maxWidth = window.innerWidth * 0.95;
-      const maxHeight = window.innerHeight * 0.8;
-      let width = img.width;
-      let height = img.height;
-      
-      if (width > maxWidth) {
-        height = (maxWidth / width) * height;
-        width = maxWidth;
-      }
-      if (height > maxHeight) {
-        width = (maxHeight / height) * width;
-        height = maxHeight;
-      }
-      
-      setCanvasSize({ width, height });
+      setCanvasSize(calculateCanvasSize(img.width, img.height));
     };
     img.src = imageUrl;
   }, [imageUrl]);
