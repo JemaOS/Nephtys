@@ -7,6 +7,7 @@ DROP POLICY IF EXISTS "Users can delete their own media" ON storage.objects;
 DROP POLICY IF EXISTS "Users can upload media" ON storage.objects;
 DROP POLICY IF EXISTS "Users can update media" ON storage.objects;
 DROP POLICY IF EXISTS "Users can delete media" ON storage.objects;
+DROP POLICY IF EXISTS "Public media access" ON storage.objects;
 
 -- Policy: Users can upload media (avatars, group photos, and their own files)
 CREATE POLICY "Users can upload media"
