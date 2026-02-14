@@ -138,7 +138,6 @@ describe('MessageFlow', () => {
       eq: mocks.mockEq, // for chaining multiple eqs
       gt: mocks.mockGt,
       neq: mocks.mockNeq,
-      then: (resolve: any) => Promise.resolve(Promise.resolve({ data: [], error: null })).then(resolve),
     });
 
     mocks.mockGt.mockReturnValue({
@@ -161,18 +160,15 @@ describe('MessageFlow', () => {
 
     mocks.mockLimit.mockReturnValue({
       maybeSingle: mocks.mockMaybeSingle,
-      then: (resolve: any) => Promise.resolve(Promise.resolve({ data: [], error: null })).then(resolve),
     });
     
     mocks.mockMaybeSingle.mockResolvedValue({ data: { id: 'conv-123', type: 'direct' }, error: null });
     
     mocks.mockInsert.mockReturnValue({
       select: mocks.mockSelect,
-      then: (resolve: any) => Promise.resolve(Promise.resolve({ error: null })).then(resolve),
     });
     mocks.mockUpdate.mockReturnValue({
       eq: mocks.mockEq,
-      then: (resolve: any) => Promise.resolve(Promise.resolve({ error: null })).then(resolve),
     });
   });
 
@@ -249,7 +245,6 @@ describe('MessageFlow', () => {
     // Mock messages query
     mocks.mockLimit.mockReturnValue({
       maybeSingle: mocks.mockMaybeSingle,
-      then: (resolve: any) => Promise.resolve(Promise.resolve({ data: messages, error: null })).then(resolve),
     });
 
     renderChatPage();
