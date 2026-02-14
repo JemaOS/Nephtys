@@ -230,6 +230,85 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
     }
   }, [cleanupWebAudio]);
 
+  // Helper: Try HTML5 audio playback
+  const tryHtml5Playback = async (audio: HTMLAudioElement): Promise<boolean> => {
+    try {
+      console.log('Attempting to play audio:', url, 'readyState:', audio.readyState);
+      await audio.play();
+      setIsPlaying(true);
+      console.log('HTML5 audio playing successfully');
+      return true;
+    } catch (error) {
+      console.error('HTML5 audio error:', error);
+      return false;
+    }
+  };
+
+  // Helper: Try Web Audio API playback
+  const tryWebAudioPlayback = async (): Promise<boolean> => {
+    return await playWithWebAudio();
+  };
+
+  // Helper: Try blob URL playback as last resort
+  const tryBlobPlayback = async (): Promise<boolean> => {
+    try {
+      console.log('Trying blob URL playback...');
+      
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const blob = await response.blob();
+      
+      // Try to determine the correct MIME type
+      let mimeType = blob.type;
+      if (!mimeType || mimeType === 'application/octet-stream') {
+        // Guess from URL
+        if (url.includes('.ogg')) mimeType = 'audio/ogg';
+        else if (url.includes('.m4a')) mimeType = 'audio/mp4';
+        else if (url.includes('.webm')) mimeType = 'audio/webm';
+        else mimeType = 'audio/webm'; // Default
+      }
+      
+      // Create blob with explicit type
+      const typedBlob = new Blob([blob], { type: mimeType });
+      const blobUrl = URL.createObjectURL(typedBlob);
+      
+      // Create new audio element with blob URL
+      const newAudio = new Audio(blobUrl);
+      
+      // Copy event listeners
+      newAudio.addEventListener('timeupdate', () => {
+        setCurrentTime(newAudio.currentTime);
+      });
+      newAudio.addEventListener('ended', () => {
+        setIsPlaying(false);
+        setCurrentTime(0);
+        URL.revokeObjectURL(blobUrl);
+      });
+      newAudio.addEventListener('loadedmetadata', () => {
+        if (newAudio.duration && !isNaN(newAudio.duration) && isFinite(newAudio.duration)) {
+          setAudioDuration(newAudio.duration);
+        }
+      });
+      
+      await newAudio.play();
+      
+      // Replace the ref
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+      (audioRef as any).current = newAudio;
+      setIsPlaying(true);
+      console.log('Blob URL playback successful');
+      return true;
+    } catch (blobError) {
+      console.error('All playback methods failed:', blobError);
+      alert('Impossible de lire ce message vocal. Le format audio n\'est pas supporté par votre navigateur.');
+      return false;
+    }
+  };
+
   const togglePlayPause = async () => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -243,75 +322,16 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
       }
       setIsPlaying(false);
     } else {
-      try {
-        console.log('Attempting to play audio:', url, 'readyState:', audio.readyState);
-        
-        // First, try HTML5 audio (most compatible)
-        await audio.play();
-        setIsPlaying(true);
-        console.log('HTML5 audio playing successfully');
-      } catch (error) {
-        console.error('HTML5 audio error:', error);
-        
+      // First, try HTML5 audio (most compatible)
+      const html5Success = await tryHtml5Playback(audio);
+      
+      if (!html5Success) {
         // Try Web Audio API (can decode more formats)
-        const webAudioSuccess = await playWithWebAudio();
+        const webAudioSuccess = await tryWebAudioPlayback();
         
         if (!webAudioSuccess) {
           // Last resort: try blob URL approach
-          try {
-            console.log('Trying blob URL playback...');
-            
-            const response = await fetch(url);
-            if (!response.ok) {
-              throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            const blob = await response.blob();
-            
-            // Try to determine the correct MIME type
-            let mimeType = blob.type;
-            if (!mimeType || mimeType === 'application/octet-stream') {
-              // Guess from URL
-              if (url.includes('.ogg')) mimeType = 'audio/ogg';
-              else if (url.includes('.m4a')) mimeType = 'audio/mp4';
-              else if (url.includes('.webm')) mimeType = 'audio/webm';
-              else mimeType = 'audio/webm'; // Default
-            }
-            
-            // Create blob with explicit type
-            const typedBlob = new Blob([blob], { type: mimeType });
-            const blobUrl = URL.createObjectURL(typedBlob);
-            
-            // Create new audio element with blob URL
-            const newAudio = new Audio(blobUrl);
-            
-            // Copy event listeners
-            newAudio.addEventListener('timeupdate', () => {
-              setCurrentTime(newAudio.currentTime);
-            });
-            newAudio.addEventListener('ended', () => {
-              setIsPlaying(false);
-              setCurrentTime(0);
-              URL.revokeObjectURL(blobUrl);
-            });
-            newAudio.addEventListener('loadedmetadata', () => {
-              if (newAudio.duration && !isNaN(newAudio.duration) && isFinite(newAudio.duration)) {
-                setAudioDuration(newAudio.duration);
-              }
-            });
-            
-            await newAudio.play();
-            
-            // Replace the ref
-            if (audioRef.current) {
-              audioRef.current.pause();
-            }
-            (audioRef as any).current = newAudio;
-            setIsPlaying(true);
-            console.log('Blob URL playback successful');
-          } catch (blobError) {
-            console.error('All playback methods failed:', blobError);
-            alert('Impossible de lire ce message vocal. Le format audio n\'est pas supporté par votre navigateur.');
-          }
+          await tryBlobPlayback();
         }
       }
     }

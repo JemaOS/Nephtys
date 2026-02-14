@@ -418,17 +418,23 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
     else ctx.stroke();
   };
 
+  // Helper function to apply pixelate effect - extracted to reduce complexity
   const applyPixelateEffect = (imageData: ImageData, blockSize: number): ImageData => {
-    const data = imageData.data;
-    const width = imageData.width;
-    const height = imageData.height;
+    const { data, width, height } = imageData;
+    const pixelsPerBlock = blockSize * blockSize;
 
+    // Process each block
     for (let y = 0; y < height; y += blockSize) {
       for (let x = 0; x < width; x += blockSize) {
+        // Calculate average color for this block
         let r = 0, g = 0, b = 0, a = 0, count = 0;
 
-        for (let dy = 0; dy < blockSize && y + dy < height; dy++) {
-          for (let dx = 0; dx < blockSize && x + dx < width; dx++) {
+        // Accumulate pixel values
+        const maxDy = Math.min(blockSize, height - y);
+        const maxDx = Math.min(blockSize, width - x);
+        
+        for (let dy = 0; dy < maxDy; dy++) {
+          for (let dx = 0; dx < maxDx; dx++) {
             const i = ((y + dy) * width + (x + dx)) * 4;
             r += data[i];
             g += data[i + 1];
@@ -438,13 +444,15 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
           }
         }
 
+        // Calculate average
         r = Math.floor(r / count);
         g = Math.floor(g / count);
         b = Math.floor(b / count);
         a = Math.floor(a / count);
 
-        for (let dy = 0; dy < blockSize && y + dy < height; dy++) {
-          for (let dx = 0; dx < blockSize && x + dx < width; dx++) {
+        // Apply average to all pixels in block
+        for (let dy = 0; dy < maxDy; dy++) {
+          for (let dx = 0; dx < maxDx; dx++) {
             const i = ((y + dy) * width + (x + dx)) * 4;
             data[i] = r;
             data[i + 1] = g;
@@ -494,6 +502,62 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
   const isCroppingRef = useRef(false);
   const lastCropEndRef = useRef<{ x: number; y: number } | null>(null);
 
+  // Handle draw tool start - extracted to reduce complexity
+  const handleDrawStart = useCallback((coords: { x: number; y: number }) => {
+    setIsDrawing(true);
+    setCurrentPath({
+      points: [coords],
+      color: selectedColor,
+      width: brushSize,
+    });
+  }, [selectedColor, brushSize]);
+
+  // Handle crop tool start - extracted to reduce complexity
+  const handleCropStart = useCallback((coords: { x: number; y: number }) => {
+    isCroppingRef.current = true;
+    setCropStart(coords);
+    setCropEnd(coords);
+    lastCropEndRef.current = coords;
+  }, []);
+
+  // Handle blur tool start - extracted to reduce complexity
+  const handleBlurStart = useCallback((coords: { x: number; y: number }) => {
+    setBlurStart(coords);
+  }, []);
+
+  // Handle text tool - add new text overlay - extracted to reduce complexity
+  const handleTextTool = useCallback((coords: { x: number; y: number }) => {
+    const newText: TextOverlay = {
+      id: Date.now().toString(),
+      text: 'Texte',
+      x: coords.x,
+      y: coords.y,
+      fontSize,
+      color: selectedColor,
+      fontFamily,
+      rotation: 0,
+    };
+    setTextOverlays(prev => [...prev, newText]);
+    setEditingText(newText.id);
+    setNewTextInput('Texte');
+  }, [fontSize, selectedColor, fontFamily]);
+
+  // Handle shape tool - add new shape overlay - extracted to reduce complexity
+  const handleShapeTool = useCallback((coords: { x: number; y: number }) => {
+    const newShape: ShapeOverlay = {
+      id: Date.now().toString(),
+      type: selectedShape,
+      x: coords.x,
+      y: coords.y,
+      width: 100,
+      height: 100,
+      color: selectedColor,
+      filled: shapeFilled,
+      rotation: 0,
+    };
+    setShapeOverlays(prev => [...prev, newShape]);
+  }, [selectedShape, selectedColor, shapeFilled]);
+
   // Mouse/Touch handlers with useCallback to prevent unnecessary re-renders
   const handlePointerDown = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     // Prevent default to stop scrolling and other browser behaviors
@@ -504,50 +568,19 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
     const coords = getCanvasCoords(e);
     if (!coords) return;
 
+    // Route to appropriate handler based on active tool
     if (activeTool === 'draw') {
-      setIsDrawing(true);
-      setCurrentPath({
-        points: [coords],
-        color: selectedColor,
-        width: brushSize,
-      });
+      handleDrawStart(coords);
     } else if (activeTool === 'crop' || cropMode) {
-      isCroppingRef.current = true;
-      setCropStart(coords);
-      setCropEnd(coords);
-      lastCropEndRef.current = coords;
+      handleCropStart(coords);
     } else if (activeTool === 'blur') {
-      setBlurStart(coords);
+      handleBlurStart(coords);
     } else if (activeTool === 'text') {
-      // Add new text at click position
-      const newText: TextOverlay = {
-        id: Date.now().toString(),
-        text: 'Texte',
-        x: coords.x,
-        y: coords.y,
-        fontSize,
-        color: selectedColor,
-        fontFamily,
-        rotation: 0,
-      };
-      setTextOverlays(prev => [...prev, newText]);
-      setEditingText(newText.id);
-      setNewTextInput('Texte');
+      handleTextTool(coords);
     } else if (activeTool === 'shape') {
-      const newShape: ShapeOverlay = {
-        id: Date.now().toString(),
-        type: selectedShape,
-        x: coords.x,
-        y: coords.y,
-        width: 100,
-        height: 100,
-        color: selectedColor,
-        filled: shapeFilled,
-        rotation: 0,
-      };
-      setShapeOverlays(prev => [...prev, newShape]);
+      handleShapeTool(coords);
     }
-  }, [activeTool, cropMode, selectedColor, brushSize, fontSize, fontFamily, selectedShape, shapeFilled, getCanvasCoords]);
+  }, [activeTool, cropMode, getCanvasCoords, handleDrawStart, handleCropStart, handleBlurStart, handleTextTool, handleShapeTool]);
 
   const handlePointerMove = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     // Prevent default to stop scrolling during drag

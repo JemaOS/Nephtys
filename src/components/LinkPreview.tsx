@@ -48,70 +48,163 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({
     }
   };
 
-  // Input preview style (above the input field)
-  if (!isInMessage) {
-    return (
-      <div className="relative mx-2 mb-2 rounded-xl overflow-hidden bg-bg-hover border border-bg-hover shadow-lg">
-        {/* Dismiss button */}
-        {onDismiss && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onDismiss();
-            }}
-            className="absolute top-2 right-2 z-10 w-6 h-6 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center transition-colors"
-            aria-label="Dismiss preview"
-          >
-            <X size={14} className="text-white" />
-          </button>
+  // Helper to get card background class
+  const getCardBgClass = (): string => {
+    return isOwn ? 'bg-[#5a5ab8]' : 'bg-bg-hover';
+  };
+
+  // Helper to get text color class
+  const getTextColorClass = (): string => {
+    return isOwn ? 'text-white' : 'text-text-primary';
+  };
+
+  // Helper to get secondary text color
+  const getSecondaryTextClass = (): string => {
+    return isOwn ? 'text-[#8eb8b3]' : 'text-text-tertiary';
+  };
+
+  // Helper to get link color
+  const getLinkColorClass = (): string => {
+    return isOwn ? 'text-[#53bdeb]' : 'text-accent';
+  };
+
+  // Render input preview (above input field)
+  const renderInputPreview = () => (
+    <div className="relative mx-2 mb-2 rounded-xl overflow-hidden bg-bg-hover border border-bg-hover shadow-lg">
+      {/* Dismiss button */}
+      {onDismiss && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onDismiss();
+          }}
+          className="absolute top-2 right-2 z-10 w-6 h-6 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center transition-colors"
+          aria-label="Dismiss preview"
+        >
+          <X size={14} className="text-white" />
+        </button>
+      )}
+
+      <div
+        className="flex cursor-pointer hover:bg-bg-surface/50 transition-colors"
+        onClick={handleClick}
+      >
+        {/* Thumbnail */}
+        {image && (
+          <div className="w-20 h-20 flex-shrink-0 bg-bg-surface">
+            <img
+              src={image}
+              alt={title || 'Link preview'}
+              className="w-full h-full object-cover"
+              onError={(e) => {
+                // Hide image on error
+                (e.target as HTMLImageElement).style.display = 'none';
+              }}
+            />
+          </div>
         )}
 
-        <div
-          className="flex cursor-pointer hover:bg-bg-surface/50 transition-colors"
-          onClick={handleClick}
-        >
-          {/* Thumbnail */}
-          {image && (
-            <div className="w-20 h-20 flex-shrink-0 bg-bg-surface">
-              <img
-                src={image}
-                alt={title || 'Link preview'}
-                className="w-full h-full object-cover"
-                onError={(e) => {
-                  // Hide image on error
-                  (e.target as HTMLImageElement).style.display = 'none';
-                }}
-              />
-            </div>
+        {/* Content */}
+        <div className="flex-1 p-3 min-w-0">
+          {/* Site name / Domain */}
+          <p className="text-xs text-text-tertiary uppercase tracking-wide mb-1">
+            {siteName || domain}
+          </p>
+
+          {/* Title */}
+          {title && (
+            <h4 className="text-sm font-semibold text-text-primary line-clamp-1 mb-1">
+              {title}
+            </h4>
           )}
 
-          {/* Content */}
-          <div className="flex-1 p-3 min-w-0">
-            {/* Site name / Domain */}
-            <p className="text-xs text-text-tertiary uppercase tracking-wide mb-1">
-              {siteName || domain}
+          {/* Description */}
+          {truncatedDescription && (
+            <p className="text-xs text-text-secondary line-clamp-2">
+              {truncatedDescription}
             </p>
-
-            {/* Title */}
-            {title && (
-              <h4 className="text-sm font-semibold text-text-primary line-clamp-1 mb-1">
-                {title}
-              </h4>
-            )}
-
-            {/* Description */}
-            {truncatedDescription && (
-              <p className="text-xs text-text-secondary line-clamp-2">
-                {truncatedDescription}
-              </p>
-            )}
-          </div>
+          )}
         </div>
-
-        {/* Green accent bar on the left */}
-        <div className="absolute left-0 top-0 bottom-0 w-1 bg-accent" />
       </div>
-    );
+
+      {/* Green accent bar on the left */}
+      <div className="absolute left-0 top-0 bottom-0 w-1 bg-accent" />
+    </div>
+  );
+
+  // Render YouTube thumbnail with play overlay
+  const renderYouTubeThumbnail = () => (
+    <div className="relative">
+      <img
+        src={image}
+        alt={title || 'YouTube video'}
+        className="w-full h-auto max-h-[140px] object-cover"
+        onError={(e) => {
+          (e.target as HTMLImageElement).style.display = 'none';
+        }}
+      />
+      {/* Duration/PiP badge - more subtle */}
+      <div className="absolute bottom-1 right-1 px-1 py-0.5 rounded text-[8px] bg-black/80 text-white/90">
+        PiP
+      </div>
+      {/* Title and domain below image - compact */}
+      <div className={`px-2 py-1.5 ${getCardBgClass()}`}>
+        {title && (
+          <h4 className={`text-[12px] font-medium line-clamp-1 ${getTextColorClass()}`}>
+            {title}
+          </h4>
+        )}
+        <p className={`text-[10px] mt-0.5 ${getSecondaryTextClass()}`}>
+          youtube.com
+        </p>
+      </div>
+    </div>
+  );
+
+  // Render regular link preview
+  const renderRegularPreview = () => (
+    <div className="flex">
+      {/* Thumbnail - Square on the left */}
+      {image && (
+        <div className="w-[50px] h-[50px] flex-shrink-0">
+          <img
+            src={image}
+            alt={title || 'Link preview'}
+            className="w-full h-full object-cover"
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.display = 'none';
+            }}
+          />
+        </div>
+      )}
+
+      {/* Content */}
+      <div className="flex-1 px-2 py-1.5 min-w-0 flex flex-col justify-center">
+        {/* Title - Bold at top */}
+        {title && (
+          <h4 className={`text-[11px] font-medium line-clamp-1 ${getTextColorClass()}`}>
+            {title}
+          </h4>
+        )}
+
+        {/* Description - shorter */}
+        {truncatedDescription && (
+          <p className={`text-[10px] line-clamp-1 mt-0.5 ${isOwn ? 'text-[#d1e7e4]' : 'text-text-secondary'}`}>
+            {truncatedDescription}
+          </p>
+        )}
+
+        {/* Domain at bottom */}
+        <p className={`text-[9px] mt-0.5 ${getSecondaryTextClass()}`}>
+          {domain}
+        </p>
+      </div>
+    </div>
+  );
+
+  // Input preview style (above the input field)
+  if (!isInMessage) {
+    return renderInputPreview();
   }
 
   // Truncate URL for display (keep domain + short path)
@@ -133,11 +226,7 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({
       <div className="mt-1.5 max-w-[240px] sm:max-w-[280px]">
         {/* Preview Card */}
         <div
-          className={`rounded-lg overflow-hidden cursor-pointer relative ${
-            isOwn
-              ? 'bg-[#5a5ab8]'
-              : 'bg-bg-hover'
-          }`}
+          className={`rounded-lg overflow-hidden cursor-pointer relative ${getCardBgClass()}`}
           onClick={handleClick}
         >
           {/* YouTube Play Overlay - smaller and more subtle */}
@@ -151,80 +240,9 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({
           
           {/* For YouTube, show compact thumbnail with play button overlay */}
           {isYouTube && image ? (
-            <div className="relative">
-              <img
-                src={image}
-                alt={title || 'YouTube video'}
-                className="w-full h-auto max-h-[140px] object-cover"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).style.display = 'none';
-                }}
-              />
-              {/* Duration/PiP badge - more subtle */}
-              <div className="absolute bottom-1 right-1 px-1 py-0.5 rounded text-[8px] bg-black/80 text-white/90">
-                PiP
-              </div>
-              {/* Title and domain below image - compact */}
-              <div className={`px-2 py-1.5 ${isOwn ? 'bg-[#5a5ab8]' : 'bg-bg-hover'}`}>
-                {title && (
-                  <h4 className={`text-[12px] font-medium line-clamp-1 ${
-                    isOwn ? 'text-white' : 'text-text-primary'
-                  }`}>
-                    {title}
-                  </h4>
-                )}
-                <p className={`text-[10px] mt-0.5 ${
-                  isOwn ? 'text-[#8eb8b3]' : 'text-text-tertiary'
-                }`}>
-                  youtube.com
-                </p>
-              </div>
-            </div>
+            renderYouTubeThumbnail()
           ) : (
-            /* Regular link preview layout - compact */
-            <div className="flex">
-              {/* Thumbnail - Square on the left */}
-              {image && (
-                <div className="w-[50px] h-[50px] flex-shrink-0">
-                  <img
-                    src={image}
-                    alt={title || 'Link preview'}
-                    className="w-full h-full object-cover"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).style.display = 'none';
-                    }}
-                  />
-                </div>
-              )}
-
-              {/* Content */}
-              <div className="flex-1 px-2 py-1.5 min-w-0 flex flex-col justify-center">
-                {/* Title - Bold at top */}
-                {title && (
-                  <h4 className={`text-[11px] font-medium line-clamp-1 ${
-                    isOwn ? 'text-white' : 'text-text-primary'
-                  }`}>
-                    {title}
-                  </h4>
-                )}
-
-                {/* Description - shorter */}
-                {truncatedDescription && (
-                  <p className={`text-[10px] line-clamp-1 mt-0.5 ${
-                    isOwn ? 'text-[#d1e7e4]' : 'text-text-secondary'
-                  }`}>
-                    {truncatedDescription}
-                  </p>
-                )}
-
-                {/* Domain at bottom */}
-                <p className={`text-[9px] mt-0.5 ${
-                  isOwn ? 'text-[#8eb8b3]' : 'text-text-tertiary'
-                }`}>
-                  {domain}
-                </p>
-              </div>
-            </div>
+            renderRegularPreview()
           )}
         </div>
 
@@ -233,9 +251,7 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({
           href={url}
           target="_blank"
           rel="noopener noreferrer"
-          className={`inline-block text-[11px] mt-1 underline truncate max-w-full ${
-            isOwn ? 'text-[#53bdeb]' : 'text-accent'
-          }`}
+          className={`inline-block text-[11px] mt-1 underline truncate max-w-full ${getLinkColorClass()}`}
           onClick={(e) => {
             e.stopPropagation();
             // For YouTube, also open in-app player

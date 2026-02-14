@@ -19,6 +19,38 @@ const formatTime = (seconds: number): string => {
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 };
 
+// Helper function to get background color class
+const getBackgroundColor = (isOwn: boolean): string => {
+  return isOwn ? 'bg-[#5a5cc9]' : 'bg-[#1a1d21] dark:bg-[#1a1d21]';
+};
+
+// Helper function to get progress bar background class
+const getProgressBarBgClass = (isOwn: boolean): string => {
+  return isOwn ? 'bg-white/30' : 'bg-white/20';
+};
+
+// Helper function to get progress fill color class
+const getProgressFillClass = (isOwn: boolean): string => {
+  return isOwn ? 'bg-white' : 'bg-[#787add]';
+};
+
+// Helper function to get text color class
+const getTextColorClass = (isOwn: boolean): string => {
+  return isOwn ? 'text-[#2d2f6e]' : 'text-white';
+};
+
+// Helper function to get button color class
+const getButtonColorClass = (isOwn: boolean): string => {
+  return isOwn
+    ? 'text-[#2d2f6e]/70 hover:text-[#2d2f6e] hover:bg-[#2d2f6e]/10'
+    : 'text-white/70 hover:text-white hover:bg-white/10';
+};
+
+// Helper function to get icon color
+const getIconColor = (isOwn: boolean): string => {
+  return isOwn ? '#5a5cc9' : '#1a1d21';
+};
+
 export const AudioFilePlayer: React.FC<AudioFilePlayerProps> = ({
   url,
   fileName,
@@ -122,11 +154,7 @@ export const AudioFilePlayer: React.FC<AudioFilePlayerProps> = ({
   // Modern 2025 design - compact, elegant, high contrast
   // Works in both light and dark mode with proper contrast
   return (
-    <div className={`w-full max-w-[280px] rounded-2xl overflow-hidden backdrop-blur-sm ${
-      isOwn
-        ? 'bg-[#5a5cc9]'
-        : 'bg-[#1a1d21] dark:bg-[#1a1d21]'
-    }`}>
+    <div className={`w-full max-w-[280px] rounded-2xl overflow-hidden backdrop-blur-sm ${getBackgroundColor(isOwn)}`}>
       {/* Compact header with file name */}
       <div className="px-4 pt-3 pb-1">
         <p className="text-[13px] font-medium truncate text-white">
@@ -140,15 +168,11 @@ export const AudioFilePlayer: React.FC<AudioFilePlayerProps> = ({
           ref={progressRef}
           onClick={handleProgressClick}
           onMouseDown={() => setIsDragging(true)}
-          className={`relative h-1 rounded-full cursor-pointer group ${
-            isOwn ? 'bg-white/30' : 'bg-white/20'
-          }`}
+          className={`relative h-1 rounded-full cursor-pointer group ${getProgressBarBgClass(isOwn)}`}
         >
           {/* Progress fill */}
           <div
-            className={`absolute left-0 top-0 h-full rounded-full transition-all duration-100 ${
-              isOwn ? 'bg-white' : 'bg-[#787add]'
-            }`}
+            className={`absolute left-0 top-0 h-full rounded-full transition-all duration-100 ${getProgressFillClass(isOwn)}`}
             style={{ width: `${progress}%` }}
           />
           {/* Drag handle - appears on hover */}
@@ -162,9 +186,7 @@ export const AudioFilePlayer: React.FC<AudioFilePlayerProps> = ({
       {/* Controls row - centered with time on sides */}
       <div className="flex items-center justify-between px-3 pb-3">
         {/* Current time - dark color for maximum contrast on purple */}
-        <span className={`text-[11px] font-bold w-10 tabular-nums ${
-          isOwn ? 'text-[#2d2f6e]' : 'text-white'
-        }`}>
+        <span className={`text-[11px] font-bold w-10 tabular-nums ${getTextColorClass(isOwn)}`}>
           {formatTime(currentTime)}
         </span>
 
@@ -173,11 +195,7 @@ export const AudioFilePlayer: React.FC<AudioFilePlayerProps> = ({
           {/* Skip backward */}
           <button
             onClick={skipBackward}
-            className={`w-9 h-9 rounded-full flex items-center justify-center transition-all active:scale-95 ${
-              isOwn
-                ? 'text-[#2d2f6e]/70 hover:text-[#2d2f6e] hover:bg-[#2d2f6e]/10'
-                : 'text-white/70 hover:text-white hover:bg-white/10'
-            }`}
+            className={`w-9 h-9 rounded-full flex items-center justify-center transition-all active:scale-95 ${getButtonColorClass(isOwn)}`}
           >
             <SkipBack size={18} fill="currentColor" />
           </button>
@@ -188,29 +206,23 @@ export const AudioFilePlayer: React.FC<AudioFilePlayerProps> = ({
             className="w-11 h-11 rounded-full bg-white flex items-center justify-center transition-all hover:scale-105 active:scale-95 shadow-lg"
           >
             {isPlaying ? (
-              <Pause size={20} className={isOwn ? 'text-[#5a5cc9]' : 'text-[#1a1d21]'} fill={isOwn ? '#5a5cc9' : '#1a1d21'} />
+              <Pause size={20} className={getTextColorClass(isOwn)} fill={getIconColor(isOwn)} />
             ) : (
-              <Play size={20} className={`ml-0.5 ${isOwn ? 'text-[#5a5cc9]' : 'text-[#1a1d21]'}`} fill={isOwn ? '#5a5cc9' : '#1a1d21'} />
+              <Play size={20} className={`ml-0.5 ${getTextColorClass(isOwn)}`} fill={getIconColor(isOwn)} />
             )}
           </button>
 
           {/* Skip forward */}
           <button
             onClick={skipForward}
-            className={`w-9 h-9 rounded-full flex items-center justify-center transition-all active:scale-95 ${
-              isOwn
-                ? 'text-[#2d2f6e]/70 hover:text-[#2d2f6e] hover:bg-[#2d2f6e]/10'
-                : 'text-white/70 hover:text-white hover:bg-white/10'
-            }`}
+            className={`w-9 h-9 rounded-full flex items-center justify-center transition-all active:scale-95 ${getButtonColorClass(isOwn)}`}
           >
             <SkipForward size={18} fill="currentColor" />
           </button>
         </div>
 
         {/* Duration - dark color for maximum contrast on purple */}
-        <span className={`text-[11px] font-bold w-10 text-right tabular-nums ${
-          isOwn ? 'text-[#2d2f6e]' : 'text-white'
-        }`}>
+        <span className={`text-[11px] font-bold w-10 text-right tabular-nums ${getTextColorClass(isOwn)}`}>
           {formatTime(duration)}
         </span>
       </div>

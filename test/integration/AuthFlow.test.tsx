@@ -10,6 +10,9 @@ const mockGetSession = vi.fn();
 const mockOnAuthStateChange = vi.fn();
 const mockSignOut = vi.fn();
 
+// Helper function for maybeSingle mock
+const createMaybeSingleMock = () => Promise.resolve({ data: null, error: null });
+
 vi.mock('../../src/lib/supabase', () => ({
   supabase: {
     functions: {
@@ -30,7 +33,7 @@ vi.mock('../../src/lib/supabase', () => ({
     from: () => ({
       select: () => ({
         eq: () => ({
-          maybeSingle: () => Promise.resolve({ data: null, error: null }),
+          maybeSingle: createMaybeSingleMock,
         }),
       }),
     }),

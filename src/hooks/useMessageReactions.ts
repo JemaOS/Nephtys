@@ -4,6 +4,24 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 
+// Helper function to check if a reaction already exists
+const reactionExists = (reactions: Reaction[], newReactionId: string): boolean => {
+  return reactions.some(r => r.id === newReactionId);
+};
+
+// Helper function to add a new reaction if it doesn't exist
+const addReactionIfNotExists = (reactions: Reaction[], newReaction: Reaction): Reaction[] => {
+  if (reactionExists(reactions, newReaction.id)) {
+    return reactions;
+  }
+  return [...reactions, newReaction];
+};
+
+// Helper function to remove a reaction by ID
+const removeReactionById = (reactions: Reaction[], reactionId: string): Reaction[] => {
+  return reactions.filter(r => r.id !== reactionId);
+};
+
 interface Reaction {
   id: string;
   message_id: string;
@@ -85,13 +103,9 @@ export const useMessageReactions = (conversationId: string): UseMessageReactions
           if (payload.eventType === 'INSERT') {
             const newReaction = payload.new as Reaction;
             // Éviter les doublons - vérifier si la réaction existe déjà
-            setReactions(prev => {
-              const exists = prev.some(r => r.id === newReaction.id);
-              if (exists) return prev;
-              return [...prev, newReaction];
-            });
+            setReactions(prev => addReactionIfNotExists(prev, newReaction));
           } else if (payload.eventType === 'DELETE') {
-            setReactions(prev => prev.filter(r => r.id !== payload.old.id));
+            setReactions(prev => removeReactionById(prev, payload.old.id));
           }
         }
       )

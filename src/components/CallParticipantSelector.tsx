@@ -8,7 +8,7 @@ import { useAuth } from '@/context/AuthContext'
 
 interface CallParticipantSelectorProps {
   onClose: () => void
-  onSelect: (contactId: string) => void
+  onSelect: (contactId: string) => void | Promise<void>
   currentParticipants?: string[] // IDs of users already in the call to exclude
 }
 
@@ -120,7 +120,11 @@ export function CallParticipantSelector({ onClose, onSelect, currentParticipants
     
     setInvitingId(contactId)
     try {
-      await onSelect(contactId)
+      const result = onSelect(contactId)
+      // Await the result if it's a Promise
+      if (result && typeof result.then === 'function') {
+        await result
+      }
       setInvitedIds(prev => new Set([...prev, contactId]))
     } catch (error) {
       console.error('Error inviting participant:', error)

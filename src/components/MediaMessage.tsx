@@ -347,20 +347,7 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
     }
   };
 
-  // Determine media type for viewer (handle GIF detection)
-  const getViewerMediaType = (): 'image' | 'video' | 'audio' | 'gif' | 'sticker' => {
-    if (type === 'video') return 'video';
-    if (type === 'image') {
-      // Check if it's a GIF
-      if (url.toLowerCase().includes('.gif') || url.toLowerCase().includes('gif')) {
-        return 'gif';
-      }
-      return 'image';
-    }
-    return 'image';
-  };
-
-  // Calculate optimal container size based on image dimensions
+  // Helper: Get container style based on dimensions - extracted to reduce complexity
   const getContainerStyle = (): React.CSSProperties => {
     // If we have dimensions (from props or loaded), calculate display size
     if (imageDimensions) {
@@ -383,12 +370,25 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
     };
   };
 
-  // Get aspect ratio for CSS
+  // Helper: Get aspect ratio for CSS - extracted
   const getAspectRatio = (): string | undefined => {
     if (imageDimensions) {
       return `${imageDimensions.width} / ${imageDimensions.height}`;
     }
     return undefined;
+  };
+
+  // Helper: Determine media type for viewer (handle GIF detection) - extracted
+  const getViewerMediaType = (): 'image' | 'video' | 'audio' | 'gif' | 'sticker' => {
+    if (type === 'video') return 'video';
+    if (type === 'image') {
+      // Check if it's a GIF
+      if (url.toLowerCase().includes('.gif') || url.toLowerCase().includes('gif')) {
+        return 'gif';
+      }
+      return 'image';
+    }
+    return 'image';
   };
 
   // Handle video metadata load

@@ -54,7 +54,7 @@ class OfflineStorage {
   private initPromise: Promise<void> | null = null;
   private isInitialized = false;
   private initFailed = false;
-  
+
   // In-memory cache for instant access (survives navigation, not page refresh)
   private memoryCache: {
     conversations: any[] | null;
@@ -68,11 +68,23 @@ class OfflineStorage {
     // Load from localStorage immediately (synchronous, survives page refresh)
     this.loadFromLocalStorage();
     
-    // Start IndexedDB initialization but don't block
+    // Don't start async initialization in constructor - use lazy initialization instead
+    // Initialization will happen on first async operation
+  }
+
+  // Lazy initialization - called on first async operation
+  private async ensureInitialized(): Promise<boolean> {
+    if (this.initPromise) {
+      return this.initPromise.then(() => this.isInitialized && this.db !== null);
+    }
+    
     this.initPromise = this.init().catch((error) => {
       console.warn('[OfflineStorage] Initialization failed:', error);
       this.initFailed = true;
     });
+    
+    await this.initPromise;
+    return this.isInitialized && this.db !== null;
   }
   
   // Load conversations from localStorage (synchronous, instant)
@@ -248,17 +260,13 @@ class OfflineStorage {
     });
   }
 
-  // Ensure DB is ready before operations
+  // Ensure DB is ready before operations - uses lazy initialization
   private async ensureReady(): Promise<boolean> {
     if (this.initFailed) {
       return false;
     }
     
-    if (this.initPromise) {
-      await this.initPromise;
-    }
-    
-    return this.isInitialized && this.db !== null;
+    return this.ensureInitialized();
   }
 
   // Messages operations

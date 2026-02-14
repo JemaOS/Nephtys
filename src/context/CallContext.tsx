@@ -143,214 +143,243 @@ export function CallProvider({ children }: { children: ReactNode }) {
     }
   }, [user])
 
+  // Helper function to show incoming call notification
+  const showIncomingCallNotification = (callerName: string, isVideo: boolean, conversationId: string, callerId: string) => {
+    const callType = isVideo ? '📹 Appel vidéo' : '📞 Appel audio'
+    
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.ready.then((registration) => {
+        registration.showNotification(`${callType} entrant`, {
+          body: `${callerName} vous appelle...`,
+          icon: '/icon-192.png',
+          badge: '/icon-192.png',
+          tag: 'incoming-call',
+          requireInteraction: true,
+          actions: [
+            { action: 'answer', title: 'Répondre' },
+            { action: 'reject', title: 'Refuser' },
+          ],
+          data: {
+            conversationId,
+            callerId,
+            url: `/chat/${conversationId}`,
+          },
+        } as any)
+        
+        if ('vibrate' in navigator) {
+          navigator.vibrate([200, 100, 200, 100, 200])
+        }
+      })
+    } else {
+      new Notification(`${callType} entrant`, {
+        body: `${callerName} vous appelle...`,
+        icon: '/icon-192.png',
+        tag: 'incoming-call',
+      })
+      
+      if ('vibrate' in navigator) {
+        navigator.vibrate([200, 100, 200, 100, 200])
+      }
+    }
+  }
+
+  // Helper function to show group call notification
+  const showGroupCallNotification = (callerName: string, groupName: string, isVideo: boolean, conversationId: string, callerId: string) => {
+    const callType = isVideo ? '📹 Appel vidéo de groupe' : '📞 Appel de groupe'
+    
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.ready.then((registration) => {
+        registration.showNotification(`${callType} entrant`, {
+          body: `${callerName} vous appelle dans ${groupName}...`,
+          icon: '/icon-192.png',
+          badge: '/icon-192.png',
+          tag: 'incoming-group-call',
+          requireInteraction: true,
+          actions: [
+            { action: 'answer', title: 'Rejoindre' },
+            { action: 'reject', title: 'Ignorer' },
+          ],
+          data: {
+            conversationId,
+            callerId,
+            url: `/chat/${conversationId}`,
+            isGroupCall: true,
+          },
+        } as any)
+        
+        if ('vibrate' in navigator) {
+          navigator.vibrate([200, 100, 200, 100, 200])
+        }
+      })
+    } else {
+      new Notification(`${callType} entrant`, {
+        body: `${callerName} vous appelle dans ${groupName}...`,
+        icon: '/icon-192.png',
+        tag: 'incoming-group-call',
+      })
+      
+      if ('vibrate' in navigator) {
+        navigator.vibrate([200, 100, 200, 100, 200])
+      }
+    }
+  }
+
+  // Helper to fetch caller profile
+  const fetchCallerProfile = async (userId: string) => {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('display_name, username, avatar_url')
+      .eq('id', userId)
+      .maybeSingle()
+    return profile
+  }
+
+  // Helper to fetch group conversation info
+  const fetchGroupConversation = async (conversationId: string) => {
+    const { data: groupConversation } = await supabase
+      .from('conversations')
+      .select('name, avatar_url')
+      .eq('id', conversationId)
+      .maybeSingle()
+    return groupConversation
+  }
+
   const handleIncomingSignal = async (signal: CallSignal) => {
     switch (signal.type) {
       case 'offer':
-        // Check if this is a renegotiation for the current call
-        // It is a renegotiation if we are in a call AND (conversation ID matches OR sender matches current peer)
-        if (isInCall && (signal.conversation_id === currentCallConversationId || signal.from === currentCallUserId)) {
-          console.log('📞 CallContext: Received renegotiation offer');
-          if (webrtcManager) {
-            const answer = await webrtcManager.createAnswer(signal.data);
-            await sendSignal({
-              type: 'answer',
-              from: user!.id,
-              to: signal.from,
-              data: answer,
-              conversation_id: signal.conversation_id,
-            });
-          }
-          return;
-        }
-
-        // Appel entrant
-        setIncomingCallSignal(signal)
-        setIsRinging(true)
-        
-        // Récupérer le nom et l'avatar de l'appelant
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('display_name, username, avatar_url')
-          .eq('id', signal.from)
-          .maybeSingle()
-
-        const callerName = profile?.display_name || profile?.username || 'Quelqu\'un'
-        const callerAvatar = profile?.avatar_url || undefined
-        const isVideo = signal.data?.video || false
-
-        setIncomingCall({
-          from: signal.from,
-          conversationId: signal.conversation_id,
-          isVideo,
-          callerName,
-          callerAvatar
-        })
-
-        // Envoyer une notification
-        if ('Notification' in window && Notification.permission === 'granted') {
-          const callType = isVideo ? '📹 Appel vidéo' : '📞 Appel audio'
-          
-          if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-            navigator.serviceWorker.ready.then((registration) => {
-              registration.showNotification(`${callType} entrant`, {
-                body: `${callerName} vous appelle...`,
-                icon: '/icon-192.png',
-                badge: '/icon-192.png',
-                tag: 'incoming-call',
-                requireInteraction: true,
-                actions: [
-                  { action: 'answer', title: 'Répondre' },
-                  { action: 'reject', title: 'Refuser' },
-                ],
-                data: {
-                  conversationId: signal.conversation_id,
-                  callerId: signal.from,
-                  url: `/chat/${signal.conversation_id}`,
-                },
-              } as any)
-              
-              if ('vibrate' in navigator) {
-                navigator.vibrate([200, 100, 200, 100, 200])
-              }
-            })
-          } else {
-            new Notification(`${callType} entrant`, {
-              body: `${callerName} vous appelle...`,
-              icon: '/icon-192.png',
-              tag: 'incoming-call',
-            })
-            
-            if ('vibrate' in navigator) {
-              navigator.vibrate([200, 100, 200, 100, 200])
-            }
-          }
-        }
+        await handleOfferSignal(signal)
         break
-
       case 'group-call-invite':
-        // Appel de groupe entrant - afficher la notification
-        setIsRinging(true)
-        
-        // Récupérer le nom et l'avatar de l'appelant
-        const { data: callerProfile } = await supabase
-          .from('profiles')
-          .select('display_name, username, avatar_url')
-          .eq('id', signal.from)
-          .maybeSingle()
-
-        // Récupérer les infos du groupe
-        const { data: groupConversation } = await supabase
-          .from('conversations')
-          .select('name, avatar_url')
-          .eq('id', signal.conversation_id)
-          .maybeSingle()
-
-        const groupCallerName = callerProfile?.display_name || callerProfile?.username || 'Quelqu\'un'
-        const groupName = groupConversation?.name || 'Groupe'
-        const groupAvatar = groupConversation?.avatar_url || undefined
-        const isGroupVideo = signal.data?.video || false
-
-        // Store the group call info for joining
-        setIncomingCallSignal(signal)
-        setIncomingCall({
-          from: signal.from,
-          conversationId: signal.conversation_id,
-          isVideo: isGroupVideo,
-          callerName: `${groupCallerName} (${groupName})`,
-          callerAvatar: groupAvatar,
-          isGroupCall: true
-        })
-
-        // Envoyer une notification
-        if ('Notification' in window && Notification.permission === 'granted') {
-          const callType = isGroupVideo ? '📹 Appel vidéo de groupe' : '📞 Appel de groupe'
-          
-          if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-            navigator.serviceWorker.ready.then((registration) => {
-              registration.showNotification(`${callType} entrant`, {
-                body: `${groupCallerName} vous appelle dans ${groupName}...`,
-                icon: '/icon-192.png',
-                badge: '/icon-192.png',
-                tag: 'incoming-group-call',
-                requireInteraction: true,
-                actions: [
-                  { action: 'answer', title: 'Rejoindre' },
-                  { action: 'reject', title: 'Ignorer' },
-                ],
-                data: {
-                  conversationId: signal.conversation_id,
-                  callerId: signal.from,
-                  url: `/chat/${signal.conversation_id}`,
-                  isGroupCall: true,
-                },
-              } as any)
-              
-              if ('vibrate' in navigator) {
-                navigator.vibrate([200, 100, 200, 100, 200])
-              }
-            })
-          } else {
-            new Notification(`${callType} entrant`, {
-              body: `${groupCallerName} vous appelle dans ${groupName}...`,
-              icon: '/icon-192.png',
-              tag: 'incoming-group-call',
-            })
-            
-            if ('vibrate' in navigator) {
-              navigator.vibrate([200, 100, 200, 100, 200])
-            }
-          }
-        }
+        await handleGroupCallInviteSignal(signal)
         break
-
       case 'answer':
-        if (webrtcManager) {
-          await webrtcManager.handleAnswer(signal.data)
-          setIsCalling(false)
-          setIsInCall(true)
-          // Process any queued ICE candidates now that we have the remote description
-          await processIceCandidateQueue()
-        }
+        await handleAnswerSignal(signal)
         break
-
       case 'ice-candidate':
-        if (signal.data) {
-          // Check if we are ready to add candidates: PC ready AND remote description set
-          const canAddCandidate = isPeerConnectionReady && webrtcManager.hasRemoteDescription()
-          
-          if (canAddCandidate) {
-            try {
-              await webrtcManager.addIceCandidate(signal.data)
-            } catch (error) {
-              console.error('Error adding ICE candidate:', error)
-              // If it failed, queue it just in case
-              iceCandidateQueueRef.current.push({
-                candidate: signal.data,
-                timestamp: Date.now()
-              })
-            }
-          } else {
-            console.log('Queueing ICE candidate (PC not ready or no remote description)')
-            iceCandidateQueueRef.current.push({
-              candidate: signal.data,
-              timestamp: Date.now()
-            })
-          }
-        }
+        await handleIceCandidateSignal(signal)
         break
-
       case 'call-end':
-        // Pass false to avoid sending another call-end signal back (would cause infinite loop)
         endCall(false)
         break
-
       case 'media-state-update':
-        if (signal.data) {
-          if (typeof signal.data.video !== 'undefined') {
-            setRemoteVideoEnabled(signal.data.video)
-          }
-        }
+        handleMediaStateUpdateSignal(signal)
         break
+    }
+  }
+
+  // Handle offer signal
+  const handleOfferSignal = async (signal: CallSignal) => {
+    // Check if this is a renegotiation for the current call
+    if (isInCall && (signal.conversation_id === currentCallConversationId || signal.from === currentCallUserId)) {
+      console.log('📞 CallContext: Received renegotiation offer');
+      if (webrtcManager) {
+        const answer = await webrtcManager.createAnswer(signal.data);
+        await sendSignal({
+          type: 'answer',
+          from: user!.id,
+          to: signal.from,
+          data: answer,
+          conversation_id: signal.conversation_id,
+        });
+      }
+      return;
+    }
+
+    // Appel entrant
+    setIncomingCallSignal(signal)
+    setIsRinging(true)
+    
+    // Récupérer le nom et l'avatar de l'appelant
+    const profile = await fetchCallerProfile(signal.from)
+    const callerName = profile?.display_name || profile?.username || 'Quelqu\'un'
+    const callerAvatar = profile?.avatar_url || undefined
+    const isVideo = signal.data?.video || false
+
+    setIncomingCall({
+      from: signal.from,
+      conversationId: signal.conversation_id,
+      isVideo,
+      callerName,
+      callerAvatar
+    })
+
+    // Envoyer une notification
+    if ('Notification' in window && Notification.permission === 'granted') {
+      showIncomingCallNotification(callerName, isVideo, signal.conversation_id, signal.from)
+    }
+  }
+
+  // Handle group call invite signal
+  const handleGroupCallInviteSignal = async (signal: CallSignal) => {
+    setIsRinging(true)
+    
+    // Récupérer le nom et l'avatar de l'appelant
+    const callerProfile = await fetchCallerProfile(signal.from)
+
+    // Récupérer les infos du groupe
+    const groupConversation = await fetchGroupConversation(signal.conversation_id)
+
+    const groupCallerName = callerProfile?.display_name || callerProfile?.username || 'Quelqu\'un'
+    const groupName = groupConversation?.name || 'Groupe'
+    const groupAvatar = groupConversation?.avatar_url || undefined
+    const isGroupVideo = signal.data?.video || false
+
+    // Store the group call info for joining
+    setIncomingCallSignal(signal)
+    setIncomingCall({
+      from: signal.from,
+      conversationId: signal.conversation_id,
+      isVideo: isGroupVideo,
+      callerName: `${groupCallerName} (${groupName})`,
+      callerAvatar: groupAvatar,
+      isGroupCall: true
+    })
+
+    // Envoyer une notification
+    if ('Notification' in window && Notification.permission === 'granted') {
+      showGroupCallNotification(groupCallerName, groupName, isGroupVideo, signal.conversation_id, signal.from)
+    }
+  }
+
+  // Handle answer signal
+  const handleAnswerSignal = async (signal: CallSignal) => {
+    if (webrtcManager) {
+      await webrtcManager.handleAnswer(signal.data)
+      setIsCalling(false)
+      setIsInCall(true)
+      await processIceCandidateQueue()
+    }
+  }
+
+  // Handle ICE candidate signal
+  const handleIceCandidateSignal = async (signal: CallSignal) => {
+    if (!signal.data) return
+
+    const canAddCandidate = isPeerConnectionReady && webrtcManager.hasRemoteDescription()
+    
+    if (canAddCandidate) {
+      try {
+        await webrtcManager.addIceCandidate(signal.data)
+      } catch (error) {
+        console.error('Error adding ICE candidate:', error)
+        iceCandidateQueueRef.current.push({
+          candidate: signal.data,
+          timestamp: Date.now()
+        })
+      }
+    } else {
+      console.log('Queueing ICE candidate (PC not ready or no remote description)')
+      iceCandidateQueueRef.current.push({
+        candidate: signal.data,
+        timestamp: Date.now()
+      })
+    }
+  }
+
+  // Handle media state update signal
+  const handleMediaStateUpdateSignal = (signal: CallSignal) => {
+    if (signal.data && typeof signal.data.video !== 'undefined') {
+      setRemoteVideoEnabled(signal.data.video)
     }
   }
 
@@ -764,36 +793,69 @@ export function CallProvider({ children }: { children: ReactNode }) {
     setVideoEnabled(newState)
   }
 
-  // Start a group call
-  const startGroupCall = async (conversationId: string, config: GroupCallConfig) => {
+  // Helper to request media permissions
+  const requestMediaPermissions = async (video: boolean): Promise<boolean> => {
+    if (typeof window === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+      return true
+    }
+    
     try {
-      // Request permissions explicitly on mobile
-      if (typeof window !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
-        try {
-          const testStream = await navigator.mediaDevices.getUserMedia({
-            audio: true,
-            video: config.video
-          })
-          
-          // Stop test stream immediately
-          testStream.getTracks().forEach(track => track.stop())
-        } catch (permError: any) {
-          console.error('Permission denied:', permError.name, permError.message)
-          
-          let errorMsg = '❌ Permissions requises\n\nPour appeler, vous devez autoriser :\n'
-          
-          if (permError.name === 'NotAllowedError') {
-            errorMsg += '• Caméra et Microphone\n\nSur Chrome Mobile :\n1. Appuyez sur 🔒 à côté de l\'URL\n2. Activez "Caméra" et "Microphone"'
-          } else {
-            errorMsg += '• Caméra et/ou Microphone\n\nAutorisez l\'accès dans les paramètres de votre navigateur.'
-          }
-          
-          alert(errorMsg)
-          setIsCalling(false)
-          return
-        }
+      const testStream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+        video
+      })
+      testStream.getTracks().forEach(track => track.stop())
+      return true
+    } catch (permError: any) {
+      console.error('Permission denied:', permError.name, permError.message)
+      
+      let errorMsg = '❌ Permissions requises\n\nPour appeler, vous devez autoriser :\n'
+      
+      if (permError.name === 'NotAllowedError') {
+        errorMsg += '• Caméra et Microphone\n\nSur Chrome Mobile :\n1. Appuyez sur 🔒 à côté de l\'URL\n2. Activez "Caméra" et "Microphone"'
+      } else {
+        errorMsg += '• Caméra et/ou Microphone\n\nAutorisez l\'accès dans les paramètres de votre navigateur.'
       }
       
+      alert(errorMsg)
+      setIsCalling(false)
+      return false
+    }
+  }
+
+  // Helper to send invites to group members
+  const sendInvitesToGroupMembers = async (
+    members: { user_id: string }[],
+    conversationId: string,
+    conversationName: string | undefined,
+    conversationAvatar: string | undefined,
+    video: boolean
+  ) => {
+    if (!members || members.length === 0) return
+    
+    for (const member of members) {
+      if (member.user_id !== user!.id) {
+        await sendSignal({
+          type: 'group-call-invite',
+          from: user!.id,
+          to: member.user_id,
+          data: {
+            video,
+            conversationName: conversationName || 'Groupe',
+            conversationAvatar,
+          },
+          conversation_id: conversationId,
+        })
+      }
+    }
+  }
+
+  // Start a group call
+  const startGroupCall = async (conversationId: string, config: GroupCallConfig) => {
+    const hasPermissions = await requestMediaPermissions(config.video)
+    if (!hasPermissions) return
+    
+    try {
       setIsCalling(true)
       setIsGroupCall(true)
       setCurrentCallConversationId(conversationId)
@@ -864,43 +926,16 @@ export function CallProvider({ children }: { children: ReactNode }) {
       setIsInCall(true)
 
       // Send group call invite to all other members
-      if (members && members.length > 0) {
-        for (const member of members) {
-          // Don't send to ourselves
-          if (member.user_id !== user!.id) {
-            await sendSignal({
-              type: 'group-call-invite',
-              from: user!.id,
-              to: member.user_id,
-              data: {
-                video: config.video,
-                conversationName: conversation?.name || 'Groupe',
-                conversationAvatar: conversation?.avatar_url,
-              },
-              conversation_id: conversationId,
-            })
-          }
-        }
-      }
+      await sendInvitesToGroupMembers(
+        members || [],
+        conversationId,
+        conversation?.name,
+        conversation?.avatar_url,
+        config.video
+      )
 
-      // Log the call - For group calls, use caller_id as callee_id (self-reference indicates group call)
-      // This satisfies the NOT NULL constraint on callee_id while allowing us to identify group calls
-      const { data: callLogData, error: callLogError } = await supabase.from('call_logs').insert({
-        conversation_id: conversationId,
-        caller_id: user!.id,
-        callee_id: user!.id, // Self-reference indicates group call (caller_id === callee_id)
-        type: config.video ? 'video' : 'audio',
-        status: 'initiated',
-      }).select()
-      
-      if (callLogError) {
-        console.error('Error creating group call log:', callLogError)
-      } else if (callLogData) {
-        // Dispatch a custom event to notify ChatViewPage to reload call logs
-        window.dispatchEvent(new CustomEvent('call-log-created', {
-          detail: { conversationId, callLog: callLogData?.[0] }
-        }))
-      }
+      // Log the call
+      await logGroupCall(conversationId, config.video)
     } catch (error) {
       console.error('Error starting group call:', error)
       setIsCalling(false)
@@ -909,74 +944,89 @@ export function CallProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  // End call - handles both group and 1-to-1 calls
-  const endCall = async (sendEndSignal: boolean = true) => {
-    console.log('📞 CallContext: endCall initiated', { isGroupCall, sendEndSignal });
+  // Helper to log group call
+  const logGroupCall = async (conversationId: string, isVideo: boolean) => {
+    const { data: callLogData, error: callLogError } = await supabase.from('call_logs').insert({
+      conversation_id: conversationId,
+      caller_id: user!.id,
+      callee_id: user!.id,
+      type: isVideo ? 'video' : 'audio',
+      status: 'initiated',
+    }).select()
     
-    if (isGroupCall) {
-      // Get participant count before leaving
-      const participantCount = groupCallManager.getParticipantCount()
-      const conversationId = currentCallConversationId
-      
-      // End group call
-      groupCallManager.leaveCall()
-      setGroupParticipants([])
-      setIsGroupCall(false)
-      
-      // Update call log with participant count (if we have a conversation ID)
-      if (conversationId && user) {
-        try {
-          // Find the most recent call log for this conversation and update it
-          const { data: callLog } = await supabase
-            .from('call_logs')
-            .select('id')
-            .eq('conversation_id', conversationId)
-            .eq('caller_id', user.id)
-            .order('started_at', { ascending: false })
-            .limit(1)
-            .maybeSingle()
-          
-          if (callLog) {
-            await supabase
-              .from('call_logs')
-              .update({
-                status: 'ended',
-                ended_at: new Date().toISOString(),
-                participant_count: participantCount
-              })
-              .eq('id', callLog.id)
-          }
-        } catch (e) {
-          console.log('Could not update group call log with participant count:', e)
-        }
-      }
-    } else {
-      // End 1-to-1 call
-      const otherUserId = incomingCallSignal?.from || currentCallUserId
-      const conversationId = incomingCallSignal?.conversation_id || currentCallConversationId
-      
-      // Only send end signal if we initiated the hang up (not if we received call-end from remote)
-      if (sendEndSignal && otherUserId && conversationId && user) {
-        try {
-          console.log('📞 CallContext: Sending call-end signal');
-          await sendSignal({
-            type: 'call-end',
-            from: user.id,
-            to: otherUserId,
-            data: { reason: 'ended' },
-            conversation_id: conversationId,
-          })
-        } catch (error) {
-          console.error('Error sending call-end signal:', error)
-        }
-      }
+    if (callLogError) {
+      console.error('Error creating group call log:', callLogError)
+    } else if (callLogData) {
+      window.dispatchEvent(new CustomEvent('call-log-created', {
+        detail: { conversationId, callLog: callLogData?.[0] }
+      }))
+    }
+  }
 
-      console.log('📞 CallContext: Calling webrtcManager.endCall()');
-      webrtcManager.endCall()
+  // Helper to end group call and update call log
+  const endGroupCall = async (conversationId: string | null, userId: string | undefined) => {
+    const participantCount = groupCallManager.getParticipantCount()
+    
+    groupCallManager.leaveCall()
+    setGroupParticipants([])
+    setIsGroupCall(false)
+    
+    if (conversationId && userId) {
+      try {
+        const { data: callLog } = await supabase
+          .from('call_logs')
+          .select('id')
+          .eq('conversation_id', conversationId)
+          .eq('caller_id', userId)
+          .order('started_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        
+        if (callLog) {
+          await supabase
+            .from('call_logs')
+            .update({
+              status: 'ended',
+              ended_at: new Date().toISOString(),
+              participant_count: participantCount
+            })
+            .eq('id', callLog.id)
+        }
+      } catch (e) {
+        console.log('Could not update group call log with participant count:', e)
+      }
+    }
+  }
+
+  // Helper to end 1-to-1 call
+  const endOneToOneCall = async (
+    sendEndSignal: boolean,
+    otherUserId: string | null | undefined,
+    conversationId: string | null | undefined,
+    userId: string | undefined
+  ) => {
+    if (sendEndSignal && otherUserId && conversationId && userId) {
+      try {
+        console.log('📞 CallContext: Sending call-end signal');
+        await sendSignal({
+          type: 'call-end',
+          from: userId,
+          to: otherUserId,
+          data: { reason: 'ended' },
+          conversation_id: conversationId,
+        })
+      } catch (error) {
+        console.error('Error sending call-end signal:', error)
+      }
     }
 
+    console.log('📞 CallContext: Calling webrtcManager.endCall()');
+    webrtcManager.endCall()
+  }
+
+  // Reset call state to initial values
+  const resetCallState = () => {
     console.log('📞 CallContext: Resetting state');
-    // Reset common state
     setIsInCall(false)
     setIsCalling(false)
     setIsRinging(false)
@@ -988,6 +1038,27 @@ export function CallProvider({ children }: { children: ReactNode }) {
     setCurrentCallConversationId(null)
     setIsPeerConnectionReady(false)
     iceCandidateQueueRef.current = []
+  }
+
+  // End call - handles both group and 1-to-1 calls
+  const endCall = async (sendEndSignal: boolean = true) => {
+    console.log('📞 CallContext: endCall initiated', { isGroupCall, sendEndSignal });
+    
+    const conversationId = currentCallConversationId
+    const otherUserId = incomingCallSignal?.from || currentCallUserId
+    
+    if (isGroupCall) {
+      await endGroupCall(conversationId, user?.id)
+    } else {
+      await endOneToOneCall(
+        sendEndSignal,
+        otherUserId,
+        incomingCallSignal?.conversation_id || currentCallConversationId,
+        user?.id
+      )
+    }
+
+    resetCallState()
   }
 
   return (

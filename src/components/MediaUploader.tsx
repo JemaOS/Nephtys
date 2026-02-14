@@ -315,6 +315,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
     return 'file';
   };
 
+  // Handle file selection - simplified with extracted helpers
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
@@ -328,74 +329,39 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
     }
 
     const file = files[0];
-
     const type = isDocumentUpload ? 'file' : getFileType(file);
 
-    // WhatsApp Limits
-    const VIDEO_SIZE_LIMIT = 200 * 1024 * 1024; // 200MB
-    const DOC_SIZE_LIMIT = 2 * 1024 * 1024 * 1024; // 2GB
-    const GLOBAL_LIMIT = 2 * 1024 * 1024 * 1024; // 2GB
-
-    // Check limits based on type
-    if (type === 'video' && file.size > VIDEO_SIZE_LIMIT) {
-      alert('La vidéo est trop volumineuse (max 200 Mo).');
+    // Check file size limits
+    if (!validateFileSize(file, type)) {
       return;
     }
 
-    if (type === 'file' && file.size > DOC_SIZE_LIMIT) {
-      alert('Le document est trop volumineux (max 2 Go).');
-      return;
-    }
-
-    if (file.size > GLOBAL_LIMIT) {
-      alert('Le fichier est trop volumineux (max 2GB)');
-      return;
-    }
-
-    // Special handling for document files - show document preview modal
-    // Includes PDF, Word, Excel, PowerPoint, and other document types
-    const documentMimeTypes = [
-      'application/pdf',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'application/vnd.ms-excel',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'application/vnd.ms-powerpoint',
-      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-      'text/plain',
-      'application/rtf',
-    ];
-    
-    const documentExtensions = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'rtf', 'odt', 'ods', 'odp'];
-    const fileExtension = file.name.split('.').pop()?.toLowerCase() || '';
-    
-    if (type === 'file' && (documentMimeTypes.includes(file.type) || documentExtensions.includes(fileExtension))) {
-      console.log('Opening document preview for:', file.name, 'type:', file.type, 'extension:', fileExtension);
+    // Check if it's a document file
+    if (type === 'file' && isDocumentFile(file)) {
+      console.log('Opening document preview for:', file.name, 'type:', file.type);
       setDocumentFile(file);
       setShowDocumentPreview(true);
-      return; // Don't proceed with normal flow
+      return;
     }
 
     setSelectedFile(file);
     setSelectedFileType(type);
     onMediaSelect(file, type);
 
-    // Créer une preview pour les images, vidéos et audio
+    // Create preview for images, videos, and audio
     if (type === 'image' || type === 'video' || type === 'audio') {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPreview(reader.result as string);
+      createFilePreview(file, type, (preview) => {
+        setPreview(preview);
         // For images, show the editor
         if (type === 'image') {
           setImageToEdit({
-            url: reader.result as string,
+            url: preview,
             fileName: file.name,
             file: file,
           });
           setShowImageEditor(true);
         }
-      };
-      reader.readAsDataURL(file);
+      });
     }
   };
 
@@ -464,7 +430,150 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
     });
   };
 
-  // Upload multiple files
+  // Helper: Validate file size based on type - extracted to reduce complexity
+  const validateFileSize = (file: File, type: 'image' | 'video' | 'file' | 'audio'): boolean => {
+    const VIDEO_SIZE_LIMIT = 200 * 1024 * 1024; // 200MB
+    const DOC_SIZE_LIMIT = 2 * 1024 * 1024 * 1024; // 2GB
+    const GLOBAL_LIMIT = 2 * 1024 * 1024 * 1024; // 2GB
+
+    // Check video size limit
+    if (type === 'video' && file.size > VIDEO_SIZE_LIMIT) {
+      alert('La vidéo est trop volumineuse (max 200 Mo).');
+      return false;
+    }
+
+    // Check document size limit
+    if (type === 'file' && file.size > DOC_SIZE_LIMIT) {
+      alert('Le document est trop volumineux (max 2 Go).');
+      return false;
+    }
+
+    // Check global size limit
+    if (file.size > GLOBAL_LIMIT) {
+      alert('Le fichier est trop volumineux (max 2GB)');
+      return false;
+    }
+
+    return true;
+  };
+
+  // Helper: Check if file is a document type - extracted to reduce complexity
+  const isDocumentFile = (file: File): boolean => {
+    const documentMimeTypes = [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-powerpoint',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'text/plain',
+      'application/rtf',
+    ];
+    
+    const documentExtensions = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'rtf', 'odt', 'ods', 'odp'];
+    const fileExtension = file.name.split('.').pop()?.toLowerCase() || '';
+    
+    return documentMimeTypes.includes(file.type) || documentExtensions.includes(fileExtension);
+  };
+
+  // Helper: Process single file preview - extracted to reduce complexity
+  const createFilePreview = (file: File, type: 'image' | 'video' | 'file' | 'audio', onPreviewCreated: (preview: string) => void): void => {
+    if (type === 'image' || type === 'video' || type === 'audio') {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        onPreviewCreated(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // Helper: Process a single file for upload - extracted to reduce complexity
+  const processSingleFile = async (
+    fileItem: { file: File; preview: string; type: 'image' | 'video' | 'file' | 'audio' },
+    userId: string,
+    totalFiles: number,
+    uploadedFiles: UploadedFileData[],
+    index: number
+  ): Promise<UploadedFileData | null> => {
+    const { file, type, preview } = fileItem;
+    
+    let fileToUpload: Blob = file;
+    let processedImage: ProcessedImage | null = null;
+    
+    // Compress images before upload
+    if (type === 'image') {
+      try {
+        processedImage = await processImageForUpload(file);
+        fileToUpload = processedImage.blob;
+      } catch (err) {
+        console.warn('Image compression failed, using original:', err);
+      }
+    }
+
+    // Compress video if needed
+    if (type === 'video') {
+      const shouldCompress = await checkVideoCompressionNeeded(preview);
+      if (shouldCompress) {
+        console.log(`Compressing video ${file.name}...`);
+        const compressedBlob = await compressVideo(file);
+        fileToUpload = compressedBlob;
+      }
+    }
+    
+    const folder = type === 'image' ? 'images' : type === 'video' ? 'videos' : 'documents';
+    const fileName = `${userId}/${folder}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+
+    const { data, error } = await supabase.storage
+      .from('media')
+      .upload(fileName, fileToUpload, {
+        cacheControl: '3600',
+        upsert: false,
+        contentType: file.type || 'application/octet-stream',
+      });
+
+    if (error) {
+      console.error('Upload error:', error);
+      return null;
+    }
+
+    const { data: { publicUrl } } = supabase.storage
+      .from('media')
+      .getPublicUrl(fileName);
+
+    const uploadedFile: UploadedFileData = {
+      url: publicUrl,
+      type,
+      fileName: file.name,
+      fileSize: fileToUpload instanceof Blob ? fileToUpload.size : file.size,
+    };
+    
+    // Add image dimensions if available
+    if (processedImage) {
+      uploadedFile.width = processedImage.dimensions.width;
+      uploadedFile.height = processedImage.dimensions.height;
+      uploadedFile.thumbnail = processedImage.thumbnailDataUrl;
+    }
+    
+    // Update progress
+    setUploadProgress(Math.round(((index + 1) / totalFiles) * 100));
+    
+    return uploadedFile;
+  };
+
+  // Helper: Check if video needs compression
+  const checkVideoCompressionNeeded = async (previewUrl: string): Promise<boolean> => {
+    return new Promise<boolean>((resolve) => {
+      const video = document.createElement('video');
+      video.preload = 'metadata';
+      video.onloadedmetadata = () => {
+        const height = video.videoHeight;
+        resolve(height > 720);
+      };
+      video.onerror = () => resolve(false);
+      video.src = previewUrl;
+    });
+  };
   const handleMultipleUpload = async () => {
     if (selectedFiles.length === 0) return;
 
@@ -1087,6 +1196,104 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   };
 
+  // Helper to render tab button - extracted to reduce complexity
+  const renderTabButton = (tab: 'attach' | 'emoji' | 'sticker' | 'gif', label: string) => (
+    <button
+      onClick={() => setActiveTab(tab)}
+      className={`flex-1 py-3 text-sm font-medium transition-colors ${
+        activeTab === tab ? 'text-accent border-b-2 border-accent' : 'text-text-secondary'
+      }`}
+    >
+      {label}
+    </button>
+  );
+
+  // Helper to render attach tab button - extracted to reduce complexity
+  const renderAttachButton = (icon: React.ReactNode, label: string, onClick: () => void, mobileOnly = false) => (
+    <button
+      onClick={onClick}
+      className={`flex flex-col items-center gap-2 p-2 sm:p-3 rounded-xl bg-bg-surface hover:bg-bg-hover transition-colors ${mobileOnly ? 'sm:hidden' : ''} ${mobileOnly ? '' : ''}`}
+    >
+      <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-accent flex items-center justify-center ${mobileOnly ? '' : ''}`}>
+        {icon}
+      </div>
+      <span className="text-[10px] sm:text-xs text-text-primary">{label}</span>
+    </button>
+  );
+
+  // Helper to render attach tab content - extracted to reduce complexity
+  const renderAttachTab = () => (
+    <div className="space-y-4">
+      <div className="grid grid-cols-5 gap-2 sm:gap-3">
+        {/* Camera */}
+        <button
+          onClick={() => {
+            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+            if (isMobile) {
+              cameraInputRef.current?.click();
+            } else {
+              startCamera('photo');
+            }
+          }}
+          className="flex flex-col items-center gap-2 p-2 sm:p-3 rounded-xl bg-bg-surface hover:bg-bg-hover transition-colors"
+        >
+          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-accent flex items-center justify-center">
+            <Camera size={20} className="text-white sm:hidden" />
+            <Camera size={24} className="text-white hidden sm:block" />
+          </div>
+          <span className="text-[10px] sm:text-xs text-text-primary">Caméra</span>
+        </button>
+        
+        {/* Gallery */}
+        <button
+          onClick={() => imageInputRef.current?.click()}
+          className="flex flex-col items-center gap-2 p-2 sm:p-3 rounded-xl bg-bg-surface hover:bg-bg-hover transition-colors"
+        >
+          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-accent flex items-center justify-center">
+            <Image size={20} className="text-white sm:hidden" />
+            <Image size={24} className="text-white hidden sm:block" />
+          </div>
+          <span className="text-[10px] sm:text-xs text-text-primary">Galerie</span>
+        </button>
+        
+        {/* Video */}
+        <button
+          onClick={() => videoInputRef.current?.click()}
+          className="flex flex-col items-center gap-2 p-2 sm:p-3 rounded-xl bg-bg-surface hover:bg-bg-hover transition-colors"
+        >
+          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-accent flex items-center justify-center">
+            <Video size={20} className="text-white sm:hidden" />
+            <Video size={24} className="text-white hidden sm:block" />
+          </div>
+          <span className="text-[10px] sm:text-xs text-text-primary">Vidéo</span>
+        </button>
+        
+        {/* Audio */}
+        <button
+          onClick={() => audioInputRef.current?.click()}
+          className="flex flex-col items-center gap-2 p-2 sm:p-3 rounded-xl bg-bg-surface hover:bg-bg-hover transition-colors"
+        >
+          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-accent flex items-center justify-center">
+            <Music size={20} className="text-white sm:hidden" />
+            <Music size={24} className="text-white hidden sm:block" />
+          </div>
+          <span className="text-[10px] sm:text-xs text-text-primary">Audio</span>
+        </button>
+        
+        {/* Document */}
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          className="flex flex-col items-center gap-2 p-2 sm:p-3 rounded-xl bg-bg-surface hover:bg-bg-hover transition-colors"
+        >
+          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-accent flex items-center justify-center">
+            <FileIcon size={20} className="text-white sm:hidden" />
+            <FileIcon size={24} className="text-white hidden sm:block" />
+          </div>
+          <span className="text-[10px] sm:text-xs text-text-primary">Document</span>
+        </button>
+      </div>
+    </div>
+  );
   // Emoji categories
   const emojiCategories = {
     recent: ['👍', '❤️', '😂', '😮', '😢', '🙏'],

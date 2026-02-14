@@ -52,6 +52,61 @@ interface ConversationWithDetails extends Omit<Conversation, 'is_pinned'> {
   is_muted?: boolean
 }
 
+// Helper function to build enriched conversations - extracted to reduce cognitive complexity
+const buildEnrichedConversations = (
+  conversationsData: Conversation[],
+  activeMembers: { conversation_id: string; is_pinned: boolean; is_muted: boolean }[],
+  savedMessagesConvIds: Set<string>,
+  membersByConversation: Map<string, string[]>,
+  profileMap: Map<string, Profile>,
+  lastMessageMap: Map<string, Message>,
+  unreadCountMap: Map<string, number>,
+  currentUserId: string
+): ConversationWithDetails[] => {
+  return conversationsData.map(conv => {
+    const memberInfo = activeMembers.find(m => m.conversation_id === conv.id)
+    const otherUserIdsForConv = membersByConversation.get(conv.id) || []
+    
+    // Check if this is a "Saved Messages" conversation
+    const isSavedMessages = savedMessagesConvIds.has(conv.id)
+    
+    // Get the other user's profile
+    let otherProfile: Profile | undefined
+    if (conv.type === 'direct') {
+      if (isSavedMessages) {
+        otherProfile = profileMap.get(currentUserId)
+      } else if (otherUserIdsForConv.length > 0) {
+        otherProfile = profileMap.get(otherUserIdsForConv[0])
+        
+        // Fallback: find any available profile
+        if (!otherProfile) {
+          for (const userId of otherUserIdsForConv) {
+            const profile = profileMap.get(userId)
+            if (profile) {
+              otherProfile = profile
+              break
+            }
+          }
+        }
+      }
+      
+      // Log warning if profile not found
+      if (!otherProfile && !isSavedMessages) {
+        console.warn(`[ChatsPage] Could not find profile for direct conversation ${conv.id}, other user IDs:`, otherUserIdsForConv)
+      }
+    }
+
+    return {
+      ...conv,
+      is_pinned: memberInfo?.is_pinned || false,
+      is_muted: memberInfo?.is_muted || false,
+      otherUserProfile: otherProfile,
+      lastMessage: lastMessageMap.get(conv.id),
+      unreadCount: unreadCountMap.get(conv.id) || 0
+    }
+  })
+}
+
 export function ChatsPage() {
   // Initialize from memory cache synchronously (instant, no flicker)
   const [conversations, setConversations] = useState<ConversationWithDetails[]>(() => {
@@ -635,7 +690,7 @@ export function ChatsPage() {
         unreadCountMap.set(msg.conversation_id, (unreadCountMap.get(msg.conversation_id) || 0) + 1)
       })
 
-      // Step 7: Build the enriched conversations array (no additional queries)
+      // Step 7: Build the members by conversation map
       const membersByConversation = new Map<string, string[]>()
       allMembers?.forEach(m => {
         const existing = membersByConversation.get(m.conversation_id) || []
@@ -643,50 +698,17 @@ export function ChatsPage() {
         membersByConversation.set(m.conversation_id, existing)
       })
 
-      const enrichedConversations: ConversationWithDetails[] = conversationsData.map(conv => {
-        const memberInfo = activeMembers.find(m => m.conversation_id === conv.id)
-        const otherUserIdsForConv = membersByConversation.get(conv.id) || []
-        
-        // Check if this is a "Saved Messages" conversation (only one member = self)
-        const isSavedMessages = savedMessagesConvIds.has(conv.id)
-        
-        // For "Saved Messages", use current user's profile; otherwise use other user's profile
-        let otherProfile: Profile | undefined
-        if (conv.type === 'direct') {
-          if (isSavedMessages) {
-            // Use current user's profile for "Saved Messages"
-            otherProfile = profileMap.get(user.id)
-          } else if (otherUserIdsForConv.length > 0) {
-            // Normal direct conversation - get the other user's profile
-            otherProfile = profileMap.get(otherUserIdsForConv[0])
-            
-            // If profile not found in map, try to find any other member's profile
-            if (!otherProfile) {
-              for (const userId of otherUserIdsForConv) {
-                const profile = profileMap.get(userId)
-                if (profile) {
-                  otherProfile = profile
-                  break
-                }
-              }
-            }
-          }
-          
-          // Log warning if we couldn't find a profile for a direct conversation
-          if (!otherProfile && !isSavedMessages) {
-            console.warn(`[ChatsPage] Could not find profile for direct conversation ${conv.id}, other user IDs:`, otherUserIdsForConv)
-          }
-        }
-
-        return {
-          ...conv,
-          is_pinned: memberInfo?.is_pinned || false,
-          is_muted: memberInfo?.is_muted || false,
-          otherUserProfile: otherProfile,
-          lastMessage: lastMessageMap.get(conv.id),
-          unreadCount: unreadCountMap.get(conv.id) || 0
-        }
-      })
+      // Step 8: Build the enriched conversations array using helper function
+      const enrichedConversations = buildEnrichedConversations(
+        conversationsData,
+        activeMembers,
+        savedMessagesConvIds,
+        membersByConversation,
+        profileMap,
+        lastMessageMap,
+        unreadCountMap,
+        user.id
+      )
 
       // Sort: pinned first, then by last_message_at
       const sorted = enrichedConversations.sort((a, b) => {
@@ -978,42 +1000,149 @@ export function ChatsPage() {
     window.open(`/chat/${conversationId}`, '_blank')
   }
 
-  // Memoize filtered conversations to prevent unnecessary recalculations
-  const filteredConversations = useMemo(() => {
-    return conversations.filter(conv => {
-      // Filtre par recherche
-      if (searchQuery.trim()) {
-        const query = searchQuery.toLowerCase()
+  // Helper function to get message preview text - extracted to module level for reduced complexity
+const getLastMessagePreview = (lastMessage: Message | undefined): string => {
+  if (!lastMessage) return 'Aucun message'
+  
+  const msg = lastMessage
+  
+  // Check for GIF pattern: [GIF](url) or caption\n[GIF](url)
+  if (msg.type === 'text' && msg.content) {
+    const gifMatch = msg.content.match(/^(?:[\s\S]*?\n)?\[GIF\]\(https?:\/\/[^\)]+\)$/)
+    if (gifMatch) {
+      // Extract caption if present
+      const captionMatch = msg.content.match(/^([\s\S]*?)\n\[GIF\]/)
+      const caption = captionMatch ? captionMatch[1].trim() : ''
+      return caption ? `GIF • ${caption}` : 'GIF'
+    }
+    
+    // Check for STICKER pattern: [STICKER](url) or caption\n[STICKER](url)
+    const stickerMatch = msg.content.match(/^(?:[\s\S]*?\n)?\[STICKER\]\(https?:\/\/[^\)]+\)$/)
+    if (stickerMatch) {
+      const captionMatch = msg.content.match(/^([\s\S]*?)\n\[STICKER\]/)
+      const caption = captionMatch ? captionMatch[1].trim() : ''
+      return caption ? `Sticker • ${caption}` : 'Sticker'
+    }
+    
+    // Check for URLs and shorten them like WhatsApp
+    const urlRegex = /https?:\/\/[^\s]+/gi
+    const urls = msg.content.match(urlRegex)
+    if (urls && urls.length > 0) {
+      const url = urls[0]
+      try {
+        const urlObj = new URL(url)
+        const hostname = urlObj.hostname.replace('www.', '')
         
-        // Check conversation name first
-        if (conv.name?.toLowerCase().includes(query)) {
-          // Name matches, continue to other filters
-        } else if (conv.type === 'direct') {
-          // For direct conversations, check the other user's profile
-          if (conv.otherUserProfile) {
-            const profileName = conv.otherUserProfile.display_name || conv.otherUserProfile.username || ''
-            if (!profileName.toLowerCase().includes(query)) {
-              return false
-            }
-          }
-          // If no otherUserProfile, still show the conversation (don't filter it out)
-          // This prevents conversations from disappearing due to missing profile data
+        // YouTube special handling
+        if (hostname.includes('youtube.com') || hostname.includes('youtu.be')) {
+          return '📹 youtube.com'
+        }
+        // Instagram
+        if (hostname.includes('instagram.com')) {
+          return '📷 instagram.com'
+        }
+        // Twitter/X
+        if (hostname.includes('twitter.com') || hostname.includes('x.com')) {
+          return '🐦 x.com'
+        }
+        // Facebook
+        if (hostname.includes('facebook.com') || hostname.includes('fb.com')) {
+          return '📘 facebook.com'
+        }
+        // TikTok
+        if (hostname.includes('tiktok.com')) {
+          return '🎵 tiktok.com'
+        }
+        // Spotify
+        if (hostname.includes('spotify.com')) {
+          return '🎧 spotify.com'
+        }
+        // LinkedIn
+        if (hostname.includes('linkedin.com')) {
+          return '💼 linkedin.com'
+        }
+        // GitHub
+        if (hostname.includes('github.com')) {
+          return '💻 github.com'
+        }
+        // Generic link with domain
+        return `🔗 ${hostname}`
+      } catch {
+        return '🔗 Lien'
+      }
+    }
+    
+    // Regular text message
+    return msg.content
+  }
+  
+  // Media types
+  if (msg.type === 'image') return '📷 Photo'
+  if (msg.type === 'video') return '🎬 Vidéo'
+  if (msg.type === 'audio') return '🎤 Message vocal'
+  if (msg.type === 'file') return `📎 ${msg.file_name || 'Document'}`
+  
+  return msg.content || '📎 Fichier'
+}
+
+// Helper function to check if conversation matches search query
+const matchesSearchQuery = (conv: ConversationWithDetails, query: string): boolean => {
+  // Check conversation name first
+  if (conv.name?.toLowerCase().includes(query)) {
+    return true
+  }
+  
+  if (conv.type === 'direct') {
+    // For direct conversations, check the other user's profile
+    if (conv.otherUserProfile) {
+      const profileName = conv.otherUserProfile.display_name || conv.otherUserProfile.username || ''
+      if (profileName.toLowerCase().includes(query)) {
+        return true
+      }
+    }
+    // If no otherUserProfile, still show the conversation
+    return false
+  }
+  
+  // Group conversation without matching name
+  return false
+}
+
+// Helper function to filter conversations
+const filterConversations = (
+  conversations: ConversationWithDetails[],
+  searchQuery: string,
+  activeFilter: 'all' | 'unread' | 'groups'
+): ConversationWithDetails[] => {
+  return conversations.filter(conv => {
+    // Filtre par recherche
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase()
+      if (!matchesSearchQuery(conv, query)) {
+        // Check if it's a direct without match - still show if no profile
+        if (conv.type === 'direct' && !conv.otherUserProfile) {
+          // Show conversations without profile data
         } else {
-          // Group conversation without matching name
           return false
         }
       }
-      
-      // Filtre par type
-      if (activeFilter === 'unread' && (conv.unreadCount || 0) === 0) {
-        return false
-      }
-      if (activeFilter === 'groups' && conv.type !== 'group') {
-        return false
-      }
-      
-      return true
-    })
+    }
+    
+    // Filtre par type
+    if (activeFilter === 'unread' && (conv.unreadCount || 0) === 0) {
+      return false
+    }
+    if (activeFilter === 'groups' && conv.type !== 'group') {
+      return false
+    }
+    
+    return true
+  })
+}
+
+  // Memoize filtered conversations to prevent unnecessary recalculations
+  const filteredConversations = useMemo(() => {
+    return filterConversations(conversations, searchQuery, activeFilter)
   }, [conversations, searchQuery, activeFilter])
 
   // Check if any selected conversation is pinned/muted (for toggle icons)
@@ -1263,92 +1392,8 @@ export function ChatsPage() {
                 ? 'Moi'
                 : conversation.otherUserProfile?.display_name || conversation.otherUserProfile?.username || 'Utilisateur'
 
-            // Déterminer l'aperçu du dernier message
-            const getLastMessagePreview = () => {
-              if (!conversation.lastMessage) return 'Aucun message'
-              
-              const msg = conversation.lastMessage
-              
-              // Check for GIF pattern: [GIF](url) or caption\n[GIF](url)
-              if (msg.type === 'text' && msg.content) {
-                const gifMatch = msg.content.match(/^(?:[\s\S]*?\n)?\[GIF\]\(https?:\/\/[^\)]+\)$/)
-                if (gifMatch) {
-                  // Extract caption if present
-                  const captionMatch = msg.content.match(/^([\s\S]*?)\n\[GIF\]/)
-                  const caption = captionMatch ? captionMatch[1].trim() : ''
-                  return caption ? `GIF • ${caption}` : 'GIF'
-                }
-                
-                // Check for STICKER pattern: [STICKER](url) or caption\n[STICKER](url)
-                const stickerMatch = msg.content.match(/^(?:[\s\S]*?\n)?\[STICKER\]\(https?:\/\/[^\)]+\)$/)
-                if (stickerMatch) {
-                  const captionMatch = msg.content.match(/^([\s\S]*?)\n\[STICKER\]/)
-                  const caption = captionMatch ? captionMatch[1].trim() : ''
-                  return caption ? `Sticker • ${caption}` : 'Sticker'
-                }
-                
-                // Check for URLs and shorten them like WhatsApp
-                const urlRegex = /https?:\/\/[^\s]+/gi
-                const urls = msg.content.match(urlRegex)
-                if (urls && urls.length > 0) {
-                  const url = urls[0]
-                  try {
-                    const urlObj = new URL(url)
-                    const hostname = urlObj.hostname.replace('www.', '')
-                    
-                    // YouTube special handling
-                    if (hostname.includes('youtube.com') || hostname.includes('youtu.be')) {
-                      return '📹 youtube.com'
-                    }
-                    // Instagram
-                    if (hostname.includes('instagram.com')) {
-                      return '📷 instagram.com'
-                    }
-                    // Twitter/X
-                    if (hostname.includes('twitter.com') || hostname.includes('x.com')) {
-                      return '🐦 x.com'
-                    }
-                    // Facebook
-                    if (hostname.includes('facebook.com') || hostname.includes('fb.com')) {
-                      return '📘 facebook.com'
-                    }
-                    // TikTok
-                    if (hostname.includes('tiktok.com')) {
-                      return '🎵 tiktok.com'
-                    }
-                    // Spotify
-                    if (hostname.includes('spotify.com')) {
-                      return '🎧 spotify.com'
-                    }
-                    // LinkedIn
-                    if (hostname.includes('linkedin.com')) {
-                      return '💼 linkedin.com'
-                    }
-                    // GitHub
-                    if (hostname.includes('github.com')) {
-                      return '💻 github.com'
-                    }
-                    // Generic link with domain
-                    return `🔗 ${hostname}`
-                  } catch {
-                    return '🔗 Lien'
-                  }
-                }
-                
-                // Regular text message
-                return msg.content
-              }
-              
-              // Media types
-              if (msg.type === 'image') return '📷 Photo'
-              if (msg.type === 'video') return '🎬 Vidéo'
-              if (msg.type === 'audio') return '🎤 Message vocal'
-              if (msg.type === 'file') return `📎 ${msg.file_name || 'Document'}`
-              
-              return msg.content || '📎 Fichier'
-            }
-            
-            const lastMessagePreview = getLastMessagePreview()
+            // Use the module-level helper function for message preview
+            const lastMessagePreview = getLastMessagePreview(conversation.lastMessage)
 
               const hasUnread = (conversation.unreadCount || 0) > 0
               const isSelected = selectedConversations.has(conversation.id)

@@ -227,50 +227,64 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
     }
   }, [showControls, isHoveringControls, startHideTimer]);
 
+  // Helper: Handle keyboard navigation
+  const handleKeyboardNavigation = useCallback((key: string): boolean => {
+    if (key === 'ArrowLeft') {
+      if (allMedia && currentIndex > 0 && onNavigate) {
+        onNavigate(currentIndex - 1);
+        return true;
+      }
+    } else if (key === 'ArrowRight') {
+      if (allMedia && currentIndex < allMedia.length - 1 && onNavigate) {
+        onNavigate(currentIndex + 1);
+        return true;
+      }
+    }
+    return false;
+  }, [allMedia, currentIndex, onNavigate]);
+
+  // Helper: Toggle media playback (video/audio)
+  const toggleMediaPlayback = useCallback(() => {
+    if (mediaType === 'video' && videoRef.current) {
+      if (videoRef.current.paused) {
+        videoRef.current.play();
+      } else {
+        videoRef.current.pause();
+      }
+    } else if (mediaType === 'audio' && audioRef.current) {
+      if (audioRef.current.paused) {
+        audioRef.current.play();
+      } else {
+        audioRef.current.pause();
+      }
+    }
+  }, [mediaType]);
+
+  // Handle keyboard events
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if (!isOpen) return;
+    
+    switch (e.key) {
+      case 'Escape':
+        onClose();
+        break;
+      case 'ArrowLeft':
+      case 'ArrowRight':
+        e.preventDefault();
+        handleKeyboardNavigation(e.key);
+        break;
+      case ' ':
+        e.preventDefault();
+        toggleMediaPlayback();
+        break;
+    }
+  }, [isOpen, onClose, handleKeyboardNavigation, toggleMediaPlayback]);
+
   // Handle keyboard navigation
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (!isOpen) return;
-      
-      switch (e.key) {
-        case 'Escape':
-          onClose();
-          break;
-        case 'ArrowLeft':
-          e.preventDefault();
-          if (allMedia && currentIndex > 0 && onNavigate) {
-            onNavigate(currentIndex - 1);
-          }
-          break;
-        case 'ArrowRight':
-          e.preventDefault();
-          if (allMedia && currentIndex < allMedia.length - 1 && onNavigate) {
-            onNavigate(currentIndex + 1);
-          }
-          break;
-        case ' ':
-          e.preventDefault();
-          // Toggle play/pause for video/audio
-          if (mediaType === 'video' && videoRef.current) {
-            if (videoRef.current.paused) {
-              videoRef.current.play();
-            } else {
-              videoRef.current.pause();
-            }
-          } else if (mediaType === 'audio' && audioRef.current) {
-            if (audioRef.current.paused) {
-              audioRef.current.play();
-            } else {
-              audioRef.current.pause();
-            }
-          }
-          break;
-      }
-    };
-
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, currentIndex, allMedia, onNavigate, onClose, mediaType]);
+  }, [handleKeyDown]);
 
   // Reset zoom and swipe state when media changes or viewer closes
   useEffect(() => {
@@ -447,11 +461,8 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
     }
   }, [zoom, position]);
 
-  // Handle touch move for pinch-to-zoom, pan, and swipe navigation (WhatsApp-like)
-  const handleTouchMove = useCallback((e: React.TouchEvent) => {
-    // IMPORTANT: Stop propagation to prevent parent components from receiving touch events
-    e.stopPropagation();
-    
+  // Helper: Handle pinch-to-zoom gesture
+  const handlePinchZoom = useCallback((e: React.TouchEvent) => {
     if (e.touches.length === 2 && initialPinchDistance !== null) {
       // Pinch gesture in progress
       e.preventDefault();
@@ -468,62 +479,126 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
           y: (center.y - pinchCenter.y) * (newZoom - 1),
         });
       }
-    } else if (e.touches.length === 1 && touchStartX !== null && touchStartY !== null) {
+    }
+  }, [initialPinchDistance, initialZoom, pinchCenter]);
+
+  // Helper: Handle pan gesture when zoomed in
+  const handlePanGesture = useCallback((e: React.TouchEvent, currentX: number, currentY: number) => {
+    if (zoom > 1 && isDragging) {
+      // Pan when zoomed in - single finger drag
+      e.preventDefault();
+      setPosition({
+        x: currentX - dragStart.x,
+        y: currentY - dragStart.y
+      });
+    }
+  }, [zoom, isDragging, dragStart]);
+
+  // Helper: Determine swipe direction - extracted to reduce complexity
+  const determineSwipeDirection = useCallback((diffX: number, diffY: number): 'horizontal' | 'vertical' | null => {
+    if (Math.abs(diffX) > Math.abs(diffY)) {
+      return 'horizontal';
+    }
+    return 'vertical';
+  }, []);
+
+  // Helper: Calculate adjusted swipe offset with edge resistance - extracted
+  const calculateSwipeOffset = useCallback((diffX: number): number => {
+    const isAtStart = currentIndex === 0 && diffX > 0;
+    const isAtEnd = currentIndex === allMedia.length - 1 && diffX < 0;
+    
+    // Apply rubber band effect at edges
+    if (isAtStart || isAtEnd) {
+      return diffX * 0.3;
+    }
+    return diffX;
+  }, [currentIndex, allMedia]);
+
+  // Helper: Update swipe with velocity tracking - extracted
+  const updateSwipeWithVelocity = useCallback((currentX: number) => {
+    const now = Date.now();
+    const timeDelta = now - lastTouchTimeRef.current;
+    if (timeDelta > 0) {
+      swipeVelocityRef.current = (currentX - lastTouchXRef.current) / timeDelta;
+    }
+    lastTouchTimeRef.current = now;
+    lastTouchXRef.current = currentX;
+  }, []);
+
+  // Helper: Handle horizontal swipe navigation - extracted to reduce complexity
+  const handleHorizontalSwipe = useCallback((diffX: number) => {
+    if (!allMedia || allMedia.length <= 1 || zoom > 1) return;
+    
+    const adjustedOffset = calculateSwipeOffset(diffX);
+    updateSwipeWithVelocity(touchStartX + diffX);
+    setSwipeOffset(adjustedOffset);
+  }, [allMedia, zoom, touchStartX, calculateSwipeOffset, updateSwipeWithVelocity]);
+
+  // Helper: Handle vertical swipe or direction detection - extracted
+  const handleSwipeDirectionDetection = useCallback((diffX: number, diffY: number) => {
+    if (Math.abs(diffX) > 10 || Math.abs(diffY) > 10) {
+      const direction = determineSwipeDirection(diffX, diffY);
+      if (direction === 'horizontal') {
+        setSwipeDirection('horizontal');
+      } else {
+        setSwipeDirection('vertical');
+        setIsSwipeActive(false);
+      }
+    }
+  }, [determineSwipeDirection]);
+
+  // Handle touch move for pinch-to-zoom, pan, and swipe navigation (WhatsApp-like)
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    // IMPORTANT: Stop propagation to prevent parent components from receiving touch events
+    e.stopPropagation();
+    
+    // Handle pinch-to-zoom
+    handlePinchZoom(e);
+    
+    // Handle single touch events
+    if (e.touches.length === 1 && touchStartX !== null && touchStartY !== null) {
       const touch = e.touches[0];
       const currentX = touch.clientX;
       const currentY = touch.clientY;
       
-      if (zoom > 1 && isDragging) {
-        // Pan when zoomed in - single finger drag
-        e.preventDefault();
-        setPosition({
-          x: currentX - dragStart.x,
-          y: currentY - dragStart.y
-        });
-      } else if (zoom <= 1 && allMedia && allMedia.length > 1 && isSwipeActive) {
-        // Single touch swipe for navigation - WhatsApp-like instant following
+      // Handle pan when zoomed in
+      handlePanGesture(e, currentX, currentY);
+      
+      // Handle swipe navigation when not zoomed
+      const canSwipe = zoom <= 1 && allMedia && allMedia.length > 1 && isSwipeActive;
+      
+      if (canSwipe && swipeDirection === 'horizontal') {
+        const diffX = currentX - touchStartX;
+        handleHorizontalSwipe(diffX);
+      } else if (canSwipe && swipeDirection === null) {
         const diffX = currentX - touchStartX;
         const diffY = currentY - touchStartY;
-        
-        // Determine swipe direction on first significant movement
-        if (swipeDirection === null && (Math.abs(diffX) > 10 || Math.abs(diffY) > 10)) {
-          if (Math.abs(diffX) > Math.abs(diffY)) {
-            setSwipeDirection('horizontal');
-          } else {
-            setSwipeDirection('vertical');
-            setIsSwipeActive(false);
-            return;
-          }
-        }
-        
-        // Only process horizontal swipes
-        if (swipeDirection === 'horizontal') {
-          e.preventDefault();
-          
-          // Calculate velocity for momentum
-          const now = Date.now();
-          const timeDelta = now - lastTouchTimeRef.current;
-          if (timeDelta > 0) {
-            swipeVelocityRef.current = (currentX - lastTouchXRef.current) / timeDelta;
-          }
-          lastTouchTimeRef.current = now;
-          lastTouchXRef.current = currentX;
-          
-          // Apply resistance at edges (WhatsApp-like behavior)
-          let adjustedOffset = diffX;
-          const isAtStart = currentIndex === 0 && diffX > 0;
-          const isAtEnd = currentIndex === allMedia.length - 1 && diffX < 0;
-          
-          if (isAtStart || isAtEnd) {
-            // Apply rubber band effect at edges
-            adjustedOffset = diffX * 0.3;
-          }
-          
-          setSwipeOffset(adjustedOffset);
-        }
+        handleSwipeDirectionDetection(diffX, diffY);
       }
     }
-  }, [initialPinchDistance, initialZoom, pinchCenter, touchStartX, touchStartY, zoom, allMedia, currentIndex, isSwipeActive, swipeDirection, isDragging, dragStart]);
+  }, [handlePinchZoom, handlePanGesture, touchStartX, touchStartY, zoom, allMedia, isSwipeActive, swipeDirection, handleHorizontalSwipe, handleSwipeDirectionDetection]);
+
+  // Helper: Check if navigation should happen based on swipe - extracted to reduce complexity
+  const shouldNavigateFromSwipe = useCallback((currentIndex: number, allMediaLength: number): 'prev' | 'next' | null => {
+    const velocity = swipeVelocityRef.current;
+    const hasEnoughDistance = Math.abs(swipeOffset) > SWIPE_THRESHOLD;
+    const hasEnoughVelocity = Math.abs(velocity) > SWIPE_VELOCITY_THRESHOLD;
+    
+    if (!hasEnoughDistance && !hasEnoughVelocity) {
+      return null;
+    }
+    
+    const goingNext = swipeOffset < 0 || (swipeOffset === 0 && velocity < 0);
+    const goingPrev = swipeOffset > 0 || (swipeOffset === 0 && velocity > 0);
+    
+    if (goingPrev && currentIndex > 0) {
+      return 'prev';
+    }
+    if (goingNext && currentIndex < allMediaLength - 1) {
+      return 'next';
+    }
+    return null;
+  }, [swipeOffset, swipeOffset]);
 
   // Handle touch end for pinch-to-zoom, pan, and swipe navigation (WhatsApp-like)
   const handleTouchEnd = useCallback((e: React.TouchEvent) => {
@@ -546,30 +621,16 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
     
     // Handle swipe navigation with velocity consideration - INSTANT navigation like WhatsApp
     if (touchStartX !== null && zoom <= 1 && allMedia && allMedia.length > 1 && swipeDirection === 'horizontal') {
-      const velocity = swipeVelocityRef.current;
-      const shouldNavigate = Math.abs(swipeOffset) > SWIPE_THRESHOLD || Math.abs(velocity) > SWIPE_VELOCITY_THRESHOLD;
+      const navigation = shouldNavigateFromSwipe(currentIndex, allMedia.length);
       
-      if (shouldNavigate) {
-        // Determine direction based on offset or velocity
-        const goNext = swipeOffset < 0 || (swipeOffset === 0 && velocity < 0);
-        const goPrev = swipeOffset > 0 || (swipeOffset === 0 && velocity > 0);
-        
-        if (goPrev && currentIndex > 0) {
-          // Swipe right - go to previous - INSTANT navigation
-          onNavigate?.(currentIndex - 1);
-          setSwipeOffset(0);
-        } else if (goNext && currentIndex < allMedia.length - 1) {
-          // Swipe left - go to next - INSTANT navigation
-          onNavigate?.(currentIndex + 1);
-          setSwipeOffset(0);
-        } else {
-          // At edge, snap back
-          setSwipeOffset(0);
-        }
-      } else {
-        // Not enough swipe distance/velocity, snap back
-        setSwipeOffset(0);
+      if (navigation === 'prev') {
+        onNavigate?.(currentIndex - 1);
+      } else if (navigation === 'next') {
+        onNavigate?.(currentIndex + 1);
       }
+      
+      // Always reset swipe offset
+      setSwipeOffset(0);
     } else {
       setSwipeOffset(0);
     }
@@ -579,7 +640,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
     setTouchStartY(null);
     setIsSwipeActive(false);
     setSwipeDirection(null);
-  }, [initialPinchDistance, touchStartX, zoom, allMedia, currentIndex, onNavigate, swipeOffset, swipeDirection]);
+  }, [initialPinchDistance, touchStartX, zoom, allMedia, currentIndex, onNavigate, swipeDirection, shouldNavigateFromSwipe]);
 
   // Prevent body scroll when viewer is open and handle fullscreen
   useEffect(() => {
@@ -667,103 +728,160 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
     return /Android/i.test(navigator.userAgent);
   }, []);
 
-  // Toggle fullscreen mode - with better mobile/PWA support for Android 15
+  // Helper: Check if currently in fullscreen mode
+  const checkFullscreenState = (): boolean => {
+    return !!(
+      document.fullscreenElement ||
+      (document as any).webkitFullscreenElement ||
+      (document as any).mozFullScreenElement ||
+      (document as any).msFullscreenElement
+    );
+  };
+
+  // Helper: Request fullscreen for video element on mobile
+  const requestVideoFullscreen = async (video: HTMLVideoElement & { webkitEnterFullscreen?: () => void; webkitRequestFullscreen?: () => Promise<void>; mozRequestFullScreen?: () => Promise<void>; msRequestFullscreen?: () => Promise<void>; webkitSupportsFullscreen?: boolean; webkitDisplayingFullscreen?: boolean; }, isCurrentlyFullscreen: boolean): Promise<boolean> => {
+    // iOS Safari native fullscreen
+    if (video.webkitEnterFullscreen && video.webkitSupportsFullscreen !== false) {
+      try {
+        video.webkitEnterFullscreen();
+        return true;
+      } catch (e) {
+        console.log('webkitEnterFullscreen failed:', e);
+      }
+    }
+
+    // Android PWA: Request fullscreen on video element
+    if (isAndroid && isPWA) {
+      if (video.requestFullscreen) {
+        await video.requestFullscreen();
+        return true;
+      } else if (video.webkitRequestFullscreen) {
+        await video.webkitRequestFullscreen();
+        return true;
+      }
+    }
+
+    // Other mobile browsers
+    if (video.requestFullscreen) {
+      await video.requestFullscreen();
+      
+      // Only try orientation lock on non-PWA mobile browsers
+      if (!isPWA && window.screen?.orientation) {
+        try {
+          // @ts-ignore - lock is experimental
+          await window.screen.orientation.lock('landscape');
+        } catch (e) {
+          console.log('Orientation lock not available:', e);
+        }
+      }
+      return true;
+    } else if (video.webkitRequestFullscreen) {
+      await video.webkitRequestFullscreen();
+      return true;
+    }
+
+    return false;
+  };
+
+  // Helper: Request fullscreen for container element
+  const requestContainerFullscreen = async (): Promise<boolean> => {
+    const container = videoContainerRef.current;
+    if (!container) return false;
+
+    if (container.requestFullscreen) {
+      await container.requestFullscreen();
+      return true;
+    } else if ((container as any).webkitRequestFullscreen) {
+      await (container as any).webkitRequestFullscreen();
+      return true;
+    } else if ((container as any).mozRequestFullScreen) {
+      await (container as any).mozRequestFullScreen();
+      return true;
+    } else if ((container as any).msRequestFullscreen) {
+      await (container as any).msRequestFullscreen();
+      return true;
+    }
+    return false;
+  };
+
+  // Helper: Request fullscreen for document element
+  const requestDocumentFullscreen = async (): Promise<boolean> => {
+    const docEl = document.documentElement as HTMLElement & {
+      webkitRequestFullscreen?: () => Promise<void>;
+      mozRequestFullScreen?: () => Promise<void>;
+      msRequestFullscreen?: () => Promise<void>;
+    };
+    
+    if (docEl.requestFullscreen) {
+      await docEl.requestFullscreen();
+      return true;
+    } else if (docEl.webkitRequestFullscreen) {
+      await docEl.webkitRequestFullscreen();
+      return true;
+    } else if (docEl.mozRequestFullScreen) {
+      await docEl.mozRequestFullScreen();
+      return true;
+    } else if (docEl.msRequestFullscreen) {
+      await docEl.msRequestFullscreen();
+      return true;
+    }
+    return false;
+  };
+
+  // Helper: Exit fullscreen
+  const exitFullscreen = async (): Promise<void> => {
+    const doc = document as Document & {
+      webkitExitFullscreen?: () => Promise<void>;
+      mozCancelFullScreen?: () => Promise<void>;
+      msExitFullscreen?: () => Promise<void>;
+    };
+    
+    if (doc.exitFullscreen) {
+      await doc.exitFullscreen();
+    } else if (doc.webkitExitFullscreen) {
+      await doc.webkitExitFullscreen();
+    } else if (doc.mozCancelFullScreen) {
+      await doc.mozCancelFullScreen();
+    } else if (doc.msExitFullscreen) {
+      await doc.msExitFullscreen();
+    }
+    
+    // Unlock orientation (only if not PWA)
+    if (window.screen?.orientation && !isPWA) {
+      try {
+        // @ts-ignore - unlock is experimental
+        window.screen.orientation.unlock();
+      } catch (e) {
+        // Ignore unlock errors
+      }
+    }
+  };
+
+  // Toggle fullscreen mode - refactored for reduced complexity
   const toggleFullscreen = useCallback(async () => {
     try {
-      // Check if we're already in fullscreen
-      const isCurrentlyFullscreen = !!(
-        document.fullscreenElement ||
-        (document as any).webkitFullscreenElement ||
-        (document as any).mozFullScreenElement ||
-        (document as any).msFullscreenElement
-      );
+      const isCurrentlyFullscreen = checkFullscreenState();
       
       if (!isCurrentlyFullscreen) {
-        // For videos on mobile, use the video element's native fullscreen
-        // This is the ONLY reliable way on Android PWA to get proper rotation
+        // Enter fullscreen
         if (mediaType === 'video' && videoRef.current) {
-          const video = videoRef.current as HTMLVideoElement & {
-            webkitEnterFullscreen?: () => void;
-            webkitRequestFullscreen?: () => Promise<void>;
-            mozRequestFullScreen?: () => Promise<void>;
-            msRequestFullscreen?: () => Promise<void>;
-            webkitSupportsFullscreen?: boolean;
-            webkitDisplayingFullscreen?: boolean;
-          };
+          const video = videoRef.current;
+          const success = await requestVideoFullscreen(video, isCurrentlyFullscreen);
           
-          // On mobile (especially Android PWA), we MUST use native video fullscreen
-          // The screen.orientation.lock() API does NOT work on Android PWA
-          // Native video fullscreen handles rotation automatically
-          if (isMobile || isPWA) {
-            // Try iOS Safari native fullscreen first (webkitEnterFullscreen)
-            // This is the only way to get fullscreen on iOS Safari
-            if (video.webkitEnterFullscreen && video.webkitSupportsFullscreen !== false) {
-              try {
-                video.webkitEnterFullscreen();
-                setIsFullscreen(true);
-                return;
-              } catch (e) {
-                console.log('webkitEnterFullscreen failed:', e);
-              }
-            }
-            
-            // For Android PWA: Request fullscreen on the VIDEO element directly
-            // This triggers the native video player which:
-            // 1. Handles rotation automatically based on video aspect ratio
-            // 2. Shows native video controls
-            // 3. Works properly on Android 15 PWA
-            //
-            // IMPORTANT: Do NOT try to lock orientation manually on Android PWA
-            // as it will fail and cause the fullscreen to exit immediately
-            
-            if (isAndroid && isPWA) {
-              // On Android PWA, use requestFullscreen on video element
-              // Do NOT attempt orientation lock - it breaks fullscreen
-              if (video.requestFullscreen) {
-                await video.requestFullscreen();
-                setIsFullscreen(true);
-                return;
-              } else if (video.webkitRequestFullscreen) {
-                await video.webkitRequestFullscreen();
-                setIsFullscreen(true);
-                return;
-              }
-            }
-            
-            // For other mobile browsers (non-PWA Android, etc.)
-            if (video.requestFullscreen) {
-              await video.requestFullscreen();
-              setIsFullscreen(true);
-              
-              // Only try orientation lock on non-PWA mobile browsers
-              // where it might actually work
-              if (!isPWA && window.screen?.orientation) {
-                try {
-                  // @ts-ignore - lock is experimental
-                  await window.screen.orientation.lock('landscape');
-                } catch (e) {
-                  // Orientation lock failed - this is expected on many devices
-                  console.log('Orientation lock not available:', e);
-                }
-              }
-              return;
-            } else if (video.webkitRequestFullscreen) {
-              await video.webkitRequestFullscreen();
-              setIsFullscreen(true);
-              return;
-            }
+          if (success) {
+            setIsFullscreen(true);
+            return;
           }
           
-          // Desktop fallback - prefer container fullscreen to keep custom controls
-          if (videoContainerRef.current?.requestFullscreen) {
-            await videoContainerRef.current.requestFullscreen();
-          } else if ((videoContainerRef.current as any)?.webkitRequestFullscreen) {
-            await (videoContainerRef.current as any).webkitRequestFullscreen();
-          } else if ((videoContainerRef.current as any)?.mozRequestFullScreen) {
-            await (videoContainerRef.current as any).mozRequestFullScreen();
-          } else if ((videoContainerRef.current as any)?.msRequestFullscreen) {
-            await (videoContainerRef.current as any).msRequestFullscreen();
-          } else if (video.requestFullscreen) {
+          // Fallback to container fullscreen
+          const containerSuccess = await requestContainerFullscreen();
+          if (containerSuccess) {
+            setIsFullscreen(true);
+            return;
+          }
+          
+          // Last resort: try video.requestFullscreen
+          if (video.requestFullscreen) {
             await video.requestFullscreen();
           } else if (video.webkitRequestFullscreen) {
             await video.webkitRequestFullscreen();
@@ -776,52 +894,14 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
           setIsFullscreen(true);
         } else {
           // For images, use document fullscreen
-          const docEl = document.documentElement as HTMLElement & {
-            webkitRequestFullscreen?: () => Promise<void>;
-            mozRequestFullScreen?: () => Promise<void>;
-            msRequestFullscreen?: () => Promise<void>;
-          };
-          
-          if (docEl.requestFullscreen) {
-            await docEl.requestFullscreen();
-          } else if (docEl.webkitRequestFullscreen) {
-            await docEl.webkitRequestFullscreen();
-          } else if (docEl.mozRequestFullScreen) {
-            await docEl.mozRequestFullScreen();
-          } else if (docEl.msRequestFullscreen) {
-            await docEl.msRequestFullscreen();
+          const docSuccess = await requestDocumentFullscreen();
+          if (docSuccess) {
+            setIsFullscreen(true);
           }
-          
-          setIsFullscreen(true);
         }
       } else {
         // Exit fullscreen
-        const doc = document as Document & {
-          webkitExitFullscreen?: () => Promise<void>;
-          mozCancelFullScreen?: () => Promise<void>;
-          msExitFullscreen?: () => Promise<void>;
-        };
-        
-        if (doc.exitFullscreen) {
-          await doc.exitFullscreen();
-        } else if (doc.webkitExitFullscreen) {
-          await doc.webkitExitFullscreen();
-        } else if (doc.mozCancelFullScreen) {
-          await doc.mozCancelFullScreen();
-        } else if (doc.msExitFullscreen) {
-          await doc.msExitFullscreen();
-        }
-        
-        // Unlock orientation (only if not PWA, as it likely wasn't locked)
-        if (window.screen?.orientation && !isPWA) {
-          try {
-            // @ts-ignore - unlock is experimental
-            window.screen.orientation.unlock();
-          } catch (e) {
-            // Ignore unlock errors
-          }
-        }
-        
+        await exitFullscreen();
         setIsFullscreen(false);
       }
     } catch (error) {

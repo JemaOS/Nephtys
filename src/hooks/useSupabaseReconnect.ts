@@ -26,6 +26,176 @@ const FORCE_RELOAD_THRESHOLD_BROWSER = 300000 // 5 minutes for browser
 // Track if we've already scheduled a reload to prevent multiple reloads
 let reloadScheduled = false
 
+// Helper to handle invalid refresh token error
+const handleInvalidRefreshToken = async (errorMsg: string): Promise<boolean> => {
+  if (!errorMsg.includes('Invalid Refresh Token') && !errorMsg.includes('Refresh Token Not Found')) {
+    return false
+  }
+  
+  // Attempt recovery for ephemeral users
+  const isEphemeral = localStorage.getItem('anu_ephemeral_mode') === 'true'
+  const ephemeralUser = localStorage.getItem('anu_ephemeral_user')
+  const ephemeralPassword = localStorage.getItem('anu_ephemeral_password')
+  
+  if (isEphemeral && ephemeralUser && ephemeralPassword) {
+    console.log('[Reconnect] Ephemeral user detected with invalid token. Attempting recovery...')
+    try {
+      const { data, error } = await supabase.functions.invoke('auth-with-username', {
+        body: { action: 'signin', username: ephemeralUser, password: ephemeralPassword }
+      })
+      
+      if (!error && data?.data?.session) {
+        const { error: sessionError } = await supabase.auth.setSession({
+          access_token: data.data.session.access_token,
+          refresh_token: data.data.session.refresh_token
+        })
+        
+        if (!sessionError) {
+          console.log('[Reconnect] Ephemeral session recovered successfully!')
+          return true
+        }
+      }
+      console.error('[Reconnect] Ephemeral recovery failed:', error || 'No session')
+    } catch (recoveryErr) {
+      console.error('[Reconnect] Ephemeral recovery error:', recoveryErr)
+    }
+  }
+
+  console.error('[Reconnect] CRITICAL: Invalid Refresh Token detected. Forcing logout to recover.')
+  
+  // Clear local storage to remove stale tokens
+  localStorage.removeItem('nephtys-auth')
+  localStorage.removeItem('sb-nephtys-auth-token')
+  localStorage.removeItem('anu_cached_user')
+  localStorage.removeItem('anu_cached_profile')
+  
+  // Force sign out
+  await supabase.auth.signOut()
+  
+  // Force reload to login page
+  window.location.href = '/'
+  return false
+}
+
+// Helper to check session as fallback
+const checkSessionFallback = async (): Promise<boolean> => {
+  try {
+    const sessionPromise = supabase.auth.getSession()
+    const sessionTimeout = new Promise<null>((_, reject) =>
+      setTimeout(() => reject(new Error('Get session timeout')), 2000)
+    )
+    const sessionResult = await Promise.race([sessionPromise, sessionTimeout]) as any
+    if (!sessionResult?.data?.session) {
+      console.warn('[Reconnect] No valid session found')
+      return false
+    }
+    return true
+  } catch (e) {
+    console.warn('[Reconnect] Session check timed out, continuing anyway')
+    return false
+  }
+}
+
+// Helper to handle channel subscription
+const subscribeToChannel = (channel: any, channelName: string): void => {
+  channel.subscribe((status: string) => {
+    if (status === 'SUBSCRIBED') {
+      console.log(`[Reconnect] Channel ${channelName} reconnected`)
+    }
+  })
+}
+
+// Helper to reconnect a single channel
+const reconnectSingleChannel = async (channel: any): Promise<void> => {
+  const channelName = channel.topic
+  try {
+    await channel.unsubscribe()
+    subscribeToChannel(channel, channelName)
+  } catch (e) {
+    console.error(`[Reconnect] Error reconnecting channel ${channelName}:`, e)
+  }
+}
+
+// Helper for foreground force reload logic
+const handleForegroundForceReload = async (
+  backgroundDuration: number,
+  forceReloadThreshold: number,
+  testConnectionHealth: () => Promise<boolean>,
+  forcePageReload: () => void
+): Promise<boolean> => {
+  if (backgroundDuration <= forceReloadThreshold) {
+    return false
+  }
+  
+  console.log(`[Reconnect] Background duration (${Math.round(backgroundDuration / 1000)}s) exceeded force reload threshold (${Math.round(forceReloadThreshold / 1000)}s)`)
+  
+  // First, try a quick connection test
+  const isHealthy = await testConnectionHealth()
+  
+  if (!isHealthy) {
+    console.log('[Reconnect] Connection unhealthy after long background, forcing page reload...')
+    forcePageReload()
+    return true
+  } else {
+    console.log('[Reconnect] Connection still healthy, proceeding with normal reconnect')
+  }
+  return false
+}
+
+// Helper for foreground reconnect logic
+const handleForegroundReconnect = async (
+  backgroundDuration: number,
+  threshold: number,
+  isPWA: boolean,
+  performReconnect: () => Promise<boolean>,
+  testConnectionHealth: () => Promise<boolean>,
+  forcePageReload: () => void
+): Promise<void> => {
+  if (backgroundDuration <= threshold) {
+    return
+  }
+  
+  console.log(`[Reconnect] Background duration (${backgroundDuration}ms) exceeded threshold (${threshold}ms), reconnecting IMMEDIATELY...`)
+  
+  const success = await performReconnect()
+  
+  // If reconnect failed and we're on PWA, try force reload
+  if (!success && isPWA && backgroundDuration > 30000) {
+    console.log('[Reconnect] Reconnect failed after 30s+ background on PWA, testing connection...')
+    const isHealthy = await testConnectionHealth()
+    if (!isHealthy) {
+      console.log('[Reconnect] Connection test failed, forcing page reload...')
+      forcePageReload()
+    }
+  }
+}
+
+// Helper for short PWA background
+const handleShortPWABackground = (backgroundDuration: number, isPWA: boolean): void => {
+  if (isPWA && backgroundDuration > 500) {
+    console.log('[Reconnect] Short PWA background, dispatching refresh event')
+    window.dispatchEvent(new CustomEvent('supabase-reconnected', {
+      detail: { timestamp: Date.now(), quick: true }
+    }))
+  }
+}
+
+// Helper to restart session check interval
+const restartSessionCheckInterval = (
+  userId: string,
+  sessionCheckInterval: React.MutableRefObject<NodeJS.Timeout | null>,
+  refreshSession: () => Promise<boolean>
+): void => {
+  if (userId && !sessionCheckInterval.current) {
+    sessionCheckInterval.current = setInterval(async () => {
+      if (!document.hidden) {
+        console.log('[Reconnect] Periodic session check...')
+        await refreshSession()
+      }
+    }, SESSION_CHECK_INTERVAL)
+  }
+}
+
 /**
  * Hook to handle Supabase reconnection when PWA comes back from background
  * This is especially important for Android PWAs where the system may kill
@@ -114,69 +284,23 @@ export function useSupabaseReconnect(userId: string | null) {
         // CRITICAL FIX: Handle Invalid Refresh Token by forcing logout
         // This happens when the session is invalid/revoked/expired and cannot be refreshed
         const errorMsg = result.error.message || ''
+        const handled = await handleInvalidRefreshToken(errorMsg)
+        if (handled) {
+          reconnectAttempts.current = 0
+          resetReconnectingState()
+          return true
+        }
         if (errorMsg.includes('Invalid Refresh Token') || errorMsg.includes('Refresh Token Not Found')) {
-          
-          // Attempt recovery for ephemeral users
-          const isEphemeral = localStorage.getItem('anu_ephemeral_mode') === 'true'
-          const ephemeralUser = localStorage.getItem('anu_ephemeral_user')
-          const ephemeralPassword = localStorage.getItem('anu_ephemeral_password')
-          
-          if (isEphemeral && ephemeralUser && ephemeralPassword) {
-             console.log('[Reconnect] Ephemeral user detected with invalid token. Attempting recovery...')
-             try {
-                const { data, error } = await supabase.functions.invoke('auth-with-username', {
-                  body: { action: 'signin', username: ephemeralUser, password: ephemeralPassword }
-                })
-                
-                if (!error && data?.data?.session) {
-                   const { error: sessionError } = await supabase.auth.setSession({
-                      access_token: data.data.session.access_token,
-                      refresh_token: data.data.session.refresh_token
-                   })
-                   
-                   if (!sessionError) {
-                      console.log('[Reconnect] Ephemeral session recovered successfully!')
-                      reconnectAttempts.current = 0
-                      resetReconnectingState()
-                      return true
-                   }
-                }
-                console.error('[Reconnect] Ephemeral recovery failed:', error || 'No session')
-             } catch (recoveryErr) {
-                console.error('[Reconnect] Ephemeral recovery error:', recoveryErr)
-             }
-          }
-
-          console.error('[Reconnect] CRITICAL: Invalid Refresh Token detected. Forcing logout to recover.')
-          
-          // Clear local storage to remove stale tokens
-          localStorage.removeItem('nephtys-auth')
-          localStorage.removeItem('sb-nephtys-auth-token') // Just in case
-          localStorage.removeItem('anu_cached_user')
-          localStorage.removeItem('anu_cached_profile')
-          
-          // Force sign out
-          await supabase.auth.signOut()
-          
-          // Force reload to login page
-          window.location.href = '/'
+          // handleInvalidRefreshToken handles the redirect, return false if it didn't redirect
+          resetReconnectingState()
           return false
         }
 
         // Try to get current session as fallback - but don't wait long
-        try {
-          const sessionPromise = supabase.auth.getSession()
-          const sessionTimeout = new Promise<null>((_, reject) =>
-            setTimeout(() => reject(new Error('Get session timeout')), 2000)
-          )
-          const sessionResult = await Promise.race([sessionPromise, sessionTimeout]) as any
-          if (!sessionResult?.data?.session) {
-            console.warn('[Reconnect] No valid session found')
-            resetReconnectingState()
-            return false
-          }
-        } catch (e) {
-          console.warn('[Reconnect] Session check timed out, continuing anyway')
+        const hasSession = await checkSessionFallback()
+        if (!hasSession) {
+          resetReconnectingState()
+          return false
         }
       }
 
@@ -205,19 +329,7 @@ export function useSupabaseReconnect(userId: string | null) {
         const channels = supabase.getChannels()
         
         // Reconnect channels in parallel (faster)
-        const reconnectPromises = channels.map(async (channel) => {
-          const channelName = channel.topic
-          try {
-            await channel.unsubscribe()
-            channel.subscribe((status) => {
-              if (status === 'SUBSCRIBED') {
-                console.log(`[Reconnect] Channel ${channelName} reconnected`)
-              }
-            })
-          } catch (e) {
-            console.error(`[Reconnect] Error reconnecting channel ${channelName}:`, e)
-          }
-        })
+        const reconnectPromises = channels.map((channel) => reconnectSingleChannel(channel))
 
         await Promise.all(reconnectPromises)
 
@@ -370,61 +482,35 @@ export function useSupabaseReconnect(userId: string | null) {
 
       // NUCLEAR OPTION: If we were in background for too long, force a full page reload
       // This is the most reliable way to recover from a stuck state on Android PWA
-      if (backgroundDuration > forceReloadThreshold) {
-        console.log(`[Reconnect] Background duration (${Math.round(backgroundDuration / 1000)}s) exceeded force reload threshold (${Math.round(forceReloadThreshold / 1000)}s)`)
-        
-        // First, try a quick connection test
-        const isHealthy = await testConnectionHealth()
-        
-        if (!isHealthy) {
-          console.log('[Reconnect] Connection unhealthy after long background, forcing page reload...')
-          forcePageReload()
-          return
-        } else {
-          console.log('[Reconnect] Connection still healthy, proceeding with normal reconnect')
-        }
+      const forceReloaded = await handleForegroundForceReload(
+        backgroundDuration,
+        forceReloadThreshold,
+        testConnectionHealth,
+        forcePageReload
+      )
+      
+      if (forceReloaded) {
+        return
       }
 
       // Determine threshold based on context
       const threshold = isPWA ? BACKGROUND_THRESHOLD_PWA : BACKGROUND_THRESHOLD_BROWSER
 
       // If we were in background for more than threshold, reconnect IMMEDIATELY
-      if (backgroundDuration > threshold) {
-        console.log(`[Reconnect] Background duration (${backgroundDuration}ms) exceeded threshold (${threshold}ms), reconnecting IMMEDIATELY...`)
-        
-        // NO DELAY - reconnect immediately
-        // For PWA, always do full reconnect
-        // For browser, also do full reconnect if background was long enough
-        const success = await performReconnect()
-        
-        // If reconnect failed and we're on PWA, try force reload
-        if (!success && isPWA && backgroundDuration > 30000) {
-          console.log('[Reconnect] Reconnect failed after 30s+ background on PWA, testing connection...')
-          const isHealthy = await testConnectionHealth()
-          if (!isHealthy) {
-            console.log('[Reconnect] Connection test failed, forcing page reload...')
-            forcePageReload()
-            return
-          }
-        }
-      } else if (isPWA && backgroundDuration > 500) {
-        // For PWA, even short backgrounds should trigger a refresh event
-        // This ensures data is always fresh
-        console.log('[Reconnect] Short PWA background, dispatching refresh event')
-        window.dispatchEvent(new CustomEvent('supabase-reconnected', {
-          detail: { timestamp: Date.now(), quick: true }
-        }))
-      }
+      await handleForegroundReconnect(
+        backgroundDuration,
+        threshold,
+        isPWA,
+        performReconnect,
+        testConnectionHealth,
+        forcePageReload
+      )
+
+      // Handle short PWA background
+      handleShortPWABackground(backgroundDuration, isPWA)
 
       // Restart session check interval
-      if (userId && !sessionCheckInterval.current) {
-        sessionCheckInterval.current = setInterval(async () => {
-          if (!document.hidden) {
-            console.log('[Reconnect] Periodic session check...')
-            await refreshSession()
-          }
-        }, SESSION_CHECK_INTERVAL)
-      }
+      restartSessionCheckInterval(userId, sessionCheckInterval, refreshSession)
     }
   }, [checkIsPWA, performReconnect, refreshSession, userId, forcePageReload, testConnectionHealth])
 

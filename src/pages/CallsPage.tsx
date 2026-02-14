@@ -602,14 +602,8 @@ export function CallsPage() {
         return
       }
 
-      // Check if already a contact
-      const { data: existingContact } = await supabase
-        .from('contacts')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('contact_user_id', profileData.id)
-        .maybeSingle()
-
+      // Check if already a contact using helper
+      const existingContact = await findExistingContact(user.id, profileData.id)
       if (existingContact) {
         setAddContactError('Contact déjà ajouté')
         setAddContactLoading(false)
@@ -617,120 +611,20 @@ export function CallsPage() {
       }
 
       // Add the contact
-      const { error: insertError } = await supabase
-        .from('contacts')
-        .insert({
-          user_id: user.id,
-          contact_user_id: profileData.id,
-          is_blocked: false,
-          is_favorite: false
-        })
-
+      const insertError = await addNewContact(user.id, profileData.id)
       if (insertError) {
         setAddContactError('Erreur lors de l\'ajout')
         setAddContactLoading(false)
         return
       }
 
-      // Create a conversation with this contact
+      // Find or create conversation
       const isSelfContact = profileData.id === user.id
-      
-      // Check if conversation already exists
-      let conversationExists = false
-      let existingConversationId: string | null = null
-      
-      if (isSelfContact) {
-        const { data: myConversations } = await supabase
-          .from('conversations')
-          .select('id')
-          .eq('type', 'direct')
-          .eq('created_by', user.id)
-        
-        if (myConversations) {
-          for (const conv of myConversations) {
-            const { data: members } = await supabase
-              .from('conversation_members')
-              .select('user_id')
-              .eq('conversation_id', conv.id)
-            
-            if (members && members.length === 1 && members[0].user_id === user.id) {
-              conversationExists = true
-              existingConversationId = conv.id
-              break
-            }
-          }
-        }
-      } else {
-        const { data: existingMembers } = await supabase
-          .from('conversation_members')
-          .select('conversation_id')
-          .eq('user_id', user.id)
-
-        if (existingMembers) {
-          for (const member of existingMembers) {
-            const { data: conversationData } = await supabase
-              .from('conversations')
-              .select('type')
-              .eq('id', member.conversation_id)
-              .maybeSingle()
-            
-            if (!conversationData || conversationData.type !== 'direct') {
-              continue
-            }
-
-            const { data: otherMember } = await supabase
-              .from('conversation_members')
-              .select('*')
-              .eq('conversation_id', member.conversation_id)
-              .eq('user_id', profileData.id)
-              .maybeSingle()
-
-            if (otherMember) {
-              conversationExists = true
-              existingConversationId = member.conversation_id
-              break
-            }
-          }
-        }
-      }
-
-      // Create new conversation if needed
-      if (!conversationExists) {
-        const { data: conversation, error: convError } = await supabase
-          .from('conversations')
-          .insert({
-            type: 'direct',
-            created_by: user.id,
-            is_encrypted: true,
-            last_message_at: new Date().toISOString(),
-            name: isSelfContact ? 'Messages enregistrés' : null,
-          })
-          .select()
-          .maybeSingle()
-
-        if (!convError && conversation) {
-          if (isSelfContact) {
-            await supabase
-              .from('conversation_members')
-              .insert([
-                { conversation_id: conversation.id, user_id: user.id, role: 'admin', is_active: true }
-              ])
-          } else {
-            await supabase
-              .from('conversation_members')
-              .insert([
-                { conversation_id: conversation.id, user_id: user.id, role: 'admin', is_active: true },
-                { conversation_id: conversation.id, user_id: profileData.id, role: 'member', is_active: true }
-              ])
-          }
-          
-          existingConversationId = conversation.id
-        }
-      }
+      const conversationId = await findOrCreateConversation(user.id, profileData.id, isSelfContact)
       
       // Navigate to the conversation
-      if (existingConversationId) {
-        navigate(`/chat/${existingConversationId}`)
+      if (conversationId) {
+        navigate(`/chat/${conversationId}`)
       }
 
       // Reload contacts and close modal
@@ -742,6 +636,141 @@ export function CallsPage() {
     } finally {
       setAddContactLoading(false)
     }
+  }
+
+  // Helper: Find existing contact
+  const findExistingContact = async (userId: string, contactUserId: string) => {
+    const { data } = await supabase
+      .from('contacts')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('contact_user_id', contactUserId)
+      .maybeSingle()
+    return data
+  }
+
+  // Helper: Add new contact to database
+  const addNewContact = async (userId: string, contactUserId: string) => {
+    const { error } = await supabase
+      .from('contacts')
+      .insert({
+        user_id: userId,
+        contact_user_id: contactUserId,
+        is_blocked: false,
+        is_favorite: false
+      })
+    return error
+  }
+
+  // Helper: Find or create conversation with contact
+  const findOrCreateConversation = async (userId: string, contactUserId: string, isSelfContact: boolean): Promise<string | null> => {
+    // Check if conversation already exists
+    let conversationId: string | null = null
+    
+    if (isSelfContact) {
+      conversationId = await findSavedMessagesConversation(userId)
+    } else {
+      conversationId = await findDirectConversation(userId, contactUserId)
+    }
+
+    // Create new conversation if needed
+    if (!conversationId) {
+      conversationId = await createConversation(userId, contactUserId, isSelfContact)
+    }
+    
+    return conversationId
+  }
+
+  // Helper: Find Saved Messages conversation (self-contact)
+  const findSavedMessagesConversation = async (userId: string): Promise<string | null> => {
+    const { data: myConversations } = await supabase
+      .from('conversations')
+      .select('id')
+      .eq('type', 'direct')
+      .eq('created_by', userId)
+    
+    if (myConversations) {
+      for (const conv of myConversations) {
+        const { data: members } = await supabase
+          .from('conversation_members')
+          .select('user_id')
+          .eq('conversation_id', conv.id)
+        
+        if (members && members.length === 1 && members[0].user_id === userId) {
+          return conv.id
+        }
+      }
+    }
+    return null
+  }
+
+  // Helper: Find direct conversation with a contact
+  const findDirectConversation = async (userId: string, contactUserId: string): Promise<string | null> => {
+    const { data: existingMembers } = await supabase
+      .from('conversation_members')
+      .select('conversation_id')
+      .eq('user_id', userId)
+
+    if (existingMembers) {
+      for (const member of existingMembers) {
+        const { data: conversationData } = await supabase
+          .from('conversations')
+          .select('type')
+          .eq('id', member.conversation_id)
+          .maybeSingle()
+        
+        if (!conversationData || conversationData.type !== 'direct') {
+          continue
+        }
+
+        const { data: otherMember } = await supabase
+          .from('conversation_members')
+          .select('*')
+          .eq('conversation_id', member.conversation_id)
+          .eq('user_id', contactUserId)
+          .maybeSingle()
+
+        if (otherMember) {
+          return member.conversation_id
+        }
+      }
+    }
+    return null
+  }
+
+  // Helper: Create new conversation
+  const createConversation = async (userId: string, contactUserId: string, isSelfContact: boolean): Promise<string | null> => {
+    const { data: conversation, error: convError } = await supabase
+      .from('conversations')
+      .insert({
+        type: 'direct',
+        created_by: userId,
+        is_encrypted: true,
+        last_message_at: new Date().toISOString(),
+        name: isSelfContact ? 'Messages enregistrés' : null,
+      })
+      .select()
+      .maybeSingle()
+
+    if (!convError && conversation) {
+      if (isSelfContact) {
+        await supabase
+          .from('conversation_members')
+          .insert([
+            { conversation_id: conversation.id, user_id: userId, role: 'admin', is_active: true }
+          ])
+      } else {
+        await supabase
+          .from('conversation_members')
+          .insert([
+            { conversation_id: conversation.id, user_id: userId, role: 'admin', is_active: true },
+            { conversation_id: conversation.id, user_id: contactUserId, role: 'member', is_active: true }
+          ])
+      }
+      
+      return conversation.id
+    }
+    return null
   }
 
   const handleCallContact = async (contactId: string, isVideo: boolean = false) => {

@@ -39,6 +39,102 @@ const setCache = <T,>(key: string, data: T) => {
   }
 }
 
+// Helper to find existing Saved Messages conversation (for self-contact)
+const findSavedMessagesConversation = async (supabase: any, userId: string): Promise<{ exists: boolean; conversationId: string | null }> => {
+  const { data: myConversations } = await supabase
+    .from('conversations')
+    .select('id')
+    .eq('type', 'direct')
+    .eq('created_by', userId)
+  
+  if (myConversations) {
+    for (const conv of myConversations) {
+      const { data: members } = await supabase
+        .from('conversation_members')
+        .select('user_id')
+        .eq('conversation_id', conv.id)
+      
+      if (members && members.length === 1 && members[0].user_id === userId) {
+        return { exists: true, conversationId: conv.id }
+      }
+    }
+  }
+  return { exists: false, conversationId: null }
+}
+
+// Helper to find existing direct conversation with a contact
+const findDirectConversation = async (supabase: any, userId: string, contactUserId: string): Promise<{ exists: boolean; conversationId: string | null }> => {
+  const { data: existingMembers } = await supabase
+    .from('conversation_members')
+    .select('conversation_id')
+    .eq('user_id', userId)
+
+  if (existingMembers) {
+    for (const member of existingMembers) {
+      const { data: conversationData } = await supabase
+        .from('conversations')
+        .select('type')
+        .eq('id', member.conversation_id)
+        .maybeSingle()
+      
+      if (!conversationData || conversationData.type !== 'direct') {
+        continue
+      }
+
+      const { data: otherMember } = await supabase
+        .from('conversation_members')
+        .select('*')
+        .eq('conversation_id', member.conversation_id)
+        .eq('user_id', contactUserId)
+        .maybeSingle()
+
+      if (otherMember) {
+        return { exists: true, conversationId: member.conversation_id }
+      }
+    }
+  }
+  return { exists: false, conversationId: null }
+}
+
+// Helper to create a new conversation
+const createNewConversation = async (supabase: any, userId: string, contactUserId: string, isSelfContact: boolean): Promise<string | null> => {
+  const { data: conversation, error: convError } = await supabase
+    .from('conversations')
+    .insert({
+      type: 'direct',
+      created_by: userId,
+      is_encrypted: true,
+      last_message_at: new Date().toISOString(),
+      name: isSelfContact ? 'Messages enregistrés' : null,
+    })
+    .select()
+    .maybeSingle()
+
+  if (convError || !conversation) {
+    console.error('Error creating conversation:', convError)
+    return null
+  }
+
+  // Add members
+  if (isSelfContact) {
+    await supabase
+      .from('conversation_members')
+      .insert([
+        { conversation_id: conversation.id, user_id: userId, role: 'admin', is_active: true }
+      ])
+  } else {
+    await supabase
+      .from('conversation_members')
+      .insert([
+        { conversation_id: conversation.id, user_id: userId, role: 'admin', is_active: true },
+        { conversation_id: conversation.id, user_id: contactUserId, role: 'member', is_active: true }
+      ])
+  }
+  
+  console.log('Conversation created automatically:', conversation.id)
+  return conversation.id
+}
+
 export function ContactsPage() {
   // Initialize from cache for instant display
   const [contacts, setContacts] = useState<(Contact & { profile: Profile })[]>(() =>
@@ -228,108 +324,20 @@ export function ContactsPage() {
       // Cas spécial: "Saved Messages" (conversation avec soi-même)
       const isSelfContact = profileData.id === user.id
       
-      // Vérifier d'abord si une conversation existe déjà
-      let conversationExists = false
+      // Find or create conversation using helpers
       let existingConversationId: string | null = null
       
       if (isSelfContact) {
-        // Pour "Saved Messages", chercher une conversation où l'utilisateur est le seul membre
-        // ou une conversation de type 'direct' créée par soi-même avec soi-même
-        const { data: myConversations } = await supabase
-          .from('conversations')
-          .select('id')
-          .eq('type', 'direct')
-          .eq('created_by', user.id)
-        
-        if (myConversations) {
-          for (const conv of myConversations) {
-            const { data: members } = await supabase
-              .from('conversation_members')
-              .select('user_id')
-              .eq('conversation_id', conv.id)
-            
-            // Si la conversation n'a qu'un seul membre et c'est nous, c'est "Saved Messages"
-            if (members && members.length === 1 && members[0].user_id === user.id) {
-              conversationExists = true
-              existingConversationId = conv.id
-              break
-            }
-          }
-        }
+        const result = await findSavedMessagesConversation(supabase, user.id)
+        existingConversationId = result.conversationId
       } else {
-        // Cas normal: chercher une conversation DIRECTE avec l'autre utilisateur
-        // On doit vérifier que c'est bien une conversation de type 'direct' et non un groupe
-        const { data: existingMembers } = await supabase
-          .from('conversation_members')
-          .select('conversation_id')
-          .eq('user_id', user.id)
-
-        if (existingMembers) {
-          for (const member of existingMembers) {
-            // Vérifier d'abord que c'est une conversation directe (pas un groupe)
-            const { data: conversationData } = await supabase
-              .from('conversations')
-              .select('type')
-              .eq('id', member.conversation_id)
-              .maybeSingle()
-            
-            // Si ce n'est pas une conversation directe, passer à la suivante
-            if (!conversationData || conversationData.type !== 'direct') {
-              continue
-            }
-
-            const { data: otherMember } = await supabase
-              .from('conversation_members')
-              .select('*')
-              .eq('conversation_id', member.conversation_id)
-              .eq('user_id', profileData.id)
-              .maybeSingle()
-
-            if (otherMember) {
-              conversationExists = true
-              existingConversationId = member.conversation_id
-              break
-            }
-          }
-        }
+        const result = await findDirectConversation(supabase, user.id, profileData.id)
+        existingConversationId = result.conversationId
       }
 
       // Si pas de conversation existante, en créer une nouvelle
-      if (!conversationExists) {
-        const { data: conversation, error: convError } = await supabase
-          .from('conversations')
-          .insert({
-            type: 'direct',
-            created_by: user.id,
-            is_encrypted: true,
-            last_message_at: new Date().toISOString(),
-            // Pour "Saved Messages", on peut ajouter un nom spécial
-            name: isSelfContact ? 'Messages enregistrés' : null,
-          })
-          .select()
-          .maybeSingle()
-
-        if (!convError && conversation) {
-          if (isSelfContact) {
-            // Pour "Saved Messages", un seul membre (soi-même)
-            await supabase
-              .from('conversation_members')
-              .insert([
-                { conversation_id: conversation.id, user_id: user.id, role: 'admin', is_active: true }
-              ])
-          } else {
-            // Cas normal: deux membres
-            await supabase
-              .from('conversation_members')
-              .insert([
-                { conversation_id: conversation.id, user_id: user.id, role: 'admin', is_active: true },
-                { conversation_id: conversation.id, user_id: profileData.id, role: 'member', is_active: true }
-              ])
-          }
-          
-          console.log('Conversation créée automatiquement:', conversation.id)
-          existingConversationId = conversation.id
-        }
+      if (!existingConversationId) {
+        existingConversationId = await createNewConversation(supabase, user.id, profileData.id, isSelfContact)
       }
       
       // Naviguer vers la conversation créée ou existante
@@ -537,6 +545,135 @@ export function ContactsPage() {
     }
   }, [filteredContacts, selectedContacts.size])
 
+  // Helper function to delete a Saved Messages conversation
+  const deleteSavedMessagesConversation = async (
+    userId: string,
+    myConversations: { conversation_id: string }[]
+  ): Promise<boolean> => {
+    for (const conv of myConversations) {
+      const { data: conversationData } = await supabase
+        .from('conversations')
+        .select('type, created_by')
+        .eq('id', conv.conversation_id)
+        .maybeSingle()
+      
+      if (!conversationData || conversationData.type !== 'direct') continue
+
+      const { data: allMembers } = await supabase
+        .from('conversation_members')
+        .select('user_id')
+        .eq('conversation_id', conv.conversation_id)
+
+      if (!allMembers) continue
+
+      // Saved Messages: conversation with only 1 member (self)
+      if (allMembers.length === 1 && allMembers[0].user_id === userId) {
+        await supabase.from('conversation_members').delete().eq('conversation_id', conv.conversation_id)
+        await supabase.from('messages').delete().eq('conversation_id', conv.conversation_id)
+        await supabase.from('conversations').delete().eq('id', conv.conversation_id)
+        return true
+      }
+    }
+    return false
+  }
+
+  // Helper function to delete a direct conversation with a contact
+  const deleteDirectConversation = async (
+    userId: string,
+    contactUserId: string,
+    isVirtual: boolean,
+    myConversations: { conversation_id: string }[]
+  ): Promise<boolean> => {
+    for (const conv of myConversations) {
+      const { data: conversationData } = await supabase
+        .from('conversations')
+        .select('type, created_by')
+        .eq('id', conv.conversation_id)
+        .maybeSingle()
+      
+      if (!conversationData || conversationData.type !== 'direct') continue
+
+      const { data: allMembers } = await supabase
+        .from('conversation_members')
+        .select('user_id')
+        .eq('conversation_id', conv.conversation_id)
+
+      if (!allMembers) continue
+
+      const hasOtherMember = allMembers.some(m => m.user_id === contactUserId)
+      if (hasOtherMember && allMembers.length === 2) {
+        const weCreatedIt = conversationData.created_by === userId
+        
+        if (weCreatedIt || !isVirtual) {
+          // Delete the whole conversation
+          await supabase.from('conversation_members').delete().eq('conversation_id', conv.conversation_id)
+          await supabase.from('messages').delete().eq('conversation_id', conv.conversation_id)
+          await supabase.from('conversations').delete().eq('id', conv.conversation_id)
+        } else {
+          // Leave the conversation (virtual contact)
+          await supabase.from('conversation_members').delete()
+            .eq('conversation_id', conv.conversation_id)
+            .eq('user_id', userId)
+        }
+        return true
+      }
+    }
+    return false
+  }
+
+  // Helper function to remove contact from shared groups
+  const removeContactFromGroups = async (
+    userId: string,
+    contactUserId: string,
+    myConversations: { conversation_id: string }[]
+  ): Promise<void> => {
+    for (const conv of myConversations) {
+      const { data: groupData } = await supabase
+        .from('conversations')
+        .select('type, created_by')
+        .eq('id', conv.conversation_id)
+        .maybeSingle()
+      
+      if (!groupData || groupData.type !== 'group') continue
+      
+      const { data: groupMembers } = await supabase
+        .from('conversation_members')
+        .select('user_id, role')
+        .eq('conversation_id', conv.conversation_id)
+      
+      if (!groupMembers) continue
+      
+      const contactInGroup = groupMembers.find(m => m.user_id === contactUserId)
+      if (!contactInGroup) continue
+      
+      const myRole = groupMembers.find(m => m.user_id === userId)?.role
+      const isAdmin = myRole === 'admin' || groupData.created_by === userId
+      
+      if (isAdmin) {
+        // Remove the contact from the group
+        await supabase.from('conversation_members').delete()
+          .eq('conversation_id', conv.conversation_id)
+          .eq('user_id', contactUserId)
+      } else {
+        // Leave the group ourselves
+        await supabase.from('conversation_members').delete()
+          .eq('conversation_id', conv.conversation_id)
+          .eq('user_id', userId)
+      }
+    }
+    
+    // Block the contact to prevent re-appearing
+    await supabase.from('contacts').upsert({
+      user_id: userId,
+      contact_user_id: contactUserId,
+      is_blocked: true,
+      is_favorite: false,
+      added_at: new Date().toISOString()
+    }, {
+      onConflict: 'user_id,contact_user_id'
+    })
+  }
+
   const deleteSelectedContacts = useCallback(async () => {
     if (selectedContacts.size === 0 || !user) return
     
@@ -579,203 +716,30 @@ export function ContactsPage() {
 
         if (myConversations) {
           let foundConversation = false
-          for (const conv of myConversations) {
-            // Check if it's a direct conversation
-            const { data: conversationData } = await supabase
-              .from('conversations')
-              .select('type, created_by')
-              .eq('id', conv.conversation_id)
-              .maybeSingle()
-            
-            console.log('Checking conversation:', conv.conversation_id, 'type:', conversationData?.type, 'created_by:', conversationData?.created_by)
-            
-            if (!conversationData || conversationData.type !== 'direct') continue
-
-            const { data: allMembers } = await supabase
-              .from('conversation_members')
-              .select('user_id')
-              .eq('conversation_id', conv.conversation_id)
-
-            console.log('Members in conversation:', allMembers?.map(m => m.user_id))
-
-            if (!allMembers) continue
-
-            // For "Saved Messages": conversation with only 1 member (self)
-            if (isSelfContact && allMembers.length === 1 && allMembers[0].user_id === user.id) {
-              console.log('Found Saved Messages conversation:', conv.conversation_id)
-              
-              // Delete the conversation members first
-              await supabase
-                .from('conversation_members')
-                .delete()
-                .eq('conversation_id', conv.conversation_id)
-
-              // Delete messages in the conversation
-              await supabase
-                .from('messages')
-                .delete()
-                .eq('conversation_id', conv.conversation_id)
-
-              // Delete the conversation
-              await supabase
-                .from('conversations')
-                .delete()
-                .eq('id', conv.conversation_id)
-
-              console.log('Deleted Saved Messages conversation:', conv.conversation_id)
-              foundConversation = true
-              break
+          
+          // Handle Saved Messages (self-contact)
+          if (isSelfContact) {
+            foundConversation = await deleteSavedMessagesConversation(user.id, myConversations)
+            if (foundConversation) {
+              console.log('Deleted Saved Messages conversation')
             }
-
-            // For normal contacts: check if this is a direct conversation with the contact
-            if (!isSelfContact) {
-              const hasOtherMember = allMembers.some(m => m.user_id === contactUserId)
-
-              if (hasOtherMember && allMembers.length === 2) {
-                console.log('Found direct conversation:', conv.conversation_id, 'created_by:', conversationData.created_by)
-                
-                // Check if we created this conversation or the other person did
-                const weCreatedIt = conversationData.created_by === user.id
-                
-                if (weCreatedIt || !isVirtual) {
-                  // We created it OR it's an explicit contact - delete the whole conversation
-                  console.log('Deleting entire conversation...')
-                  
-                  // Delete the conversation members first
-                  const { error: membersError } = await supabase
-                    .from('conversation_members')
-                    .delete()
-                    .eq('conversation_id', conv.conversation_id)
-                  
-                  if (membersError) {
-                    console.error('Error deleting members:', membersError)
-                  }
-
-                  // Delete messages in the conversation
-                  const { error: messagesError } = await supabase
-                    .from('messages')
-                    .delete()
-                    .eq('conversation_id', conv.conversation_id)
-                  
-                  if (messagesError) {
-                    console.error('Error deleting messages:', messagesError)
-                  }
-
-                  // Delete the conversation
-                  const { error: convDeleteError } = await supabase
-                    .from('conversations')
-                    .delete()
-                    .eq('id', conv.conversation_id)
-                  
-                  if (convDeleteError) {
-                    console.error('Error deleting conversation:', convDeleteError)
-                  } else {
-                    console.log('Deleted conversation:', conv.conversation_id)
-                  }
-                } else {
-                  // Virtual contact (they added us) - just leave the conversation
-                  console.log('Leaving conversation (virtual contact)...')
-                  
-                  const { error: leaveError } = await supabase
-                    .from('conversation_members')
-                    .delete()
-                    .eq('conversation_id', conv.conversation_id)
-                    .eq('user_id', user.id)
-
-                  if (leaveError) {
-                    console.error('Error leaving conversation:', leaveError)
-                  } else {
-                    console.log('Left conversation:', conv.conversation_id)
-                  }
-                }
-                foundConversation = true
-                break
-              }
+          } else {
+            // Handle normal direct conversation
+            foundConversation = await deleteDirectConversation(
+              user.id, 
+              contactUserId, 
+              isVirtual, 
+              myConversations
+            )
+            if (foundConversation) {
+              console.log('Deleted direct conversation')
             }
           }
           
+          // Handle virtual contacts from group conversations
           if (!foundConversation && isVirtual) {
-            // This is a virtual contact from a GROUP conversation, not a direct one
-            // We need to remove them from all groups where we are both members
             console.log('Virtual contact from group conversation - removing from shared groups')
-            
-            // Find all groups where both users are members
-            for (const conv of myConversations) {
-              const { data: groupData } = await supabase
-                .from('conversations')
-                .select('type, created_by')
-                .eq('id', conv.conversation_id)
-                .maybeSingle()
-              
-              // Only process group conversations
-              if (!groupData || groupData.type !== 'group') continue
-              
-              const { data: groupMembers } = await supabase
-                .from('conversation_members')
-                .select('user_id, role')
-                .eq('conversation_id', conv.conversation_id)
-              
-              if (!groupMembers) continue
-              
-              // Check if the contact is in this group
-              const contactInGroup = groupMembers.find(m => m.user_id === contactUserId)
-              if (!contactInGroup) continue
-              
-              console.log('Found shared group:', conv.conversation_id)
-              
-              // Check if we are admin of this group
-              const myRole = groupMembers.find(m => m.user_id === user.id)?.role
-              const isAdmin = myRole === 'admin' || groupData.created_by === user.id
-              
-              if (isAdmin) {
-                // We are admin - remove the contact from the group
-                console.log('Removing contact from group (we are admin)...')
-                const { error: removeError } = await supabase
-                  .from('conversation_members')
-                  .delete()
-                  .eq('conversation_id', conv.conversation_id)
-                  .eq('user_id', contactUserId)
-                
-                if (removeError) {
-                  console.error('Error removing contact from group:', removeError)
-                } else {
-                  console.log('Contact removed from group:', conv.conversation_id)
-                }
-              } else {
-                // We are not admin - we leave the group ourselves
-                console.log('Leaving group (we are not admin)...')
-                const { error: leaveError } = await supabase
-                  .from('conversation_members')
-                  .delete()
-                  .eq('conversation_id', conv.conversation_id)
-                  .eq('user_id', user.id)
-                
-                if (leaveError) {
-                  console.error('Error leaving group:', leaveError)
-                } else {
-                  console.log('Left group:', conv.conversation_id)
-                }
-              }
-            }
-            
-            // Also mark the contact as blocked to ensure they don't appear again
-            const { error: hideError } = await supabase
-              .from('contacts')
-              .upsert({
-                user_id: user.id,
-                contact_user_id: contactUserId,
-                is_blocked: true,
-                is_favorite: false,
-                added_at: new Date().toISOString()
-              }, {
-                onConflict: 'user_id,contact_user_id'
-              })
-            
-            if (hideError) {
-              console.error('Error blocking contact:', hideError)
-            } else {
-              console.log('Contact blocked:', contactUserId)
-            }
+            await removeContactFromGroups(user.id, contactUserId, myConversations)
           }
         }
       }

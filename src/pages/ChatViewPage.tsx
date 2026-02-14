@@ -129,6 +129,91 @@ const setCache = <T,>(key: string, data: T) => {
   }
 }
 
+// Extract call error handling to reduce complexity in handleStartVideoCall and handleStartAudioCall
+const getCallErrorMessage = (error: any): string => {
+  if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+    return '❌ Permissions refusées\n\nVeuillez autoriser l\'accès à votre caméra et microphone dans les paramètres de votre navigateur pour passer des appels vidéo.'
+  }
+  if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+    return '❌ Aucun appareil trouvé\n\nAucune caméra ou microphone n\'a été détecté sur votre appareil.'
+  }
+  if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
+    return '❌ Appareil occupé\n\nVotre caméra ou microphone est déjà utilisé par une autre application.'
+  }
+  return '❌ Erreur\n\nImpossible de démarrer l\'appel vidéo. Vérifiez vos permissions et réessayez.'
+}
+
+// Helper to get audio call error message
+const getAudioCallErrorMessage = (error: any): string => {
+  if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+    return '❌ Permission refusée\n\nVeuillez autoriser l\'accès à votre microphone dans les paramètres de votre navigateur pour passer des appels audio.'
+  }
+  if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+    return '❌ Aucun microphone trouvé\n\nAucun microphone n\'a été détecté sur votre appareil.'
+  }
+  if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
+    return '❌ Microphone occupé\n\nVotre microphone est déjà utilisé par une autre application.'
+  }
+  return '❌ Erreur\n\nImpossible de démarrer l\'appel audio. Vérifiez vos permissions et réessayez.'
+}
+
+// Helper to request media permissions and get stream
+const requestMediaPermissions = async (video: boolean): Promise<MediaStream | null> => {
+  try {
+    return await navigator.mediaDevices.getUserMedia({ audio: true, video })
+  } catch {
+    return null
+  }
+}
+
+// Extract video call handler logic to reduce complexity
+const startVideoCall = async (
+  conversationId: string,
+  conversationType: string | undefined,
+  otherUser: Profile | null,
+  startGroupCall: Function,
+  startCall: Function
+): Promise<void> => {
+  if (!conversationId) return
+  
+  if (conversationType === 'group') {
+    const stream = await requestMediaPermissions(true)
+    if (stream) stream.getTracks().forEach(track => track.stop())
+    await startGroupCall(conversationId, { audio: true, video: true })
+    return
+  }
+  
+  if (!otherUser) return
+  
+  const stream = await requestMediaPermissions(true)
+  if (stream) stream.getTracks().forEach(track => track.stop())
+  await startCall(otherUser.id, conversationId, { audio: true, video: true })
+}
+
+// Extract audio call handler logic to reduce complexity
+const startAudioCall = async (
+  conversationId: string,
+  conversationType: string | undefined,
+  otherUser: Profile | null,
+  startGroupCall: Function,
+  startCall: Function
+): Promise<void> => {
+  if (!conversationId) return
+  
+  if (conversationType === 'group') {
+    const stream = await requestMediaPermissions(false)
+    if (stream) stream.getTracks().forEach(track => track.stop())
+    await startGroupCall(conversationId, { audio: true, video: false })
+    return
+  }
+  
+  if (!otherUser) return
+  
+  const stream = await requestMediaPermissions(false)
+  if (stream) stream.getTracks().forEach(track => track.stop())
+  await startCall(otherUser.id, conversationId, { audio: true, video: false })
+}
+
 export function ChatViewPage() {
   const { conversationId } = useParams()
   const navigate = useNavigate()
@@ -1003,16 +1088,7 @@ export function ChatViewPage() {
         await startGroupCall(conversationId, { audio: true, video: true })
       } catch (error: any) {
         console.error('Error starting group video call:', error)
-        
-        if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
-          alert('❌ Permissions refusées\n\nVeuillez autoriser l\'accès à votre caméra et microphone dans les paramètres de votre navigateur pour passer des appels vidéo.')
-        } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
-          alert('❌ Aucun appareil trouvé\n\nAucune caméra ou microphone n\'a été détecté sur votre appareil.')
-        } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
-          alert('❌ Appareil occupé\n\nVotre caméra ou microphone est déjà utilisé par une autre application.')
-        } else {
-          alert('❌ Erreur\n\nImpossible de démarrer l\'appel vidéo de groupe. Vérifiez vos permissions et réessayez.')
-        }
+        alert(getCallErrorMessage(error))
       }
       return
     }
@@ -1030,16 +1106,7 @@ export function ChatViewPage() {
       await startCall(otherUser.id, conversationId, { audio: true, video: true })
     } catch (error: any) {
       console.error('Error starting video call:', error)
-      
-      if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
-        alert('❌ Permissions refusées\n\nVeuillez autoriser l\'accès à votre caméra et microphone dans les paramètres de votre navigateur pour passer des appels vidéo.')
-      } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
-        alert('❌ Aucun appareil trouvé\n\nAucune caméra ou microphone n\'a été détecté sur votre appareil.')
-      } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
-        alert('❌ Appareil occupé\n\nVotre caméra ou microphone est déjà utilisé par une autre application.')
-      } else {
-        alert('❌ Erreur\n\nImpossible de démarrer l\'appel vidéo. Vérifiez vos permissions et réessayez.')
-      }
+      alert(getCallErrorMessage(error))
     }
   }
 
@@ -1059,16 +1126,7 @@ export function ChatViewPage() {
         await startGroupCall(conversationId, { audio: true, video: false })
       } catch (error: any) {
         console.error('Error starting group audio call:', error)
-        
-        if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
-          alert('❌ Permission refusée\n\nVeuillez autoriser l\'accès à votre microphone dans les paramètres de votre navigateur pour passer des appels audio.')
-        } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
-          alert('❌ Aucun microphone trouvé\n\nAucun microphone n\'a été détecté sur votre appareil.')
-        } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
-          alert('❌ Microphone occupé\n\nVotre microphone est déjà utilisé par une autre application.')
-        } else {
-          alert('❌ Erreur\n\nImpossible de démarrer l\'appel audio de groupe. Vérifiez vos permissions et réessayez.')
-        }
+        alert(getAudioCallErrorMessage(error))
       }
       return
     }
@@ -1086,16 +1144,7 @@ export function ChatViewPage() {
       await startCall(otherUser.id, conversationId, { audio: true, video: false })
     } catch (error: any) {
       console.error('Error starting audio call:', error)
-      
-      if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
-        alert('❌ Permission refusée\n\nVeuillez autoriser l\'accès à votre microphone dans les paramètres de votre navigateur pour passer des appels audio.')
-      } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
-        alert('❌ Aucun microphone trouvé\n\nAucun microphone n\'a été détecté sur votre appareil.')
-      } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
-        alert('❌ Microphone occupé\n\nVotre microphone est déjà utilisé par une autre application.')
-      } else {
-        alert('❌ Erreur\n\nImpossible de démarrer l\'appel audio. Vérifiez vos permissions et réessayez.')
-      }
+      alert(getAudioCallErrorMessage(error))
     }
   }
 
@@ -1258,53 +1307,76 @@ export function ChatViewPage() {
     setShowForwardModal(true)
   }
 
-  const handleForwardToConversations = async (conversationIds: string[]) => {
-    if (!messageToForward || !user) return
+  // Helper to build forward message data
+  const buildForwardMessageData = (targetConversationId: string, messageToForward: Message, senderId: string): any => {
+    const messageData: any = {
+      conversation_id: targetConversationId,
+      sender_id: senderId,
+      content: messageToForward.content ? `[Transféré] ${messageToForward.content}` : '[Message transféré]',
+      type: messageToForward.type,
+      status: 'sent',
+    }
 
+    // Add media fields if present
+    if (messageToForward.media_url) {
+      messageData.media_url = messageToForward.media_url
+    }
+    if (messageToForward.media_type) {
+      messageData.media_type = messageToForward.media_type
+    }
+    if (messageToForward.file_name) {
+      messageData.file_name = messageToForward.file_name
+    }
+    if (messageToForward.file_size) {
+      messageData.file_size = messageToForward.file_size
+    }
+
+    return messageData
+  }
+
+  // Helper to update conversation last message time
+  const updateConversationLastMessage = async (conversationId: string): Promise<void> => {
+    await supabase
+      .from('conversations')
+      .update({ last_message_at: new Date().toISOString() })
+      .eq('id', conversationId)
+  }
+
+  // Extract forward message loop to reduce complexity
+  const forwardMessageToConversations = async (
+    conversationIds: string[],
+    messageToForward: Message | null,
+    userId: string
+  ): Promise<{ successCount: number; errorCount: number }> => {
     let successCount = 0
     let errorCount = 0
 
-    try {
-      for (const targetConversationId of conversationIds) {
-        // Build message data - only include fields that exist in the database
-        const messageData: any = {
-          conversation_id: targetConversationId,
-          sender_id: user.id,
-          content: messageToForward.content ? `[Transféré] ${messageToForward.content}` : '[Message transféré]',
-          type: messageToForward.type,
-          status: 'sent',
-        }
+    for (const targetConversationId of conversationIds) {
+      const messageData = buildForwardMessageData(targetConversationId, messageToForward!, userId)
 
-        // Add media fields if present
-        if (messageToForward.media_url) {
-          messageData.media_url = messageToForward.media_url
-        }
-        if (messageToForward.media_type) {
-          messageData.media_type = messageToForward.media_type
-        }
-        if (messageToForward.file_name) {
-          messageData.file_name = messageToForward.file_name
-        }
-        if (messageToForward.file_size) {
-          messageData.file_size = messageToForward.file_size
-        }
-
-        console.log('Forwarding message to conversation:', targetConversationId, messageData)
-
-        const { error: insertError } = await supabase.from('messages').insert(messageData)
-        
-        if (insertError) {
-          console.error('Error inserting forwarded message:', insertError)
-          errorCount++
-        } else {
-          successCount++
-          // Update conversation's last_message_at
-          await supabase
-            .from('conversations')
-            .update({ last_message_at: new Date().toISOString() })
-            .eq('id', targetConversationId)
-        }
+      const { error: insertError } = await supabase.from('messages').insert(messageData)
+      
+      if (insertError) {
+        console.error('Error inserting forwarded message:', insertError)
+        errorCount++
+      } else {
+        successCount++
+        await updateConversationLastMessage(targetConversationId)
       }
+    }
+
+    return { successCount, errorCount }
+  }
+
+  const handleForwardToConversations = async (conversationIds: string[]) => {
+    if (!messageToForward || !user) return
+
+    try {
+      const { successCount, errorCount } = await forwardMessageToConversations(
+        conversationIds,
+        messageToForward,
+        user.id
+      )
 
       // Show feedback to user
       if (successCount > 0 && errorCount === 0) {

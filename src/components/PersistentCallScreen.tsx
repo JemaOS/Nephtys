@@ -158,7 +158,33 @@ export function PersistentCallScreen() {
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
   const pipRef = useRef<HTMLDivElement>(null)
 
-  // Handle drag start
+  // Helper: Get caller info - extracted to reduce complexity
+  const getCallerInfo = useCallback(() => {
+    return {
+      name: incomingCall?.callerName || 'Utilisateur',
+      avatar: incomingCall?.callerAvatar
+    };
+  }, [incomingCall?.callerName, incomingCall?.callerAvatar]);
+
+  // Helper: Check if it's a video call - extracted
+  const checkIsVideoCall = useCallback((): boolean => {
+    return (
+      incomingCall?.isVideo ||
+      (localStream?.getVideoTracks().length ?? 0) > 0 ||
+      (remoteStream?.getVideoTracks().length ?? 0) > 0
+    );
+  }, [incomingCall?.isVideo, localStream, remoteStream]);
+
+  // Helper: Check if remote video should be displayed - extracted
+  const checkHasRemoteVideo = useCallback((): boolean => {
+    const isVideo = checkIsVideoCall();
+    return isVideo &&
+      remoteStream &&
+      remoteStream.getVideoTracks().length > 0 &&
+      remoteVideoEnabled;
+  }, [checkIsVideoCall, remoteStream, remoteVideoEnabled]);
+
+  // Helper: Handle drag start - extracted
   const handleDragStart = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     if (!pipRef.current) return
     
@@ -173,7 +199,7 @@ export function PersistentCallScreen() {
     })
   }, [pipPosition])
 
-  // Handle drag move
+  // Helper: Handle drag move - extracted
   const handleDragMove = useCallback((e: MouseEvent | TouchEvent) => {
     if (!isDragging) return
     
@@ -196,7 +222,7 @@ export function PersistentCallScreen() {
     setPipPosition({ x: newX, y: newY })
   }, [isDragging, dragOffset])
 
-  // Handle drag end
+  // Helper: Handle drag end - extracted
   const handleDragEnd = useCallback(() => {
     setIsDragging(false)
   }, [])
@@ -280,12 +306,10 @@ export function PersistentCallScreen() {
     return null
   }
 
-  const callerName = incomingCall?.callerName || 'Utilisateur'
-  const callerAvatar = incomingCall?.callerAvatar
-  const isVideoCall =
-    incomingCall?.isVideo ||
-    (localStream?.getVideoTracks().length ?? 0) > 0 ||
-    (remoteStream?.getVideoTracks().length ?? 0) > 0
+  const callerInfo = getCallerInfo();
+  const callerName = callerInfo.name;
+  const callerAvatar = callerInfo.avatar;
+  const isVideoCall = checkIsVideoCall();
 
   // --- GROUP CALL UI ---
   if (isGroupCall && (isInCall || isCalling)) {
@@ -386,10 +410,7 @@ export function PersistentCallScreen() {
   // --- 1-TO-1 CALL UI ---
   // Check if remote video should be displayed
   // We show video only if: it's a video call, we have a stream, AND the remote has video enabled
-  const hasRemoteVideo = isVideoCall &&
-    remoteStream &&
-    remoteStream.getVideoTracks().length > 0 &&
-    remoteVideoEnabled
+  const hasRemoteVideo = checkHasRemoteVideo();
   
 
   return (

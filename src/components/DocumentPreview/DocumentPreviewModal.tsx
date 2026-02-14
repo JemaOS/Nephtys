@@ -297,6 +297,22 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
     return (bytes / (1024 * 1024)).toFixed(1) + ' Mo';
   };
 
+  // Get preview message based on file type
+  const getPreviewMessage = (): string => {
+    switch (fileTypeInfo.type) {
+      case 'word':
+        return "Les fichiers Word ne peuvent pas être prévisualisés. Envoyez-le pour l'ouvrir avec une application compatible.";
+      case 'excel':
+        return "Les fichiers Excel ne peuvent pas être prévisualisés. Envoyez-le pour l'ouvrir avec une application compatible.";
+      case 'powerpoint':
+        return "Les fichiers PowerPoint ne peuvent pas être prévisualisés. Envoyez-le pour l'ouvrir avec une application compatible.";
+      case 'archive':
+        return "Les archives ne peuvent pas être prévisualisées. Envoyez-la pour l'extraire avec une application compatible.";
+      default:
+        return "Ce fichier ne peut pas être prévisualisé. Envoyez-le pour l'ouvrir avec une application compatible.";
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-bg-primary z-[120] flex flex-col">
       {/* Header - Dark with file info - Responsive */}
@@ -502,11 +518,7 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
                 {/* Info message - Responsive */}
                 <div className="bg-white/5 rounded-lg p-3 sm:p-4 w-full">
                   <p className="text-white/70 text-xs sm:text-sm leading-relaxed">
-                    {fileTypeInfo.type === 'word' && "Les fichiers Word ne peuvent pas être prévisualisés. Envoyez-le pour l'ouvrir avec une application compatible."}
-                    {fileTypeInfo.type === 'excel' && "Les fichiers Excel ne peuvent pas être prévisualisés. Envoyez-le pour l'ouvrir avec une application compatible."}
-                    {fileTypeInfo.type === 'powerpoint' && "Les fichiers PowerPoint ne peuvent pas être prévisualisés. Envoyez-le pour l'ouvrir avec une application compatible."}
-                    {fileTypeInfo.type === 'archive' && "Les archives ne peuvent pas être prévisualisées. Envoyez-la pour l'extraire avec une application compatible."}
-                    {fileTypeInfo.type === 'other' && "Ce fichier ne peut pas être prévisualisé. Envoyez-le pour l'ouvrir avec une application compatible."}
+                    {getPreviewMessage()}
                   </p>
                 </div>
               </div>

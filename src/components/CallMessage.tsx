@@ -117,6 +117,36 @@ export function CallMessage({
     return <Phone size={iconSize} className="text-text-secondary" />
   }
   
+  // Helper to get call status text
+  const getCallStatusText = (): React.ReactNode => {
+    if (isGroupCall) {
+      return (
+        <span className={isMissed && !isOutgoing ? 'text-red-400' : ''}>
+          {getGroupCallStatus()}
+        </span>
+      );
+    }
+    
+    if (isAnswered && duration) {
+      return <span>{formatDuration(duration)}</span>;
+    }
+    
+    if (isMissed) {
+      return <span className="text-red-400">{isOutgoing ? 'Non abouti' : 'Appel manqué'}</span>;
+    }
+    
+    return <span>{isOutgoing ? 'Non abouti' : 'Appel manqué'}</span>;
+  };
+
+  // Helper to get callback button icon
+  const getCallbackIcon = () => {
+    const iconClass = isMissed ? 'text-red-500' : 'text-accent';
+    if (type === 'video') {
+      return <Video size={16} className={iconClass} />;
+    }
+    return <Phone size={16} className={iconClass} />;
+  };
+
   return (
     <div className="flex justify-center my-3 px-4">
       <div
@@ -149,18 +179,7 @@ export function CallMessage({
           
           <div className="flex items-center gap-2 mt-0.5 text-xs text-text-secondary">
             {/* Duration or status */}
-            {isGroupCall ? (
-              // Group call status
-              <span className={isMissed && !isOutgoing ? 'text-red-400' : ''}>
-                {getGroupCallStatus()}
-              </span>
-            ) : isAnswered && duration ? (
-              <span>{formatDuration(duration)}</span>
-            ) : isMissed ? (
-              <span className="text-red-400">{isOutgoing ? 'Non abouti' : 'Appel manqué'}</span>
-            ) : (
-              <span>{isOutgoing ? 'Non abouti' : 'Appel manqué'}</span>
-            )}
+            {getCallStatusText()}
             
             {/* Separator */}
             <span>·</span>
@@ -185,14 +204,10 @@ export function CallMessage({
             ${isMissed ? 'bg-red-500/10 hover:bg-red-500/20' : 'bg-accent/10 hover:bg-accent/20'}
             transition-colors
           `}>
-            {type === 'video' ? (
-              <Video size={16} className={isMissed ? 'text-red-500' : 'text-accent'} />
-            ) : (
-              <Phone size={16} className={isMissed ? 'text-red-500' : 'text-accent'} />
-            )}
+            {getCallbackIcon()}
           </div>
         )}
       </div>
     </div>
-  )
+  );
 }

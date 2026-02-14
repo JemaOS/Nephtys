@@ -41,6 +41,87 @@ type SettingsView = 'main' | 'profile' | 'account' | 'privacy' | 'security' | '2
                      'discussions' | 'wallpaper' | 'notifications' | 'message-notif' | 'call-notif' |
                      'storage' | 'network' | 'help' | 'faq' | 'contact' | 'terms' | 'backup'
 
+// ============ HELPER FUNCTIONS (extracted to reduce cognitive complexity) ============
+
+const formatBytes = (bytes: number): string => {
+  if (bytes === 0) return '0 B'
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
+}
+
+const formatBackupDate = (date: Date | null): string => {
+  if (!date) return 'Jamais'
+  return date.toLocaleDateString('fr-FR', {
+    day: 'numeric',
+    month: 'long',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
+const getStorageTypeLabel = (type: 'all' | 'photos' | 'videos' | 'files' | 'audio'): string => {
+  if (type === 'all') return 'toutes les données'
+  if (type === 'photos') return 'les photos'
+  if (type === 'videos') return 'les vidéos'
+  if (type === 'files') return 'les fichiers'
+  return 'les messages vocaux'
+}
+
+const getMediaTypeFilter = (type: 'all' | 'photos' | 'videos' | 'files' | 'audio'): string | null => {
+  if (type === 'all') return null
+  if (type === 'photos') return 'image'
+  if (type === 'videos') return 'video'
+  if (type === 'audio') return 'audio'
+  return 'file'
+}
+
+const getFrequencyLabel = (frequency: string): string => {
+  if (frequency === 'daily') return 'Tous les jours'
+  if (frequency === 'weekly') return 'Toutes les semaines'
+  return 'Tous les mois'
+}
+
+const getViewTitle = (view: SettingsView): string => {
+  const titles: Record<SettingsView, string> = {
+    'main': 'Paramètres',
+    'profile': 'Profil',
+    'account': 'Compte',
+    'privacy': 'Confidentialité',
+    'security': 'Sécurité',
+    '2fa': 'Authentification 2FA',
+    'delete': 'Supprimer le compte',
+    'discussions': 'Discussions',
+    'wallpaper': 'Fond d\'écran',
+    'notifications': 'Notifications',
+    'message-notif': 'Notifications de messages',
+    'call-notif': 'Notifications d\'appels',
+    'storage': 'Stockage et données',
+    'network': 'Utilisation des données',
+    'backup': 'Sauvegarde des discussions',
+    'faq': 'FAQ',
+    'contact': 'Nous contacter',
+    'terms': 'Politique de confidentialité',
+    'help': 'Aide'
+  }
+  return titles[view]
+}
+
+const getParentView = (view: SettingsView): SettingsView => {
+  const accountViews: SettingsView[] = ['privacy', 'security', '2fa', 'delete']
+  if (accountViews.includes(view)) return 'account'
+  if (view === 'wallpaper') return 'discussions'
+  const notifViews: SettingsView[] = ['message-notif', 'call-notif']
+  if (notifViews.includes(view)) return 'notifications'
+  if (view === 'network') return 'storage'
+  const helpViews: SettingsView[] = ['faq', 'contact', 'terms']
+  if (helpViews.includes(view)) return 'help'
+  return 'main'
+}
+
+// ============ COMPONENT ============
+
 export function SettingsPage() {
   const { profile, signOut, user } = useAuth()
   const { theme, wallpaper, setTheme, setWallpaper } = useTheme()
@@ -320,15 +401,13 @@ export function SettingsPage() {
   const handleClearStorage = async (type: 'all' | 'photos' | 'videos' | 'files' | 'audio') => {
     if (!user) return
     
-    const typeLabel = type === 'all' ? 'toutes les données' :
-                      type === 'photos' ? 'les photos' :
-                      type === 'videos' ? 'les vidéos' :
-                      type === 'files' ? 'les fichiers' : 'les messages vocaux'
-    
+    // Early return if user doesn't confirm
+    const typeLabel = getStorageTypeLabel(type)
     if (!confirm(`Voulez-vous vraiment supprimer ${typeLabel} en cache ?\n\nCette action est irréversible.`)) return
     
     setClearingStorage(true)
     try {
+      // Get user's conversation IDs
       const { data: memberData } = await supabase
         .from('conversation_members')
         .select('conversation_id')
@@ -338,16 +417,16 @@ export function SettingsPage() {
       
       const conversationIds = memberData.map(m => m.conversation_id)
       
+      // Build the query using helper function
       let query = supabase
         .from('messages')
         .update({ media_url: null, file_url: null, file_size: null })
         .in('conversation_id', conversationIds)
       
-      if (type !== 'all') {
-        const mediaType = type === 'photos' ? 'image' :
-                         type === 'videos' ? 'video' :
-                         type === 'audio' ? 'audio' : 'file'
-        query = query.or(`media_type.eq.${mediaType},type.eq.${mediaType}`)
+      // Add media type filter if not clearing all
+      const mediaTypeFilter = getMediaTypeFilter(type)
+      if (mediaTypeFilter) {
+        query = query.or(`media_type.eq.${mediaTypeFilter},type.eq.${mediaTypeFilter}`)
       }
       
       await query
@@ -1989,36 +2068,6 @@ export function SettingsPage() {
     backup: renderBackupView,
   }
 
-  // Define parent views for proper back navigation
-  const getParentView = (view: SettingsView): SettingsView => {
-    switch (view) {
-      // Account sub-views
-      case 'privacy':
-      case 'security':
-      case '2fa':
-      case 'delete':
-        return 'account'
-      // Discussions sub-views
-      case 'wallpaper':
-        return 'discussions'
-      // Notifications sub-views
-      case 'message-notif':
-      case 'call-notif':
-        return 'notifications'
-      // Storage sub-views
-      case 'network':
-        return 'storage'
-      // Help sub-views
-      case 'faq':
-      case 'contact':
-      case 'terms':
-        return 'help'
-      // All main menu items go back to main
-      default:
-        return 'main'
-    }
-  }
-
   const handleBack = () => {
     setCurrentView(getParentView(currentView))
   }
@@ -2033,25 +2082,7 @@ export function SettingsPage() {
             </button>
           )}
           <h1 className="text-xl font-medium text-text-primary">
-            {currentView === 'main' ? 'Paramètres' :
-             currentView === 'profile' ? 'Profil' :
-             currentView === 'account' ? 'Compte' :
-             currentView === 'privacy' ? 'Confidentialité' :
-             currentView === 'security' ? 'Sécurité' :
-             currentView === '2fa' ? 'Authentification 2FA' :
-             currentView === 'delete' ? 'Supprimer le compte' :
-             currentView === 'discussions' ? 'Discussions' :
-             currentView === 'wallpaper' ? 'Fond d\'écran' :
-             currentView === 'notifications' ? 'Notifications' :
-             currentView === 'message-notif' ? 'Notifications de messages' :
-             currentView === 'call-notif' ? 'Notifications d\'appels' :
-             currentView === 'storage' ? 'Stockage et données' :
-             currentView === 'network' ? 'Utilisation des données' :
-             currentView === 'backup' ? 'Sauvegarde des discussions' :
-             currentView === 'faq' ? 'FAQ' :
-             currentView === 'contact' ? 'Nous contacter' :
-             currentView === 'terms' ? 'Politique de confidentialité' :
-             'Aide'}
+            {getViewTitle(currentView)}
           </h1>
         </div>
         {views[currentView]()}

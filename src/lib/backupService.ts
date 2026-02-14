@@ -575,211 +575,31 @@ export async function restoreBackup(
 
     // Verify backup belongs to user or is being restored to same user
     if (backupData.userId !== userId) {
-      // For now, we only allow restoring to the same user
-      // In the future, we could support migration
       return { success: false, error: 'Cette sauvegarde appartient à un autre utilisateur' }
     }
 
     const stats = { conversations: 0, messages: 0, contacts: 0, media: 0 }
 
-    onProgress?.(5, 'Restauration du profil...')
-    
-    // Update profile
-    if (backupData.profile) {
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .update({
-          display_name: backupData.profile.display_name,
-          bio: backupData.profile.bio,
-          avatar_url: backupData.profile.avatar_url
-        })
-        .eq('id', userId)
-      
-      if (profileError) {
-        console.error('Profile restore error:', profileError)
-      }
-    }
+    // Restore profile
+    await restoreUserProfile(backupData, userId, onProgress, stats)
 
-    onProgress?.(10, 'Restauration des contacts...')
-    
-    // Restore contacts (upsert to avoid duplicates)
-    if (backupData.contacts && backupData.contacts.length > 0) {
-      for (const contact of backupData.contacts) {
-        const { error: contactError } = await supabase
-          .from('contacts')
-          .upsert({
-            user_id: userId,
-            contact_id: contact.contact_id,
-            nickname: contact.nickname,
-            is_blocked: contact.is_blocked,
-            is_favorite: contact.is_favorite
-          }, {
-            onConflict: 'user_id,contact_id',
-            ignoreDuplicates: true
-          })
-        
-        if (!contactError) {
-          stats.contacts++
-        }
-      }
-    }
+    // Restore contacts
+    await restoreUserContacts(backupData, userId, onProgress, stats)
 
-    onProgress?.(15, 'Restauration des conversations...')
-    
     // Restore conversations and members
-    // We use upsert to ensure deleted conversations are restored and members are re-added
-    const existingConvIds = new Set<string>()
-    
-    for (const conv of backupData.conversations) {
-      // 1. Upsert conversation
-      const { error: convError } = await supabase
-        .from('conversations')
-        .upsert({
-          id: conv.id,
-          type: conv.type || 'direct',
-          name: conv.name,
-          avatar_url: conv.avatar_url,
-          created_by: conv.created_by || userId,
-          created_at: conv.created_at,
-          updated_at: conv.updated_at || new Date().toISOString()
-        }, {
-          onConflict: 'id',
-          ignoreDuplicates: false
-        })
-      
-      if (convError) {
-        console.error('Conversation restore error (upsert):', convError, conv.id)
-        // Continue anyway to try restoring members (conversation might already exist and we just lack update permission)
-        // We assume it exists if upsert failed (likely due to RLS on update)
-        existingConvIds.add(conv.id)
-      } else {
-        stats.conversations++
-        existingConvIds.add(conv.id)
-      }
+    const existingConvIds = await restoreConversations(backupData, userId, onProgress, stats)
 
-      // 2. Restore members
-      // This is critical for "deleted" conversations where the user was removed or marked inactive
-      if (conv.members && conv.members.length > 0) {
-        for (const member of conv.members) {
-          // Only restore the current user or if we are the creator/admin
-          // But for simplicity and robustness, we try to restore everyone.
-          // RLS will block updates to others if we don't have permission, which is fine.
-          // We explicitly set is_active to true (or use backup value) to "undelete"
-          
-          const { error: memberError } = await supabase
-            .from('conversation_members')
-            .upsert({
-              conversation_id: conv.id,
-              user_id: member.user_id,
-              role: member.role || 'member',
-              joined_at: member.joined_at || new Date().toISOString(),
-              is_active: member.is_active ?? true // Ensure active unless explicitly false in backup
-            }, {
-              onConflict: 'conversation_id,user_id',
-              ignoreDuplicates: false // Force update
-            })
-            
-          if (memberError) {
-             // Ignore errors for other users (RLS), but log for debugging
-             if (member.user_id === userId) {
-                console.error('Failed to restore own membership:', memberError)
-             }
-          }
-        }
-      }
-      
-      // 3. Ensure current user is a member (safety net)
-      const isMember = conv.members?.some((m: any) => m.user_id === userId)
-      if (!isMember) {
-         await supabase
-          .from('conversation_members')
-          .upsert({
-            conversation_id: conv.id,
-            user_id: userId,
-            role: 'member',
-            is_active: true
-          }, { onConflict: 'conversation_id,user_id' })
-      }
-    }
+    // Restore media files
+    const mediaUrlMap = await uploadMediaFiles(backupData, userId, onProgress, stats)
 
-    // Upload media files if present
-    const mediaUrlMap = new Map<string, string>() // messageId -> new URL
-    
-    if (backupData.mediaFiles && backupData.mediaFiles.length > 0) {
-      onProgress?.(25, 'Restauration des fichiers médias...')
-      
-      const totalMedia = backupData.mediaFiles.length
-      let uploadedCount = 0
-      
-      for (const mediaFile of backupData.mediaFiles) {
-        const progress = 25 + Math.floor((uploadedCount / totalMedia) * 35)
-        onProgress?.(progress, `Upload des médias (${uploadedCount + 1}/${totalMedia})...`)
-        
-        const newUrl = await uploadBase64File(
-          mediaFile.data,
-          mediaFile.fileName,
-          mediaFile.mimeType,
-          userId
-        )
-        
-        if (newUrl) {
-          mediaUrlMap.set(mediaFile.messageId, newUrl)
-          stats.media++
-        }
-        
-        uploadedCount++
-      }
-    }
-
-    onProgress?.(65, 'Restauration des messages...')
-    
-    // Restore messages for existing conversations
-    // We use upsert to avoid duplicates
-    const messagesToRestore = backupData.messages.filter(m => existingConvIds.has(m.conversation_id))
-    
-    console.log(`[Restore] Restoring ${messagesToRestore.length} messages to ${existingConvIds.size} conversations`)
-    
-    if (messagesToRestore.length > 0) {
-      // Batch insert messages (50 at a time for better reliability)
-      const batchSize = 50
-      for (let i = 0; i < messagesToRestore.length; i += batchSize) {
-        const batch = messagesToRestore.slice(i, i + batchSize)
-        const { error: msgError } = await supabase
-          .from('messages')
-          .upsert(batch.map(m => {
-            // Use restored media URL if available
-            const restoredUrl = mediaUrlMap.get(m.id)
-            return {
-              id: m.id,
-              conversation_id: m.conversation_id,
-              sender_id: m.sender_id,
-              content: m.content,
-              type: m.type,
-              media_url: restoredUrl || m.media_url,
-              media_type: m.media_type,
-              file_name: m.file_name,
-              file_size: m.file_size,
-              file_url: restoredUrl || m.file_url,
-              reply_to_id: m.reply_to_id,
-              is_edited: m.is_edited,
-              is_deleted: m.is_deleted,
-              created_at: m.created_at
-            }
-          }), {
-            onConflict: 'id',
-            ignoreDuplicates: false
-          })
-        
-        if (msgError) {
-          console.error('Message restore error:', msgError)
-        } else {
-          stats.messages += batch.length
-        }
-        
-        const progress = 65 + Math.floor((i / messagesToRestore.length) * 30)
-        onProgress?.(progress, `Restauration des messages (${Math.min(i + batchSize, messagesToRestore.length)}/${messagesToRestore.length})...`)
-      }
-    }
+    // Restore messages
+    await restoreMessagesToConversations(
+      backupData,
+      existingConvIds,
+      mediaUrlMap,
+      onProgress,
+      stats
+    )
 
     onProgress?.(95, 'Finalisation...')
 
@@ -795,6 +615,242 @@ export async function restoreBackup(
   } catch (error: any) {
     console.error('Restore error:', error)
     return { success: false, error: error.message || 'Erreur lors de la restauration' }
+  }
+}
+
+// Helper function to restore user profile
+async function restoreUserProfile(
+  backupData: BackupData,
+  userId: string,
+  onProgress?: (progress: number, status: string) => void,
+  stats?: { conversations: number; messages: number; contacts: number; media: number }
+): Promise<void> {
+  onProgress?.(5, 'Restauration du profil...')
+
+  if (!backupData.profile) return
+
+  const { error: profileError } = await supabase
+    .from('profiles')
+    .update({
+      display_name: backupData.profile.display_name,
+      bio: backupData.profile.bio,
+      avatar_url: backupData.profile.avatar_url
+    })
+    .eq('id', userId)
+
+  if (profileError) {
+    console.error('Profile restore error:', profileError)
+  }
+}
+
+// Helper function to restore contacts
+async function restoreUserContacts(
+  backupData: BackupData,
+  userId: string,
+  onProgress?: (progress: number, status: string) => void,
+  stats?: { conversations: number; messages: number; contacts: number; media: number }
+): Promise<void> {
+  onProgress?.(10, 'Restauration des contacts...')
+
+  if (!backupData.contacts || backupData.contacts.length === 0) return
+
+  for (const contact of backupData.contacts) {
+    const { error: contactError } = await supabase
+      .from('contacts')
+      .upsert({
+        user_id: userId,
+        contact_id: contact.contact_id,
+        nickname: contact.nickname,
+        is_blocked: contact.is_blocked,
+        is_favorite: contact.is_favorite
+      }, {
+        onConflict: 'user_id,contact_id',
+        ignoreDuplicates: true
+      })
+
+    if (!contactError && stats) {
+      stats.contacts++
+    }
+  }
+}
+
+// Helper function to restore conversations and members
+async function restoreConversations(
+  backupData: BackupData,
+  userId: string,
+  onProgress?: (progress: number, status: string) => void,
+  stats?: { conversations: number; messages: number; contacts: number; media: number }
+): Promise<Set<string>> {
+  onProgress?.(15, 'Restauration des conversations...')
+
+  const existingConvIds = new Set<string>()
+
+  for (const conv of backupData.conversations) {
+    // Upsert conversation
+    const { error: convError } = await supabase
+      .from('conversations')
+      .upsert({
+        id: conv.id,
+        type: conv.type || 'direct',
+        name: conv.name,
+        avatar_url: conv.avatar_url,
+        created_by: conv.created_by || userId,
+        created_at: conv.created_at,
+        updated_at: conv.updated_at || new Date().toISOString()
+      }, {
+        onConflict: 'id',
+        ignoreDuplicates: false
+      })
+
+    if (convError) {
+      console.error('Conversation restore error (upsert):', convError, conv.id)
+      existingConvIds.add(conv.id)
+    } else {
+      if (stats) stats.conversations++
+      existingConvIds.add(conv.id)
+    }
+
+    // Restore members
+    await restoreConversationMembers(conv, userId)
+
+    // Ensure current user is a member
+    await ensureUserIsMember(conv, userId)
+  }
+
+  return existingConvIds
+}
+
+// Helper to restore conversation members
+async function restoreConversationMembers(conv: any, userId: string): Promise<void> {
+  if (!conv.members || conv.members.length === 0) return
+
+  for (const member of conv.members) {
+    const { error: memberError } = await supabase
+      .from('conversation_members')
+      .upsert({
+        conversation_id: conv.id,
+        user_id: member.user_id,
+        role: member.role || 'member',
+        joined_at: member.joined_at || new Date().toISOString(),
+        is_active: member.is_active ?? true
+      }, {
+        onConflict: 'conversation_id,user_id',
+        ignoreDuplicates: false
+      })
+
+    if (memberError && member.user_id === userId) {
+      console.error('Failed to restore own membership:', memberError)
+    }
+  }
+}
+
+// Helper to ensure user is a member of conversation
+async function ensureUserIsMember(conv: any, userId: string): Promise<void> {
+  const isMember = conv.members?.some((m: any) => m.user_id === userId)
+  if (!isMember) {
+    await supabase
+      .from('conversation_members')
+      .upsert({
+        conversation_id: conv.id,
+        user_id: userId,
+        role: 'member',
+        is_active: true
+      }, { onConflict: 'conversation_id,user_id' })
+  }
+}
+
+// Helper function to upload media files
+async function uploadMediaFiles(
+  backupData: BackupData,
+  userId: string,
+  onProgress?: (progress: number, status: string) => void,
+  stats?: { conversations: number; messages: number; contacts: number; media: number }
+): Promise<Map<string, string>> {
+  const mediaUrlMap = new Map<string, string>()
+
+  if (!backupData.mediaFiles || backupData.mediaFiles.length === 0) {
+    return mediaUrlMap
+  }
+
+  onProgress?.(25, 'Restauration des fichiers médias...')
+
+  const totalMedia = backupData.mediaFiles.length
+  let uploadedCount = 0
+
+  for (const mediaFile of backupData.mediaFiles) {
+    const progress = 25 + Math.floor((uploadedCount / totalMedia) * 35)
+    onProgress?.(progress, `Upload des médias (${uploadedCount + 1}/${totalMedia})...`)
+
+    const newUrl = await uploadBase64File(
+      mediaFile.data,
+      mediaFile.fileName,
+      mediaFile.mimeType,
+      userId
+    )
+
+    if (newUrl) {
+      mediaUrlMap.set(mediaFile.messageId, newUrl)
+      if (stats) stats.media++
+    }
+
+    uploadedCount++
+  }
+
+  return mediaUrlMap
+}
+
+// Helper function to restore messages to conversations
+async function restoreMessagesToConversations(
+  backupData: BackupData,
+  existingConvIds: Set<string>,
+  mediaUrlMap: Map<string, string>,
+  onProgress?: (progress: number, status: string) => void,
+  stats?: { conversations: number; messages: number; contacts: number; media: number }
+): Promise<void> {
+  onProgress?.(65, 'Restauration des messages...')
+
+  const messagesToRestore = backupData.messages.filter(m => existingConvIds.has(m.conversation_id))
+
+  console.log(`[Restore] Restoring ${messagesToRestore.length} messages to ${existingConvIds.size} conversations`)
+
+  if (messagesToRestore.length === 0) return
+
+  const batchSize = 50
+  for (let i = 0; i < messagesToRestore.length; i += batchSize) {
+    const batch = messagesToRestore.slice(i, i + batchSize)
+    const { error: msgError } = await supabase
+      .from('messages')
+      .upsert(batch.map(m => {
+        const restoredUrl = mediaUrlMap.get(m.id)
+        return {
+          id: m.id,
+          conversation_id: m.conversation_id,
+          sender_id: m.sender_id,
+          content: m.content,
+          type: m.type,
+          media_url: restoredUrl || m.media_url,
+          media_type: m.media_type,
+          file_name: m.file_name,
+          file_size: m.file_size,
+          file_url: restoredUrl || m.file_url,
+          reply_to_id: m.reply_to_id,
+          is_edited: m.is_edited,
+          is_deleted: m.is_deleted,
+          created_at: m.created_at
+        }
+      }), {
+        onConflict: 'id',
+        ignoreDuplicates: false
+      })
+
+    if (msgError) {
+      console.error('Message restore error:', msgError)
+    } else if (stats) {
+      stats.messages += batch.length
+    }
+
+    const progress = 65 + Math.floor((i / messagesToRestore.length) * 30)
+    onProgress?.(progress, `Restauration des messages (${Math.min(i + batchSize, messagesToRestore.length)}/${messagesToRestore.length})...`)
   }
 }
 
