@@ -773,30 +773,8 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
     return false;
   };
 
-  // Helper: Try different fullscreen methods - extracted
-  const tryContainerFullscreen = async (video: HTMLVideoElement): Promise<boolean> => {
-    const methods = [
-      () => video.requestFullscreen(),
-      () => (video as any).webkitRequestFullscreen(),
-      () => (video as any).mozRequestFullScreen(),
-      () => (video as any).msRequestFullscreen(),
-    ];
-    
-    for (const method of methods) {
-      try {
-        if (method()) {
-          await method();
-          return true;
-        }
-      } catch {
-        // Continue to next method
-      }
-    }
-    return false;
-  };
-
-  // Helper: Request fullscreen for container element
-  const requestContainerFullscreen = async (): Promise<boolean> => {
+  // Helper: Try fullscreen with container - extracted to reduce complexity
+  const tryFullscreenWithContainer = async (): Promise<boolean> => {
     const container = videoContainerRef.current;
     if (!container) return false;
 
@@ -816,8 +794,8 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
     return false;
   };
 
-  // Helper: Request fullscreen for document element
-  const requestDocumentFullscreen = async (): Promise<boolean> => {
+  // Helper: Request document fullscreen - extracted to reduce complexity
+  const tryDocumentFullscreen = async (): Promise<boolean> => {
     const docEl = document.documentElement as HTMLElement & {
       webkitRequestFullscreen?: () => Promise<void>;
       mozRequestFullScreen?: () => Promise<void>;
@@ -840,8 +818,8 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
     return false;
   };
 
-  // Helper: Exit fullscreen
-  const exitFullscreen = async (): Promise<void> => {
+  // Helper: Exit fullscreen - extracted to reduce complexity
+  const doExitFullscreen = async (): Promise<void> => {
     const doc = document as Document & {
       webkitExitFullscreen?: () => Promise<void>;
       mozCancelFullScreen?: () => Promise<void>;
@@ -869,6 +847,31 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
     }
   };
 
+  // Helper: Enter fullscreen for video - extracted to reduce complexity
+  const enterVideoFullscreen = async (): Promise<boolean> => {
+    if (!videoRef.current) return false;
+    
+    const video = videoRef.current;
+    const success = await requestVideoFullscreen(video, false);
+    
+    if (success) {
+      setIsFullscreen(true);
+      return true;
+    }
+    
+    // Fallback to container fullscreen
+    const containerSuccess = await tryFullscreenWithContainer();
+    if (containerSuccess) {
+      setIsFullscreen(true);
+      return true;
+    }
+    
+    // Try orientation lock
+    await tryOrientationLock();
+    setIsFullscreen(true);
+    return true;
+  };
+
   // Try orientation lock - extracted to reduce complexity
   const tryOrientationLock = async (): Promise<void> => {
     if (!isPWA && window.screen?.orientation) {
@@ -889,41 +892,17 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
       if (!isCurrentlyFullscreen) {
         // Enter fullscreen
         if (mediaType === 'video' && videoRef.current) {
-          const video = videoRef.current;
-          const success = await requestVideoFullscreen(video, isCurrentlyFullscreen);
-          
-          if (success) {
-            setIsFullscreen(true);
-            return;
-          }
-          
-          // Fallback to container fullscreen
-          const containerSuccess = await requestContainerFullscreen();
-          if (containerSuccess) {
-            setIsFullscreen(true);
-            return;
-          }
-          
-          // Last resort: try video.requestFullscreen
-          const methodSuccess = await tryContainerFullscreen(video);
-          if (methodSuccess) {
-            setIsFullscreen(true);
-            return;
-          }
-          
-          // Try orientation lock if fullscreen succeeded
-          await tryOrientationLock();
-          setIsFullscreen(true);
+          await enterVideoFullscreen();
         } else {
           // For images, use document fullscreen
-          const docSuccess = await requestDocumentFullscreen();
+          const docSuccess = await tryDocumentFullscreen();
           if (docSuccess) {
             setIsFullscreen(true);
           }
         }
       } else {
         // Exit fullscreen
-        await exitFullscreen();
+        await doExitFullscreen();
         setIsFullscreen(false);
       }
     } catch (error) {
