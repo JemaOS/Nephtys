@@ -7,7 +7,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const PROJECT_REF = 'imkfbalgviqeotpjogff';
-const SERVICE_ROLE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlta2ZiYWxndmlxZW90cGpvZ2ZmIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NDQ2MTY2NiwiZXhwIjoyMDgwMDM3NjY2fQ.RCt9jE__ViZ5BCO9do967mp3NgsaGpm4s7cV3_nuH9c';
+const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
 const migrations = [
   { file: '../supabase/migrations/1764470000_create_message_reactions_table.sql', name: 'Réactions' },

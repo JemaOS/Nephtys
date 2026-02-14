@@ -235,8 +235,8 @@ const AudioPreviewPlayer: React.FC<{ file: File; preview: string | null }> = ({ 
   );
 };
 
-// Tenor GIF API (free tier)
-const TENOR_API_KEY = 'AIzaSyAyimkuYQYF_FXVALexPuGQctUWRURdCYQ'; // Public API key for demo
+// Tenor GIF API - use environment variable for security
+const TENOR_API_KEY = import.meta.env.VITE_TENOR_API_KEY || '';
 const TENOR_CLIENT_KEY = 'nephtys_app';
 
 interface UploadedFileData {
