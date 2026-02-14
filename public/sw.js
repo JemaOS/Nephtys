@@ -25,7 +25,7 @@ let bypassCache = false;
 let lastActiveTime = Date.now();
 
 // Install event - cache static assets
-self.addEventListener('install', (event) => {
+globalThis.addEventListener('install', (event) => {
   console.log('[SW] Installing service worker...');
   event.waitUntil(
     caches.open(STATIC_CACHE)
@@ -35,18 +35,18 @@ self.addEventListener('install', (event) => {
       })
       .then(() => {
         console.log('[SW] Static assets cached, skipping waiting');
-        return self.skipWaiting();
+        return globalThis.skipWaiting();
       })
       .catch((error) => {
         console.error('[SW] Failed to cache static assets:', error);
         // Don't fail installation if caching fails
-        return self.skipWaiting();
+        return globalThis.skipWaiting();
       })
   );
 });
 
 // Activate event - clean old caches
-self.addEventListener('activate', (event) => {
+globalThis.addEventListener('activate', (event) => {
   console.log('[SW] Activating service worker...');
   event.waitUntil(
     Promise.all([
@@ -62,7 +62,7 @@ self.addEventListener('activate', (event) => {
         );
       }),
       // Take control of all clients immediately
-      self.clients.claim()
+      globalThis.clients.claim()
     ])
   );
 });
@@ -170,7 +170,7 @@ async function cacheFirst(request, cacheName = STATIC_CACHE) {
 }
 
 // Fetch event - smart caching strategy optimized for PWA
-self.addEventListener('fetch', (event) => {
+globalThis.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
@@ -189,7 +189,7 @@ self.addEventListener('fetch', (event) => {
   }
 
   // Skip other cross-origin requests
-  if (url.origin !== location.origin) {
+  if (url.origin !== globalThis.location.origin) {
     return;
   }
 
@@ -253,7 +253,7 @@ async function networkFirstFast(request, cacheName = STATIC_CACHE) {
 }
 
 // Push notification event
-self.addEventListener('push', (event) => {
+globalThis.addEventListener('push', (event) => {
   const data = event.data?.json() || {};
   
   const title = data.title || 'Nouveau message';
@@ -278,12 +278,12 @@ self.addEventListener('push', (event) => {
   };
 
   event.waitUntil(
-    self.registration.showNotification(title, options)
+    globalThis.registration.showNotification(title, options)
   );
 });
 
 // Notification click event
-self.addEventListener('notificationclick', (event) => {
+globalThis.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
   if (event.action === 'open' || !event.action) {
@@ -292,7 +292,7 @@ self.addEventListener('notificationclick', (event) => {
         .then((clientList) => {
           // Focus existing window if available
           for (const client of clientList) {
-            if (client.url.includes(self.location.origin) && 'focus' in client) {
+            if (client.url.includes(globalThis.location.origin) && 'focus' in client) {
               return client.focus();
             }
           }
@@ -304,7 +304,7 @@ self.addEventListener('notificationclick', (event) => {
 });
 
 // Background sync event (for offline messages)
-self.addEventListener('sync', (event) => {
+globalThis.addEventListener('sync', (event) => {
   if (event.tag === 'sync-messages') {
     event.waitUntil(syncMessages());
   }
@@ -339,9 +339,9 @@ async function syncMessages() {
 }
 
 // Message event - for communication with the app
-self.addEventListener('message', (event) => {
+globalThis.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
-    self.skipWaiting();
+    globalThis.skipWaiting();
   }
   
   if (event.data && event.data.type === 'CLEAR_CACHE') {
@@ -392,7 +392,7 @@ self.addEventListener('message', (event) => {
       }).then(() => {
         console.log('[SW] All caches cleared for force reload');
         // Notify all clients to reload
-        return self.clients.matchAll();
+        return globalThis.clients.matchAll();
       }).then((clients) => {
         clients.forEach((client) => {
           client.postMessage({ type: 'RELOAD_NOW' });

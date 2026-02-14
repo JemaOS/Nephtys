@@ -1,5 +1,5 @@
-import { readFileSync, writeFileSync, readdirSync, statSync } from 'fs';
-import { join } from 'path';
+import { readFileSync, writeFileSync, readdirSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 
 // Patterns à remplacer - seulement les textes qui doivent s'adapter au thème
 const replacements = [
@@ -25,7 +25,7 @@ const replacements = [
 ];
 
 function processFile(filePath) {
-  let content = readFileSync(filePath, 'utf8');
+  let content = fs.readFileSync(filePath, { encoding: 'utf8' });
   let modified = false;
   let changes = [];
   
@@ -33,14 +33,14 @@ function processFile(filePath) {
     const regex = new RegExp(from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
     const matches = content.match(regex);
     if (matches) {
-      content = content.replace(regex, to);
+      content = content.replaceAll(regex, to);
       modified = true;
       changes.push(`  ${from} -> ${to} (${matches.length} occurrences)`);
     }
   }
   
   if (modified) {
-    writeFileSync(filePath, content, 'utf8');
+    fs.writeFileSync(filePath, content, { encoding: 'utf8' });
     console.log(`✅ Fixed: ${filePath}`);
     changes.forEach(c => console.log(c));
     console.log('');
@@ -51,11 +51,11 @@ function processFile(filePath) {
 
 function processDirectory(dirPath) {
   let count = 0;
-  const items = readdirSync(dirPath);
+  const items = fs.readdirSync(dirPath);
   
   for (const item of items) {
     const fullPath = join(dirPath, item);
-    const stat = statSync(fullPath);
+    const stat = fs.statSync(fullPath);
     
     if (stat.isDirectory() && !item.startsWith('.') && item !== 'node_modules') {
       count += processDirectory(fullPath);

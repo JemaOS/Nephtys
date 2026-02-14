@@ -1,5 +1,5 @@
-import { readFileSync, writeFileSync, readdirSync, statSync } from 'fs';
-import { join } from 'path';
+import { readFileSync, writeFileSync, readdirSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 
 // Mapping des couleurs hardcodées vers les nouvelles classes
 const colorMappings = {
@@ -35,7 +35,7 @@ const colorMappings = {
 };
 
 function processFile(filePath) {
-  let content = readFileSync(filePath, 'utf8');
+  let content = fs.readFileSync(filePath, { encoding: 'utf8' });
   let modified = false;
   let replacements = [];
   
@@ -50,7 +50,7 @@ function processFile(filePath) {
   }
   
   if (modified) {
-    writeFileSync(filePath, content, 'utf8');
+    fs.writeFileSync(filePath, content, { encoding: 'utf8' });
     console.log(`✅ Fixed: ${filePath}`);
     replacements.forEach(r => console.log(r));
     console.log('');
@@ -61,11 +61,11 @@ function processFile(filePath) {
 
 function processDirectory(dirPath) {
   let count = 0;
-  const items = readdirSync(dirPath);
+  const items = fs.readdirSync(dirPath);
   
   for (const item of items) {
     const fullPath = join(dirPath, item);
-    const stat = statSync(fullPath);
+    const stat = fs.statSync(fullPath);
     
     if (stat.isDirectory() && !item.startsWith('.') && item !== 'node_modules') {
       count += processDirectory(fullPath);

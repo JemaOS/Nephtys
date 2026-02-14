@@ -66,7 +66,7 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
           Connectez-vous à Internet pour accéder à l'application.
         </p>
         <button
-          onClick={() => window.location.reload()}
+          onClick={() => globalThis.location.reload()}
           className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors"
         >
           Réessayer
@@ -113,13 +113,13 @@ function SupabaseReconnectHandler() {
         markConnectionSuccess()
       }
       
-      window.addEventListener('supabase-connection-lost', handleConnectionLost)
-      window.addEventListener('supabase-connection-success', handleConnectionSuccess)
+      globalThis.addEventListener('supabase-connection-lost', handleConnectionLost)
+      globalThis.addEventListener('supabase-connection-success', handleConnectionSuccess)
       
       return () => {
         stopConnectionMonitoring()
-        window.removeEventListener('supabase-connection-lost', handleConnectionLost)
-        window.removeEventListener('supabase-connection-success', handleConnectionSuccess)
+        globalThis.removeEventListener('supabase-connection-lost', handleConnectionLost)
+        globalThis.removeEventListener('supabase-connection-success', handleConnectionSuccess)
       }
     }
   }, [user, reconnect, markConnectionSuccess])

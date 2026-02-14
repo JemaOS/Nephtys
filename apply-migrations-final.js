@@ -1,7 +1,7 @@
 // Script final pour appliquer les migrations via Supabase Management API
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -53,7 +53,7 @@ async function applyMigrations() {
         continue;
       }
 
-      const sql = fs.readFileSync(fullPath, 'utf8');
+      const sql = fs.readFileSync(fullPath, { encoding: 'utf8' });
       
       // Afficher un aperçu
       const lines = sql.split('\n').filter(l => l.trim() && !l.trim().startsWith('--'));
