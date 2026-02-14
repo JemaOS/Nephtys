@@ -912,6 +912,20 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
     }
   };
 
+  // Helper to get ephemeral menu item - extracted to reduce complexity
+  const renderEphemeralMenuItem = (duration: number | null, label: string) => (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        handleSetEphemeralDuration(duration);
+      }}
+      className="w-full px-4 py-3 text-left hover:bg-bg-hover transition-colors flex items-center justify-between"
+    >
+      <span className="text-sm text-text-primary">{label}</span>
+      {ephemeralDuration === duration && <Check size={18} className="text-accent" />}
+    </button>
+  );
+
   // Helper to get sender name from message
   const getSenderName = (senderId: string): string => {
     if (conversationType === 'group') {
@@ -1216,56 +1230,11 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
             </div>
             
             <div className="py-2">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleSetEphemeralDuration(null);
-                }}
-                className="w-full px-4 py-3 text-left hover:bg-bg-hover transition-colors flex items-center justify-between"
-              >
-                <span className="text-sm text-text-primary">Désactivé</span>
-                {ephemeralDuration === null && <Check size={18} className="text-accent" />}
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleSetEphemeralDuration(3600);
-                }}
-                className="w-full px-4 py-3 text-left hover:bg-bg-hover transition-colors flex items-center justify-between"
-              >
-                <span className="text-sm text-text-primary">1 heure</span>
-                {ephemeralDuration === 3600 && <Check size={18} className="text-accent" />}
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleSetEphemeralDuration(86400);
-                }}
-                className="w-full px-4 py-3 text-left hover:bg-bg-hover transition-colors flex items-center justify-between"
-              >
-                <span className="text-sm text-text-primary">24 heures</span>
-                {ephemeralDuration === 86400 && <Check size={18} className="text-accent" />}
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleSetEphemeralDuration(604800);
-                }}
-                className="w-full px-4 py-3 text-left hover:bg-bg-hover transition-colors flex items-center justify-between"
-              >
-                <span className="text-sm text-text-primary">7 jours</span>
-                {ephemeralDuration === 604800 && <Check size={18} className="text-accent" />}
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleSetEphemeralDuration(7776000);
-                }}
-                className="w-full px-4 py-3 text-left hover:bg-bg-hover transition-colors flex items-center justify-between"
-              >
-                <span className="text-sm text-text-primary">90 jours</span>
-                {ephemeralDuration === 7776000 && <Check size={18} className="text-accent" />}
-              </button>
+              {renderEphemeralMenuItem(null, 'Désactivé')}
+              {renderEphemeralMenuItem(3600, '1 heure')}
+              {renderEphemeralMenuItem(86400, '24 heures')}
+              {renderEphemeralMenuItem(604800, '7 jours')}
+              {renderEphemeralMenuItem(7776000, '90 jours')}
             </div>
 
             <div className="p-4 border-t border-bg-hover">
