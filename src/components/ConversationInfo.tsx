@@ -906,6 +906,42 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
     }
   };
 
+  // Helper to get sender name from message
+  const getSenderName = (senderId: string): string => {
+    if (conversationType === 'group') {
+      const member = members.find(m => m.user_id === senderId);
+      return member?.display_name || member?.username || 'Utilisateur';
+    } else {
+      const participant = directParticipants.find(p => p.user.id === senderId);
+      return participant?.user.display_name || participant?.user.username || 'Utilisateur';
+    }
+  };
+
+  // Helper to get sender avatar from message
+  const getSenderAvatar = (senderId: string): string | undefined => {
+    if (conversationType === 'group') {
+      const member = members.find(m => m.user_id === senderId);
+      return member?.avatar_url || undefined;
+    } else {
+      const participant = directParticipants.find(p => p.user.id === senderId);
+      return participant?.user.avatar_url || undefined;
+    }
+  };
+
+  // Transform media messages for MediaViewer
+  const getMediaViewerItems = () => mediaMessages.map(m => {
+    const isVideo = m.type === 'video' || m.media_type === 'video';
+    return {
+      url: m.media_url || m.file_url || '',
+      type: isVideo ? 'video' as const : 'image' as const,
+      senderName: getSenderName(m.sender_id),
+      senderAvatar: getSenderAvatar(m.sender_id),
+      timestamp: m.created_at,
+      isOwn: m.sender_id === currentUserId,
+      messageId: m.id
+    };
+  });
+
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
       <div className="bg-bg-surface w-full max-w-6xl rounded-2xl max-h-[90vh] flex flex-col md:flex-row overflow-hidden shadow-2xl">
@@ -1148,62 +1184,18 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
           isOpen={isMediaViewerOpen}
           mediaUrl={selectedMedia.media_url || selectedMedia.file_url || ''}
           mediaType={(selectedMedia.type === 'video' || selectedMedia.media_type === 'video') ? 'video' : 'image'}
-          senderName={(() => {
-            if (conversationType === 'group') {
-              const member = members.find(m => m.user_id === selectedMedia.sender_id);
-              return member?.display_name || member?.username || 'Utilisateur';
-            } else {
-              const participant = directParticipants.find(p => p.user.id === selectedMedia.sender_id);
-              return participant?.user.display_name || participant?.user.username || 'Utilisateur';
-            }
-          })()}
-          senderAvatar={(() => {
-            if (conversationType === 'group') {
-              const member = members.find(m => m.user_id === selectedMedia.sender_id);
-              return member?.avatar_url || undefined;
-            } else {
-              const participant = directParticipants.find(p => p.user.id === selectedMedia.sender_id);
-              return participant?.user.avatar_url || undefined;
-            }
-          })()}
+          senderName={getSenderName(selectedMedia.sender_id)}
+          senderAvatar={getSenderAvatar(selectedMedia.sender_id)}
           timestamp={selectedMedia.created_at}
           isOwn={selectedMedia.sender_id === currentUserId}
           onClose={() => setIsMediaViewerOpen(false)}
-          allMedia={mediaMessages.map(m => {
-            const isVideo = m.type === 'video' || m.media_type === 'video';
-            let name = 'Utilisateur';
-            let avatar = undefined;
-            
-            if (conversationType === 'group') {
-              const member = members.find(mem => mem.user_id === m.sender_id);
-              if (member) {
-                name = member.display_name || member.username;
-                avatar = member.avatar_url || undefined;
-              }
-            } else {
-              const participant = directParticipants.find(p => p.user.id === m.sender_id);
-              if (participant) {
-                name = participant.user.display_name || participant.user.username;
-                avatar = participant.user.avatar_url || undefined;
-              }
-            }
-
-            return {
-              url: m.media_url || m.file_url || '',
-              type: isVideo ? 'video' : 'image',
-              senderName: name,
-              senderAvatar: avatar,
-              timestamp: m.created_at,
-              isOwn: m.sender_id === currentUserId,
-              messageId: m.id
-            };
-          })}
+          allMedia={getMediaViewerItems()}
           currentIndex={mediaMessages.findIndex(m => m.id === selectedMedia.id)}
           onNavigate={(index) => setSelectedMedia(mediaMessages[index])}
         />
       )}
 
-      {/* Ephemeral Duration Menu - Rendered as a modal outside the main content */}
+      {/* Ephemeral Duration Menu */}
       {showEphemeralMenu && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
           <div

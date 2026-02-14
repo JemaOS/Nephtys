@@ -43,6 +43,37 @@ interface DocumentPreviewModalProps {
   uploadPhase?: 'idle' | 'compressing' | 'uploading';
 }
 
+// Get preview message based on file type
+const getPreviewMessage = (fileType: string): string => {
+  switch (fileType) {
+    case 'word':
+      return "Les fichiers Word ne peuvent pas être prévisualisés. Envoyez-le pour l'ouvrir avec une application compatible.";
+    case 'excel':
+      return "Les fichiers Excel ne peuvent pas être prévisualisés. Envoyez-le pour l'ouvrir avec une application compatible.";
+    case 'powerpoint':
+      return "Les fichiers PowerPoint ne peuvent pas être prévisualisés. Envoyez-le pour l'ouvrir avec une application compatible.";
+    case 'archive':
+      return "Les archives ne peuvent pas être prévisualisées. Envoyez-la pour l'extraire avec une application compatible.";
+    default:
+      return "Ce fichier ne peut pas être prévisualisé. Envoyez-le pour l'ouvrir avec une application compatible.";
+  }
+};
+
+// Format file size helper
+const formatFileSize = (bytes: number): string => {
+  if (bytes < 1024) return bytes + ' o';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(0) + ' ko';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' Mo';
+};
+
+// Touch distance helper
+const getTouchDistance = (touches: React.TouchList): number => {
+  if (touches.length < 2) return 0;
+  const dx = touches[0].clientX - touches[1].clientX;
+  const dy = touches[0].clientY - touches[1].clientY;
+  return Math.sqrt(dx * dx + dy * dy);
+};
+
 export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
   file,
   onClose,
@@ -217,13 +248,6 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
   }, [isDragging, handleMouseMove, handleMouseUp]);
 
   // Touch handlers for pinch-to-zoom
-  const getTouchDistance = (touches: React.TouchList): number => {
-    if (touches.length < 2) return 0;
-    const dx = touches[0].clientX - touches[1].clientX;
-    const dy = touches[0].clientY - touches[1].clientY;
-    return Math.sqrt(dx * dx + dy * dy);
-  };
-
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     if (e.touches.length === 2) {
       // Pinch start
@@ -287,29 +311,6 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
-    }
-  };
-
-  // Format file size
-  const formatFileSize = (bytes: number): string => {
-    if (bytes < 1024) return bytes + ' o';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(0) + ' ko';
-    return (bytes / (1024 * 1024)).toFixed(1) + ' Mo';
-  };
-
-  // Get preview message based on file type
-  const getPreviewMessage = (): string => {
-    switch (fileTypeInfo.type) {
-      case 'word':
-        return "Les fichiers Word ne peuvent pas être prévisualisés. Envoyez-le pour l'ouvrir avec une application compatible.";
-      case 'excel':
-        return "Les fichiers Excel ne peuvent pas être prévisualisés. Envoyez-le pour l'ouvrir avec une application compatible.";
-      case 'powerpoint':
-        return "Les fichiers PowerPoint ne peuvent pas être prévisualisés. Envoyez-le pour l'ouvrir avec une application compatible.";
-      case 'archive':
-        return "Les archives ne peuvent pas être prévisualisées. Envoyez-la pour l'extraire avec une application compatible.";
-      default:
-        return "Ce fichier ne peut pas être prévisualisé. Envoyez-le pour l'ouvrir avec une application compatible.";
     }
   };
 
@@ -518,7 +519,7 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
                 {/* Info message - Responsive */}
                 <div className="bg-white/5 rounded-lg p-3 sm:p-4 w-full">
                   <p className="text-white/70 text-xs sm:text-sm leading-relaxed">
-                    {getPreviewMessage()}
+                    {getPreviewMessage(fileTypeInfo.type)}
                   </p>
                 </div>
               </div>
