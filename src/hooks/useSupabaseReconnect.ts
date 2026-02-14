@@ -348,7 +348,7 @@ export function useSupabaseReconnect(userId: string | null) {
   }, [userId])
 
   // Full reconnection procedure - ULTRA OPTIMIZED for speed with debounce
-  const performReconnect = useCallback(async () => {
+  const performReconnect = useCallback(async (): Promise<boolean> => {
     const now = Date.now()
     
     // Debounce: Skip if we just reconnected (prevents multiple pull-to-refresh)
@@ -372,17 +372,19 @@ export function useSupabaseReconnect(userId: string | null) {
     
     // Step 2: Refresh session in PARALLEL (don't block)
     // The session is likely still valid, so components can start loading
-    refreshSession().then((ok) => {
-      if (!ok) {
-        console.warn('[Reconnect] Session refresh failed in background')
-      }
-    })
+    // We track success for the return value
+    let sessionOk = true
+    try {
+      sessionOk = await refreshSession()
+    } catch {
+      sessionOk = false
+    }
 
     // Step 3: Reconnect realtime channels in background (non-blocking)
     reconnectRealtime()
 
-    console.log('[Reconnect] Ultra fast reconnection triggered')
-    return true
+    console.log('[Reconnect] Ultra fast reconnection triggered, session:', sessionOk ? 'ok' : 'failed')
+    return sessionOk
   }, [refreshSession, reconnectRealtime, sendToServiceWorker])
 
   // Force page reload - nuclear option for stuck PWA
