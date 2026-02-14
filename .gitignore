@@ -25,3 +25,8 @@ dist-ssr
 
 .vercel
 .env*.local
+
+# Test reports - should not be in repository
+lhreport.html
+playwright-report/
+test-results/
