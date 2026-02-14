@@ -81,6 +81,96 @@ const getFileIconConfig = (extension: string): { bgColor: string; icon: React.Re
   };
 };
 
+// Helper function to get MIME type from filename - extracted for complexity reduction
+const getMimeTypeFromExtension = (filename: string): string => {
+  const ext = filename.split('.').pop()?.toLowerCase() || '';
+  const mimeTypes: Record<string, string> = {
+    'pdf': 'application/pdf',
+    'doc': 'application/msword',
+    'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'xls': 'application/vnd.ms-excel',
+    'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'ppt': 'application/vnd.ms-powerpoint',
+    'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'txt': 'text/plain',
+    'csv': 'text/csv',
+    'zip': 'application/zip',
+    'rar': 'application/x-rar-compressed',
+    '7z': 'application/x-7z-compressed',
+    'tar': 'application/x-tar',
+    'gz': 'application/gzip',
+  };
+  return mimeTypes[ext] || 'application/octet-stream';
+};
+
+// Helper function to format video duration - extracted for complexity reduction
+const formatVideoDuration = (seconds: number): string => {
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+};
+
+// Helper function to format timestamp - extracted for complexity reduction
+const formatMessageTimestamp = (ts: string): string => {
+  return new Date(ts).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+};
+
+// Helper function to render status check SVG - extracted for complexity reduction
+const renderStatusCheckmark = (status?: 'sent' | 'delivered' | 'read'): React.ReactNode => {
+  if (status === 'read') {
+    return (
+      <svg width="16" height="11" viewBox="0 0 16 11" fill="none">
+        <path d="M1.5 5.5L4.5 8.5L10.5 2.5" stroke="#53bdeb" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M5.5 5.5L8.5 8.5L14.5 2.5" stroke="#53bdeb" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    );
+  }
+  if (status === 'delivered') {
+    return (
+      <svg width="16" height="11" viewBox="0 0 16 11" fill="none">
+        <path d="M1.5 5.5L4.5 8.5L10.5 2.5" stroke="rgba(255,255,255,0.7)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M5.5 5.5L8.5 8.5L14.5 2.5" stroke="rgba(255,255,255,0.7)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    );
+  }
+  return (
+    <svg width="12" height="11" viewBox="0 0 16 11" fill="none">
+      <path d="M10.5 1L4.5 7L2 4.5" stroke="rgba(255,255,255,0.7)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+};
+
+// Helper function to get Word-style icon for document types - extracted for complexity reduction
+const getDocumentTypeIcon = (extension: string, bgColor: string, defaultIcon: React.ReactNode): React.ReactNode => {
+  const ext = extension.toLowerCase();
+  if (['doc', 'docx', 'odt', 'rtf'].includes(ext)) {
+    return (
+      <div className="w-11 h-11 rounded-lg bg-blue-500 flex items-center justify-center flex-shrink-0">
+        <span className="text-white font-bold text-xl">W</span>
+      </div>
+    );
+  }
+  if (['xls', 'xlsx', 'csv', 'ods'].includes(ext)) {
+    return (
+      <div className="w-11 h-11 rounded-lg bg-green-600 flex items-center justify-center flex-shrink-0">
+        <span className="text-white font-bold text-xl">X</span>
+      </div>
+    );
+  }
+  if (['ppt', 'pptx', 'odp'].includes(ext)) {
+    return (
+      <div className="w-11 h-11 rounded-lg bg-orange-600 flex items-center justify-center flex-shrink-0">
+        <span className="text-white font-bold text-xl">P</span>
+      </div>
+    );
+  }
+  return (
+    <div className={`w-11 h-11 rounded-lg ${bgColor} flex items-center justify-center flex-shrink-0`}>
+      {defaultIcon}
+    </div>
+  );
+};
+
 interface MediaMessageProps {
   url: string;
   type: 'image' | 'video' | 'file';
@@ -226,47 +316,12 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
   const [videoDuration, setVideoDuration] = useState<string>('');
   const videoRef = useRef<HTMLVideoElement>(null);
 
-  const formatFileSizeLocal = (bytes?: number): string => {
-    if (!bytes) return '';
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-  };
-
-  const formatDuration = (seconds: number): string => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
-
   // Detect if we're on mobile
   const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
   
   // Detect if we're in a PWA
   const isPWA = window.matchMedia('(display-mode: standalone)').matches ||
                 (window.navigator as any).standalone === true;
-
-  // Helper to get MIME type from filename
-  const getMimeType = (filename: string): string => {
-    const ext = filename.split('.').pop()?.toLowerCase() || '';
-    const mimeTypes: Record<string, string> = {
-      'pdf': 'application/pdf',
-      'doc': 'application/msword',
-      'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'xls': 'application/vnd.ms-excel',
-      'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'ppt': 'application/vnd.ms-powerpoint',
-      'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-      'txt': 'text/plain',
-      'csv': 'text/csv',
-      'zip': 'application/zip',
-      'rar': 'application/x-rar-compressed',
-      '7z': 'application/x-7z-compressed',
-      'tar': 'application/x-tar',
-      'gz': 'application/gzip',
-    };
-    return mimeTypes[ext] || 'application/octet-stream';
-  };
 
   const handleDownload = async () => {
     try {
@@ -295,7 +350,7 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
         const blob = await response.blob();
         
         // Get the correct MIME type
-        const mimeType = blob.type || getMimeType(fileName || '');
+        const mimeType = blob.type || getMimeTypeFromExtension(fileName || '');
         
         // Create a File object (required for Web Share API)
         const shareFile = new window.File([blob], fileName || 'document', { type: mimeType });
@@ -370,14 +425,6 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
     };
   };
 
-  // Helper: Get aspect ratio for CSS - extracted
-  const getAspectRatio = (): string | undefined => {
-    if (imageDimensions) {
-      return `${imageDimensions.width} / ${imageDimensions.height}`;
-    }
-    return undefined;
-  };
-
   // Helper: Determine media type for viewer (handle GIF detection) - extracted
   const getViewerMediaType = (): 'image' | 'video' | 'audio' | 'gif' | 'sticker' => {
     if (type === 'video') return 'video';
@@ -397,7 +444,7 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
       const video = videoRef.current;
       const handleLoadedMetadata = () => {
         if (video.duration && !isNaN(video.duration)) {
-          setVideoDuration(formatDuration(video.duration));
+          setVideoDuration(formatVideoDuration(video.duration));
         }
       };
       video.addEventListener('loadedmetadata', handleLoadedMetadata);
@@ -629,69 +676,6 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
   const isPDF = extension === 'pdf';
   const hasThumbnail = isPDF && thumbnail;
   
-  // Format timestamp
-  const formatTimestamp = (ts: string) => {
-    return new Date(ts).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-  };
-  
-  // Render status checkmarks
-  const renderStatusCheck = () => {
-    if (!isOwn) return null;
-    if (status === 'read') {
-      return (
-        <svg width="16" height="11" viewBox="0 0 16 11" fill="none">
-          <path d="M1.5 5.5L4.5 8.5L10.5 2.5" stroke="#53bdeb" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-          <path d="M5.5 5.5L8.5 8.5L14.5 2.5" stroke="#53bdeb" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
-      );
-    }
-    if (status === 'delivered') {
-      return (
-        <svg width="16" height="11" viewBox="0 0 16 11" fill="none">
-          <path d="M1.5 5.5L4.5 8.5L10.5 2.5" stroke="rgba(255,255,255,0.7)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-          <path d="M5.5 5.5L8.5 8.5L14.5 2.5" stroke="rgba(255,255,255,0.7)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
-      );
-    }
-    return (
-      <svg width="12" height="11" viewBox="0 0 16 11" fill="none">
-        <path d="M10.5 1L4.5 7L2 4.5" stroke="rgba(255,255,255,0.7)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-      </svg>
-    );
-  };
-  
-  // Get Word-style icon for document types
-  const getWordStyleIcon = (ext: string) => {
-    const e = ext.toLowerCase();
-    if (['doc', 'docx', 'odt', 'rtf'].includes(e)) {
-      return (
-        <div className="w-11 h-11 rounded-lg bg-blue-500 flex items-center justify-center flex-shrink-0">
-          <span className="text-white font-bold text-xl">W</span>
-        </div>
-      );
-    }
-    if (['xls', 'xlsx', 'csv', 'ods'].includes(e)) {
-      return (
-        <div className="w-11 h-11 rounded-lg bg-green-600 flex items-center justify-center flex-shrink-0">
-          <span className="text-white font-bold text-xl">X</span>
-        </div>
-      );
-    }
-    if (['ppt', 'pptx', 'odp'].includes(e)) {
-      return (
-        <div className="w-11 h-11 rounded-lg bg-orange-600 flex items-center justify-center flex-shrink-0">
-          <span className="text-white font-bold text-xl">P</span>
-        </div>
-      );
-    }
-    // Default icon for other file types
-    return (
-      <div className={`w-11 h-11 rounded-lg ${bgColor} flex items-center justify-center flex-shrink-0`}>
-        {icon}
-      </div>
-    );
-  };
-  
   return (
     <div className="relative">
       {/* Hover Actions Button */}
@@ -742,9 +726,9 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
             <div className="flex justify-end mt-2">
               <div className="flex items-center gap-1">
                 <span className="text-[11px] text-white/70">
-                  {formatTimestamp(timestamp)}
+                  {formatMessageTimestamp(timestamp)}
                 </span>
-                {renderStatusCheck()}
+                {renderStatusCheckmark(isOwn ? status : undefined)}
               </div>
             </div>
           </div>
@@ -773,7 +757,7 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
           <div className="bg-[#5a5cc9] p-3">
             <div className="flex items-start gap-3">
               {/* Document type icon - Word/Excel style */}
-              {getWordStyleIcon(extension)}
+              {getDocumentTypeIcon(extension, bgColor, icon)}
               
               {/* File details */}
               <div className="flex-1 min-w-0">
@@ -790,9 +774,9 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
             <div className="flex justify-end mt-2">
               <div className="flex items-center gap-1">
                 <span className="text-[11px] text-white/70">
-                  {formatTimestamp(timestamp)}
+                  {formatMessageTimestamp(timestamp)}
                 </span>
-                {renderStatusCheck()}
+                {renderStatusCheckmark(isOwn ? status : undefined)}
               </div>
             </div>
           </div>
