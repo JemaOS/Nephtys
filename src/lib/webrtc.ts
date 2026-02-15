@@ -11,6 +11,9 @@ const ICE_SERVERS = [
   { urls: 'stun:stun3.l.google.com:19302' },
   { urls: 'stun:stun4.l.google.com:19302' },
   { urls: 'stun:global.stun.twilio.com:3478' },
+  { urls: 'stun:stun.stunprotocol.org:3478' },
+  { urls: 'stun:stun.framasoft.org:3478' },
+  { urls: 'stun:stun.voip.blackberry.com:3478' },
 ];
 
 export interface CallConfig {
@@ -26,6 +29,7 @@ export class WebRTCManager {
   private onLocalStreamCallback: ((stream: MediaStream) => void) | null = null;
   private onCallEndCallback: (() => void) | null = null;
   private onNegotiationNeededCallback: (() => void) | null = null;
+  private onIceConnectionStateChangeCallback: ((state: RTCIceConnectionState) => void) | null = null;
 
   constructor() {
     this.peerConnection = null;
@@ -128,9 +132,12 @@ export class WebRTCManager {
         const iceState = this.peerConnection?.iceConnectionState;
         console.log('🧊 WebRTC: ICE connection state changed:', iceState);
         
+        if (iceState) {
+          this.onIceConnectionStateChangeCallback?.(iceState);
+        }
+        
         if (iceState === 'failed' || iceState === 'disconnected') {
           console.warn('🧊 WebRTC: ICE connection issues detected!');
-          // We could trigger a restart here in the future
         }
       };
 
@@ -139,6 +146,18 @@ export class WebRTCManager {
       console.error('Error initializing call:', error);
       throw error;
     }
+  }
+
+  async restartIce(): Promise<RTCSessionDescriptionInit> {
+    if (!this.peerConnection) {
+      throw new Error('Peer connection not initialized');
+    }
+    console.log('🧊 WebRTC: Restarting ICE...');
+    
+    const offer = await this.peerConnection.createOffer({ iceRestart: true });
+    await this.peerConnection.setLocalDescription(offer);
+    
+    return offer;
   }
 
   async createOffer(): Promise<RTCSessionDescriptionInit> {
@@ -223,6 +242,10 @@ export class WebRTCManager {
 
   onNegotiationNeeded(callback: () => void): void {
     this.onNegotiationNeededCallback = callback;
+  }
+
+  onIceConnectionStateChange(callback: (state: RTCIceConnectionState) => void): void {
+    this.onIceConnectionStateChangeCallback = callback;
   }
 
   onCallEnd(callback: () => void): void {

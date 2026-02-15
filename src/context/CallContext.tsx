@@ -500,6 +500,25 @@ export function CallProvider({ children }: { children: ReactNode }) {
         setRemoteStream(new MediaStream(stream.getTracks()));
       })
 
+      // Add ICE restart handler for better stability
+      webrtcManager.onIceConnectionStateChange(async (state) => {
+        if (state === 'failed' || state === 'disconnected') {
+           console.log('Attempting ICE restart...');
+           try {
+             const offer = await webrtcManager.restartIce();
+             await sendSignal({
+               type: 'offer',
+               from: user!.id,
+               to: userId,
+               data: { ...offer, video: config.video },
+               conversation_id: conversationId,
+             });
+           } catch (e) {
+             console.error('ICE restart failed:', e);
+           }
+        }
+      })
+
       webrtcManager.onCallEnd(() => {
         endCall()
       })
@@ -571,6 +590,25 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
       webrtcManager.onCallEnd(() => {
         endCall()
+      })
+
+      // Add ICE restart handler for better stability
+      webrtcManager.onIceConnectionStateChange(async (state) => {
+        if (state === 'failed' || state === 'disconnected') {
+           console.log('Attempting ICE restart...');
+           try {
+             const offer = await webrtcManager.restartIce();
+             await sendSignal({
+               type: 'offer',
+               from: user!.id,
+               to: incomingCallSignal.from,
+               data: { ...offer, video: config.video },
+               conversation_id: incomingCallSignal.conversation_id,
+             });
+           } catch (e) {
+             console.error('ICE restart failed:', e);
+           }
+        }
       })
 
       webrtcManager.onIceCandidate(async (candidate) => {
