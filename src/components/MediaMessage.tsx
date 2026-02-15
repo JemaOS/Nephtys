@@ -1,7 +1,7 @@
 // Copyright (c) 2025 Jema Technology.
 // Distributed under the license specified in the root directory of this project.
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Download, File, Play, Copy, ChevronDown, FileText, FileSpreadsheet, FileImage, FileArchive } from 'lucide-react';
 import { MediaViewer } from './MediaViewer';
 import { calculateDisplayDimensions } from '@/lib/imageUtils';
@@ -531,7 +531,7 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
   };
 
   // Open file with native app using Web Share API (shows "Open with" dialog on mobile)
-  const handleOpenFile = async () => {
+  const handleOpenFile = useCallback(async () => {
     // On mobile/PWA, try to use Web Share API to show "Open with" dialog
     if (isMobile || isPWA) {
       try {
@@ -590,7 +590,7 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
       // On desktop, open in new tab
       window.open(url, '_blank', 'noopener,noreferrer');
     }
-  };
+  }, [url, fileName, isMobile, isPWA]);
 
   // Helper: Get container style based on dimensions - extracted to reduce complexity
   const getContainerStyle = (): React.CSSProperties => {

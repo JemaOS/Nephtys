@@ -94,7 +94,7 @@ const loadFileUrl = async (file: File, isText: boolean): Promise<{ url: string; 
   return { url, textContent: null, error: null };
 };
 
-// Update container dimensions
+// Update container dimensions - extracted to reduce complexity
 const updateContainerDimensions = (
   containerRef: React.RefObject<HTMLDivElement>,
   setContainerWidth: (width: number) => void,
