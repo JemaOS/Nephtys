@@ -502,28 +502,28 @@ export function ChatsPage() {
     }
   }
 
+  // Helper function to create a map of conversation data for comparison
+const createConversationDataMap = (convs: ConversationWithDetails[]) => {
+  const map = new Map<string, string>()
+  convs.forEach(c => {
+    map.set(c.id, JSON.stringify({
+      last_message_at: c.last_message_at,
+      unreadCount: c.unreadCount,
+      is_pinned: c.is_pinned,
+      is_muted: c.is_muted,
+      lastMessageId: c.lastMessage?.id,
+      lastMessageContent: c.lastMessage?.content?.substring(0, 50),
+      otherUserName: c.otherUserProfile?.display_name || c.otherUserProfile?.username,
+      otherUserAvatar: c.otherUserProfile?.avatar_url
+    }))
+  })
+  return map
+}
+
   // Helper to analyze conversation changes and determine update strategy
   const analyzeConversationChanges = (currentConvs: ConversationWithDetails[], newConvs: ConversationWithDetails[]) => {
-    // Create a map of conversation data for comparison
-    const createDataMap = (convs: ConversationWithDetails[]) => {
-      const map = new Map<string, string>()
-      convs.forEach(c => {
-        map.set(c.id, JSON.stringify({
-          last_message_at: c.last_message_at,
-          unreadCount: c.unreadCount,
-          is_pinned: c.is_pinned,
-          is_muted: c.is_muted,
-          lastMessageId: c.lastMessage?.id,
-          lastMessageContent: c.lastMessage?.content?.substring(0, 50),
-          otherUserName: c.otherUserProfile?.display_name || c.otherUserProfile?.username,
-          otherUserAvatar: c.otherUserProfile?.avatar_url
-        }))
-      })
-      return map
-    }
-
-    const currentDataMap = createDataMap(currentConvs)
-    const newDataMap = createDataMap(newConvs)
+    const currentDataMap = createConversationDataMap(currentConvs)
+    const newDataMap = createConversationDataMap(newConvs)
 
     // Check if any conversation data has actually changed
     let hasDataChanged = currentConvs.length !== newConvs.length

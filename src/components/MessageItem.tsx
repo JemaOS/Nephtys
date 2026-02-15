@@ -161,6 +161,30 @@ interface MessageItemProps {
   messages: Message[]
 }
 
+// Helper to render text/audio content - extracted to reduce complexity
+const renderTextContent = (message: Message, isOwn: boolean, msgType: MessageTypeProps) => {
+  return (
+    <>
+      {message.type === 'audio' && (message.media_url || message.file_url) && (
+        message.file_name?.startsWith('voice-') ? (
+          <VoiceMessage url={message.media_url || message.file_url || ''} duration={message.ephemeral_duration || 0} isOwn={isOwn} />
+        ) : (
+          <AudioFilePlayer
+            url={message.media_url || message.file_url || ''}
+            fileName={message.file_name || undefined}
+            duration={message.ephemeral_duration || undefined}
+            isOwn={isOwn}
+          />
+        )
+      )}
+      {!(message.media_url || message.file_url) && message.content && (
+        <MessageContent message={message} isOwn={isOwn} />
+      )}
+      <MessageTimestamp message={message} isOwn={isOwn} mediaUrl={msgType.mediaUrl} mediaType={msgType.mediaType} />
+    </>
+  )
+}
+
 // Main MessageItem component
 export const MessageItem: React.FC<MessageItemProps> = ({
   message,
@@ -367,26 +391,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
   }
 
   // Regular text/audio message
-  const textContent = (
-    <>
-      {message.type === 'audio' && (message.media_url || message.file_url) && (
-        message.file_name?.startsWith('voice-') ? (
-          <VoiceMessage url={message.media_url || message.file_url || ''} duration={message.ephemeral_duration || 0} isOwn={isOwn} />
-        ) : (
-          <AudioFilePlayer
-            url={message.media_url || message.file_url || ''}
-            fileName={message.file_name || undefined}
-            duration={message.ephemeral_duration || undefined}
-            isOwn={isOwn}
-          />
-        )
-      )}
-      {!(message.media_url || message.file_url) && message.content && (
-        <MessageContent message={message} isOwn={isOwn} />
-      )}
-      <MessageTimestamp message={message} isOwn={isOwn} mediaUrl={msgType.mediaUrl} mediaType={msgType.mediaType} />
-    </>
-  )
+  const textContent = renderTextContent(message, isOwn, msgType)
 
   return (
     <div
