@@ -557,10 +557,104 @@ export function CallsPage() {
     }
   }
 
+  // Extract call data fetching to helper function
+  const fetchCallData = async (userId: string, userConversationIds: string[]) => {
+    // Fetch direct calls
+    const { data: directCalls, error: directError } = await supabase
+      .from('call_logs')
+      .select('*')
+      .or(`caller_id.eq.${userId},callee_id.eq.${userId}`)
+      .order('started_at', { ascending: false })
+      .limit(100)
+    
+    // Fetch group calls
+    let groupCalls: any[] = []
+    if (userConversationIds.length > 0) {
+      const { data: conversationCalls, error: groupError } = await supabase
+        .from('call_logs')
+        .select('*')
+        .in('conversation_id', userConversationIds)
+        .order('started_at', { ascending: false })
+        .limit(200)
+      
+      if (!groupError && conversationCalls) {
+        groupCalls = conversationCalls.filter(call => call.caller_id === call.callee_id)
+      }
+    }
+    
+    // Merge calls
+    const allCallsMap = new Map<string, any>()
+    if (directCalls) {
+      directCalls.forEach(call => allCallsMap.set(call.id, call))
+    }
+    groupCalls.forEach(call => allCallsMap.set(call.id, call))
+    
+    return {
+      calls: Array.from(allCallsMap.values())
+        .sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime())
+        .slice(0, 100),
+      error: directError
+    }
+  }
+
+  // Extract user and conversation ID collection to helper
+  const collectUserAndConversationIds = (callsData: any[]) => {
+    const userIds = new Set<string>()
+    const groupCallConversationIds = new Set<string>()
+    
+    callsData.forEach(call => {
+      userIds.add(call.caller_id)
+      if (call.callee_id) {
+        userIds.add(call.callee_id)
+      }
+      if (call.caller_id === call.callee_id) {
+        groupCallConversationIds.add(call.conversation_id)
+      }
+    })
+    
+    return { userIds, groupCallConversationIds }
+  }
+
+  // Extract profile enrichment to helper
+  const enrichCallsWithProfiles = async (callsData: any[], userIds: Set<string>, groupCallConversationIds: Set<string>) => {
+    // Fetch profiles
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('*')
+      .in('id', Array.from(userIds))
+
+    const profileMap = new Map(profiles?.map(p => [p.id, p]) || [])
+
+    // Fetch conversations
+    let conversationMap = new Map<string, { name: string; avatar_url: string | null }>()
+    if (groupCallConversationIds.size > 0) {
+      const { data: conversations } = await supabase
+        .from('conversations')
+        .select('id, name, avatar_url')
+        .in('id', Array.from(groupCallConversationIds))
+      
+      conversationMap = new Map(conversations?.map(c => [c.id, { name: c.name, avatar_url: c.avatar_url }]) || [])
+    }
+
+    // Enrich calls
+    return callsData.map(call => {
+      const isGroupCall = call.caller_id === call.callee_id
+      const conversationInfo = conversationMap.get(call.conversation_id)
+      
+      return {
+        ...call,
+        caller_profile: profileMap.get(call.caller_id) || null,
+        callee_profile: call.callee_id ? profileMap.get(call.callee_id) : null,
+        is_group_call: isGroupCall,
+        conversation_name: isGroupCall ? (conversationInfo?.name || 'Groupe') : null,
+        conversation_avatar: isGroupCall ? conversationInfo?.avatar_url : null,
+      }
+    })
+  }
+
   const loadCalls = async () => {
     if (!user) return
     
-    // Only show loading if we don't have cached data
     const hasCachedCalls = calls.length > 0
     if (!hasCachedCalls) {
       setLoading(true)
@@ -569,7 +663,7 @@ export function CallsPage() {
     try {
       console.log('📞 Loading calls for user:', user.id)
       
-      // Step 1: Get all conversations the user is a member of (for group calls)
+      // Get user conversations
       const { data: memberConversations } = await supabase
         .from('conversation_members')
         .select('conversation_id')
@@ -578,59 +672,8 @@ export function CallsPage() {
       const userConversationIds = memberConversations?.map(m => m.conversation_id) || []
       console.log('📞 User is member of conversations:', userConversationIds.length)
       
-      // Step 2: Fetch all calls - both direct calls and group calls
-      // Direct calls: caller_id or callee_id matches user
-      // Group calls: callee_id is null AND conversation_id is in user's conversations
-      
-      // First, fetch direct calls (where user is caller or callee)
-      const { data: directCalls, error: directError } = await supabase
-        .from('call_logs')
-        .select('*')
-        .or(`caller_id.eq.${user.id},callee_id.eq.${user.id}`)
-        .order('started_at', { ascending: false })
-        .limit(100)
-      
-      // Then, fetch group calls (caller_id === callee_id, conversation_id in user's conversations)
-      // Group calls are identified by self-reference: caller_id equals callee_id
-      let groupCalls: any[] = []
-      if (userConversationIds.length > 0) {
-        // We need to fetch calls where caller_id = callee_id (group calls)
-        // Since Supabase doesn't support comparing two columns directly, we fetch all calls
-        // from user's conversations and filter client-side
-        const { data: conversationCalls, error: groupError } = await supabase
-          .from('call_logs')
-          .select('*')
-          .in('conversation_id', userConversationIds)
-          .order('started_at', { ascending: false })
-          .limit(200)
-        
-        if (!groupError && conversationCalls) {
-          // Filter for group calls (caller_id === callee_id)
-          groupCalls = conversationCalls.filter(call => call.caller_id === call.callee_id)
-        }
-        console.log('📞 Group calls found:', groupCalls.length, 'Error:', groupError)
-      }
-      
-      // Merge and deduplicate (in case a group call was also matched by caller_id)
-      const allCallsMap = new Map<string, any>()
-      
-      // Add direct calls first
-      if (directCalls) {
-        directCalls.forEach(call => allCallsMap.set(call.id, call))
-      }
-      
-      // Add group calls (will overwrite duplicates)
-      groupCalls.forEach(call => allCallsMap.set(call.id, call))
-      
-      // Convert back to array and sort by started_at
-      const callsData = Array.from(allCallsMap.values())
-        .sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime())
-        .slice(0, 100)
-      
-      const error = directError
-
-      console.log('📞 Calls data:', callsData?.length || 0, 'calls')
-      console.log('📞 Error:', error)
+      // Fetch calls
+      const { calls: callsData, error } = await fetchCallData(user.id, userConversationIds)
 
       if (error) {
         console.error('Error loading calls:', error)
@@ -645,59 +688,14 @@ export function CallsPage() {
         return
       }
 
-      // Step 3: Collect all unique user IDs and conversation IDs for group calls
-      const userIds = new Set<string>()
-      const groupCallConversationIds = new Set<string>()
-      
-      callsData.forEach(call => {
-        userIds.add(call.caller_id)
-        if (call.callee_id) {
-          userIds.add(call.callee_id)
-        }
-        // Group calls are identified by caller_id === callee_id (self-reference)
-        if (call.caller_id === call.callee_id) {
-          // This is a group call - we need conversation info
-          groupCallConversationIds.add(call.conversation_id)
-        }
-      })
+      // Collect IDs
+      const { userIds, groupCallConversationIds } = collectUserAndConversationIds(callsData)
 
-      // Step 4: Batch fetch all profiles (single query)
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('*')
-        .in('id', Array.from(userIds))
-
-      const profileMap = new Map(profiles?.map(p => [p.id, p]) || [])
-
-      // Step 5: Fetch conversation info for group calls
-      let conversationMap = new Map<string, { name: string; avatar_url: string | null }>()
-      if (groupCallConversationIds.size > 0) {
-        const { data: conversations } = await supabase
-          .from('conversations')
-          .select('id, name, avatar_url')
-          .in('id', Array.from(groupCallConversationIds))
-        
-        conversationMap = new Map(conversations?.map(c => [c.id, { name: c.name, avatar_url: c.avatar_url }]) || [])
-      }
-
-      // Step 6: Enrich calls with profiles and conversation info
-      const enrichedCalls = callsData.map(call => {
-        // Group calls are identified by caller_id === callee_id (self-reference)
-        const isGroupCall = call.caller_id === call.callee_id
-        const conversationInfo = conversationMap.get(call.conversation_id)
-        
-        return {
-          ...call,
-          caller_profile: profileMap.get(call.caller_id) || null,
-          callee_profile: call.callee_id ? profileMap.get(call.callee_id) : null,
-          is_group_call: isGroupCall,
-          conversation_name: isGroupCall ? (conversationInfo?.name || 'Groupe') : null,
-          conversation_avatar: isGroupCall ? conversationInfo?.avatar_url : null,
-        }
-      })
+      // Enrich with profiles
+      const enrichedCalls = await enrichCallsWithProfiles(callsData, userIds, groupCallConversationIds)
 
       setCalls(enrichedCalls)
-      setCache('calls', enrichedCalls) // Cache for instant display
+      setCache('calls', enrichedCalls)
     } catch (err) {
       console.error('Error loading calls:', err)
       setCalls([])
