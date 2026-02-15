@@ -523,7 +523,7 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
       a.download = fileName || 'download';
       document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
+      a.remove();
       window.URL.revokeObjectURL(downloadUrl);
     } catch (error) {
       console.error('Error downloading file:', error);
@@ -546,7 +546,7 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
         const shareFile = new window.File([blob], fileName || 'document', { type: mimeType });
         
         // Check if Web Share API with files is supported
-        if (navigator.canShare && navigator.canShare({ files: [shareFile] })) {
+        if (navigator.canShare?.({ files: [shareFile] })) {
           // Use Web Share API - this shows the native "Open with" / "Share" dialog
           await navigator.share({
             files: [shareFile],
@@ -568,7 +568,7 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
           a.download = fileName || 'document';
           document.body.appendChild(a);
           a.click();
-          document.body.removeChild(a);
+          a.remove();
         }
         
         // Clean up after a delay
@@ -633,7 +633,7 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
     if (type === 'video' && videoRef.current) {
       const video = videoRef.current;
       const handleLoadedMetadata = () => {
-        if (video.duration && !isNaN(video.duration)) {
+        if (video.duration && !Number.isNaN(video.duration)) {
           setVideoDuration(formatVideoDuration(video.duration));
         }
       };
