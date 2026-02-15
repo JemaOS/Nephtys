@@ -108,6 +108,172 @@ export function ParticipantVideo({
   )
 }
 
+// Component for top bar in 1-to-1 call UI
+function OneToOneCallTopBar({
+  isRinging,
+  isInCall,
+  isCalling,
+  callerName,
+  onAddParticipant,
+}: {
+  isRinging: boolean;
+  isInCall: boolean;
+  isCalling: boolean;
+  callerName: string;
+  onAddParticipant: () => void;
+}) {
+  return (
+    <div className="safe-area-top mt-4 px-4 relative">
+      {!isRinging && (isInCall || isCalling) && (
+        <div className="absolute right-4 top-0 z-20">
+          <button
+            onClick={onAddParticipant}
+            className="w-10 h-10 rounded-full bg-black/20 backdrop-blur-md border border-white/10 flex items-center justify-center text-white hover:bg-black/40 transition-colors"
+          >
+            <UserPlus size={20} />
+          </button>
+        </div>
+      )}
+
+      <div className="flex flex-col items-center justify-center text-center">
+        <div className="flex flex-col items-center gap-1">
+          <h2 className="text-white text-2xl md:text-3xl font-semibold tracking-tight drop-shadow-md">
+            {callerName}
+          </h2>
+          <div className="flex items-center gap-2 text-white/80 text-sm md:text-base font-medium drop-shadow-md bg-black/20 px-3 py-1 rounded-full backdrop-blur-sm">
+            {isRinging ? (
+              <span className="animate-pulse">Appel entrant...</span>
+            ) : isCalling ? (
+              <span className="animate-pulse">Appel en cours...</span>
+            ) : (
+              <CallDuration isActive={isInCall} />
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Component for bottom controls in 1-to-1 call UI
+function OneToOneCallControls({
+  isRinging,
+  isVideoCall,
+  isCalling,
+  isInCall,
+  audioEnabled,
+  videoEnabled,
+  isSpeakerOn,
+  onToggleAudio,
+  onToggleVideo,
+  onToggleSpeaker,
+  onEndCall,
+  onAnswerCall,
+  onRejectCall,
+}: {
+  isRinging: boolean;
+  isVideoCall: boolean;
+  isCalling: boolean;
+  isInCall: boolean;
+  audioEnabled: boolean;
+  videoEnabled: boolean;
+  isSpeakerOn: boolean;
+  onToggleAudio: () => void;
+  onToggleVideo: () => void;
+  onToggleSpeaker: () => void;
+  onEndCall: () => void;
+  onAnswerCall: () => void;
+  onRejectCall: () => void;
+}) {
+  if (isRinging) {
+    return (
+      <div className="flex items-center justify-around">
+        <div className="flex flex-col items-center gap-2">
+          <button
+            onClick={onRejectCall}
+            className="w-16 h-16 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center transition-all shadow-lg shadow-red-500/30 active:scale-95"
+          >
+            <PhoneOff size={28} className="text-white" />
+          </button>
+          <span className="text-white/80 text-xs font-medium">Refuser</span>
+        </div>
+        
+        <div className="flex flex-col items-center gap-2">
+          <button
+            onClick={onAnswerCall}
+            className="w-16 h-16 rounded-full bg-green-500 hover:bg-green-600 flex items-center justify-center transition-all shadow-lg shadow-green-500/30 animate-pulse active:scale-95"
+          >
+            <Phone size={28} className="text-white" />
+          </button>
+          <span className="text-white/80 text-xs font-medium">Accepter</span>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex items-center justify-between px-2">
+      {/* Mute Toggle */}
+      <button
+        onClick={onToggleAudio}
+        className="flex flex-col items-center gap-1 group"
+      >
+        <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200 ${
+          audioEnabled 
+            ? 'bg-white/10 group-hover:bg-white/20 text-white' 
+            : 'bg-white text-black'
+        }`}>
+          {audioEnabled ? <Mic size={20} /> : <MicOff size={20} />}
+        </div>
+        <span className="text-white/60 text-[10px] font-medium">Micro</span>
+      </button>
+
+      {/* Video Toggle */}
+      {isVideoCall && (
+        <button
+          onClick={onToggleVideo}
+          className="flex flex-col items-center gap-1 group"
+        >
+          <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200 ${
+            videoEnabled 
+              ? 'bg-white/10 group-hover:bg-white/20 text-white' 
+              : 'bg-white text-black'
+          }`}>
+            {videoEnabled ? <Video size={20} /> : <VideoOff size={20} />}
+          </div>
+          <span className="text-white/60 text-[10px] font-medium">Caméra</span>
+        </button>
+      )}
+
+      {/* Speaker Toggle */}
+      <button
+        onClick={onToggleSpeaker}
+        className="flex flex-col items-center gap-1 group"
+      >
+        <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200 ${
+          isSpeakerOn 
+            ? 'bg-white/10 group-hover:bg-white/20 text-white' 
+            : 'bg-white/5 text-white/50'
+        }`}>
+          {isSpeakerOn ? <Volume2 size={20} /> : <VolumeX size={20} />}
+        </div>
+        <span className="text-white/60 text-[10px] font-medium">Haut-parleur</span>
+      </button>
+
+      {/* End Call */}
+      <button
+        onClick={onEndCall}
+        className="flex flex-col items-center gap-1 group"
+      >
+        <div className="w-14 h-14 rounded-full bg-red-500 group-hover:bg-red-600 flex items-center justify-center transition-all shadow-lg shadow-red-500/30 active:scale-95">
+          <PhoneOff size={24} className="text-white" />
+        </div>
+        <span className="text-white/60 text-[10px] font-medium">Raccrocher</span>
+      </button>
+    </div>
+  )
+}
+
 // Component for 1-to-1 call UI
 export function OneToOneCallUI({
   callerName,
@@ -198,35 +364,13 @@ export function OneToOneCallUI({
       {/* Content Layer */}
       <div className="relative z-10 flex-1 flex flex-col h-full">
         {/* Top Bar */}
-        <div className="safe-area-top mt-4 px-4 relative">
-          {!isRinging && (isInCall || isCalling) && (
-            <div className="absolute right-4 top-0 z-20">
-              <button
-                onClick={onAddParticipant}
-                className="w-10 h-10 rounded-full bg-black/20 backdrop-blur-md border border-white/10 flex items-center justify-center text-white hover:bg-black/40 transition-colors"
-              >
-                <UserPlus size={20} />
-              </button>
-            </div>
-          )}
-
-          <div className="flex flex-col items-center justify-center text-center">
-            <div className="flex flex-col items-center gap-1">
-              <h2 className="text-white text-2xl md:text-3xl font-semibold tracking-tight drop-shadow-md">
-                {callerName}
-              </h2>
-              <div className="flex items-center gap-2 text-white/80 text-sm md:text-base font-medium drop-shadow-md bg-black/20 px-3 py-1 rounded-full backdrop-blur-sm">
-                {isRinging ? (
-                  <span className="animate-pulse">Appel entrant...</span>
-                ) : isCalling ? (
-                  <span className="animate-pulse">Appel en cours...</span>
-                ) : (
-                  <CallDuration isActive={isInCall} />
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
+        <OneToOneCallTopBar
+          isRinging={isRinging}
+          isInCall={isInCall}
+          isCalling={isCalling}
+          callerName={callerName}
+          onAddParticipant={onAddParticipant}
+        />
 
         {/* Main Center Area (Avatar when no video) */}
         <div className="flex-1 flex items-center justify-center p-8">
@@ -304,89 +448,21 @@ export function OneToOneCallUI({
         {/* Bottom Controls */}
         <div className="safe-area-bottom mb-8 px-6">
           <div className="max-w-md mx-auto bg-black/40 backdrop-blur-xl rounded-[2rem] p-4 border border-white/10 shadow-2xl">
-            {isRinging ? (
-              <div className="flex items-center justify-around">
-                <div className="flex flex-col items-center gap-2">
-                  <button
-                    onClick={onRejectCall}
-                    className="w-16 h-16 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center transition-all shadow-lg shadow-red-500/30 active:scale-95"
-                  >
-                    <PhoneOff size={28} className="text-white" />
-                  </button>
-                  <span className="text-white/80 text-xs font-medium">Refuser</span>
-                </div>
-                
-                <div className="flex flex-col items-center gap-2">
-                  <button
-                    onClick={onAnswerCall}
-                    className="w-16 h-16 rounded-full bg-green-500 hover:bg-green-600 flex items-center justify-center transition-all shadow-lg shadow-green-500/30 animate-pulse active:scale-95"
-                  >
-                    <Phone size={28} className="text-white" />
-                  </button>
-                  <span className="text-white/80 text-xs font-medium">Accepter</span>
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center justify-between px-2">
-                {/* Mute Toggle */}
-                <button
-                  onClick={onToggleAudio}
-                  className="flex flex-col items-center gap-1 group"
-                >
-                  <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200 ${
-                    audioEnabled 
-                      ? 'bg-white/10 group-hover:bg-white/20 text-white' 
-                      : 'bg-white text-black'
-                  }`}>
-                    {audioEnabled ? <Mic size={20} /> : <MicOff size={20} />}
-                  </div>
-                  <span className="text-white/60 text-[10px] font-medium">Micro</span>
-                </button>
-
-                {/* Video Toggle */}
-                {isVideoCall && (
-                  <button
-                    onClick={onToggleVideo}
-                    className="flex flex-col items-center gap-1 group"
-                  >
-                    <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200 ${
-                      videoEnabled 
-                        ? 'bg-white/10 group-hover:bg-white/20 text-white' 
-                        : 'bg-white text-black'
-                    }`}>
-                      {videoEnabled ? <Video size={20} /> : <VideoOff size={20} />}
-                    </div>
-                    <span className="text-white/60 text-[10px] font-medium">Caméra</span>
-                  </button>
-                )}
-
-                {/* Speaker Toggle */}
-                <button
-                  onClick={onToggleSpeaker}
-                  className="flex flex-col items-center gap-1 group"
-                >
-                  <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200 ${
-                    isSpeakerOn 
-                      ? 'bg-white/10 group-hover:bg-white/20 text-white' 
-                      : 'bg-white/5 text-white/50'
-                  }`}>
-                    {isSpeakerOn ? <Volume2 size={20} /> : <VolumeX size={20} />}
-                  </div>
-                  <span className="text-white/60 text-[10px] font-medium">Haut-parleur</span>
-                </button>
-
-                {/* End Call */}
-                <button
-                  onClick={onEndCall}
-                  className="flex flex-col items-center gap-1 group"
-                >
-                  <div className="w-14 h-14 rounded-full bg-red-500 group-hover:bg-red-600 flex items-center justify-center transition-all shadow-lg shadow-red-500/30 active:scale-95">
-                    <PhoneOff size={24} className="text-white" />
-                  </div>
-                  <span className="text-white/60 text-[10px] font-medium">Raccrocher</span>
-                </button>
-              </div>
-            )}
+            <OneToOneCallControls
+              isRinging={isRinging}
+              isVideoCall={isVideoCall}
+              isCalling={isCalling}
+              isInCall={isInCall}
+              audioEnabled={audioEnabled}
+              videoEnabled={videoEnabled}
+              isSpeakerOn={isSpeakerOn}
+              onToggleAudio={onToggleAudio}
+              onToggleVideo={onToggleVideo}
+              onToggleSpeaker={onToggleSpeaker}
+              onEndCall={onEndCall}
+              onAnswerCall={onAnswerCall}
+              onRejectCall={onRejectCall}
+            />
           </div>
         </div>
       </div>

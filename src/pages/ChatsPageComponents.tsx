@@ -372,6 +372,126 @@ const getDisplayName = (conversation: ConversationWithDetails): string => {
   return conversation.otherUserProfile?.display_name || conversation.otherUserProfile?.username || 'Utilisateur'
 }
 
+// Helper to render a single conversation item
+const ConversationItem = ({
+  conversation,
+  displayName,
+  lastMessagePreview,
+  hasUnread,
+  isSelected,
+  isSelectionMode,
+  selectedConversations,
+  handleConversationClick,
+  handleContextMenu,
+  formatDate,
+  rowClass
+}: {
+  conversation: ConversationWithDetails;
+  displayName: string;
+  lastMessagePreview: string;
+  hasUnread: boolean;
+  isSelected: boolean;
+  isSelectionMode: boolean;
+  selectedConversations: Set<string>;
+  handleConversationClick: (id: string) => void;
+  handleContextMenu: (e: React.MouseEvent, id: string) => void;
+  formatDate: (date: string) => string;
+  rowClass: string;
+}) => {
+  return (
+    <div
+      className={`px-4 py-3 cursor-pointer transition-colors ${rowClass}`}
+      onClick={() => handleConversationClick(conversation.id)}
+      onContextMenu={(e) => {
+        if (!isSelectionMode) {
+          handleContextMenu(e, conversation.id)
+        }
+      }}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          handleConversationClick(conversation.id)
+        }
+      }}
+    >
+      <div className="flex items-center gap-3">
+        {isSelectionMode && (
+          <div
+            className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
+              isSelected
+                ? 'bg-[#6063cf] border-[#6063cf]'
+                : 'border-text-secondary'
+            }`}
+          >
+            {isSelected && (
+              <Check size={14} className="text-white" strokeWidth={3} />
+            )}
+          </div>
+        )}
+        
+        <div className="relative">
+          {conversation.type === 'direct' && conversation.otherUserProfile?.avatar_url ? (
+            <img
+              src={conversation.otherUserProfile.avatar_url}
+              alt={displayName}
+              className="w-12 h-12 rounded-full object-cover flex-shrink-0"
+              key={conversation.otherUserProfile.avatar_url}
+            />
+          ) : conversation.avatar_url ? (
+            <img
+              src={conversation.avatar_url}
+              alt={displayName}
+              className="w-12 h-12 rounded-full object-cover flex-shrink-0"
+              key={conversation.avatar_url}
+            />
+          ) : (
+            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold text-lg flex-shrink-0">
+              {displayName[0]?.toUpperCase()}
+            </div>
+          )}
+          {!isSelectionMode && conversation.is_pinned && (
+            <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-accent flex items-center justify-center">
+              <Pin size={12} className="text-white" />
+            </div>
+          )}
+          {!isSelectionMode && conversation.is_muted && (
+            <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-[#8696a0] flex items-center justify-center">
+              <BellOff size={12} className="text-white" />
+            </div>
+          )}
+        </div>
+        
+        <div className="flex-1 min-w-0 border-b border-bg-hover pb-3">
+          <div className="flex items-start justify-between gap-2 mb-1">
+            <h3 className={`truncate ${hasUnread ? 'text-white font-medium' : 'text-text-secondary'}`}>
+              {displayName}
+            </h3>
+            {conversation.last_message_at && (
+              <span className={`text-xs flex-shrink-0 ${hasUnread ? 'text-[#787add]' : 'text-text-secondary'}`}>
+                {formatDate(conversation.last_message_at)}
+              </span>
+            )}
+          </div>
+          
+          <div className="flex items-center justify-between gap-2">
+            <p className={`text-sm truncate ${hasUnread ? 'text-text-secondary font-medium' : 'text-text-secondary'}`}>
+              {lastMessagePreview}
+            </p>
+            {hasUnread && (
+              <div className="min-w-[20px] h-5 px-1.5 rounded-full bg-[#787add] flex items-center justify-center flex-shrink-0">
+                <span className="text-xs font-semibold text-text-primary">
+                  {(conversation.unreadCount || 0) > 99 ? '99+' : conversation.unreadCount}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export const ChatsList = ({
   isLoading,
   filteredConversations,
@@ -415,107 +535,20 @@ export const ChatsList = ({
         const rowClass = getConversationRowClass(isSelected, hasUnread)
 
         return (
-          <div
+          <ConversationItem
             key={conversation.id}
-            className={`px-4 py-3 cursor-pointer transition-colors ${rowClass}`}
-            onClick={() => handleConversationClick(conversation.id)}
-            onContextMenu={(e) => {
-              if (!isSelectionMode) {
-                handleContextMenu(e, conversation.id)
-              }
-            }}
-            onTouchStart={() => handleTouchStart(conversation.id)}
-            onTouchEnd={handleTouchEnd}
-            onTouchMove={handleTouchMove}
-            onMouseDown={(e) => {
-              if (isMobile && e.button === 0) {
-                handleTouchStart(conversation.id)
-              }
-            }}
-            onMouseUp={handleTouchEnd}
-            onMouseLeave={handleTouchEnd}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                handleConversationClick(conversation.id)
-              }
-            }}
-          >
-            <div className="flex items-center gap-3">
-              {isSelectionMode && (
-                <div
-                  className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
-                    isSelected
-                      ? 'bg-[#6063cf] border-[#6063cf]'
-                      : 'border-text-secondary'
-                  }`}
-                >
-                  {isSelected && (
-                    <Check size={14} className="text-white" strokeWidth={3} />
-                  )}
-                </div>
-              )}
-              
-              <div className="relative">
-                {conversation.type === 'direct' && conversation.otherUserProfile?.avatar_url ? (
-                  <img
-                    src={conversation.otherUserProfile.avatar_url}
-                    alt={displayName}
-                    className="w-12 h-12 rounded-full object-cover flex-shrink-0"
-                    key={conversation.otherUserProfile.avatar_url}
-                  />
-                ) : conversation.avatar_url ? (
-                  <img
-                    src={conversation.avatar_url}
-                    alt={displayName}
-                    className="w-12 h-12 rounded-full object-cover flex-shrink-0"
-                    key={conversation.avatar_url}
-                  />
-                ) : (
-                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold text-lg flex-shrink-0">
-                    {displayName[0]?.toUpperCase()}
-                  </div>
-                )}
-                {!isSelectionMode && conversation.is_pinned && (
-                  <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-accent flex items-center justify-center">
-                    <Pin size={12} className="text-white" />
-                  </div>
-                )}
-                {!isSelectionMode && conversation.is_muted && (
-                  <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-[#8696a0] flex items-center justify-center">
-                    <BellOff size={12} className="text-white" />
-                  </div>
-                )}
-              </div>
-              
-              <div className="flex-1 min-w-0 border-b border-bg-hover pb-3">
-                <div className="flex items-start justify-between gap-2 mb-1">
-                  <h3 className={`truncate ${hasUnread ? 'text-white font-medium' : 'text-text-secondary'}`}>
-                    {displayName}
-                  </h3>
-                  {conversation.last_message_at && (
-                    <span className={`text-xs flex-shrink-0 ${hasUnread ? 'text-[#787add]' : 'text-text-secondary'}`}>
-                      {formatDate(conversation.last_message_at)}
-                    </span>
-                  )}
-                </div>
-                
-                <div className="flex items-center justify-between gap-2">
-                  <p className={`text-sm truncate ${hasUnread ? 'text-text-secondary font-medium' : 'text-text-secondary'}`}>
-                    {lastMessagePreview}
-                  </p>
-                  {hasUnread && (
-                    <div className="min-w-[20px] h-5 px-1.5 rounded-full bg-[#787add] flex items-center justify-center flex-shrink-0">
-                      <span className="text-xs font-semibold text-text-primary">
-                        {(conversation.unreadCount || 0) > 99 ? '99+' : conversation.unreadCount}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
+            conversation={conversation}
+            displayName={displayName}
+            lastMessagePreview={lastMessagePreview}
+            hasUnread={hasUnread}
+            isSelected={isSelected}
+            isSelectionMode={isSelectionMode}
+            selectedConversations={selectedConversations}
+            handleConversationClick={handleConversationClick}
+            handleContextMenu={handleContextMenu}
+            formatDate={formatDate}
+            rowClass={rowClass}
+          />
         )
       })
     )}

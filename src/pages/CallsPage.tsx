@@ -975,20 +975,27 @@ export function CallsPage() {
     alert(`Lien d'appel copié !\n${callLink}`)
   }
 
-  const filteredCalls = calls.filter(call => {
-    if (!searchQuery.trim()) return true
+  // Helper to filter calls
+  const filterCalls = (allCalls: CallLog[], query: string, currentUserId: string | undefined) => {
+    if (!query.trim()) return allCalls
     
     // For group calls, search by conversation name
-    if (call.is_group_call) {
-      const groupName = call.conversation_name || 'Groupe'
-      return groupName.toLowerCase().includes(searchQuery.toLowerCase())
-    }
+    const lowerQuery = query.toLowerCase()
     
-    // For direct calls, search by user name
-    const otherProfile = call.caller_id === user?.id ? call.callee_profile : call.caller_profile
-    const name = otherProfile?.display_name || otherProfile?.username || ''
-    return name.toLowerCase().includes(searchQuery.toLowerCase())
-  })
+    return allCalls.filter(call => {
+      if (call.is_group_call) {
+        const groupName = call.conversation_name || 'Groupe'
+        return groupName.toLowerCase().includes(lowerQuery)
+      }
+      
+      // For direct calls, search by user name
+      const otherProfile = call.caller_id === currentUserId ? call.callee_profile : call.caller_profile
+      const name = otherProfile?.display_name || otherProfile?.username || ''
+      return name.toLowerCase().includes(lowerQuery)
+    })
+  }
+
+  const filteredCalls = filterCalls(calls, searchQuery, user?.id)
 
   // Helper to get favorite ID for a call
   const getFavoriteId = (call: CallLog): string => {

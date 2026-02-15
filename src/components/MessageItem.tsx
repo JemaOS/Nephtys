@@ -215,14 +215,71 @@ export const MessageItem: React.FC<MessageItemProps> = ({
       onSelectMessage(message.id)
     }
   }
-  
-  // System message rendering
+
+  // Helper to render timestamp bubble
+  const renderTimestampBubble = () => (
+    <div className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mt-1`}>
+      <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs ${
+        isOwn ? 'bg-[#787add]/80' : 'bg-bg-surface/80'
+      }`}>
+        {message.is_starred && (
+          <Star size={10} className="fill-current text-text-secondary" />
+        )}
+        <span className="text-text-secondary">{formatTime(message.created_at)}</span>
+        <MessageStatusIcons status={message.status} isOwn={isOwn} />
+      </div>
+    </div>
+  )
+
+  // Helper to render reactions
+  const renderReactions = () => {
+    if (messageReactions.length > 0) {
+      return (
+        <MessageReactions 
+          reactions={messageReactions} 
+          currentUserId={currentUserId} 
+          onReactionClick={(emoji: string) => onAddReaction(message.id, emoji)} 
+          onReactionRemove={(emoji: string) => onRemoveReaction(message.id, emoji)} 
+        />
+      )
+    }
+    return null
+  }
+
+  // Common wrapper for message bubbles (non-system, non-emoji)
+  const renderBubbleWrapper = (content: React.ReactNode, showReplyQuote: boolean = false) => (
+    <div className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-1 ${isSelected ? 'bg-[#787add]/10' : ''} transition-colors duration-500`}
+      onMouseEnter={() => setHoveredMessageId(message.id)}
+      onMouseLeave={() => setHoveredMessageId(null)}
+      onClick={handleClick}
+    >
+      <MessageQuickActions position="left" isOwn={isOwn} isHovered={isHovered} isSelectionMode={isSelectionMode} messageId={message.id} onReply={handleReply} onForward={handleForward} />
+      <div className={`max-w-[85%] sm:max-w-[75%] md:max-w-[70%] lg:max-w-[65%] relative group`}>
+        <MessageHoverActions
+          isVisible={hoveredMessageId === message.id}
+          isOwn={isOwn}
+          onOpenMenu={() => {}}
+        />
+        {showReplyQuote && (
+          <ReplyQuote
+            replyToId={message.reply_to_id}
+            messages={messages}
+            userId={userId}
+            otherUserDisplayName={otherUserDisplayName}
+            onScrollToMessage={onScrollToMessage}
+          />
+        )}
+        {content}
+      </div>
+      <MessageSelectionCheckbox isOwn={isOwn} isSelected={isSelected} isSelectionMode={isSelectionMode} messageId={message.id} onSelectMessage={onSelectMessage} />
+      {renderReactions()}
+    </div>
+  )
+
+  // Render based on message type
   if (msgType.isSystemMessage) {
     return (
-      <div
-        id={`message-${message.id}`}
-        className="flex justify-center my-4 px-4"
-      >
+      <div id={`message-${message.id}`} className="flex justify-center my-4 px-4">
         <div className="relative bg-white/10 dark:bg-white/5 backdrop-blur-xl px-5 py-3 rounded-2xl max-w-[85%] sm:max-w-[70%] text-center border border-white/20 dark:border-white/10 shadow-lg">
           <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-accent/10 to-transparent pointer-events-none" />
           <div className="flex justify-center mb-2">
@@ -240,143 +297,97 @@ export const MessageItem: React.FC<MessageItemProps> = ({
       </div>
     )
   }
-  
-  // Emoji-only message rendering
+
   if (msgType.isEmojiOnlyMessage) {
-    return (
-      <div
-        id={`message-${message.id}`}
-        className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-1 ${isSelected ? 'bg-[#787add]/10' : ''} transition-colors duration-500`}
-        onMouseEnter={() => setHoveredMessageId(message.id)}
-        onMouseLeave={() => setHoveredMessageId(null)}
-        onClick={handleClick}
-      >
-        <MessageQuickActions position="left" isOwn={isOwn} isHovered={isHovered} isSelectionMode={isSelectionMode} messageId={message.id} onReply={handleReply} onForward={handleForward} />
-        <div className="max-w-[85%] sm:max-w-[75%] md:max-w-[70%] lg:max-w-[65%] relative group">
-          <MessageHoverActions
-            isVisible={hoveredMessageId === message.id}
-            isOwn={isOwn}
-            onOpenMenu={() => {}}
-          />
-          <div className={`${
-            msgType.emojiCount === 1 ? 'text-7xl' : msgType.emojiCount === 2 ? 'text-6xl' : 'text-5xl'
-          } leading-none py-1`}>
-            {message.content}
-          </div>
-          <div className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mt-1`}>
-            <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs ${
-              isOwn ? 'bg-[#787add]/80' : 'bg-bg-surface/80'
-            }`}>
-              {message.is_starred && (
-                <Star size={10} className="fill-current text-text-secondary" />
-              )}
-              <span className="text-text-secondary">{formatTime(message.created_at)}</span>
-              <MessageStatusIcons status={message.status} isOwn={isOwn} />
-            </div>
-          </div>
+    const emojiSize = msgType.emojiCount === 1 ? 'text-7xl' : msgType.emojiCount === 2 ? 'text-6xl' : 'text-5xl'
+    return renderBubbleWrapper(
+      <>
+        <div className={`${emojiSize} leading-none py-1`}>
+          {message.content}
         </div>
-        <MessageSelectionCheckbox isOwn={isOwn} isSelected={isSelected} isSelectionMode={isSelectionMode} messageId={message.id} onSelectMessage={onSelectMessage} />
-        {messageReactions.length > 0 && (
-          <MessageReactions reactions={messageReactions} currentUserId={currentUserId} onReactionClick={onAddReaction} onReactionRemove={onRemoveReaction} />
-        )}
-      </div>
+        {renderTimestampBubble()}
+      </>
     )
   }
-  
-  // Media message rendering
+
   if (msgType.isMediaMessage) {
-    return (
-      <div
-        id={`message-${message.id}`}
-        className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-1 ${isSelected ? 'bg-[#787add]/10' : ''} transition-colors duration-500`}
-        onMouseEnter={() => setHoveredMessageId(message.id)}
-        onMouseLeave={() => setHoveredMessageId(null)}
-        onClick={handleClick}
-      >
-        <MessageQuickActions position="left" isOwn={isOwn} isHovered={isHovered} isSelectionMode={isSelectionMode} messageId={message.id} onReply={handleReply} onForward={handleForward} />
-        <div className="max-w-[85%] sm:max-w-[75%] md:max-w-[70%] lg:max-w-[65%] relative">
-          <MediaMessage
-            url={msgType.mediaUrl as string}
-            type={msgType.mediaType as 'image' | 'video' | 'file'}
-            fileName={message.file_name}
-            fileSize={message.file_size}
-            caption={message.content}
-            width={message.media_width ?? undefined}
-            height={message.media_height ?? undefined}
-            thumbnail={message.media_thumbnail ?? undefined}
-            senderName={senderInfo.name}
-            senderAvatar={senderInfo.avatar}
-            timestamp={message.created_at}
-            isOwn={isOwn}
-            isStarred={message.is_starred || false}
-            messageId={message.id}
-            status={message.status as 'sent' | 'delivered' | 'read' | undefined}
-            onForward={() => onForward(message)}
-            onStar={() => onStar(message.id)}
-            onPin={() => onPin(message.id)}
-            onReaction={(emoji) => onAddReaction(message.id, emoji)}
-            showHoverActions={hoveredMessageId === message.id}
-            onOpenMenu={() => {}}
-            allMedia={[]}
-            currentIndex={-1}
-            onNavigate={() => {}}
-          />
-        </div>
-        <MessageSelectionCheckbox isOwn={isOwn} isSelected={isSelected} isSelectionMode={isSelectionMode} messageId={message.id} onSelectMessage={onSelectMessage} />
-        {messageReactions.length > 0 && (
-          <MessageReactions reactions={messageReactions} currentUserId={currentUserId} onReactionClick={onAddReaction} onReactionRemove={onRemoveReaction} />
-        )}
-      </div>
+    return renderBubbleWrapper(
+      <MediaMessage
+        url={msgType.mediaUrl as string}
+        type={msgType.mediaType as 'image' | 'video' | 'file'}
+        fileName={message.file_name}
+        fileSize={message.file_size}
+        caption={message.content}
+        width={message.media_width ?? undefined}
+        height={message.media_height ?? undefined}
+        thumbnail={message.media_thumbnail ?? undefined}
+        senderName={senderInfo.name}
+        senderAvatar={senderInfo.avatar}
+        timestamp={message.created_at}
+        isOwn={isOwn}
+        isStarred={message.is_starred || false}
+        messageId={message.id}
+        status={message.status as 'sent' | 'delivered' | 'read' | undefined}
+        onForward={() => onForward(message)}
+        onStar={() => onStar(message.id)}
+        onPin={() => onPin(message.id)}
+        onReaction={(emoji) => onAddReaction(message.id, emoji)}
+        showHoverActions={hoveredMessageId === message.id}
+        onOpenMenu={() => {}}
+        allMedia={[]}
+        currentIndex={-1}
+        onNavigate={() => {}}
+      />
     )
   }
-  
-  // Document message rendering
+
   if (msgType.isDocumentMessage) {
-    return (
-      <div
-        id={`message-${message.id}`}
-        className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-1 ${isSelected ? 'bg-[#787add]/10' : ''} transition-colors duration-500`}
-        onMouseEnter={() => setHoveredMessageId(message.id)}
-        onMouseLeave={() => setHoveredMessageId(null)}
-        onClick={handleClick}
-      >
-        <MessageQuickActions position="left" isOwn={isOwn} isHovered={isHovered} isSelectionMode={isSelectionMode} messageId={message.id} onReply={handleReply} onForward={handleForward} />
-        <div className="max-w-[85%] sm:max-w-[75%] md:max-w-[70%] lg:max-w-[65%] relative">
-          <MessageHoverActions
-            isVisible={hoveredMessageId === message.id}
-            isOwn={isOwn}
-            onOpenMenu={() => {}}
-          />
-          <MediaMessage
-            url={msgType.mediaUrl as string}
-            type="file"
-            fileName={message.file_name}
-            fileSize={message.file_size}
-            caption={message.content}
-            thumbnail={message.media_thumbnail ?? undefined}
-            senderName={senderInfo.name}
-            timestamp={message.created_at}
-            isOwn={isOwn}
-            isStarred={message.is_starred || false}
-            messageId={message.id}
-            status={message.status as 'sent' | 'delivered' | 'read' | undefined}
-            onForward={() => onForward(message)}
-            onStar={() => onStar(message.id)}
-            onPin={() => onPin(message.id)}
-            onReaction={(emoji) => onAddReaction(message.id, emoji)}
-            showHoverActions={hoveredMessageId === message.id}
-            onOpenMenu={() => {}}
-          />
-        </div>
-        <MessageSelectionCheckbox isOwn={isOwn} isSelected={isSelected} isSelectionMode={isSelectionMode} messageId={message.id} onSelectMessage={onSelectMessage} />
-        {messageReactions.length > 0 && (
-          <MessageReactions reactions={messageReactions} currentUserId={currentUserId} onReactionClick={onAddReaction} onReactionRemove={onRemoveReaction} />
-        )}
-      </div>
+    return renderBubbleWrapper(
+      <MediaMessage
+        url={msgType.mediaUrl as string}
+        type="file"
+        fileName={message.file_name}
+        fileSize={message.file_size}
+        caption={message.content}
+        thumbnail={message.media_thumbnail ?? undefined}
+        senderName={senderInfo.name}
+        timestamp={message.created_at}
+        isOwn={isOwn}
+        isStarred={message.is_starred || false}
+        messageId={message.id}
+        status={message.status as 'sent' | 'delivered' | 'read' | undefined}
+        onForward={() => onForward(message)}
+        onStar={() => onStar(message.id)}
+        onPin={() => onPin(message.id)}
+        onReaction={(emoji) => onAddReaction(message.id, emoji)}
+        showHoverActions={hoveredMessageId === message.id}
+        onOpenMenu={() => {}}
+      />
     )
   }
-  
-  // Regular text message
+
+  // Regular text/audio message
+  const textContent = (
+    <>
+      {message.type === 'audio' && (message.media_url || message.file_url) && (
+        message.file_name?.startsWith('voice-') ? (
+          <VoiceMessage url={message.media_url || message.file_url || ''} duration={message.ephemeral_duration || 0} isOwn={isOwn} />
+        ) : (
+          <AudioFilePlayer
+            url={message.media_url || message.file_url || ''}
+            fileName={message.file_name || undefined}
+            duration={message.ephemeral_duration || undefined}
+            isOwn={isOwn}
+          />
+        )
+      )}
+      {!(message.media_url || message.file_url) && message.content && (
+        <MessageContent message={message} isOwn={isOwn} />
+      )}
+      <MessageTimestamp message={message} isOwn={isOwn} mediaUrl={msgType.mediaUrl} mediaType={msgType.mediaType} />
+    </>
+  )
+
   return (
     <div
       id={`message-${message.id}`}
@@ -399,28 +410,11 @@ export const MessageItem: React.FC<MessageItemProps> = ({
           otherUserDisplayName={otherUserDisplayName}
           onScrollToMessage={onScrollToMessage}
         />
-        {message.type === 'audio' && (message.media_url || message.file_url) && (
-          message.file_name?.startsWith('voice-') ? (
-            <VoiceMessage url={message.media_url || message.file_url || ''} duration={message.ephemeral_duration || 0} isOwn={isOwn} />
-          ) : (
-            <AudioFilePlayer
-              url={message.media_url || message.file_url || ''}
-              fileName={message.file_name || undefined}
-              duration={message.ephemeral_duration || undefined}
-              isOwn={isOwn}
-            />
-          )
-        )}
-        {!(message.media_url || message.file_url) && message.content && (
-          <MessageContent message={message} isOwn={isOwn} />
-        )}
-        <MessageTimestamp message={message} isOwn={isOwn} mediaUrl={msgType.mediaUrl} mediaType={msgType.mediaType} />
+        {textContent}
       </div>
       <MessageQuickActions position="right" isOwn={isOwn} isHovered={isHovered} isSelectionMode={isSelectionMode} messageId={message.id} onReply={handleReply} onForward={handleForward} />
       <MessageSelectionCheckbox isOwn={isOwn} isSelected={isSelected} isSelectionMode={isSelectionMode} messageId={message.id} onSelectMessage={onSelectMessage} />
-      {messageReactions.length > 0 && (
-        <MessageReactions reactions={messageReactions} currentUserId={currentUserId} onReactionClick={onAddReaction} onReactionRemove={onRemoveReaction} />
-      )}
+      {renderReactions()}
     </div>
   )
 }

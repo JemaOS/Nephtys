@@ -20,7 +20,6 @@ import { MediaViewer } from '@/components/MediaViewer'
 import { VoiceRecorder } from '@/components/VoiceRecorder'
 import { VoiceMessage } from '@/components/VoiceMessage'
 import { AudioFilePlayer } from '@/components/AudioFilePlayer'
-import { CallScreen } from '@/components/CallScreen'
 import { ConversationInfo } from '@/components/ConversationInfo'
 import { useMessageReactions } from '@/hooks/useMessageReactions'
 import { useCall } from '@/context/CallContext'
@@ -524,26 +523,27 @@ export function ChatViewPage() {
         console.log('[ChatViewPage] Realtime INSERT received:', payload.new?.id)
         const newMsg = payload.new as Message
         // Avoid duplicates: check if message already exists (including temp messages)
-        setMessages(prev => {
-          // Check if there's a temp message that should be replaced
-          // Temp messages start with 'temp-' and have the same media_url
-          const tempIndex = prev.findIndex(m =>
-            m.id.startsWith('temp-') &&
-            m.media_url === newMsg.media_url &&
-            m.sender_id === newMsg.sender_id
-          )
-          
+        // Temp messages start with 'temp-' and have the same media_url
+        const tempIndex = messages.findIndex(m =>
+          m.id.startsWith('temp-') &&
+          m.media_url === newMsg.media_url &&
+          m.sender_id === newMsg.sender_id
+        )
+
+        // Helper to add message to state
+        const addMessage = (currentMessages: Message[]) => {
           if (tempIndex !== -1) {
-            // Replace temp message with real one
-            console.log('[ChatViewPage] Replacing temp message with real one:', newMsg.id)
-            const newMessages = [...prev]
-            newMessages[tempIndex] = newMsg
-            return newMessages
+             // Replace temp message with real one
+             console.log('[ChatViewPage] Replacing temp message with real one:', newMsg.id)
+             const newMessages = [...currentMessages]
+             newMessages[tempIndex] = newMsg
+             return newMessages
           }
-          
           console.log('[ChatViewPage] Adding new message:', newMsg.id)
-          return [...prev, newMsg]
-        })
+          return [...currentMessages, newMsg]
+        }
+
+        setMessages(addMessage)
         if (newMsg.sender_id !== user.id) {
           updateMessageStatus(newMsg.id, 'delivered')
           if (document.hidden && permission === 'granted') {

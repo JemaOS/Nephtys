@@ -72,7 +72,55 @@ const SystemMessageItem = ({ messageId, content }: { messageId: string, content:
   </div>
 )
 
-// Utility function to detect emoji-only messages
+// Utility function to detect emoji-only messages// Extracted component for message status icons
+const MessageStatusIcons = ({ status }: { status: string | undefined }) => {
+  if (status === 'sent') {
+    return (
+      <svg width="14" height="9" viewBox="0 0 16 11" fill="none">
+        <path d="M10.5 1L4.5 7L2 4.5" stroke="#8696a0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    )
+  }
+  if (status === 'delivered') {
+    return (
+      <svg width="14" height="9" viewBox="0 0 16 11" fill="none">
+        <path d="M1.5 5.5L4.5 8.5L10.5 2.5" stroke="#8696a0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M5.5 5.5L8.5 8.5L14.5 2.5" stroke="#8696a0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    )
+  }
+  if (status === 'read') {
+    return (
+      <svg width="14" height="9" viewBox="0 0 16 11" fill="none">
+        <path d="M1.5 5.5L4.5 8.5L10.5 2.5" stroke="#53bdeb" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M5.5 5.5L8.5 8.5L14.5 2.5" stroke="#53bdeb" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    )
+  }
+  return (
+    <svg width="14" height="9" viewBox="0 0 16 11" fill="none">
+      <path d="M10.5 1L4.5 7L2 4.5" stroke="#8696a0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  )
+}
+
+// Extracted component for message timestamp bubble
+const MessageTimestamp = ({ timestamp, isStarred, isOwn, status }: { timestamp: string, isStarred: boolean, isOwn: boolean, status: string | undefined }) => (
+  <div className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mt-1`}>
+    <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs ${
+      isOwn ? 'bg-[#787add]/80' : 'bg-bg-surface/80'
+    }`}>
+      {isStarred && (
+        <Star size={10} className="fill-current text-text-secondary" />
+      )}
+      <span className="text-text-secondary">{formatTime(timestamp)}</span>
+      {isOwn && (
+        <MessageStatusIcons status={status} />
+      )}
+    </div>
+  </div>
+)
+
 export const isEmojiOnly = (text: string): { isEmoji: boolean; emojiCount: number } => {
   if (!text || text.trim() === '') return { isEmoji: false, emojiCount: 0 }
   
@@ -1118,35 +1166,7 @@ export const MessageList: React.FC<MessageListProps> = ({
                       )}
                       <span>{formatTime(message.created_at)}</span>
                       {isOwn && (
-                        <>
-                          {/* Message status indicators like WhatsApp */}
-                          {message.status === 'sent' && (
-                            /* Single gray check - sent */
-                            <svg width="16" height="11" viewBox="0 0 16 11" fill="none">
-                              <path d="M10.5 1L4.5 7L2 4.5" stroke="#8696a0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                            </svg>
-                          )}
-                          {message.status === 'delivered' && (
-                            /* Double gray checks - delivered */
-                            <svg width="16" height="11" viewBox="0 0 16 11" fill="none">
-                              <path d="M1.5 5.5L4.5 8.5L10.5 2.5" stroke="#8696a0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                              <path d="M5.5 5.5L8.5 8.5L14.5 2.5" stroke="#8696a0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                            </svg>
-                          )}
-                          {message.status === 'read' && (
-                            /* Double blue checks - read */
-                            <svg width="16" height="11" viewBox="0 0 16 11" fill="none">
-                              <path d="M1.5 5.5L4.5 8.5L10.5 2.5" stroke="#53bdeb" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                              <path d="M5.5 5.5L8.5 8.5L14.5 2.5" stroke="#53bdeb" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                            </svg>
-                          )}
-                          {!message.status && (
-                            /* Default: single gray check */
-                            <svg width="16" height="11" viewBox="0 0 16 11" fill="none">
-                              <path d="M10.5 1L4.5 7L2 4.5" stroke="#8696a0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                            </svg>
-                          )}
-                        </>
+                        <MessageStatusIcons status={message.status} />
                       )}
                     </div>
                     )}
