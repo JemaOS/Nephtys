@@ -623,8 +623,76 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
     return uploadedFile;
   };
 
-  // Extract video compression check to reduce complexity
-  const checkVideoCompression = async (previewUrl: string): Promise<boolean> => {
+  // Process a single file for upload - extracted to reduce component complexity
+  const processFileForUpload = async (
+    fileItem: { file: File; preview: string; type: 'image' | 'video' | 'file' | 'audio' },
+    userId: string,
+    index: number
+  ): Promise<UploadedFileData | null> => {
+    const { file, type } = fileItem;
+    
+    let fileToUpload: Blob = file;
+    let processedImage: ProcessedImage | null = null;
+    
+    // Compress images before upload
+    if (type === 'image') {
+      try {
+        processedImage = await processImageForUpload(file);
+        fileToUpload = processedImage.blob;
+      } catch (err) {
+        console.warn('Image compression failed, using original:', err);
+      }
+    }
+
+    // Compress video if needed
+    if (type === 'video') {
+      const shouldCompress = await checkVideoNeedsCompression(fileItem.preview);
+      if (shouldCompress) {
+        console.log(`Compressing video ${file.name}...`);
+        const compressedBlob = await compressVideo(file);
+        fileToUpload = compressedBlob;
+      }
+    }
+    
+    const folder = type === 'image' ? 'images' : type === 'video' ? 'videos' : 'documents';
+    const fileName = `${userId}/${folder}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+
+    const { data, error } = await supabase.storage
+      .from('media')
+      .upload(fileName, fileToUpload, {
+        cacheControl: '3600',
+        upsert: false,
+        contentType: file.type || 'application/octet-stream',
+      });
+
+    if (error) {
+      console.error('Upload error:', error);
+      return null;
+    }
+
+    const { data: { publicUrl } } = supabase.storage
+      .from('media')
+      .getPublicUrl(fileName);
+
+    const uploadedFile: UploadedFileData = {
+      url: publicUrl,
+      type,
+      fileName: file.name,
+      fileSize: fileToUpload instanceof Blob ? fileToUpload.size : file.size,
+    };
+    
+    // Add image dimensions if available
+    if (processedImage) {
+      uploadedFile.width = processedImage.dimensions.width;
+      uploadedFile.height = processedImage.dimensions.height;
+      uploadedFile.thumbnail = processedImage.thumbnailDataUrl;
+    }
+    
+    return uploadedFile;
+  };
+
+  // Check if video needs compression - extracted to reduce complexity
+  const checkVideoNeedsCompression = async (previewUrl: string): Promise<boolean> => {
     return new Promise<boolean>((resolve) => {
       const video = document.createElement('video');
       video.preload = 'metadata';
