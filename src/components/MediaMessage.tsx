@@ -255,6 +255,33 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
     };
   };
 
+  // Helper: Render MediaViewer - extracted to reduce complexity
+  const renderMediaViewer = (mediaInfo: ReturnType<typeof getCurrentMediaInfo>) => (
+    <MediaViewer
+      isOpen={isFullscreen}
+      mediaUrl={mediaInfo.url}
+      mediaType={mediaInfo.type}
+      senderName={mediaInfo.senderName}
+      senderAvatar={mediaInfo.senderAvatar}
+      timestamp={mediaInfo.timestamp}
+      isOwn={mediaInfo.isOwn}
+      isStarred={isStarred}
+      onClose={() => {
+        setIsFullscreen(false);
+        if (currentIndex !== undefined) {
+          setViewerIndex(currentIndex);
+        }
+      }}
+      onForward={onForward}
+      onStar={onStar}
+      onPin={onPin}
+      onReaction={onReaction}
+      allMedia={allMedia}
+      currentIndex={viewerIndex}
+      onNavigate={handleNavigate}
+    />
+  );
+
   // Handle video metadata load
   useEffect(() => {
     if (type === 'video' && videoRef.current) {
@@ -271,6 +298,7 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
 
   // Use extracted ImageRenderer component - reduces cognitive complexity
   if (type === 'image') {
+    const mediaInfo = getCurrentMediaInfo();
     return (
       <>
         <ImageRenderer
@@ -300,35 +328,14 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
         />
 
         {/* MediaViewer for fullscreen */}
-        <MediaViewer
-          isOpen={isFullscreen}
-          mediaUrl={getCurrentMediaInfo().url}
-          mediaType={getCurrentMediaInfo().type}
-          senderName={getCurrentMediaInfo().senderName}
-          senderAvatar={getCurrentMediaInfo().senderAvatar}
-          timestamp={getCurrentMediaInfo().timestamp}
-          isOwn={getCurrentMediaInfo().isOwn}
-          isStarred={isStarred}
-          onClose={() => {
-            setIsFullscreen(false);
-            if (currentIndex !== undefined) {
-              setViewerIndex(currentIndex);
-            }
-          }}
-          onForward={onForward}
-          onStar={onStar}
-          onPin={onPin}
-          onReaction={onReaction}
-          allMedia={allMedia}
-          currentIndex={viewerIndex}
-          onNavigate={handleNavigate}
-        />
+        {renderMediaViewer(mediaInfo)}
       </>
     );
   }
 
   // Use extracted VideoRenderer component - reduces cognitive complexity
   if (type === 'video') {
+    const mediaInfo = getCurrentMediaInfo();
     return (
       <>
         <VideoRenderer
@@ -344,29 +351,7 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
         />
 
         {/* MediaViewer for fullscreen video */}
-        <MediaViewer
-          isOpen={isFullscreen}
-          mediaUrl={getCurrentMediaInfo().url}
-          mediaType={getCurrentMediaInfo().type}
-          senderName={getCurrentMediaInfo().senderName}
-          senderAvatar={getCurrentMediaInfo().senderAvatar}
-          timestamp={getCurrentMediaInfo().timestamp}
-          isOwn={getCurrentMediaInfo().isOwn}
-          isStarred={isStarred}
-          onClose={() => {
-            setIsFullscreen(false);
-            if (currentIndex !== undefined) {
-              setViewerIndex(currentIndex);
-            }
-          }}
-          onForward={onForward}
-          onStar={onStar}
-          onPin={onPin}
-          onReaction={onReaction}
-          allMedia={allMedia}
-          currentIndex={viewerIndex}
-          onNavigate={handleNavigate}
-        />
+        {renderMediaViewer(mediaInfo)}
       </>
     );
   }

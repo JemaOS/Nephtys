@@ -373,6 +373,39 @@ const getDisplayName = (conversation: ConversationWithDetails): string => {
 }
 
 // Helper to render a single conversation item
+// Helper to render a single conversation item in the list
+const renderConversationItem = (
+  conversation: ConversationWithDetails,
+  selectedConversations: Set<string>,
+  isSelectionMode: boolean,
+  handleConversationClick: (id: string) => void,
+  handleContextMenu: (e: React.MouseEvent, id: string) => void,
+  formatDate: (date: string) => string
+) => {
+  const displayName = getDisplayName(conversation)
+  const lastMessagePreview = getLastMessagePreview(conversation.lastMessage)
+  const hasUnread = (conversation.unreadCount || 0) > 0
+  const isSelected = selectedConversations.has(conversation.id)
+  const rowClass = getConversationRowClass(isSelected, hasUnread)
+
+  return (
+    <ConversationItem
+      key={conversation.id}
+      conversation={conversation}
+      displayName={displayName}
+      lastMessagePreview={lastMessagePreview}
+      hasUnread={hasUnread}
+      isSelected={isSelected}
+      isSelectionMode={isSelectionMode}
+      selectedConversations={selectedConversations}
+      handleConversationClick={handleConversationClick}
+      handleContextMenu={handleContextMenu}
+      formatDate={formatDate}
+      rowClass={rowClass}
+    />
+  )
+}
+
 const ConversationItem = ({
   conversation,
   displayName,
@@ -527,30 +560,16 @@ export const ChatsList = ({
         <p className="text-sm text-text-secondary">Commencez une nouvelle discussion</p>
       </div>
     ) : (
-      filteredConversations.map((conversation) => {
-        const displayName = getDisplayName(conversation)
-        const lastMessagePreview = getLastMessagePreview(conversation.lastMessage)
-        const hasUnread = (conversation.unreadCount || 0) > 0
-        const isSelected = selectedConversations.has(conversation.id)
-        const rowClass = getConversationRowClass(isSelected, hasUnread)
-
-        return (
-          <ConversationItem
-            key={conversation.id}
-            conversation={conversation}
-            displayName={displayName}
-            lastMessagePreview={lastMessagePreview}
-            hasUnread={hasUnread}
-            isSelected={isSelected}
-            isSelectionMode={isSelectionMode}
-            selectedConversations={selectedConversations}
-            handleConversationClick={handleConversationClick}
-            handleContextMenu={handleContextMenu}
-            formatDate={formatDate}
-            rowClass={rowClass}
-          />
+      filteredConversations.map((conversation) =>
+        renderConversationItem(
+          conversation,
+          selectedConversations,
+          isSelectionMode,
+          handleConversationClick,
+          handleContextMenu,
+          formatDate
         )
-      })
+      )
     )}
   </div>
 )
