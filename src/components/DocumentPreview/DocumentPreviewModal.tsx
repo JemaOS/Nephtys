@@ -128,12 +128,12 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
   const isText = fileTypeInfo.type === 'text';
   const canPreview = isPDF || isText;
 
-  // Load file and set up URL
-  const initializeFile = useCallback(async (file: File, isText: boolean, isPDF: boolean) => {
+  // Initialize file - extracted to reduce component complexity
+  const initializeFile = useCallback(async (file: File, isTextFile: boolean, isPDFFile: boolean) => {
     const url = URL.createObjectURL(file);
     setFileUrl(url);
     
-    if (isText) {
+    if (isTextFile) {
       const reader = new FileReader();
       reader.onload = (e) => {
         setTextContent(e.target?.result as string);
@@ -144,8 +144,7 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
         setLoading(false);
       };
       reader.readAsText(file);
-      return () => URL.revokeObjectURL(url);
-    } else if (!isPDF) {
+    } else if (!isPDFFile) {
       setLoading(false);
     }
     
