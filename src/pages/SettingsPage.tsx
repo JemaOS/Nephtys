@@ -18,9 +18,9 @@ import {
 import {
   ArrowLeft, User, Lock, Bell, MessageSquare, Video, Palette,
   Globe, Database, HelpCircle, Info, LogOut, ChevronRight,
-  Moon, Sun, Monitor, Check, Camera, Edit2, Shield, Key, Trash2,
-  Eye, EyeOff, Download, Wifi, WifiOff, Mail, Image, FileText, Mic, Loader2,
-  Cloud, CloudUpload, RefreshCw, Calendar, Upload, DownloadCloud, Smartphone, Copy, X
+  Moon, Sun, Check, Camera, Edit2, Shield, Key, Trash2,
+  Eye, EyeOff, Wifi, WifiOff, Mail, Image, FileText, Mic, Loader2,
+  Cloud, CloudUpload, Calendar, DownloadCloud, Smartphone, Copy, X
 } from 'lucide-react'
 import {
   createBackup,
@@ -33,15 +33,14 @@ import {
   getBackupMetadata,
   saveBackupMetadata,
   estimateBackupSizeDetailed,
-  type BackupSettings,
-  type BackupSizeEstimate
+  type BackupSettings
 } from '@/lib/backupService'
 
 type SettingsView = 'main' | 'profile' | 'account' | 'privacy' | 'security' | '2fa' | 'delete' |
                      'discussions' | 'wallpaper' | 'notifications' | 'message-notif' | 'call-notif' |
                      'storage' | 'network' | 'help' | 'faq' | 'contact' | 'terms' | 'backup'
 
-// ============ HELPER FUNCTIONS (extracted to reduce cognitive complexity) ============
+// ============ HELPER FUNCTIONS ============
 
 const formatBytes = (bytes: number): string => {
   if (bytes === 0) return '0 B'
@@ -75,12 +74,6 @@ const getMediaTypeFilter = (type: 'all' | 'photos' | 'videos' | 'files' | 'audio
   if (type === 'videos') return 'video'
   if (type === 'audio') return 'audio'
   return 'file'
-}
-
-const getFrequencyLabel = (frequency: string): string => {
-  if (frequency === 'daily') return 'Tous les jours'
-  if (frequency === 'weekly') return 'Toutes les semaines'
-  return 'Tous les mois'
 }
 
 const getViewTitle = (view: SettingsView): string => {
@@ -158,7 +151,6 @@ export function SettingsPage() {
   const [autoDownloadFiles, setAutoDownloadFiles] = useState(true)
   const [autoDownloadAudio, setAutoDownloadAudio] = useState(true)
   
-  // Storage stats
   const [storageStats, setStorageStats] = useState({
     total: 0,
     photos: 0,
@@ -169,7 +161,6 @@ export function SettingsPage() {
   })
   const [clearingStorage, setClearingStorage] = useState(false)
   
-  // Backup settings
   const [backupSettings, setBackupSettingsState] = useState<BackupSettings>(getBackupSettings())
   const [lastBackupDate, setLastBackupDate] = useState<Date | null>(null)
   const [lastBackupSize, setLastBackupSize] = useState<number>(0)
@@ -183,7 +174,6 @@ export function SettingsPage() {
   const [passwordAction, setPasswordAction] = useState<'backup' | 'restore' | 'light-backup'>('backup')
   const [lightBackupMode, setLightBackupMode] = useState(false)
   const restoreFileRef = useRef<HTMLInputElement>(null)
-
 
   // Load storage stats and backup metadata
   useEffect(() => {
@@ -275,7 +265,6 @@ export function SettingsPage() {
     setTwoFactorStep('disabling')
     
     try {
-      // Unenroll all factors
       for (const factor of twoFactorFactors) {
         const result = await unenroll2FA(factor.id)
         if (!result.success) {
@@ -311,7 +300,6 @@ export function SettingsPage() {
     }
   }
 
-  // Load backup metadata from localStorage
   const loadBackupMetadata = () => {
     const metadata = getBackupMetadata()
     if (metadata.lastBackupDate) {
@@ -320,7 +308,6 @@ export function SettingsPage() {
     setLastBackupSize(metadata.lastBackupSize)
   }
 
-  // Estimate backup size when settings change
   useEffect(() => {
     if (user) {
       estimateBackupSizeDetailed(user.id, backupSettings).then(estimate => {
@@ -329,7 +316,6 @@ export function SettingsPage() {
     }
   }, [user, backupSettings.includeVideos, backupSettings.includeImages, backupSettings.includeAudio, backupSettings.includeFiles])
 
-  // Update backup settings
   const updateBackupSettings = (updates: Partial<BackupSettings>) => {
     const newSettings = { ...backupSettings, ...updates }
     setBackupSettingsState(newSettings)
@@ -340,7 +326,6 @@ export function SettingsPage() {
     if (!user) return
     
     try {
-      // Get all messages with media for this user's conversations
       const { data: memberData } = await supabase
         .from('conversation_members')
         .select('conversation_id')
@@ -390,24 +375,14 @@ export function SettingsPage() {
     }
   }
 
-  const formatBytes = (bytes: number): string => {
-    if (bytes === 0) return '0 B'
-    if (bytes < 1024) return `${bytes} B`
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
-  }
-
   const handleClearStorage = async (type: 'all' | 'photos' | 'videos' | 'files' | 'audio') => {
     if (!user) return
     
-    // Early return if user doesn't confirm
     const typeLabel = getStorageTypeLabel(type)
     if (!confirm(`Voulez-vous vraiment supprimer ${typeLabel} en cache ?\n\nCette action est irréversible.`)) return
     
     setClearingStorage(true)
     try {
-      // Get user's conversation IDs
       const { data: memberData } = await supabase
         .from('conversation_members')
         .select('conversation_id')
@@ -417,13 +392,11 @@ export function SettingsPage() {
       
       const conversationIds = memberData.map(m => m.conversation_id)
       
-      // Build the query using helper function
       let query = supabase
         .from('messages')
         .update({ media_url: null, file_url: null, file_size: null })
         .in('conversation_id', conversationIds)
       
-      // Add media type filter if not clearing all
       const mediaTypeFilter = getMediaTypeFilter(type)
       if (mediaTypeFilter) {
         query = query.or(`media_type.eq.${mediaTypeFilter},type.eq.${mediaTypeFilter}`)
@@ -467,13 +440,11 @@ export function SettingsPage() {
     const file = e.target.files?.[0]
     if (!file || !user) return
     
-    // Vérifier la taille du fichier (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
       alert('❌ Fichier trop volumineux\n\nLa photo doit faire moins de 5 MB.')
       return
     }
     
-    // Vérifier le type de fichier
     if (!file.type.startsWith('image/')) {
       alert('❌ Format invalide\n\nVeuillez sélectionner une image (JPG, PNG, etc.).')
       return
@@ -484,7 +455,6 @@ export function SettingsPage() {
       const fileExt = file.name.split('.').pop()
       const fileName = `avatars/${user.id}/avatar-${Date.now()}.${fileExt}`
       
-      // Utiliser le bucket 'media' qui existe déjà
       const { error: uploadError } = await supabase.storage
         .from('media')
         .upload(fileName, file, {
@@ -535,6 +505,165 @@ export function SettingsPage() {
     }
   }
 
+  // ============ RENDER HELPERS ============
+  
+  // Helper: Render 2FA loading state
+  const render2FALoadingState = () => (
+    <div className="flex-1 overflow-y-auto p-6 flex items-center justify-center">
+      <div className="text-center">
+        <Loader2 size={32} className="animate-spin text-accent mx-auto mb-4" />
+        <p className="text-text-secondary">Chargement...</p>
+      </div>
+    </div>
+  )
+
+  // Helper: Render 2FA verifying state (QR code)
+  const render2FAVerifyingState = () => {
+    if (!twoFactorEnrollment) return null;
+    
+    return (
+      <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        <div className="text-center">
+          <div className="w-16 h-16 mx-auto rounded-full bg-accent/20 flex items-center justify-center mb-4">
+            <Smartphone size={32} className="text-accent" />
+          </div>
+          <h3 className="text-lg font-semibold text-text-primary mb-2">
+            Configurer l'authentification
+          </h3>
+          <p className="text-sm text-text-secondary">
+            Scannez ce QR code avec votre application d'authentification
+          </p>
+        </div>
+
+        <div className="bg-white rounded-2xl p-6 mx-auto max-w-xs">
+          <img src={twoFactorEnrollment.totp.qr_code} alt="QR Code 2FA" className="w-full h-auto" />
+        </div>
+
+        <div className="bg-bg-surface rounded-2xl p-4 space-y-3">
+          <p className="text-sm text-text-secondary text-center">Ou entrez ce code manuellement :</p>
+          <div className="flex items-center gap-2">
+            <div className="flex-1 bg-bg-primary rounded-xl p-3 font-mono text-sm text-text-primary break-all">
+              {showSecret ? twoFactorEnrollment.totp.secret : '••••••••••••••••'}
+            </div>
+            <button onClick={() => setShowSecret(!showSecret)} className="p-2 rounded-xl bg-bg-hover text-text-secondary hover:text-text-primary">
+              {showSecret ? <EyeOff size={20} /> : <Eye size={20} />}
+            </button>
+            <button onClick={() => copyToClipboard(twoFactorEnrollment.totp.secret)} className="p-2 rounded-xl bg-bg-hover text-text-secondary hover:text-text-primary">
+              <Copy size={20} />
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <label className="text-sm text-text-secondary">Entrez le code à 6 chiffres de votre application :</label>
+          <input
+            type="text" inputMode="numeric" pattern="[0-9]*" maxLength={6}
+            value={twoFactorCode}
+            onChange={(e) => { const value = e.target.value.replace(/\D/g, ''); setTwoFactorCode(value); setTwoFactorError(''); }}
+            placeholder="000000"
+            className="w-full px-4 py-4 bg-bg-surface rounded-2xl text-text-primary text-center text-2xl font-mono tracking-widest placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-accent"
+            autoFocus
+          />
+          {twoFactorError && <p className="text-sm text-red-500 text-center">{twoFactorError}</p>}
+        </div>
+
+        <div className="flex gap-3">
+          <button onClick={handleCancel2FAEnrollment} disabled={twoFactorLoading} className="flex-1 py-3 rounded-2xl bg-bg-surface text-text-primary font-medium hover:bg-bg-hover transition-colors">
+            Annuler
+          </button>
+          <button onClick={handleVerify2FACode} disabled={twoFactorLoading || twoFactorCode.length !== 6} className="flex-1 py-3 rounded-2xl bg-accent text-white font-medium hover:bg-[#5a5ec9] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+            {twoFactorLoading ? <><Loader2 size={18} className="animate-spin" />Vérification...</> : 'Vérifier'}
+          </button>
+        </div>
+
+        <div className="bg-bg-surface rounded-2xl p-4">
+          <p className="text-sm text-text-secondary mb-2">Applications recommandées (open source) :</p>
+          <ul className="text-sm text-text-primary space-y-1">
+            <li>• <strong>Aegis Authenticator</strong> (Android) - Open source</li>
+            <li>• <strong>FreeOTP+</strong> (Android) - Open source, Red Hat</li>
+            <li>• <strong>KeePassXC</strong> (Windows, Mac, Linux) - Open source, européen</li>
+            <li>• <strong>Bitwarden</strong> (Android, PC) - Open source</li>
+          </ul>
+          <p className="text-xs text-text-secondary mt-3">💡 Ces applications respectent votre vie privée et fonctionnent hors ligne.</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Helper: Render 2FA main state
+  const render2FAMainState = () => (
+    <div className="flex-1 overflow-y-auto p-6 space-y-6">
+      <div className="bg-bg-surface rounded-2xl p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className={`w-12 h-12 rounded-full flex items-center justify-center ${twoFactorEnabled ? 'bg-green-500/20' : 'bg-bg-hover'}`}>
+              <Shield size={24} className={twoFactorEnabled ? 'text-green-500' : 'text-text-secondary'} />
+            </div>
+            <div>
+              <div className="text-text-primary font-medium">Authentification à deux facteurs</div>
+              <div className={`text-sm ${twoFactorEnabled ? 'text-green-500' : 'text-text-secondary'}`}>
+                {twoFactorEnabled ? '✓ Activée' : 'Désactivée'}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <p className="text-sm text-text-secondary">
+          {twoFactorEnabled
+            ? 'Votre compte est protégé par une authentification à deux facteurs. Un code de vérification sera demandé à chaque connexion.'
+            : 'Ajoutez une couche de sécurité supplémentaire à votre compte en activant l\'authentification à deux facteurs.'}
+        </p>
+
+        {twoFactorEnabled ? (
+          <button onClick={handleDisable2FA} disabled={twoFactorLoading} className="w-full py-3 rounded-2xl bg-red-500/10 text-red-500 font-medium hover:bg-red-500/20 transition-colors flex items-center justify-center gap-2">
+            {twoFactorLoading && twoFactorStep === 'disabling' ? <><Loader2 size={18} className="animate-spin" />Désactivation...</> : <><X size={18} />Désactiver l'authentification 2FA</>}
+          </button>
+        ) : (
+          <button onClick={handleStart2FAEnrollment} disabled={twoFactorLoading} className="w-full py-3 px-4 rounded-2xl bg-accent text-white font-medium hover:bg-[#5a5ec9] transition-colors flex items-center justify-center gap-2">
+            {twoFactorLoading && twoFactorStep === 'enrolling' ? <><Loader2 size={18} className="animate-spin flex-shrink-0" /><span>Configuration...</span></> : <><Smartphone size={18} className="flex-shrink-0" /><span>Configurer l'application d'authentification</span></>}
+          </button>
+        )}
+
+        {twoFactorError && twoFactorStep === 'idle' && <p className="text-sm text-red-500 text-center">{twoFactorError}</p>}
+      </div>
+
+      <div className="bg-bg-surface rounded-2xl p-6 space-y-4">
+        <h4 className="text-text-primary font-medium">Comment ça fonctionne ?</h4>
+        <div className="space-y-3">
+          <div className="flex items-start gap-3">
+            <div className="w-6 h-6 rounded-full bg-accent/20 flex items-center justify-center flex-shrink-0 mt-0.5"><span className="text-accent text-sm font-medium">1</span></div>
+            <p className="text-sm text-text-secondary">Téléchargez une application d'authentification open source (Aegis, FreeOTP+, Tofu, etc.)</p>
+          </div>
+          <div className="flex items-start gap-3">
+            <div className="w-6 h-6 rounded-full bg-accent/20 flex items-center justify-center flex-shrink-0 mt-0.5"><span className="text-accent text-sm font-medium">2</span></div>
+            <p className="text-sm text-text-secondary">Scannez le QR code avec l'application pour lier votre compte</p>
+          </div>
+          <div className="flex items-start gap-3">
+            <div className="w-6 h-6 rounded-full bg-accent/20 flex items-center justify-center flex-shrink-0 mt-0.5"><span className="text-accent text-sm font-medium">3</span></div>
+            <p className="text-sm text-text-secondary">À chaque connexion, entrez le code à 6 chiffres généré par l'application</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-accent/10 rounded-2xl p-4">
+        <div className="flex items-start gap-3">
+          <Lock size={20} className="text-accent flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm text-text-primary font-medium mb-1">Sécurité renforcée</p>
+            <p className="text-xs text-text-secondary">L'authentification à deux facteurs protège votre compte même si votre mot de passe est compromis.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+
+  // Main 2FA view using helpers
+  const render2FAView = () => {
+    if (twoFactorLoading && twoFactorStep === 'idle') return render2FALoadingState()
+    if (twoFactorStep === 'verifying' && twoFactorEnrollment) return render2FAVerifyingState()
+    return render2FAMainState()
+  }
+
   const mainSettings = [
     { icon: User, label: 'Profil', subtitle: profile?.display_name || profile?.username, view: 'profile' as SettingsView },
     { icon: Key, label: 'Compte', subtitle: 'Confidentialité, sécurité', view: 'account' as SettingsView },
@@ -551,11 +680,7 @@ export function SettingsPage() {
         <div className="flex items-center gap-4">
           <div className="relative">
             {profile?.avatar_url ? (
-              <img
-                src={profile.avatar_url}
-                alt={profile.username}
-                className="w-16 h-16 rounded-full object-cover"
-              />
+              <img src={profile.avatar_url} alt={profile.username} className="w-16 h-16 rounded-full object-cover" />
             ) : (
               <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-2xl">
                 {profile?.username?.[0]?.toUpperCase()}
@@ -569,9 +694,7 @@ export function SettingsPage() {
           <div className="flex-1">
             <h2 className="text-xl font-medium text-text-primary">{profile?.display_name || profile?.username}</h2>
             <p className="text-sm text-text-secondary">@{profile?.username}</p>
-            {profile?.bio && (
-              <p className="text-sm text-text-secondary mt-1 italic">"{profile.bio}"</p>
-            )}
+            {profile?.bio && <p className="text-sm text-text-secondary mt-1 italic">"{profile.bio}"</p>}
           </div>
           <ChevronRight size={20} className="text-text-secondary" />
         </div>
@@ -594,8 +717,7 @@ export function SettingsPage() {
       </div>
       <div className="px-6 pb-8">
         <button onClick={handleSignOut} className="w-full py-3 rounded-2xl bg-bg-surface hover:bg-bg-hover text-[#ea4335] font-medium transition-colors flex items-center justify-center gap-2">
-          <LogOut size={20} />
-          Se déconnecter
+          <LogOut size={20} />Se déconnecter
         </button>
       </div>
     </div>
@@ -607,11 +729,7 @@ export function SettingsPage() {
         <div className="flex flex-col items-center gap-4">
           <div className="relative">
             {profile?.avatar_url ? (
-              <img
-                src={profile.avatar_url}
-                alt={profile.username}
-                className="w-32 h-32 rounded-full object-cover"
-              />
+              <img src={profile.avatar_url} alt={profile.username} className="w-32 h-32 rounded-full object-cover" />
             ) : (
               <div className="w-32 h-32 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-5xl">
                 {profile?.username?.[0]?.toUpperCase()}
@@ -633,34 +751,16 @@ export function SettingsPage() {
         </div>
         <div className="space-y-2">
           <label className="text-sm text-accent">Nom d'utilisateur</label>
-          <div className="p-4 bg-bg-surface rounded-2xl">
-            <p className="text-text-primary">@{profile?.username}</p>
-          </div>
+          <div className="p-4 bg-bg-surface rounded-2xl"><p className="text-text-primary">@{profile?.username}</p></div>
           <p className="text-xs text-text-secondary">Le nom d'utilisateur ne peut pas être modifié</p>
         </div>
         <div className="space-y-2">
           <label className="text-sm text-accent">Info</label>
           <div className="flex items-center gap-3 p-4 bg-bg-surface rounded-2xl">
-            <input
-              type="text"
-              placeholder="Ajouter une info..."
-              value={editingBio ? newBio : (profile?.bio || '')}
-              onChange={(e) => setNewBio(e.target.value)}
-              onFocus={() => {
-                setEditingBio(true)
-                setNewBio(profile?.bio || '')
-              }}
-              className="flex-1 bg-transparent text-text-primary outline-none placeholder:text-text-secondary"
-            />
-            {editingBio ? (
-              <button onClick={handleUpdateBio} className="text-accent"><Check size={18} /></button>
-            ) : (
-              <Edit2 size={18} className="text-text-secondary" />
-            )}
+            <input type="text" placeholder="Ajouter une info..." value={editingBio ? newBio : (profile?.bio || '')} onChange={(e) => setNewBio(e.target.value)} onFocus={() => { setEditingBio(true); setNewBio(profile?.bio || ''); }} className="flex-1 bg-transparent text-text-primary outline-none placeholder:text-text-secondary" />
+            {editingBio ? <button onClick={handleUpdateBio} className="text-accent"><Check size={18} /></button> : <Edit2 size={18} className="text-text-secondary" />}
           </div>
-          {profile?.bio && !editingBio && (
-            <p className="text-xs text-text-secondary px-1">Votre info actuelle : "{profile.bio}"</p>
-          )}
+          {profile?.bio && !editingBio && <p className="text-xs text-text-secondary px-1">Votre info actuelle : "{profile.bio}"</p>}
         </div>
       </div>
     </div>
@@ -683,10 +783,7 @@ export function SettingsPage() {
             <div className="text-text-primary">Sécurité</div>
             <div className="text-sm text-text-secondary">Chiffrement de bout en bout</div>
           </div>
-          <div className="flex items-center gap-2">
-            <Check size={16} className="text-accent" />
-            <span className="text-sm text-accent">Activé</span>
-          </div>
+          <div className="flex items-center gap-2"><Check size={16} className="text-accent" /><span className="text-sm text-accent">Activé</span></div>
         </button>
         <button onClick={() => setCurrentView('2fa')} className="w-full px-6 py-4 flex items-center gap-4 hover:bg-bg-surface transition-colors">
           <Key size={24} className="text-text-secondary" />
@@ -749,259 +846,6 @@ export function SettingsPage() {
       </div>
     </div>
   )
-
-  const render2FAView = () => {
-    // Loading state
-    if (twoFactorLoading && twoFactorStep === 'idle') {
-      return (
-        <div className="flex-1 overflow-y-auto p-6 flex items-center justify-center">
-          <div className="text-center">
-            <Loader2 size={32} className="animate-spin text-accent mx-auto mb-4" />
-            <p className="text-text-secondary">Chargement...</p>
-          </div>
-        </div>
-      )
-    }
-
-    // Enrollment step - showing QR code
-    if (twoFactorStep === 'verifying' && twoFactorEnrollment) {
-      return (
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {/* Header */}
-          <div className="text-center">
-            <div className="w-16 h-16 mx-auto rounded-full bg-accent/20 flex items-center justify-center mb-4">
-              <Smartphone size={32} className="text-accent" />
-            </div>
-            <h3 className="text-lg font-semibold text-text-primary mb-2">
-              Configurer l'authentification
-            </h3>
-            <p className="text-sm text-text-secondary">
-              Scannez ce QR code avec votre application d'authentification
-            </p>
-          </div>
-
-          {/* QR Code */}
-          <div className="bg-white rounded-2xl p-6 mx-auto max-w-xs">
-            <img
-              src={twoFactorEnrollment.totp.qr_code}
-              alt="QR Code 2FA"
-              className="w-full h-auto"
-            />
-          </div>
-
-          {/* Manual entry */}
-          <div className="bg-bg-surface rounded-2xl p-4 space-y-3">
-            <p className="text-sm text-text-secondary text-center">
-              Ou entrez ce code manuellement :
-            </p>
-            <div className="flex items-center gap-2">
-              <div className="flex-1 bg-bg-primary rounded-xl p-3 font-mono text-sm text-text-primary break-all">
-                {showSecret ? twoFactorEnrollment.totp.secret : '••••••••••••••••'}
-              </div>
-              <button
-                onClick={() => setShowSecret(!showSecret)}
-                className="p-2 rounded-xl bg-bg-hover text-text-secondary hover:text-text-primary"
-              >
-                {showSecret ? <EyeOff size={20} /> : <Eye size={20} />}
-              </button>
-              <button
-                onClick={() => copyToClipboard(twoFactorEnrollment.totp.secret)}
-                className="p-2 rounded-xl bg-bg-hover text-text-secondary hover:text-text-primary"
-              >
-                <Copy size={20} />
-              </button>
-            </div>
-          </div>
-
-          {/* Verification code input */}
-          <div className="space-y-3">
-            <label className="text-sm text-text-secondary">
-              Entrez le code à 6 chiffres de votre application :
-            </label>
-            <input
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              maxLength={6}
-              value={twoFactorCode}
-              onChange={(e) => {
-                const value = e.target.value.replace(/\D/g, '')
-                setTwoFactorCode(value)
-                setTwoFactorError('')
-              }}
-              placeholder="000000"
-              className="w-full px-4 py-4 bg-bg-surface rounded-2xl text-text-primary text-center text-2xl font-mono tracking-widest placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-accent"
-              autoFocus
-            />
-            {twoFactorError && (
-              <p className="text-sm text-red-500 text-center">{twoFactorError}</p>
-            )}
-          </div>
-
-          {/* Actions */}
-          <div className="flex gap-3">
-            <button
-              onClick={handleCancel2FAEnrollment}
-              disabled={twoFactorLoading}
-              className="flex-1 py-3 rounded-2xl bg-bg-surface text-text-primary font-medium hover:bg-bg-hover transition-colors"
-            >
-              Annuler
-            </button>
-            <button
-              onClick={handleVerify2FACode}
-              disabled={twoFactorLoading || twoFactorCode.length !== 6}
-              className="flex-1 py-3 rounded-2xl bg-accent text-white font-medium hover:bg-[#5a5ec9] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-            >
-              {twoFactorLoading ? (
-                <>
-                  <Loader2 size={18} className="animate-spin" />
-                  Vérification...
-                </>
-              ) : (
-                'Vérifier'
-              )}
-            </button>
-          </div>
-
-          {/* Supported apps */}
-          <div className="bg-bg-surface rounded-2xl p-4">
-            <p className="text-sm text-text-secondary mb-2">Applications recommandées (open source) :</p>
-            <ul className="text-sm text-text-primary space-y-1">
-              <li>• <strong>Aegis Authenticator</strong> (Android) - Open source</li>
-              <li>• <strong>FreeOTP+</strong> (Android) - Open source, Red Hat</li>
-              <li>• <strong>KeePassXC</strong> (Windows, Mac, Linux) - Open source, européen</li>
-              <li>• <strong>Bitwarden</strong> (Android, PC) - Open source</li>
-            </ul>
-            <p className="text-xs text-text-secondary mt-3">
-              💡 Ces applications respectent votre vie privée et fonctionnent hors ligne.
-            </p>
-          </div>
-        </div>
-      )
-    }
-
-    // Main 2FA view
-    return (
-      <div className="flex-1 overflow-y-auto p-6 space-y-6">
-        {/* Status card */}
-        <div className="bg-bg-surface rounded-2xl p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
-                twoFactorEnabled ? 'bg-green-500/20' : 'bg-bg-hover'
-              }`}>
-                <Shield size={24} className={twoFactorEnabled ? 'text-green-500' : 'text-text-secondary'} />
-              </div>
-              <div>
-                <div className="text-text-primary font-medium">
-                  Authentification à deux facteurs
-                </div>
-                <div className={`text-sm ${twoFactorEnabled ? 'text-green-500' : 'text-text-secondary'}`}>
-                  {twoFactorEnabled ? '✓ Activée' : 'Désactivée'}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <p className="text-sm text-text-secondary">
-            {twoFactorEnabled
-              ? 'Votre compte est protégé par une authentification à deux facteurs. Un code de vérification sera demandé à chaque connexion.'
-              : 'Ajoutez une couche de sécurité supplémentaire à votre compte en activant l\'authentification à deux facteurs.'}
-          </p>
-
-          {/* Action button */}
-          {twoFactorEnabled ? (
-            <button
-              onClick={handleDisable2FA}
-              disabled={twoFactorLoading}
-              className="w-full py-3 rounded-2xl bg-red-500/10 text-red-500 font-medium hover:bg-red-500/20 transition-colors flex items-center justify-center gap-2"
-            >
-              {twoFactorLoading && twoFactorStep === 'disabling' ? (
-                <>
-                  <Loader2 size={18} className="animate-spin" />
-                  Désactivation...
-                </>
-              ) : (
-                <>
-                  <X size={18} />
-                  Désactiver l'authentification 2FA
-                </>
-              )}
-            </button>
-          ) : (
-            <button
-              onClick={handleStart2FAEnrollment}
-              disabled={twoFactorLoading}
-              className="w-full py-3 px-4 rounded-2xl bg-accent text-white font-medium hover:bg-[#5a5ec9] transition-colors flex items-center justify-center gap-2"
-            >
-              {twoFactorLoading && twoFactorStep === 'enrolling' ? (
-                <>
-                  <Loader2 size={18} className="animate-spin flex-shrink-0" />
-                  <span>Configuration...</span>
-                </>
-              ) : (
-                <>
-                  <Smartphone size={18} className="flex-shrink-0" />
-                  <span>Configurer l'application d'authentification</span>
-                </>
-              )}
-            </button>
-          )}
-
-          {twoFactorError && twoFactorStep === 'idle' && (
-            <p className="text-sm text-red-500 text-center">{twoFactorError}</p>
-          )}
-        </div>
-
-        {/* Info card */}
-        <div className="bg-bg-surface rounded-2xl p-6 space-y-4">
-          <h4 className="text-text-primary font-medium">Comment ça fonctionne ?</h4>
-          <div className="space-y-3">
-            <div className="flex items-start gap-3">
-              <div className="w-6 h-6 rounded-full bg-accent/20 flex items-center justify-center flex-shrink-0 mt-0.5">
-                <span className="text-accent text-sm font-medium">1</span>
-              </div>
-              <p className="text-sm text-text-secondary">
-                Téléchargez une application d'authentification open source (Aegis, FreeOTP+, Tofu, etc.)
-              </p>
-            </div>
-            <div className="flex items-start gap-3">
-              <div className="w-6 h-6 rounded-full bg-accent/20 flex items-center justify-center flex-shrink-0 mt-0.5">
-                <span className="text-accent text-sm font-medium">2</span>
-              </div>
-              <p className="text-sm text-text-secondary">
-                Scannez le QR code avec l'application pour lier votre compte
-              </p>
-            </div>
-            <div className="flex items-start gap-3">
-              <div className="w-6 h-6 rounded-full bg-accent/20 flex items-center justify-center flex-shrink-0 mt-0.5">
-                <span className="text-accent text-sm font-medium">3</span>
-              </div>
-              <p className="text-sm text-text-secondary">
-                À chaque connexion, entrez le code à 6 chiffres généré par l'application
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Security info */}
-        <div className="bg-accent/10 rounded-2xl p-4">
-          <div className="flex items-start gap-3">
-            <Lock size={20} className="text-accent flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="text-sm text-text-primary font-medium mb-1">
-                Sécurité renforcée
-              </p>
-              <p className="text-xs text-text-secondary">
-                L'authentification à deux facteurs protège votre compte même si votre mot de passe est compromis.
-                Seul vous, avec votre téléphone, pouvez accéder à votre compte.
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-    )
-  }
 
   const renderDeleteView = () => (
     <div className="flex-1 overflow-y-auto p-6">
@@ -1087,15 +931,11 @@ export function SettingsPage() {
               key={option.value}
               onClick={() => setWallpaper(option.value)}
               className={`aspect-video rounded-2xl transition-all flex items-center justify-center relative overflow-hidden border-2 ${
-                wallpaper === option.value
-                  ? 'border-accent ring-2 ring-accent/30'
-                  : 'border-transparent hover:border-bg-hover'
+                wallpaper === option.value ? 'border-accent ring-2 ring-accent/30' : 'border-transparent hover:border-bg-hover'
               }`}
               style={option.value === 'default' ? { backgroundColor: 'var(--bg-surface)' } : option.style}
             >
-              <span className={`text-sm font-medium ${
-                option.value === 'dark' || option.value === 'gradient' ? 'text-white' : 'text-text-primary'
-              }`}>
+              <span className={`text-sm font-medium ${option.value === 'dark' || option.value === 'gradient' ? 'text-white' : 'text-text-primary'}`}>
                 {option.label}
               </span>
               {wallpaper === option.value && (
@@ -1158,40 +998,20 @@ export function SettingsPage() {
       <div className="py-2">
         <div className="px-6 py-4 space-y-4">
           <div className="flex items-center justify-between">
-            <div>
-              <div className="text-text-primary">Notifications de messages</div>
-              <div className="text-sm text-text-secondary">Afficher les notifications pour les nouveaux messages</div>
-            </div>
-            <button onClick={() => setNotificationsEnabled(!notificationsEnabled)} className={`w-12 h-6 rounded-full relative transition-colors ${notificationsEnabled ? 'bg-accent' : 'bg-[#8696a0]'}`}>
-              <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${notificationsEnabled ? 'right-1' : 'left-1'}`}></div>
-            </button>
+            <div><div className="text-text-primary">Notifications de messages</div><div className="text-sm text-text-secondary">Afficher les notifications pour les nouveaux messages</div></div>
+            <button onClick={() => setNotificationsEnabled(!notificationsEnabled)} className={`w-12 h-6 rounded-full relative transition-colors ${notificationsEnabled ? 'bg-accent' : 'bg-[#8696a0]'}`}><div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${notificationsEnabled ? 'right-1' : 'left-1'}`}></div></button>
           </div>
           <div className="flex items-center justify-between">
-            <div>
-              <div className="text-text-primary">Son de notification</div>
-              <div className="text-sm text-text-secondary">Jouer un son pour les nouveaux messages</div>
-            </div>
-            <button onClick={() => setSoundEnabled(!soundEnabled)} className={`w-12 h-6 rounded-full relative transition-colors ${soundEnabled ? 'bg-accent' : 'bg-[#8696a0]'}`}>
-              <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${soundEnabled ? 'right-1' : 'left-1'}`}></div>
-            </button>
+            <div><div className="text-text-primary">Son de notification</div><div className="text-sm text-text-secondary">Jouer un son pour les nouveaux messages</div></div>
+            <button onClick={() => setSoundEnabled(!soundEnabled)} className={`w-12 h-6 rounded-full relative transition-colors ${soundEnabled ? 'bg-accent' : 'bg-[#8696a0]'}`}><div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${soundEnabled ? 'right-1' : 'left-1'}`}></div></button>
           </div>
           <div className="flex items-center justify-between">
-            <div>
-              <div className="text-text-primary">Vibration</div>
-              <div className="text-sm text-text-secondary">Vibrer pour les nouveaux messages</div>
-            </div>
-            <button onClick={() => setVibrationEnabled(!vibrationEnabled)} className={`w-12 h-6 rounded-full relative transition-colors ${vibrationEnabled ? 'bg-accent' : 'bg-[#8696a0]'}`}>
-              <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${vibrationEnabled ? 'right-1' : 'left-1'}`}></div>
-            </button>
+            <div><div className="text-text-primary">Vibration</div><div className="text-sm text-text-secondary">Vibrer pour les nouveaux messages</div></div>
+            <button onClick={() => setVibrationEnabled(!vibrationEnabled)} className={`w-12 h-6 rounded-full relative transition-colors ${vibrationEnabled ? 'bg-accent' : 'bg-[#8696a0]'}`}><div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${vibrationEnabled ? 'right-1' : 'left-1'}`}></div></button>
           </div>
           <div className="flex items-center justify-between">
-            <div>
-              <div className="text-text-primary">Aperçu du message</div>
-              <div className="text-sm text-text-secondary">Afficher le contenu dans la notification</div>
-            </div>
-            <button onClick={() => setMessagePreviewEnabled(!messagePreviewEnabled)} className={`w-12 h-6 rounded-full relative transition-colors ${messagePreviewEnabled ? 'bg-accent' : 'bg-[#8696a0]'}`}>
-              <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${messagePreviewEnabled ? 'right-1' : 'left-1'}`}></div>
-            </button>
+            <div><div className="text-text-primary">Aperçu du message</div><div className="text-sm text-text-secondary">Afficher le contenu dans la notification</div></div>
+            <button onClick={() => setMessagePreviewEnabled(!messagePreviewEnabled)} className={`w-12 h-6 rounded-full relative transition-colors ${messagePreviewEnabled ? 'bg-accent' : 'bg-[#8696a0]'}`}><div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${messagePreviewEnabled ? 'right-1' : 'left-1'}`}></div></button>
           </div>
         </div>
       </div>
@@ -1203,40 +1023,20 @@ export function SettingsPage() {
       <div className="py-2">
         <div className="px-6 py-4 space-y-4">
           <div className="flex items-center justify-between">
-            <div>
-              <div className="text-text-primary">Notifications d'appels</div>
-              <div className="text-sm text-text-secondary">Afficher les notifications pour les appels entrants</div>
-            </div>
-            <button onClick={() => setCallNotificationsEnabled(!callNotificationsEnabled)} className={`w-12 h-6 rounded-full relative transition-colors ${callNotificationsEnabled ? 'bg-accent' : 'bg-[#8696a0]'}`}>
-              <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${callNotificationsEnabled ? 'right-1' : 'left-1'}`}></div>
-            </button>
+            <div><div className="text-text-primary">Notifications d'appels</div><div className="text-sm text-text-secondary">Afficher les notifications pour les appels entrants</div></div>
+            <button onClick={() => setCallNotificationsEnabled(!callNotificationsEnabled)} className={`w-12 h-6 rounded-full relative transition-colors ${callNotificationsEnabled ? 'bg-accent' : 'bg-[#8696a0]'}`}><div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${callNotificationsEnabled ? 'right-1' : 'left-1'}`}></div></button>
           </div>
           <div className="flex items-center justify-between">
-            <div>
-              <div className="text-text-primary">Sonnerie</div>
-              <div className="text-sm text-text-secondary">Jouer une sonnerie pour les appels entrants</div>
-            </div>
-            <button onClick={() => setRingtoneEnabled(!ringtoneEnabled)} className={`w-12 h-6 rounded-full relative transition-colors ${ringtoneEnabled ? 'bg-accent' : 'bg-[#8696a0]'}`}>
-              <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${ringtoneEnabled ? 'right-1' : 'left-1'}`}></div>
-            </button>
+            <div><div className="text-text-primary">Sonnerie</div><div className="text-sm text-text-secondary">Jouer une sonnerie pour les appels entrants</div></div>
+            <button onClick={() => setRingtoneEnabled(!ringtoneEnabled)} className={`w-12 h-6 rounded-full relative transition-colors ${ringtoneEnabled ? 'bg-accent' : 'bg-[#8696a0]'}`}><div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${ringtoneEnabled ? 'right-1' : 'left-1'}`}></div></button>
           </div>
           <div className="flex items-center justify-between">
-            <div>
-              <div className="text-text-primary">Vibration</div>
-              <div className="text-sm text-text-secondary">Vibrer pour les appels entrants</div>
-            </div>
-            <button onClick={() => setCallVibrationEnabled(!callVibrationEnabled)} className={`w-12 h-6 rounded-full relative transition-colors ${callVibrationEnabled ? 'bg-accent' : 'bg-[#8696a0]'}`}>
-              <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${callVibrationEnabled ? 'right-1' : 'left-1'}`}></div>
-            </button>
+            <div><div className="text-text-primary">Vibration</div><div className="text-sm text-text-secondary">Vibrer pour les appels entrants</div></div>
+            <button onClick={() => setCallVibrationEnabled(!callVibrationEnabled)} className={`w-12 h-6 rounded-full relative transition-colors ${callVibrationEnabled ? 'bg-accent' : 'bg-[#8696a0]'}`}><div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${callVibrationEnabled ? 'right-1' : 'left-1'}`}></div></button>
           </div>
           <div className="flex items-center justify-between">
-            <div>
-              <div className="text-text-primary">Afficher le nom de l'appelant</div>
-              <div className="text-sm text-text-secondary">Afficher qui appelle dans la notification</div>
-            </div>
-            <button onClick={() => setShowCallerName(!showCallerName)} className={`w-12 h-6 rounded-full relative transition-colors ${showCallerName ? 'bg-accent' : 'bg-[#8696a0]'}`}>
-              <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${showCallerName ? 'right-1' : 'left-1'}`}></div>
-            </button>
+            <div><div className="text-text-primary">Afficher le nom de l'appelant</div><div className="text-sm text-text-secondary">Afficher qui appelle dans la notification</div></div>
+            <button onClick={() => setShowCallerName(!showCallerName)} className={`w-12 h-6 rounded-full relative transition-colors ${showCallerName ? 'bg-accent' : 'bg-[#8696a0]'}`}><div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${showCallerName ? 'right-1' : 'left-1'}`}></div></button>
           </div>
         </div>
       </div>
@@ -1246,7 +1046,6 @@ export function SettingsPage() {
   const renderStorageView = () => (
     <div className="flex-1 overflow-y-auto pb-4">
       <div className="py-2">
-        {/* Total storage card */}
         <div className="px-6 py-6 bg-bg-surface mx-4 rounded-2xl mb-4">
           <div className="text-center space-y-3">
             <Database size={48} className="mx-auto text-accent" />
@@ -1261,7 +1060,6 @@ export function SettingsPage() {
           </div>
         </div>
 
-        {/* Storage breakdown */}
         {!storageStats.loading && storageStats.total > 0 && (
           <div className="px-4 mb-4">
             <div className="bg-bg-surface rounded-2xl p-4 space-y-3">
@@ -1269,104 +1067,38 @@ export function SettingsPage() {
               
               {storageStats.photos > 0 && (
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Image size={20} className="text-blue-400" />
-                    <span className="text-text-primary">Photos</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-text-secondary">{formatBytes(storageStats.photos)}</span>
-                    <button
-                      onClick={() => handleClearStorage('photos')}
-                      disabled={clearingStorage}
-                      className="text-xs text-accent hover:underline"
-                    >
-                      Vider
-                    </button>
-                  </div>
+                  <div className="flex items-center gap-3"><Image size={20} className="text-blue-400" /><span className="text-text-primary">Photos</span></div>
+                  <div className="flex items-center gap-3"><span className="text-text-secondary">{formatBytes(storageStats.photos)}</span><button onClick={() => handleClearStorage('photos')} disabled={clearingStorage} className="text-xs text-accent hover:underline">Vider</button></div>
                 </div>
               )}
-              
               {storageStats.videos > 0 && (
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Video size={20} className="text-purple-400" />
-                    <span className="text-text-primary">Vidéos</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-text-secondary">{formatBytes(storageStats.videos)}</span>
-                    <button
-                      onClick={() => handleClearStorage('videos')}
-                      disabled={clearingStorage}
-                      className="text-xs text-accent hover:underline"
-                    >
-                      Vider
-                    </button>
-                  </div>
+                  <div className="flex items-center gap-3"><Video size={20} className="text-purple-400" /><span className="text-text-primary">Vidéos</span></div>
+                  <div className="flex items-center gap-3"><span className="text-text-secondary">{formatBytes(storageStats.videos)}</span><button onClick={() => handleClearStorage('videos')} disabled={clearingStorage} className="text-xs text-accent hover:underline">Vider</button></div>
                 </div>
               )}
-              
               {storageStats.audio > 0 && (
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Mic size={20} className="text-green-400" />
-                    <span className="text-text-primary">Messages vocaux</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-text-secondary">{formatBytes(storageStats.audio)}</span>
-                    <button
-                      onClick={() => handleClearStorage('audio')}
-                      disabled={clearingStorage}
-                      className="text-xs text-accent hover:underline"
-                    >
-                      Vider
-                    </button>
-                  </div>
+                  <div className="flex items-center gap-3"><Mic size={20} className="text-green-400" /><span className="text-text-primary">Messages vocaux</span></div>
+                  <div className="flex items-center gap-3"><span className="text-text-secondary">{formatBytes(storageStats.audio)}</span><button onClick={() => handleClearStorage('audio')} disabled={clearingStorage} className="text-xs text-accent hover:underline">Vider</button></div>
                 </div>
               )}
-              
               {storageStats.files > 0 && (
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <FileText size={20} className="text-orange-400" />
-                    <span className="text-text-primary">Fichiers</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-text-secondary">{formatBytes(storageStats.files)}</span>
-                    <button
-                      onClick={() => handleClearStorage('files')}
-                      disabled={clearingStorage}
-                      className="text-xs text-accent hover:underline"
-                    >
-                      Vider
-                    </button>
-                  </div>
+                  <div className="flex items-center gap-3"><FileText size={20} className="text-orange-400" /><span className="text-text-primary">Fichiers</span></div>
+                  <div className="flex items-center gap-3"><span className="text-text-secondary">{formatBytes(storageStats.files)}</span><button onClick={() => handleClearStorage('files')} disabled={clearingStorage} className="text-xs text-accent hover:underline">Vider</button></div>
                 </div>
               )}
               
               <div className="pt-3 border-t border-bg-hover">
-                <button
-                  onClick={() => handleClearStorage('all')}
-                  disabled={clearingStorage}
-                  className="w-full py-2 rounded-xl bg-red-500/10 text-red-500 text-sm font-medium hover:bg-red-500/20 transition-colors flex items-center justify-center gap-2"
-                >
-                  {clearingStorage ? (
-                    <>
-                      <Loader2 size={16} className="animate-spin" />
-                      Suppression...
-                    </>
-                  ) : (
-                    <>
-                      <Trash2 size={16} />
-                      Vider tout le cache
-                    </>
-                  )}
+                <button onClick={() => handleClearStorage('all')} disabled={clearingStorage} className="w-full py-2 rounded-xl bg-red-500/10 text-red-500 text-sm font-medium hover:bg-red-500/20 transition-colors flex items-center justify-center gap-2">
+                  {clearingStorage ? <><Loader2 size={16} className="animate-spin" />Suppression...</> : <><Trash2 size={16} />Vider tout le cache</>}
                 </button>
               </div>
             </div>
           </div>
         )}
 
-        {/* Network settings link */}
         <button onClick={() => setCurrentView('network')} className="w-full px-6 py-4 flex items-center gap-4 hover:bg-bg-surface transition-colors">
           <Globe size={24} className="text-text-secondary" />
           <div className="flex-1 text-left">
@@ -1382,96 +1114,47 @@ export function SettingsPage() {
   const renderNetworkView = () => (
     <div className="flex-1 overflow-y-auto pb-4">
       <div className="py-2">
-        {/* WiFi settings */}
         <div className="px-6 py-4">
-          <h3 className="text-sm text-accent mb-4 flex items-center gap-2">
-            <Wifi size={16} />
-            Connexion Wi-Fi
-          </h3>
+          <h3 className="text-sm text-accent mb-4 flex items-center gap-2"><Wifi size={16} />Connexion Wi-Fi</h3>
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <div>
-                <div className="text-text-primary">Téléchargement automatique</div>
-                <div className="text-sm text-text-secondary">Télécharger les médias en Wi-Fi</div>
-              </div>
-              <button onClick={() => setAutoDownloadWifi(!autoDownloadWifi)} className={`w-12 h-6 rounded-full relative transition-colors ${autoDownloadWifi ? 'bg-accent' : 'bg-[#8696a0]'}`}>
-                <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${autoDownloadWifi ? 'right-1' : 'left-1'}`}></div>
-              </button>
+              <div><div className="text-text-primary">Téléchargement automatique</div><div className="text-sm text-text-secondary">Télécharger les médias en Wi-Fi</div></div>
+              <button onClick={() => setAutoDownloadWifi(!autoDownloadWifi)} className={`w-12 h-6 rounded-full relative transition-colors ${autoDownloadWifi ? 'bg-accent' : 'bg-[#8696a0]'}`}><div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${autoDownloadWifi ? 'right-1' : 'left-1'}`}></div></button>
             </div>
           </div>
         </div>
-
-        {/* Mobile data settings */}
         <div className="px-6 py-4 border-t border-bg-hover">
-          <h3 className="text-sm text-accent mb-4 flex items-center gap-2">
-            <WifiOff size={16} />
-            Données mobiles
-          </h3>
+          <h3 className="text-sm text-accent mb-4 flex items-center gap-2"><WifiOff size={16} />Données mobiles</h3>
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <div>
-                <div className="text-text-primary">Téléchargement automatique</div>
-                <div className="text-sm text-text-secondary">Télécharger avec données mobiles</div>
-              </div>
-              <button onClick={() => setAutoDownloadMobile(!autoDownloadMobile)} className={`w-12 h-6 rounded-full relative transition-colors ${autoDownloadMobile ? 'bg-accent' : 'bg-[#8696a0]'}`}>
-                <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${autoDownloadMobile ? 'right-1' : 'left-1'}`}></div>
-              </button>
+              <div><div className="text-text-primary">Téléchargement automatique</div><div className="text-sm text-text-secondary">Télécharger avec données mobiles</div></div>
+              <button onClick={() => setAutoDownloadMobile(!autoDownloadMobile)} className={`w-12 h-6 rounded-full relative transition-colors ${autoDownloadMobile ? 'bg-accent' : 'bg-[#8696a0]'}`}><div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${autoDownloadMobile ? 'right-1' : 'left-1'}`}></div></button>
             </div>
           </div>
         </div>
-
-        {/* Media type settings */}
         <div className="px-6 py-4 border-t border-bg-hover">
           <h3 className="text-sm text-accent mb-4">Types de médias</h3>
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Image size={20} className="text-blue-400" />
-                <span className="text-text-primary">Photos</span>
-              </div>
-              <button onClick={() => setAutoDownloadPhotos(!autoDownloadPhotos)} className={`w-12 h-6 rounded-full relative transition-colors ${autoDownloadPhotos ? 'bg-accent' : 'bg-[#8696a0]'}`}>
-                <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${autoDownloadPhotos ? 'right-1' : 'left-1'}`}></div>
-              </button>
+              <div className="flex items-center gap-3"><Image size={20} className="text-blue-400" /><span className="text-text-primary">Photos</span></div>
+              <button onClick={() => setAutoDownloadPhotos(!autoDownloadPhotos)} className={`w-12 h-6 rounded-full relative transition-colors ${autoDownloadPhotos ? 'bg-accent' : 'bg-[#8696a0]'}`}><div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${autoDownloadPhotos ? 'right-1' : 'left-1'}`}></div></button>
             </div>
-            
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Video size={20} className="text-purple-400" />
-                <span className="text-text-primary">Vidéos</span>
-              </div>
-              <button onClick={() => setAutoDownloadVideos(!autoDownloadVideos)} className={`w-12 h-6 rounded-full relative transition-colors ${autoDownloadVideos ? 'bg-accent' : 'bg-[#8696a0]'}`}>
-                <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${autoDownloadVideos ? 'right-1' : 'left-1'}`}></div>
-              </button>
+              <div className="flex items-center gap-3"><Video size={20} className="text-purple-400" /><span className="text-text-primary">Vidéos</span></div>
+              <button onClick={() => setAutoDownloadVideos(!autoDownloadVideos)} className={`w-12 h-6 rounded-full relative transition-colors ${autoDownloadVideos ? 'bg-accent' : 'bg-[#8696a0]'}`}><div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${autoDownloadVideos ? 'right-1' : 'left-1'}`}></div></button>
             </div>
-            
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Mic size={20} className="text-green-400" />
-                <span className="text-text-primary">Messages vocaux</span>
-              </div>
-              <button onClick={() => setAutoDownloadAudio(!autoDownloadAudio)} className={`w-12 h-6 rounded-full relative transition-colors ${autoDownloadAudio ? 'bg-accent' : 'bg-[#8696a0]'}`}>
-                <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${autoDownloadAudio ? 'right-1' : 'left-1'}`}></div>
-              </button>
+              <div className="flex items-center gap-3"><Mic size={20} className="text-green-400" /><span className="text-text-primary">Messages vocaux</span></div>
+              <button onClick={() => setAutoDownloadAudio(!autoDownloadAudio)} className={`w-12 h-6 rounded-full relative transition-colors ${autoDownloadAudio ? 'bg-accent' : 'bg-[#8696a0]'}`}><div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${autoDownloadAudio ? 'right-1' : 'left-1'}`}></div></button>
             </div>
-            
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <FileText size={20} className="text-orange-400" />
-                <span className="text-text-primary">Fichiers</span>
-              </div>
-              <button onClick={() => setAutoDownloadFiles(!autoDownloadFiles)} className={`w-12 h-6 rounded-full relative transition-colors ${autoDownloadFiles ? 'bg-accent' : 'bg-[#8696a0]'}`}>
-                <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${autoDownloadFiles ? 'right-1' : 'left-1'}`}></div>
-              </button>
+              <div className="flex items-center gap-3"><FileText size={20} className="text-orange-400" /><span className="text-text-primary">Fichiers</span></div>
+              <button onClick={() => setAutoDownloadFiles(!autoDownloadFiles)} className={`w-12 h-6 rounded-full relative transition-colors ${autoDownloadFiles ? 'bg-accent' : 'bg-[#8696a0]'}`}><div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${autoDownloadFiles ? 'right-1' : 'left-1'}`}></div></button>
             </div>
           </div>
         </div>
-
-        {/* Info */}
         <div className="px-6 py-4">
-          <p className="text-xs text-text-secondary">
-            Les paramètres de téléchargement automatique déterminent quand les médias sont téléchargés automatiquement.
-            Désactivez le téléchargement automatique pour économiser des données.
-          </p>
+          <p className="text-xs text-text-secondary">Les paramètres de téléchargement automatique déterminent quand les médias sont téléchargés automatiquement.</p>
         </div>
       </div>
     </div>
@@ -1482,25 +1165,17 @@ export function SettingsPage() {
       <div className="py-2">
         <button onClick={() => setCurrentView('faq')} className="w-full px-6 py-4 flex items-center gap-4 hover:bg-bg-surface transition-colors">
           <HelpCircle size={24} className="text-text-secondary" />
-          <div className="flex-1 text-left">
-            <div className="text-text-primary">FAQ</div>
-            <div className="text-sm text-text-secondary">Questions fréquentes</div>
-          </div>
+          <div className="flex-1 text-left"><div className="text-text-primary">FAQ</div><div className="text-sm text-text-secondary">Questions fréquentes</div></div>
           <ChevronRight size={20} className="text-text-secondary" />
         </button>
         <button onClick={() => setCurrentView('contact')} className="w-full px-6 py-4 flex items-center gap-4 hover:bg-bg-surface transition-colors">
           <Mail size={24} className="text-text-secondary" />
-          <div className="flex-1 text-left">
-            <div className="text-text-primary">Nous contacter</div>
-            <div className="text-sm text-text-secondary">Support technique</div>
-          </div>
+          <div className="flex-1 text-left"><div className="text-text-primary">Nous contacter</div><div className="text-sm text-text-secondary">Support technique</div></div>
           <ChevronRight size={20} className="text-text-secondary" />
         </button>
         <button onClick={() => setCurrentView('terms')} className="w-full px-6 py-4 flex items-center gap-4 hover:bg-bg-surface transition-colors">
           <Info size={24} className="text-text-secondary" />
-          <div className="flex-1 text-left">
-            <div className="text-text-primary">Conditions et politique de confidentialité</div>
-          </div>
+          <div className="flex-1 text-left"><div className="text-text-primary">Conditions et politique de confidentialité</div></div>
           <ChevronRight size={20} className="text-text-secondary" />
         </button>
         <div className="px-6 py-8 text-center space-y-2">
@@ -1536,9 +1211,7 @@ export function SettingsPage() {
           <p className="text-sm text-text-secondary mb-4">Notre équipe est là pour vous aider</p>
         </div>
         <div className="space-y-3">
-          <a href="mailto:contact@jematechnology.fr" className="block py-3 rounded-xl bg-accent hover:bg-[#5a5ec9] text-white font-medium">
-            contact@jematechnology.fr
-          </a>
+          <a href="mailto:contact@jematechnology.fr" className="block py-3 rounded-xl bg-accent hover:bg-[#5a5ec9] text-white font-medium">contact@jematechnology.fr</a>
         </div>
       </div>
     </div>
@@ -1572,39 +1245,17 @@ export function SettingsPage() {
     setBackupStatus('Démarrage de la sauvegarde...')
     
     try {
-      // Create backup (light or full)
       const { data: backupData, size } = isLightBackup
-        ? await createLightBackup(
-            user.id,
-            (progress, status) => {
-              setBackupProgress(progress)
-              setBackupStatus(status)
-            }
-          )
-        : await createBackup(
-            user.id,
-            backupSettings,
-            (progress, status) => {
-              setBackupProgress(progress)
-              setBackupStatus(status)
-            }
-          )
+        ? await createLightBackup(user.id, (progress, status) => { setBackupProgress(progress); setBackupStatus(status); })
+        : await createBackup(user.id, backupSettings, (progress, status) => { setBackupProgress(progress); setBackupStatus(status); })
       
-      // Export as encrypted file
       setBackupStatus('Chiffrement et téléchargement...')
       await exportBackupAsFile(backupData, backupPassword)
       
-      // Update metadata
       const now = new Date()
       setLastBackupDate(now)
       setLastBackupSize(size)
-      saveBackupMetadata({
-        lastBackupDate: now.toISOString(),
-        lastBackupSize: size,
-        backupCount: (getBackupMetadata().backupCount || 0) + 1
-      })
-      
-      // Update settings
+      saveBackupMetadata({ lastBackupDate: now.toISOString(), lastBackupSize: size, backupCount: (getBackupMetadata().backupCount || 0) + 1 })
       updateBackupSettings({ lastBackupDate: now.toISOString(), lastBackupSize: size })
       
       setBackupPassword('')
@@ -1635,46 +1286,22 @@ export function SettingsPage() {
     setBackupStatus('Lecture du fichier...')
     
     try {
-      // Import and decrypt backup
       const backupData = await importBackupFromFile(file, backupPassword)
       
-      if (!backupData) {
-        throw new Error('Impossible de lire le fichier de sauvegarde')
-      }
+      if (!backupData) throw new Error('Impossible de lire le fichier de sauvegarde')
       
-      // Confirm restore
       const confirmRestore = confirm(
-        `Voulez-vous restaurer cette sauvegarde ?\n\n` +
-        `Date de création : ${new Date(backupData.createdAt).toLocaleDateString('fr-FR')}\n` +
-        `Messages : ${backupData.messages.length}\n` +
-        `Conversations : ${backupData.conversations.length}\n` +
-        `Contacts : ${backupData.contacts.length}\n\n` +
-        `⚠️ Cette action peut écraser certaines données existantes.`
+        `Voulez-vous restaurer cette sauvegarde ?\n\nDate de création : ${new Date(backupData.createdAt).toLocaleDateString('fr-FR')}\nMessages : ${backupData.messages.length}\nConversations : ${backupData.conversations.length}\n\n⚠️ Cette action peut écraser certaines données existantes.`
       )
       
-      if (!confirmRestore) {
-        setIsRestoring(false)
-        return
-      }
+      if (!confirmRestore) { setIsRestoring(false); return }
       
-      // Restore backup
-      const result = await restoreBackup(
-        backupData,
-        user.id,
-        (progress, status) => {
-          setBackupProgress(progress)
-          setBackupStatus(status)
-        }
-      )
+      const result = await restoreBackup(backupData, user.id, (progress, status) => { setBackupProgress(progress); setBackupStatus(status); })
       
       if (result.success) {
         setBackupPassword('')
         setShowPasswordInput(false)
-        const stats = result.stats
-        const statsMessage = stats
-          ? `\n\n📊 Statistiques :\n• ${stats.conversations} conversations\n• ${stats.messages} messages\n• ${stats.contacts} contacts\n• ${stats.media} fichiers médias`
-          : ''
-        alert(`✅ Restauration terminée avec succès !${statsMessage}\n\nL'application va se recharger.`)
+        alert(`✅ Restauration terminée avec succès !\n\nL'application va se recharger.`)
         window.location.reload()
       } else {
         throw new Error(result.error || 'Erreur lors de la restauration')
@@ -1692,352 +1319,120 @@ export function SettingsPage() {
   const handleRestoreFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
-      if (!file.name.endsWith('.neph')) {
-        alert('❌ Format de fichier invalide\n\nVeuillez sélectionner un fichier .neph')
-        return
-      }
+      if (!file.name.endsWith('.neph')) { alert('❌ Format de fichier invalide\n\nVeuillez sélectionner un fichier .neph'); return }
       handleRestore(file)
     }
-  }
-
-  const formatBackupDate = (date: Date | null): string => {
-    if (!date) return 'Jamais'
-    return date.toLocaleDateString('fr-FR', {
-      day: 'numeric',
-      month: 'long',
-      hour: '2-digit',
-      minute: '2-digit'
-    })
   }
 
   const renderBackupView = () => (
     <div className="flex-1 overflow-y-auto pb-4">
       <div className="py-2">
-        {/* Password input modal */}
         {showPasswordInput && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div className="bg-bg-surface rounded-2xl p-6 w-full max-w-sm space-y-4">
-              <h3 className="text-lg font-semibold text-text-primary">
-                {passwordAction === 'backup' ? 'Mot de passe de sauvegarde' : 'Mot de passe de restauration'}
-              </h3>
-              <p className="text-sm text-text-secondary">
-                {passwordAction === 'backup'
-                  ? 'Créez un mot de passe pour chiffrer votre sauvegarde. Vous en aurez besoin pour la restaurer.'
-                  : 'Entrez le mot de passe utilisé lors de la création de cette sauvegarde.'}
-              </p>
-              <input
-                type="password"
-                value={backupPassword}
-                onChange={(e) => setBackupPassword(e.target.value)}
-                placeholder="Mot de passe"
-                className="w-full px-4 py-3 bg-bg-primary rounded-xl text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-accent"
-                autoFocus
-              />
+              <h3 className="text-lg font-semibold text-text-primary">{passwordAction === 'backup' ? 'Mot de passe de sauvegarde' : 'Mot de passe de restauration'}</h3>
+              <p className="text-sm text-text-secondary">{passwordAction === 'backup' ? 'Créez un mot de passe pour chiffrer votre sauvegarde. Vous en aurez besoin pour la restaurer.' : 'Entrez le mot de passe utilisé lors de la création de cette sauvegarde.'}</p>
+              <input type="password" value={backupPassword} onChange={(e) => setBackupPassword(e.target.value)} placeholder="Mot de passe" className="w-full px-4 py-3 bg-bg-primary rounded-xl text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-accent" autoFocus />
               <div className="flex gap-3">
-                <button
-                  onClick={() => {
-                    setShowPasswordInput(false)
-                    setBackupPassword('')
-                  }}
-                  className="flex-1 py-3 rounded-xl bg-bg-hover text-text-primary font-medium"
-                >
-                  Annuler
-                </button>
-                <button
-                  onClick={() => {
-                    if (backupPassword.length >= 4) {
-                      setShowPasswordInput(false)
-                      if (passwordAction === 'backup') {
-                        handleBackup(false)
-                      } else if (passwordAction === 'light-backup') {
-                        handleBackup(true)
-                      } else if (restoreFileRef.current?.files?.[0]) {
-                        handleRestore(restoreFileRef.current.files[0])
-                      }
-                    } else {
-                      alert('Le mot de passe doit contenir au moins 4 caractères')
-                    }
-                  }}
-                  disabled={backupPassword.length < 4}
-                  className="flex-1 py-3 rounded-xl bg-accent text-white font-medium disabled:opacity-50"
-                >
-                  Confirmer
-                </button>
+                <button onClick={() => { setShowPasswordInput(false); setBackupPassword(''); }} className="flex-1 py-3 rounded-xl bg-bg-hover text-text-primary font-medium">Annuler</button>
+                <button onClick={() => { if (backupPassword.length >= 4) { setShowPasswordInput(false); if (passwordAction === 'backup') handleBackup(false); else if (passwordAction === 'light-backup') handleBackup(true); else if (restoreFileRef.current?.files?.[0]) handleRestore(restoreFileRef.current.files[0]); } else alert('Le mot de passe doit contenir au moins 4 caractères'); }} disabled={backupPassword.length < 4} className="flex-1 py-3 rounded-xl bg-accent text-white font-medium disabled:opacity-50">Confirmer</button>
               </div>
             </div>
           </div>
         )}
 
-        {/* Progress indicator */}
         {(isBackingUp || isRestoring) && (
           <div className="px-6 py-4 bg-accent/10 mx-4 rounded-2xl mb-4">
-            <div className="flex items-center gap-3 mb-2">
-              <Loader2 size={20} className="animate-spin text-accent" />
-              <span className="text-text-primary font-medium">
-                {isBackingUp ? 'Sauvegarde en cours...' : 'Restauration en cours...'}
-              </span>
-            </div>
+            <div className="flex items-center gap-3 mb-2"><Loader2 size={20} className="animate-spin text-accent" /><span className="text-text-primary font-medium">{isBackingUp ? 'Sauvegarde en cours...' : 'Restauration en cours...'}</span></div>
             <div className="text-sm text-text-secondary mb-2">{backupStatus}</div>
-            <div className="w-full bg-bg-hover rounded-full h-2">
-              <div
-                className="bg-accent h-2 rounded-full transition-all duration-300"
-                style={{ width: `${backupProgress}%` }}
-              />
-            </div>
+            <div className="w-full bg-bg-hover rounded-full h-2"><div className="bg-accent h-2 rounded-full transition-all duration-300" style={{ width: `${backupProgress}%` }} /></div>
             <div className="text-xs text-text-secondary mt-1 text-right">{backupProgress}%</div>
           </div>
         )}
 
-        {/* Backup info header */}
         <div className="px-6 py-4">
           <div className="text-text-secondary text-sm mb-4">
             <h3 className="text-accent font-medium mb-2">Paramètres de la sauvegarde</h3>
-            <p>
-              Sauvegardez vos discussions et vos médias dans un fichier chiffré.
-              Vous pourrez ensuite l'uploader sur Proton Drive et le restaurer sur un nouvel appareil.
-            </p>
+            <p>Sauvegardez vos discussions et vos médias dans un fichier chiffré. Vous pourrez ensuite l'uploader sur Proton Drive et le restaurer sur un nouvel appareil.</p>
           </div>
         </div>
 
-        {/* Last backup info */}
         <div className="px-6 py-4 bg-bg-surface mx-4 rounded-2xl mb-4">
           <div className="space-y-2">
-            <div className="flex items-center gap-2 text-text-secondary text-sm">
-              <Calendar size={16} />
-              <span>Dernière sauvegarde : {formatBackupDate(lastBackupDate)}</span>
-            </div>
-            {lastBackupSize > 0 && (
-              <div className="flex items-center gap-2 text-text-secondary text-sm">
-                <Database size={16} />
-                <span>Taille : {formatBytes(lastBackupSize)}</span>
-              </div>
-            )}
-            {estimatedSize > 0 && (
-              <div className="flex items-center gap-2 text-text-secondary text-sm">
-                <Database size={16} />
-                <span>Taille estimée : {formatBytes(estimatedSize)}</span>
-              </div>
-            )}
-            <div className="flex items-center gap-2 text-accent text-sm">
-              <Lock size={16} />
-              <span>Chiffrée de bout en bout</span>
-            </div>
+            <div className="flex items-center gap-2 text-text-secondary text-sm"><Calendar size={16} /><span>Dernière sauvegarde : {formatBackupDate(lastBackupDate)}</span></div>
+            {lastBackupSize > 0 && <div className="flex items-center gap-2 text-text-secondary text-sm"><Database size={16} /><span>Taille : {formatBytes(lastBackupSize)}</span></div>}
+            {estimatedSize > 0 && <div className="flex items-center gap-2 text-text-secondary text-sm"><Database size={16} /><span>Taille estimée : {formatBytes(estimatedSize)}</span></div>}
+            <div className="flex items-center gap-2 text-accent text-sm"><Lock size={16} /><span>Chiffrée de bout en bout</span></div>
           </div>
         </div>
 
-        {/* Backup buttons */}
         <div className="px-6 py-4 space-y-3">
-          <button
-            onClick={() => {
-              setPasswordAction('backup')
-              setLightBackupMode(false)
-              setShowPasswordInput(true)
-            }}
-            disabled={isBackingUp || isRestoring}
-            className={`w-full py-3 rounded-2xl font-medium transition-colors flex items-center justify-center gap-2 ${
-              isBackingUp || isRestoring
-                ? 'bg-accent/50 text-white/70 cursor-not-allowed'
-                : 'bg-accent hover:bg-[#5a5ec9] text-white'
-            }`}
-          >
-            <CloudUpload size={20} />
-            Créer une sauvegarde complète
-          </button>
-          
-          <button
-            onClick={() => {
-              setPasswordAction('light-backup')
-              setLightBackupMode(true)
-              setShowPasswordInput(true)
-            }}
-            disabled={isBackingUp || isRestoring}
-            className={`w-full py-3 rounded-2xl font-medium transition-colors flex items-center justify-center gap-2 ${
-              isBackingUp || isRestoring
-                ? 'bg-bg-surface/50 text-text-secondary cursor-not-allowed'
-                : 'bg-bg-surface hover:bg-bg-hover text-text-primary'
-            }`}
-          >
-            <FileText size={20} />
-            Sauvegarde légère (texte uniquement)
-          </button>
-          <p className="text-xs text-text-secondary text-center">
-            La sauvegarde légère n'inclut pas les médias et utilise moins de mémoire
-          </p>
+          <button onClick={() => { setPasswordAction('backup'); setLightBackupMode(false); setShowPasswordInput(true); }} disabled={isBackingUp || isRestoring} className={`w-full py-3 rounded-2xl font-medium transition-colors flex items-center justify-center gap-2 ${isBackingUp || isRestoring ? 'bg-accent/50 text-white/70 cursor-not-allowed' : 'bg-accent hover:bg-[#5a5ec9] text-white'}`}><CloudUpload size={20} />Créer une sauvegarde complète</button>
+          <button onClick={() => { setPasswordAction('light-backup'); setLightBackupMode(true); setShowPasswordInput(true); }} disabled={isBackingUp || isRestoring} className={`w-full py-3 rounded-2xl font-medium transition-colors flex items-center justify-center gap-2 ${isBackingUp || isRestoring ? 'bg-bg-surface/50 text-text-secondary cursor-not-allowed' : 'bg-bg-surface hover:bg-bg-hover text-text-primary'}`}><FileText size={20} />Sauvegarde légère (texte uniquement)</button>
+          <p className="text-xs text-text-secondary text-center">La sauvegarde légère n'inclut pas les médias</p>
         </div>
 
-        {/* Restore button */}
         <div className="px-6 py-2">
-          <input
-            ref={restoreFileRef}
-            type="file"
-            accept=".neph"
-            onChange={handleRestoreFileSelect}
-            className="hidden"
-          />
-          <button
-            onClick={() => restoreFileRef.current?.click()}
-            disabled={isBackingUp || isRestoring}
-            className={`w-full py-3 rounded-2xl font-medium transition-colors flex items-center justify-center gap-2 ${
-              isBackingUp || isRestoring
-                ? 'bg-bg-surface/50 text-text-secondary cursor-not-allowed'
-                : 'bg-bg-surface hover:bg-bg-hover text-text-primary'
-            }`}
-          >
-            <DownloadCloud size={20} />
-            Restaurer une sauvegarde
-          </button>
+          <input ref={restoreFileRef} type="file" accept=".neph" onChange={handleRestoreFileSelect} className="hidden" />
+          <button onClick={() => restoreFileRef.current?.click()} disabled={isBackingUp || isRestoring} className={`w-full py-3 rounded-2xl font-medium transition-colors flex items-center justify-center gap-2 ${isBackingUp || isRestoring ? 'bg-bg-surface/50 text-text-secondary cursor-not-allowed' : 'bg-bg-surface hover:bg-bg-hover text-text-primary'}`}><DownloadCloud size={20} />Restaurer une sauvegarde</button>
         </div>
 
-        {/* Proton Drive info */}
         <div className="px-6 py-4 border-t border-bg-hover mt-4">
           <div className="bg-[#6d4aff]/10 rounded-2xl p-4">
             <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-full bg-[#6d4aff] flex items-center justify-center flex-shrink-0">
-                <Cloud size={20} className="text-white" />
-              </div>
+              <div className="w-10 h-10 rounded-full bg-[#6d4aff] flex items-center justify-center flex-shrink-0"><Cloud size={20} className="text-white" /></div>
               <div className="flex-1">
                 <div className="text-text-primary font-medium mb-1">Stockage recommandé : Proton Drive</div>
-                <p className="text-text-secondary text-sm mb-2">
-                  Après avoir créé votre sauvegarde, uploadez le fichier .neph sur Proton Drive pour le stocker en toute sécurité.
-                </p>
-                <div className="text-text-secondary text-xs">
-                  💡 Conseil : Gardez votre mot de passe de sauvegarde en lieu sûr
-                </div>
+                <p className="text-text-secondary text-sm mb-2">Après avoir créé votre sauvegarde, uploadez le fichier .neph sur Proton Drive pour le stocker en toute sécurité.</p>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Auto backup settings */}
         <div className="px-6 py-4 border-t border-bg-hover">
           <div className="flex items-center justify-between mb-4">
-            <div>
-              <div className="text-text-primary">Fréquence de rappel</div>
-              <div className="text-text-secondary text-sm">
-                {backupSettings.frequency === 'daily' ? 'Tous les jours' :
-                 backupSettings.frequency === 'weekly' ? 'Toutes les semaines' :
-                 'Tous les mois'}
-              </div>
-            </div>
-            <select
-              value={backupSettings.frequency}
-              onChange={(e) => updateBackupSettings({ frequency: e.target.value as 'daily' | 'weekly' | 'monthly' })}
-              className="bg-bg-surface text-text-primary px-3 py-2 rounded-xl border border-bg-hover focus:outline-none focus:border-accent"
-            >
-              <option value="daily">Tous les jours</option>
-              <option value="weekly">Toutes les semaines</option>
-              <option value="monthly">Tous les mois</option>
+            <div><div className="text-text-primary">Fréquence de rappel</div><div className="text-text-secondary text-sm">{backupSettings.frequency === 'daily' ? 'Tous les jours' : backupSettings.frequency === 'weekly' ? 'Toutes les semaines' : 'Tous les mois'}</div></div>
+            <select value={backupSettings.frequency} onChange={(e) => updateBackupSettings({ frequency: e.target.value as 'daily' | 'weekly' | 'monthly' })} className="bg-bg-surface text-text-primary px-3 py-2 rounded-xl border border-bg-hover focus:outline-none focus:border-accent">
+              <option value="daily">Tous les jours</option><option value="weekly">Toutes les semaines</option><option value="monthly">Tous les mois</option>
             </select>
           </div>
         </div>
 
-        {/* Include images toggle */}
         <div className="px-6 py-4 border-t border-bg-hover">
           <div className="flex items-center justify-between">
-            <div>
-              <div className="text-text-primary">Inclure les images</div>
-              <div className="text-text-secondary text-sm">
-                Photos et images partagées
-              </div>
-            </div>
-            <button
-              onClick={() => updateBackupSettings({ includeImages: !backupSettings.includeImages })}
-              className={`w-12 h-6 rounded-full relative transition-colors ${
-                backupSettings.includeImages ? 'bg-accent' : 'bg-[#8696a0]'
-              }`}
-            >
-              <div
-                className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${
-                  backupSettings.includeImages ? 'right-1' : 'left-1'
-                }`}
-              ></div>
-            </button>
+            <div><div className="text-text-primary">Inclure les images</div><div className="text-text-secondary text-sm">Photos et images partagées</div></div>
+            <button onClick={() => updateBackupSettings({ includeImages: !backupSettings.includeImages })} className={`w-12 h-6 rounded-full relative transition-colors ${backupSettings.includeImages ? 'bg-accent' : 'bg-[#8696a0]'}`}><div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${backupSettings.includeImages ? 'right-1' : 'left-1'}`}></div></button>
           </div>
         </div>
 
-        {/* Include videos toggle */}
         <div className="px-6 py-4 border-t border-bg-hover">
           <div className="flex items-center justify-between">
-            <div>
-              <div className="text-text-primary">Inclure les vidéos</div>
-              <div className="text-text-secondary text-sm">
-                Les vidéos peuvent augmenter la taille de la sauvegarde
-              </div>
-            </div>
-            <button
-              onClick={() => updateBackupSettings({ includeVideos: !backupSettings.includeVideos })}
-              className={`w-12 h-6 rounded-full relative transition-colors ${
-                backupSettings.includeVideos ? 'bg-accent' : 'bg-[#8696a0]'
-              }`}
-            >
-              <div
-                className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${
-                  backupSettings.includeVideos ? 'right-1' : 'left-1'
-                }`}
-              ></div>
-            </button>
+            <div><div className="text-text-primary">Inclure les vidéos</div><div className="text-text-secondary text-sm">Les vidéos peuvent augmenter la taille de la sauvegarde</div></div>
+            <button onClick={() => updateBackupSettings({ includeVideos: !backupSettings.includeVideos })} className={`w-12 h-6 rounded-full relative transition-colors ${backupSettings.includeVideos ? 'bg-accent' : 'bg-[#8696a0]'}`}><div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${backupSettings.includeVideos ? 'right-1' : 'left-1'}`}></div></button>
           </div>
         </div>
 
-        {/* Include audio toggle */}
         <div className="px-6 py-4 border-t border-bg-hover">
           <div className="flex items-center justify-between">
-            <div>
-              <div className="text-text-primary">Inclure les messages vocaux</div>
-              <div className="text-text-secondary text-sm">
-                Messages vocaux et fichiers audio
-              </div>
-            </div>
-            <button
-              onClick={() => updateBackupSettings({ includeAudio: !backupSettings.includeAudio })}
-              className={`w-12 h-6 rounded-full relative transition-colors ${
-                backupSettings.includeAudio ? 'bg-accent' : 'bg-[#8696a0]'
-              }`}
-            >
-              <div
-                className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${
-                  backupSettings.includeAudio ? 'right-1' : 'left-1'
-                }`}
-              ></div>
-            </button>
+            <div><div className="text-text-primary">Inclure les messages vocaux</div><div className="text-text-secondary text-sm">Messages vocaux et fichiers audio</div></div>
+            <button onClick={() => updateBackupSettings({ includeAudio: !backupSettings.includeAudio })} className={`w-12 h-6 rounded-full relative transition-colors ${backupSettings.includeAudio ? 'bg-accent' : 'bg-[#8696a0]'}`}><div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${backupSettings.includeAudio ? 'right-1' : 'left-1'}`}></div></button>
           </div>
         </div>
 
-        {/* Include files toggle */}
         <div className="px-6 py-4 border-t border-bg-hover">
           <div className="flex items-center justify-between">
-            <div>
-              <div className="text-text-primary">Inclure les fichiers</div>
-              <div className="text-text-secondary text-sm">
-                Documents, PDF et autres fichiers
-              </div>
-            </div>
-            <button
-              onClick={() => updateBackupSettings({ includeFiles: !backupSettings.includeFiles })}
-              className={`w-12 h-6 rounded-full relative transition-colors ${
-                backupSettings.includeFiles ? 'bg-accent' : 'bg-[#8696a0]'
-              }`}
-            >
-              <div
-                className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${
-                  backupSettings.includeFiles ? 'right-1' : 'left-1'
-                }`}
-              ></div>
-            </button>
+            <div><div className="text-text-primary">Inclure les fichiers</div><div className="text-text-secondary text-sm">Documents, PDF et autres fichiers</div></div>
+            <button onClick={() => updateBackupSettings({ includeFiles: !backupSettings.includeFiles })} className={`w-12 h-6 rounded-full relative transition-colors ${backupSettings.includeFiles ? 'bg-accent' : 'bg-[#8696a0]'}`}><div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${backupSettings.includeFiles ? 'right-1' : 'left-1'}`}></div></button>
           </div>
         </div>
 
-        {/* Info about encryption */}
         <div className="px-6 py-4">
           <div className="bg-bg-surface rounded-2xl p-4">
             <div className="flex items-start gap-3">
               <Shield size={24} className="text-accent flex-shrink-0 mt-0.5" />
               <div>
                 <div className="text-text-primary font-medium mb-1">Sauvegarde chiffrée</div>
-                <p className="text-text-secondary text-sm">
-                  Vos sauvegardes sont chiffrées de bout en bout avec votre mot de passe personnel.
-                  Personne ne peut accéder à vos données sans ce mot de passe.
-                </p>
+                <p className="text-text-secondary text-sm">Vos sauvegardes sont chiffrées de bout en bout avec votre mot de passe personnel.</p>
               </div>
             </div>
           </div>
@@ -2081,9 +1476,7 @@ export function SettingsPage() {
               <ArrowLeft size={20} />
             </button>
           )}
-          <h1 className="text-xl font-medium text-text-primary">
-            {getViewTitle(currentView)}
-          </h1>
+          <h1 className="text-xl font-medium text-text-primary">{getViewTitle(currentView)}</h1>
         </div>
         {views[currentView]()}
       </div>

@@ -356,6 +356,129 @@ export function ContactsPage() {
     }
   }
 
+// Helper: Find cached conversation for contact
+const findCachedConversation = async (
+  cachedConversations: any[],
+  isSelfContact: boolean,
+  userId: string,
+  contactId: string
+): Promise<string | null> => {
+  if (cachedConversations.length === 0) return null;
+  
+  if (isSelfContact) {
+    const cachedConv = cachedConversations.find(c =>
+      c.type === 'direct' &&
+      c.created_by === userId &&
+      c.name === 'Messages enregistrés'
+    );
+    return cachedConv?.id || null;
+  } else {
+    const cachedConv = cachedConversations.find(c =>
+      c.type === 'direct' &&
+      c.otherUserProfile?.id === contactId
+    );
+    return cachedConv?.id || null;
+  }
+};
+
+// Helper: Find existing conversation in database
+const findExistingConversation = async (
+  supabase: any,
+  isSelfContact: boolean,
+  userId: string,
+  contactId: string
+): Promise<string | null> => {
+  if (isSelfContact) {
+    const { data: savedMessagesConv } = await supabase
+      .from('conversations')
+      .select('id')
+      .eq('type', 'direct')
+      .eq('created_by', userId)
+      .eq('name', 'Messages enregistrés')
+      .maybeSingle();
+    
+    return savedMessagesConv?.id || null;
+  } else {
+    const { data: existingConv } = await supabase
+      .from('conversation_members')
+      .select(`
+        conversation_id,
+        conversations!conversation_members_conversation_id_fkey!inner(id, type)
+      `)
+      .eq('user_id', contactId)
+      .eq('conversations.type', 'direct');
+    
+    if (existingConv && existingConv.length > 0) {
+      const convIds = existingConv.map(c => c.conversation_id);
+      const { data: userMembership } = await supabase
+        .from('conversation_members')
+        .select('conversation_id')
+        .eq('user_id', userId)
+        .in('conversation_id', convIds)
+        .limit(1)
+        .maybeSingle();
+      
+      return userMembership?.conversation_id || null;
+    }
+    return null;
+  }
+};
+
+// Helper: Create new conversation and add members
+const createNewConversationAndAddMembers = async (
+  supabase: any,
+  userId: string,
+  contactId: string,
+  isSelfContact: boolean
+): Promise<string | null> => {
+  const { data: conversation, error: convError } = await supabase
+    .from('conversations')
+    .insert({
+      type: 'direct',
+      created_by: userId,
+      is_encrypted: true,
+      last_message_at: new Date().toISOString(),
+      name: isSelfContact ? 'Messages enregistrés' : null,
+    })
+    .select()
+    .maybeSingle();
+
+  if (convError || !conversation) {
+    console.error('Error creating conversation:', convError);
+    return null;
+  }
+
+  // Navigate immediately (optimistic)
+  console.log('Conversation created, navigating immediately:', conversation.id);
+
+  // Add members in background (non-blocking)
+  const addMembers = async () => {
+    try {
+      if (isSelfContact) {
+        await supabase
+          .from('conversation_members')
+          .insert([
+            { conversation_id: conversation.id, user_id: userId, role: 'admin', is_active: true }
+          ]);
+      } else {
+        await supabase
+          .from('conversation_members')
+          .insert([
+            { conversation_id: conversation.id, user_id: userId, role: 'admin', is_active: true },
+            { conversation_id: conversation.id, user_id: contactId, role: 'member', is_active: true }
+          ]);
+      }
+      console.log('Members added successfully');
+    } catch (err) {
+      console.error('Error adding members:', err);
+    }
+  };
+  
+  // Execute in background without awaiting
+  addMembers();
+  return conversation.id;
+};
+
   // Track ongoing conversation creation to prevent duplicates
   const creatingConversationRef = useRef<Set<string>>(new Set())
 
@@ -376,138 +499,50 @@ export function ContactsPage() {
     try {
       // OPTIMIZATION 1: Check IndexedDB cache first for instant navigation
       const cachedConversations = await offlineStorage.getConversations()
+      const cachedConvId = await findCachedConversation(
+        cachedConversations,
+        isSelfContact,
+        user.id,
+        contactId
+      )
       
-      if (cachedConversations.length > 0) {
-        let cachedConv = null
-        
-        if (isSelfContact) {
-          // For "Saved Messages", find conversation with only self as member
-          cachedConv = cachedConversations.find(c =>
-            c.type === 'direct' &&
-            c.created_by === user.id &&
-            c.name === 'Messages enregistrés'
-          )
-        } else {
-          // For normal contacts, find direct conversation with this user
-          cachedConv = cachedConversations.find(c =>
-            c.type === 'direct' &&
-            c.otherUserProfile?.id === contactId
-          )
-        }
-        
-        if (cachedConv) {
-          console.log('Found conversation in cache, navigating immediately:', cachedConv.id)
-          navigate(`/chat/${cachedConv.id}`)
-          return
-        }
+      if (cachedConvId) {
+        console.log('Found conversation in cache, navigating immediately:', cachedConvId)
+        navigate(`/chat/${cachedConvId}`)
+        return
       }
 
       // Mark as creating to prevent duplicates
       creatingConversationRef.current.add(contactId)
 
       // OPTIMIZATION 2: Single optimized query to find existing conversation
-      if (isSelfContact) {
-        // Pour "Saved Messages", chercher une conversation où l'utilisateur est le seul membre
-        const { data: savedMessagesConv } = await supabase
-          .from('conversations')
-          .select('id')
-          .eq('type', 'direct')
-          .eq('created_by', user.id)
-          .eq('name', 'Messages enregistrés')
-          .maybeSingle()
-        
-        if (savedMessagesConv) {
-          console.log('Saved Messages conversation found:', savedMessagesConv.id)
-          creatingConversationRef.current.delete(contactId)
-          navigate(`/chat/${savedMessagesConv.id}`)
-          return
-        }
-      } else {
-        // Optimized: Use a single query with join to find direct conversation
-        const { data: existingConv } = await supabase
-          .from('conversation_members')
-          .select(`
-            conversation_id,
-            conversations!conversation_members_conversation_id_fkey!inner(id, type)
-          `)
-          .eq('user_id', contactId)
-          .eq('conversations.type', 'direct')
-        
-        if (existingConv && existingConv.length > 0) {
-          // Check if user is also a member of any of these conversations
-          const convIds = existingConv.map(c => c.conversation_id)
-          const { data: userMembership } = await supabase
-            .from('conversation_members')
-            .select('conversation_id')
-            .eq('user_id', user.id)
-            .in('conversation_id', convIds)
-            .limit(1)
-            .maybeSingle()
-          
-          if (userMembership) {
-            console.log('Direct conversation found:', userMembership.conversation_id)
-            creatingConversationRef.current.delete(contactId)
-            navigate(`/chat/${userMembership.conversation_id}`)
-            return
-          }
-        }
-      }
+      const existingConvId = await findExistingConversation(
+        supabase,
+        isSelfContact,
+        user.id,
+        contactId
+      )
 
-      // OPTIMIZATION 3: Create conversation and navigate optimistically
-      // Generate a temporary ID for optimistic navigation
-      const { data: conversation, error: convError } = await supabase
-        .from('conversations')
-        .insert({
-          type: 'direct',
-          created_by: user.id,
-          is_encrypted: true,
-          last_message_at: new Date().toISOString(),
-          name: isSelfContact ? 'Messages enregistrés' : null,
-        })
-        .select()
-        .maybeSingle()
-
-      if (convError) {
-        console.error('Error creating conversation:', convError)
+      if (existingConvId) {
+        console.log('Existing conversation found:', existingConvId)
         creatingConversationRef.current.delete(contactId)
+        navigate(`/chat/${existingConvId}`)
         return
       }
 
-      if (conversation) {
-        // Navigate immediately (optimistic)
-        console.log('Conversation created, navigating immediately:', conversation.id)
-        navigate(`/chat/${conversation.id}`)
+      // OPTIMIZATION 3: Create conversation and navigate optimistically
+      const newConvId = await createNewConversationAndAddMembers(
+        supabase,
+        user.id,
+        contactId,
+        isSelfContact
+      )
 
-        // Add members in background (non-blocking)
-        const addMembers = async () => {
-          try {
-            if (isSelfContact) {
-              await supabase
-                .from('conversation_members')
-                .insert([
-                  { conversation_id: conversation.id, user_id: user.id, role: 'admin', is_active: true }
-                ])
-            } else {
-              await supabase
-                .from('conversation_members')
-                .insert([
-                  { conversation_id: conversation.id, user_id: user.id, role: 'admin', is_active: true },
-                  { conversation_id: conversation.id, user_id: contactId, role: 'member', is_active: true }
-                ])
-            }
-            console.log('Members added successfully')
-          } catch (err) {
-            console.error('Error adding members:', err)
-          } finally {
-            creatingConversationRef.current.delete(contactId)
-          }
-        }
-        
-        // Execute in background without awaiting
-        addMembers()
-      } else {
-        creatingConversationRef.current.delete(contactId)
+      if (newConvId) {
+        navigate(`/chat/${newConvId}`)
       }
+      
+      creatingConversationRef.current.delete(contactId)
     } catch (err) {
       console.error('Error in createConversation:', err)
       creatingConversationRef.current.delete(contactId)
@@ -674,6 +709,60 @@ export function ContactsPage() {
     })
   }
 
+// Helper: Process a single contact for deletion
+const processContactForDeletion = async (
+  supabase: any,
+  userId: string,
+  contact: { id: string; contact_user_id: string },
+  myConversations: { conversation_id: string }[] | null
+): Promise<boolean> => {
+  const contactUserId = contact.contact_user_id;
+  const isVirtual = contact.id.startsWith('chat-');
+  const isSelfContact = contactUserId === userId;
+  
+  if (!myConversations) return false;
+  
+  let foundConversation = false;
+  
+  // Handle Saved Messages (self-contact)
+  if (isSelfContact) {
+    foundConversation = await deleteSavedMessagesConversation(userId, myConversations);
+    if (foundConversation) {
+      console.log('Deleted Saved Messages conversation');
+    }
+  } else {
+    // Handle normal direct conversation
+    foundConversation = await deleteDirectConversation(
+      userId, 
+      contactUserId, 
+      isVirtual, 
+      myConversations
+    );
+    if (foundConversation) {
+      console.log('Deleted direct conversation');
+    }
+  }
+  
+  // Handle virtual contacts from group conversations
+  if (!foundConversation && isVirtual) {
+    console.log('Virtual contact from group conversation - removing from shared groups');
+    await removeContactFromGroups(userId, contactUserId, myConversations);
+  }
+  
+  return foundConversation;
+};
+
+// Helper: Get contacts to delete and categorize them
+const getContactsToDelete = (
+  contacts: (Contact & { profile: Profile })[],
+  selectedContacts: Set<string>
+): { explicit: (Contact & { profile: Profile })[]; virtual: (Contact & { profile: Profile })[] } => {
+  const contactsToDelete = contacts.filter(c => selectedContacts.has(c.id));
+  const explicit = contactsToDelete.filter(c => !c.id.startsWith('chat-'));
+  const virtual = contactsToDelete.filter(c => c.id.startsWith('chat-'));
+  return { explicit, virtual };
+};
+
   const deleteSelectedContacts = useCallback(async () => {
     if (selectedContacts.size === 0 || !user) return
     
@@ -691,61 +780,27 @@ export function ContactsPage() {
       const contactsToDelete = contacts.filter(c => selectedContacts.has(c.id))
       console.log('Contacts to delete:', contactsToDelete.map(c => ({ id: c.id, contact_user_id: c.contact_user_id, isVirtual: c.id.startsWith('chat-') })))
       
-      // Separate explicit contacts from virtual chat contacts
-      const explicitContacts = contactsToDelete.filter(c => !c.id.startsWith('chat-'))
-      const virtualContacts = contactsToDelete.filter(c => c.id.startsWith('chat-'))
-      
-      console.log('Explicit contacts:', explicitContacts.length)
-      console.log('Virtual contacts:', virtualContacts.length)
-      
-      // Process ALL contacts - find and handle their conversations
+      // Get the conversations for the user
+      const { data: myConversations } = await supabase
+        .from('conversation_members')
+        .select('conversation_id')
+        .eq('user_id', user.id)
+
+      console.log('My conversations count:', myConversations?.length)
+
+      // Process each contact
       for (const contact of contactsToDelete) {
-        const contactUserId = contact.contact_user_id
-        const isVirtual = contact.id.startsWith('chat-')
-        const isSelfContact = contactUserId === user.id
-        
-        console.log(`Processing contact: ${contactUserId}, isVirtual: ${isVirtual}, isSelf: ${isSelfContact}`)
-        
-        // Find the direct conversation with this user
-        const { data: myConversations, error: convError } = await supabase
-          .from('conversation_members')
-          .select('conversation_id')
-          .eq('user_id', user.id)
-
-        console.log('My conversations count:', myConversations?.length, 'Error:', convError)
-
-        if (myConversations) {
-          let foundConversation = false
-          
-          // Handle Saved Messages (self-contact)
-          if (isSelfContact) {
-            foundConversation = await deleteSavedMessagesConversation(user.id, myConversations)
-            if (foundConversation) {
-              console.log('Deleted Saved Messages conversation')
-            }
-          } else {
-            // Handle normal direct conversation
-            foundConversation = await deleteDirectConversation(
-              user.id, 
-              contactUserId, 
-              isVirtual, 
-              myConversations
-            )
-            if (foundConversation) {
-              console.log('Deleted direct conversation')
-            }
-          }
-          
-          // Handle virtual contacts from group conversations
-          if (!foundConversation && isVirtual) {
-            console.log('Virtual contact from group conversation - removing from shared groups')
-            await removeContactFromGroups(user.id, contactUserId, myConversations)
-          }
-        }
+        await processContactForDeletion(
+          supabase,
+          user.id,
+          contact,
+          myConversations
+        );
       }
       
       // Delete explicit contacts from contacts table
-      const realContactIds = explicitContacts.map(c => c.id)
+      const { explicit } = getContactsToDelete(contacts, selectedContacts);
+      const realContactIds = explicit.map(c => c.id)
 
       if (realContactIds.length > 0) {
         console.log('Deleting explicit contacts with IDs:', realContactIds)
