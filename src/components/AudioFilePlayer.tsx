@@ -58,7 +58,6 @@ export const AudioFilePlayer: React.FC<AudioFilePlayerProps> = ({
   isOwn = false,
 }) => {
   const audioRef = useRef<HTMLAudioElement>(null);
-  const progressRef = useRef<HTMLDivElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(initialDuration || 0);
@@ -102,40 +101,13 @@ export const AudioFilePlayer: React.FC<AudioFilePlayerProps> = ({
     }
   };
 
-  const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (progressRef.current && audioRef.current && isLoaded) {
-      const rect = progressRef.current.getBoundingClientRect();
-      const percent = (e.clientX - rect.left) / rect.width;
-      const newTime = percent * duration;
+  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newTime = parseFloat(e.target.value);
+    setCurrentTime(newTime);
+    if (audioRef.current) {
       audioRef.current.currentTime = newTime;
-      setCurrentTime(newTime);
     }
   };
-
-  const handleProgressDrag = useCallback((e: MouseEvent) => {
-    if (progressRef.current && audioRef.current && isDragging) {
-      const rect = progressRef.current.getBoundingClientRect();
-      const percent = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-      const newTime = percent * duration;
-      audioRef.current.currentTime = newTime;
-      setCurrentTime(newTime);
-    }
-  }, [isDragging, duration]);
-
-  const handleMouseUp = useCallback(() => {
-    setIsDragging(false);
-  }, []);
-
-  useEffect(() => {
-    if (isDragging) {
-      globalThis.addEventListener('mousemove', handleProgressDrag);
-      globalThis.addEventListener('mouseup', handleMouseUp);
-      return () => {
-        globalThis.removeEventListener('mousemove', handleProgressDrag);
-        globalThis.removeEventListener('mouseup', handleMouseUp);
-      };
-    }
-  }, [isDragging, handleProgressDrag, handleMouseUp]);
 
   const skipBackward = () => {
     if (audioRef.current) {
@@ -163,43 +135,25 @@ export const AudioFilePlayer: React.FC<AudioFilePlayerProps> = ({
       </div>
 
       {/* Progress bar - sleek design */}
-      <div className="px-4 py-2">
-        <div
-          ref={progressRef}
-          role="slider"
-          aria-valuenow={Math.round(progress)}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuetext={`${Math.round(progress)}%`}
-          tabIndex={0}
-          onClick={handleProgressClick}
+      <div className="px-4 py-2 flex items-center">
+        <input
+          type="range"
+          min={0}
+          max={duration || 0}
+          step={0.1}
+          value={currentTime}
+          onChange={handleSeek}
           onMouseDown={() => setIsDragging(true)}
-          onKeyDown={(e) => {
-            if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
-              e.preventDefault();
-              const newTime = Math.min(duration, currentTime + duration * 0.1);
-              audioRef.current && (audioRef.current.currentTime = newTime);
-              setCurrentTime(newTime);
-            } else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
-              e.preventDefault();
-              const newTime = Math.max(0, currentTime - duration * 0.1);
-              audioRef.current && (audioRef.current.currentTime = newTime);
-              setCurrentTime(newTime);
-            }
+          onMouseUp={() => setIsDragging(false)}
+          onTouchStart={() => setIsDragging(true)}
+          onTouchEnd={() => setIsDragging(false)}
+          className={`w-full h-1 rounded-full cursor-pointer appearance-none ${getProgressBarBgClass(isOwn)}`}
+          style={{
+            backgroundSize: `${progress}% 100%`,
+            backgroundImage: `linear-gradient(${isOwn ? 'white' : '#787add'}, ${isOwn ? 'white' : '#787add'})`,
+            backgroundRepeat: 'no-repeat'
           }}
-          className={`relative h-1 rounded-full cursor-pointer group ${getProgressBarBgClass(isOwn)}`}
-        >
-          {/* Progress fill */}
-          <div
-            className={`absolute left-0 top-0 h-full rounded-full transition-all duration-100 ${getProgressFillClass(isOwn)}`}
-            style={{ width: `${progress}%` }}
-          />
-          {/* Drag handle - appears on hover */}
-          <div
-            className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
-            style={{ left: `calc(${progress}% - 6px)` }}
-          />
-        </div>
+        />
       </div>
 
       {/* Controls row - centered with time on sides */}

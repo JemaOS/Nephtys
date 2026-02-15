@@ -89,16 +89,9 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({
         </button>
       )}
 
-      <div
-        className="flex cursor-pointer hover:bg-bg-surface/50 transition-colors"
+      <button
+        className="flex w-full text-left cursor-pointer hover:bg-bg-surface/50 transition-colors"
         onClick={handleClick}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            handleClick();
-          }
-        }}
-        role="button"
-        tabIndex={0}
         aria-label={title || 'Ouvrir le lien'}
       >
         {/* Thumbnail */}
@@ -237,16 +230,9 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({
     <>
       <div className="mt-1.5 max-w-[240px] sm:max-w-[280px]">
         {/* Preview Card */}
-        <div
-          className={`rounded-lg overflow-hidden cursor-pointer relative ${getCardBgClass()}`}
+        <button
+          className={`w-full text-left rounded-lg overflow-hidden cursor-pointer relative ${getCardBgClass()}`}
           onClick={handleClick}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              handleClick();
-            }
-          }}
-          role="button"
-          tabIndex={0}
           aria-label={title || 'Ouvrir le lien'}
         >
           {/* YouTube Play Overlay - smaller and more subtle */}
@@ -264,7 +250,7 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({
           ) : (
             renderRegularPreview()
           )}
-        </div>
+        </button>
 
         {/* Truncated clickable URL below the card */}
         <a
