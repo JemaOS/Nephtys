@@ -135,6 +135,129 @@ const createNewConversation = async (supabase: any, userId: string, contactUserI
   return conversation.id
 }
 
+// Helper: Find cached conversation for contact (moved to module level to reduce complexity)
+const findCachedConversation = async (
+  cachedConversations: any[],
+  isSelfContact: boolean,
+  userId: string,
+  contactId: string
+): Promise<string | null> => {
+  if (cachedConversations.length === 0) return null;
+  
+  if (isSelfContact) {
+    const cachedConv = cachedConversations.find(c =>
+      c.type === 'direct' &&
+      c.created_by === userId &&
+      c.name === 'Messages enregistrés'
+    );
+    return cachedConv?.id || null;
+  } else {
+    const cachedConv = cachedConversations.find(c =>
+      c.type === 'direct' &&
+      c.otherUserProfile?.id === contactId
+    );
+    return cachedConv?.id || null;
+  }
+};
+
+// Helper: Find existing conversation in database (moved to module level to reduce complexity)
+const findExistingConversation = async (
+  supabase: any,
+  isSelfContact: boolean,
+  userId: string,
+  contactId: string
+): Promise<string | null> => {
+  if (isSelfContact) {
+    const { data: savedMessagesConv } = await supabase
+      .from('conversations')
+      .select('id')
+      .eq('type', 'direct')
+      .eq('created_by', userId)
+      .eq('name', 'Messages enregistrés')
+      .maybeSingle();
+    
+    return savedMessagesConv?.id || null;
+  } else {
+    const { data: existingConv } = await supabase
+      .from('conversation_members')
+      .select(`
+        conversation_id,
+        conversations!conversation_members_conversation_id_fkey!inner(id, type)
+      `)
+      .eq('user_id', contactId)
+      .eq('conversations.type', 'direct');
+    
+    if (existingConv && existingConv.length > 0) {
+      const convIds = existingConv.map(c => c.conversation_id);
+      const { data: userMembership } = await supabase
+        .from('conversation_members')
+        .select('conversation_id')
+        .eq('user_id', userId)
+        .in('conversation_id', convIds)
+        .limit(1)
+        .maybeSingle();
+      
+      return userMembership?.conversation_id || null;
+    }
+    return null;
+  }
+};
+
+// Helper: Create new conversation and add members (moved to module level to reduce complexity)
+const createNewConversationAndAddMembers = async (
+  supabase: any,
+  userId: string,
+  contactId: string,
+  isSelfContact: boolean
+): Promise<string | null> => {
+  const { data: conversation, error: convError } = await supabase
+    .from('conversations')
+    .insert({
+      type: 'direct',
+      created_by: userId,
+      is_encrypted: true,
+      last_message_at: new Date().toISOString(),
+      name: isSelfContact ? 'Messages enregistrés' : null,
+    })
+    .select()
+    .maybeSingle();
+
+  if (convError || !conversation) {
+    console.error('Error creating conversation:', convError);
+    return null;
+  }
+
+  // Navigate immediately (optimistic)
+  console.log('Conversation created, navigating immediately:', conversation.id);
+
+  // Add members in background (non-blocking)
+  const addMembers = async () => {
+    try {
+      if (isSelfContact) {
+        await supabase
+          .from('conversation_members')
+          .insert([
+            { conversation_id: conversation.id, user_id: userId, role: 'admin', is_active: true }
+          ]);
+      } else {
+        await supabase
+          .from('conversation_members')
+          .insert([
+            { conversation_id: conversation.id, user_id: userId, role: 'admin', is_active: true },
+            { conversation_id: conversation.id, user_id: contactId, role: 'member', is_active: true }
+          ]);
+      }
+      console.log('Members added successfully');
+    } catch (err) {
+      console.error('Error adding members:', err);
+    }
+  };
+  
+  // Execute in background without awaiting
+  addMembers();
+  return conversation.id;
+};
+
 export function ContactsPage() {
   // Initialize from cache for instant display
   const [contacts, setContacts] = useState<(Contact & { profile: Profile })[]>(() =>
@@ -355,129 +478,6 @@ export function ContactsPage() {
       setLoading(false)
     }
   }
-
-// Helper: Find cached conversation for contact
-const findCachedConversation = async (
-  cachedConversations: any[],
-  isSelfContact: boolean,
-  userId: string,
-  contactId: string
-): Promise<string | null> => {
-  if (cachedConversations.length === 0) return null;
-  
-  if (isSelfContact) {
-    const cachedConv = cachedConversations.find(c =>
-      c.type === 'direct' &&
-      c.created_by === userId &&
-      c.name === 'Messages enregistrés'
-    );
-    return cachedConv?.id || null;
-  } else {
-    const cachedConv = cachedConversations.find(c =>
-      c.type === 'direct' &&
-      c.otherUserProfile?.id === contactId
-    );
-    return cachedConv?.id || null;
-  }
-};
-
-// Helper: Find existing conversation in database
-const findExistingConversation = async (
-  supabase: any,
-  isSelfContact: boolean,
-  userId: string,
-  contactId: string
-): Promise<string | null> => {
-  if (isSelfContact) {
-    const { data: savedMessagesConv } = await supabase
-      .from('conversations')
-      .select('id')
-      .eq('type', 'direct')
-      .eq('created_by', userId)
-      .eq('name', 'Messages enregistrés')
-      .maybeSingle();
-    
-    return savedMessagesConv?.id || null;
-  } else {
-    const { data: existingConv } = await supabase
-      .from('conversation_members')
-      .select(`
-        conversation_id,
-        conversations!conversation_members_conversation_id_fkey!inner(id, type)
-      `)
-      .eq('user_id', contactId)
-      .eq('conversations.type', 'direct');
-    
-    if (existingConv && existingConv.length > 0) {
-      const convIds = existingConv.map(c => c.conversation_id);
-      const { data: userMembership } = await supabase
-        .from('conversation_members')
-        .select('conversation_id')
-        .eq('user_id', userId)
-        .in('conversation_id', convIds)
-        .limit(1)
-        .maybeSingle();
-      
-      return userMembership?.conversation_id || null;
-    }
-    return null;
-  }
-};
-
-// Helper: Create new conversation and add members
-const createNewConversationAndAddMembers = async (
-  supabase: any,
-  userId: string,
-  contactId: string,
-  isSelfContact: boolean
-): Promise<string | null> => {
-  const { data: conversation, error: convError } = await supabase
-    .from('conversations')
-    .insert({
-      type: 'direct',
-      created_by: userId,
-      is_encrypted: true,
-      last_message_at: new Date().toISOString(),
-      name: isSelfContact ? 'Messages enregistrés' : null,
-    })
-    .select()
-    .maybeSingle();
-
-  if (convError || !conversation) {
-    console.error('Error creating conversation:', convError);
-    return null;
-  }
-
-  // Navigate immediately (optimistic)
-  console.log('Conversation created, navigating immediately:', conversation.id);
-
-  // Add members in background (non-blocking)
-  const addMembers = async () => {
-    try {
-      if (isSelfContact) {
-        await supabase
-          .from('conversation_members')
-          .insert([
-            { conversation_id: conversation.id, user_id: userId, role: 'admin', is_active: true }
-          ]);
-      } else {
-        await supabase
-          .from('conversation_members')
-          .insert([
-            { conversation_id: conversation.id, user_id: userId, role: 'admin', is_active: true },
-            { conversation_id: conversation.id, user_id: contactId, role: 'member', is_active: true }
-          ]);
-      }
-      console.log('Members added successfully');
-    } catch (err) {
-      console.error('Error adding members:', err);
-    }
-  };
-  
-  // Execute in background without awaiting
-  addMembers();
-  return conversation.id;
-};
 
   // Track ongoing conversation creation to prevent duplicates
   const creatingConversationRef = useRef<Set<string>>(new Set())
