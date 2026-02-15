@@ -4,6 +4,65 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { X, ChevronLeft, ChevronRight, Forward, Star, Pin, Smile, Share2, Download, Play, Pause, Volume2, VolumeX, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
 
+// Constants for zoom levels - extracted to module level
+const MIN_ZOOM_DEFAULT = 0.5;
+const MAX_ZOOM_DEFAULT = 5;
+const ZOOM_STEP_DEFAULT = 0.25;
+const SWIPE_THRESHOLD_DEFAULT = 50;
+const SWIPE_VELOCITY_THRESHOLD_DEFAULT = 0.3;
+
+// Format timestamp helper - extracted to module level
+const formatTimestamp = (ts: string): string => {
+  const date = new Date(ts);
+  const today = new Date();
+  const isToday = date.toDateString() === today.toDateString();
+  
+  if (isToday) {
+    return `Aujourd'hui à ${date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`;
+  }
+  return date.toLocaleDateString('fr-FR', { 
+    day: 'numeric', 
+    month: 'long',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+};
+
+// Format video time helper - extracted to module level
+const formatVideoTime = (seconds: number): string => {
+  if (!isFinite(seconds) || isNaN(seconds)) return '00:00';
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+};
+
+// Calculate touch distance helper - extracted to module level
+const getTouchDistance = (touches: React.TouchList): number => {
+  if (touches.length < 2) return 0;
+  const dx = touches[0].clientX - touches[1].clientX;
+  const dy = touches[0].clientY - touches[1].clientY;
+  return Math.sqrt(dx * dx + dy * dy);
+};
+
+// Get touch center helper - extracted to module level
+const getTouchCenter = (touches: React.TouchList): { x: number; y: number } => {
+  if (touches.length < 2) return { x: 0, y: 0 };
+  return {
+    x: (touches[0].clientX + touches[1].clientX) / 2,
+    y: (touches[0].clientY + touches[1].clientY) / 2,
+  };
+};
+
+// Check fullscreen state helper - extracted to module level
+const checkFullscreenState = (): boolean => {
+  return !!(
+    document.fullscreenElement ||
+    (document as any).webkitFullscreenElement ||
+    (document as any).mozFullScreenElement ||
+    (document as any).msFullscreenElement
+  );
+};
+
 // Helper component for header actions - extracted to reduce complexity
 const HeaderActions: React.FC<{
   onForward?: () => void;
