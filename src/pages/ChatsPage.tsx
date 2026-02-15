@@ -559,6 +559,42 @@ const createConversationDataMap = (convs: ConversationWithDetails[]) => {
     return { hasNewConversations, hasRemovedConversations, hasDataChanged, pinnedOrderChanged }
   }
 
+  // Helper to handle updates when we have cached data
+  const handleCachedUpdate = async (
+    sorted: ConversationWithDetails[],
+    hasDataChanged: boolean,
+    pinnedOrderChanged: boolean
+  ) => {
+    // Update existing conversations with new data but keep the current order
+    const updatedConversations = conversations.map(conv => {
+      const newConv = sorted.find(c => c.id === conv.id)
+      return newConv || conv
+    })
+    
+    // Only update state if data actually changed
+    if (hasDataChanged || pinnedOrderChanged) {
+      // Re-sort only if pinned status changed
+      if (pinnedOrderChanged) {
+        const resorted = sortConversations(updatedConversations)
+        setConversations(resorted)
+        await offlineStorage.saveConversations(resorted)
+      } else {
+        setConversations(updatedConversations)
+        await offlineStorage.saveConversations(sorted) // Save sorted version for next load
+      }
+    } else {
+      // Just update cache with correct order for next load
+      await offlineStorage.saveConversations(sorted)
+    }
+  }
+
+  // Helper to handle full updates (new/removed conversations or no cache)
+  const handleFullUpdate = async (sorted: ConversationWithDetails[]) => {
+    console.log('[ChatsPage] Full update needed')
+    setConversations(sorted)
+    await offlineStorage.saveConversations(sorted)
+  }
+
   // Load conversations from server (can be called with or without loading state)
   const loadConversationsFromServer = async (showLoading: boolean = true) => {
     if (!user) return
@@ -601,32 +637,9 @@ const createConversationDataMap = (convs: ConversationWithDetails[]) => {
       // If we have cached data, update the existing conversations in place
       // without changing the order (to avoid visual jump)
       if (hasLoadedFromCache && !hasNewConversations && !hasRemovedConversations) {
-        // Update existing conversations with new data but keep the current order
-        const updatedConversations = conversations.map(conv => {
-          const newConv = sorted.find(c => c.id === conv.id)
-          return newConv || conv
-        })
-        
-        // Only update state if data actually changed
-        if (hasDataChanged || pinnedOrderChanged) {
-          // Re-sort only if pinned status changed
-          if (pinnedOrderChanged) {
-            const resorted = sortConversations(updatedConversations)
-            setConversations(resorted)
-            await offlineStorage.saveConversations(resorted)
-          } else {
-            setConversations(updatedConversations)
-            await offlineStorage.saveConversations(sorted) // Save sorted version for next load
-          }
-        } else {
-          // Just update cache with correct order for next load
-          await offlineStorage.saveConversations(sorted)
-        }
+        await handleCachedUpdate(sorted, hasDataChanged, pinnedOrderChanged)
       } else if (hasNewConversations || hasRemovedConversations || !hasLoadedFromCache) {
-        // New or removed conversations - full update needed
-        console.log('[ChatsPage] Full update needed')
-        setConversations(sorted)
-        await offlineStorage.saveConversations(sorted)
+        await handleFullUpdate(sorted)
       }
     } catch (err) {
       console.error('Error loading conversations:', err)
