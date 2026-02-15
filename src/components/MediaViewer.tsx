@@ -408,23 +408,6 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   const SWIPE_THRESHOLD = 50; // Minimum swipe distance to trigger navigation
   const SWIPE_VELOCITY_THRESHOLD = 0.3; // Minimum velocity for quick swipe
 
-  // Format timestamp
-  const formatTimestamp = (ts: string) => {
-    const date = new Date(ts);
-    const today = new Date();
-    const isToday = date.toDateString() === today.toDateString();
-    
-    if (isToday) {
-      return `Aujourd'hui à ${date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`;
-    }
-    return date.toLocaleDateString('fr-FR', { 
-      day: 'numeric', 
-      month: 'long',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
-
   // Helper to start the auto-hide timer
   const startHideTimer = useCallback(() => {
     if (controlsTimeoutRef.current) {
@@ -1187,14 +1170,6 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
       audioRef.current.muted = !isMuted;
     }
     setIsMuted(!isMuted);
-  };
-
-  // Format time for video progress (MM:SS)
-  const formatVideoTime = (seconds: number): string => {
-    if (!Number.isFinite(seconds) || Number.isNaN(seconds)) return '00:00';
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
   // Handle video time update
