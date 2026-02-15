@@ -33,11 +33,15 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({
   const youtubeVideoId = isYouTube ? extractYouTubeVideoId(url) : null;
 
   // Truncate description to 2 lines (approximately 100 characters)
-  const truncatedDescription = description
-    ? description.length > 100
-      ? description.substring(0, 100) + '...'
-      : description
-    : null;
+  const getTruncatedDescription = (): string | null => {
+    if (!description) return null;
+    if (description.length > 100) {
+      return description.substring(0, 100) + '...';
+    }
+    return description;
+  };
+
+  const truncatedDescription = getTruncatedDescription();
 
   const handleClick = () => {
     // For YouTube links, open in-app player
@@ -88,6 +92,14 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({
       <div
         className="flex cursor-pointer hover:bg-bg-surface/50 transition-colors"
         onClick={handleClick}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            handleClick();
+          }
+        }}
+        role="button"
+        tabIndex={0}
+        aria-label={title || 'Ouvrir le lien'}
       >
         {/* Thumbnail */}
         {image && (
@@ -228,6 +240,14 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({
         <div
           className={`rounded-lg overflow-hidden cursor-pointer relative ${getCardBgClass()}`}
           onClick={handleClick}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              handleClick();
+            }
+          }}
+          role="button"
+          tabIndex={0}
+          aria-label={title || 'Ouvrir le lien'}
         >
           {/* YouTube Play Overlay - smaller and more subtle */}
           {isYouTube && image && (

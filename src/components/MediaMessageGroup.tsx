@@ -56,11 +56,19 @@ export const MediaMessageGroup: React.FC<MediaMessageGroupProps> = ({
         <div
           className="relative cursor-pointer max-w-[240px] sm:max-w-[280px] rounded-xl overflow-hidden border-[3px] border-[#787add] message-media-container"
           onClick={() => openFullscreen(0)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              openFullscreen(0);
+            }
+          }}
+          role="button"
+          tabIndex={0}
+          aria-label="Afficher l'image en plein écran"
         >
           {item.type === 'image' ? (
             <img
               src={item.url}
-              alt="Image"
+              alt=""
               className="w-full h-auto max-h-[200px] sm:max-h-[240px] object-cover"
               loading="lazy"
             />
@@ -90,11 +98,19 @@ export const MediaMessageGroup: React.FC<MediaMessageGroupProps> = ({
               key={item.id}
               className="flex-1 cursor-pointer relative"
               onClick={() => openFullscreen(index)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  openFullscreen(index);
+                }
+              }}
+              role="button"
+              tabIndex={0}
+              aria-label={`Image ${index + 1}`}
             >
               {item.type === 'image' ? (
                 <img
                   src={item.url}
-                  alt={`Image ${index + 1}`}
+                  alt=""
                   className="w-full h-[140px] sm:h-[160px] object-cover"
                   loading="lazy"
                 />
@@ -121,11 +137,19 @@ export const MediaMessageGroup: React.FC<MediaMessageGroupProps> = ({
               key={item.id}
               className="cursor-pointer relative aspect-square"
               onClick={() => openFullscreen(index)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  openFullscreen(index);
+                }
+              }}
+              role="button"
+              tabIndex={0}
+              aria-label={`Image ${index + 1}`}
             >
               {item.type === 'image' ? (
                 <img
                   src={item.url}
-                  alt={`Image ${index + 1}`}
+                  alt=""
                   className="w-full h-full object-cover"
                   loading="lazy"
                 />
@@ -151,11 +175,19 @@ export const MediaMessageGroup: React.FC<MediaMessageGroupProps> = ({
             key={item.id}
             className="cursor-pointer relative aspect-square"
             onClick={() => openFullscreen(index)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                openFullscreen(index);
+              }
+            }}
+            role="button"
+            tabIndex={0}
+            aria-label={`Image ${index + 1}`}
           >
             {item.type === 'image' ? (
               <img
                 src={item.url}
-                alt={`Image ${index + 1}`}
+                alt=""
                 className="w-full h-full object-cover"
                 loading="lazy"
               />
@@ -189,6 +221,14 @@ export const MediaMessageGroup: React.FC<MediaMessageGroupProps> = ({
       <div
         className="fixed inset-0 bg-black z-[200] flex flex-col"
         onClick={closeFullscreen}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            closeFullscreen();
+          }
+        }}
+        role="button"
+        tabIndex={0}
+        aria-label="Fermer le plein écran"
       >
         {/* Header */}
         <div className="flex items-center justify-between p-4 safe-area-top">
@@ -217,7 +257,12 @@ export const MediaMessageGroup: React.FC<MediaMessageGroupProps> = ({
           )}
 
           {/* Media */}
-          <div className="max-w-full max-h-full" onClick={(e) => e.stopPropagation()}>
+          <div 
+            className="max-w-full max-h-full" 
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+            role="presentation"
+          >
             {currentItem.type === 'image' ? (
               <img
                 src={currentItem.url}
@@ -263,7 +308,7 @@ export const MediaMessageGroup: React.FC<MediaMessageGroupProps> = ({
                   {item.type === 'image' ? (
                     <img
                       src={item.url}
-                      alt={`Thumbnail ${index + 1}`}
+                      alt=""
                       className="w-full h-full object-cover"
                     />
                   ) : (

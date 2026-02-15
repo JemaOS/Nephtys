@@ -8,13 +8,7 @@ import { ImageEditor } from './ImageEditor';
 import { processImageForUpload, ProcessedImage } from '@/lib/imageUtils';
 import { compressVideo } from '@/lib/videoCompression';
 import { DocumentPreviewModal, generatePDFThumbnail } from './DocumentPreview';
-
-// Helper function to format file size
-const formatFileSizeDisplay = (bytes: number): string => {
-  if (bytes < 1024) return bytes + ' o';
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(0) + ' ko';
-  return (bytes / (1024 * 1024)).toFixed(1) + ' Mo';
-};
+import { AudioPreviewPlayer, EmojiPicker, StickerPicker, formatFileSizeDisplay } from './MediaUploaderComponents';
 
 // Helper function to get file extension
 const getFileExtension = (filename: string): string => {
@@ -95,159 +89,7 @@ const checkVideoNeedsCompression = async (previewUrl: string): Promise<boolean> 
   });
 };
 
-// Custom Audio Preview Player Component - Minimalist design
-const AudioPreviewPlayer: React.FC<{ file: File; preview: string | null }> = ({ file, preview }) => {
-  const audioRef = useRef<HTMLAudioElement>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const [isDragging, setIsDragging] = useState(false);
-  const progressRef = useRef<HTMLDivElement>(null);
 
-  const formatTime = (seconds: number): string => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  const togglePlay = () => {
-    if (audioRef.current) {
-      if (isPlaying) {
-        audioRef.current.pause();
-      } else {
-        audioRef.current.play();
-      }
-      setIsPlaying(!isPlaying);
-    }
-  };
-
-  const handleTimeUpdate = () => {
-    if (audioRef.current && !isDragging) {
-      setCurrentTime(audioRef.current.currentTime);
-    }
-  };
-
-  const handleLoadedMetadata = () => {
-    if (audioRef.current) {
-      setDuration(audioRef.current.duration);
-    }
-  };
-
-  const handleEnded = () => {
-    setIsPlaying(false);
-    setCurrentTime(0);
-  };
-
-  const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (progressRef.current && audioRef.current) {
-      const rect = progressRef.current.getBoundingClientRect();
-      const percent = (e.clientX - rect.left) / rect.width;
-      const newTime = percent * duration;
-      audioRef.current.currentTime = newTime;
-      setCurrentTime(newTime);
-    }
-  };
-
-  const handleProgressDrag = useCallback((e: MouseEvent) => {
-    if (progressRef.current && audioRef.current && isDragging) {
-      const rect = progressRef.current.getBoundingClientRect();
-      const percent = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-      const newTime = percent * duration;
-      audioRef.current.currentTime = newTime;
-      setCurrentTime(newTime);
-    }
-  }, [isDragging, duration]);
-
-  const handleMouseUp = useCallback(() => {
-    setIsDragging(false);
-  }, []);
-
-  useEffect(() => {
-    if (isDragging) {
-      window.addEventListener('mousemove', handleProgressDrag);
-      window.addEventListener('mouseup', handleMouseUp);
-      return () => {
-        window.removeEventListener('mousemove', handleProgressDrag);
-        window.removeEventListener('mouseup', handleMouseUp);
-      };
-    }
-  }, [isDragging, handleProgressDrag, handleMouseUp]);
-
-  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
-
-  return (
-    <div className="p-6">
-      <div className="flex flex-col items-center gap-5">
-        {/* Album art / Music icon */}
-        <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-accent/30 to-accent/10 flex items-center justify-center">
-          <Music size={48} className="text-accent" />
-        </div>
-        
-        {/* File name */}
-        <div className="text-center max-w-full px-4">
-          <p className="text-text-primary font-medium truncate">
-            {file.name.replace(/\.[^/.]+$/, '')}
-          </p>
-          <p className="text-text-tertiary text-sm mt-1">
-            {formatFileSizeDisplay(file.size)}
-          </p>
-        </div>
-        
-        {/* Custom audio player */}
-        <div className="w-full max-w-sm">
-          {/* Progress bar */}
-          <div
-            ref={progressRef}
-            onClick={handleProgressClick}
-            onMouseDown={() => setIsDragging(true)}
-            className="relative h-1.5 bg-bg-hover rounded-full cursor-pointer group"
-          >
-            {/* Progress fill */}
-            <div
-              className="absolute left-0 top-0 h-full bg-accent rounded-full transition-all"
-              style={{ width: `${progress}%` }}
-            />
-            {/* Drag handle */}
-            <div
-              className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-accent rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-              style={{ left: `calc(${progress}% - 6px)` }}
-            />
-          </div>
-          
-          {/* Time display */}
-          <div className="flex justify-between text-xs text-text-tertiary mt-2">
-            <span>{formatTime(currentTime)}</span>
-            <span>{formatTime(duration)}</span>
-          </div>
-          
-          {/* Play/Pause button */}
-          <div className="flex justify-center mt-4">
-            <button
-              onClick={togglePlay}
-              className="w-14 h-14 rounded-full bg-accent hover:bg-[#6a6ec8] flex items-center justify-center transition-colors"
-            >
-              {isPlaying ? (
-                <Pause size={24} className="text-white" fill="white" />
-              ) : (
-                <Play size={24} className="text-white ml-1" fill="white" />
-              )}
-            </button>
-          </div>
-        </div>
-        
-        {/* Hidden audio element */}
-        <audio
-          ref={audioRef}
-          src={preview || URL.createObjectURL(file)}
-          onTimeUpdate={handleTimeUpdate}
-          onLoadedMetadata={handleLoadedMetadata}
-          onEnded={handleEnded}
-          className="hidden"
-        />
-      </div>
-    </div>
-  );
-};
 
 // Tenor GIF API - use environment variable for security
 const TENOR_API_KEY = import.meta.env.VITE_TENOR_API_KEY || '';
@@ -718,86 +560,17 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       const totalFiles = selectedFiles.length;
 
       for (let i = 0; i < selectedFiles.length; i++) {
-        const { file, type } = selectedFiles[i];
+        const uploadedFile = await processSingleFile(
+          selectedFiles[i],
+          user.id,
+          totalFiles,
+          uploadedFiles,
+          i
+        );
         
-        let fileToUpload: Blob = file;
-        let processedImage: ProcessedImage | null = null;
-        
-        // Compress images before upload
-        if (type === 'image') {
-          try {
-            processedImage = await processImageForUpload(file);
-            fileToUpload = processedImage.blob;
-          } catch (err) {
-            console.warn('Image compression failed, using original:', err);
-          }
+        if (uploadedFile) {
+          uploadedFiles.push(uploadedFile);
         }
-
-        // Compress video if needed
-        if (type === 'video') {
-          try {
-            const shouldCompress = await new Promise<boolean>((resolve) => {
-              const video = document.createElement('video');
-              video.preload = 'metadata';
-              video.onloadedmetadata = () => {
-                const height = video.videoHeight;
-                resolve(height > 720);
-              };
-              video.onerror = () => resolve(false);
-              // Use the preview URL which is already generated
-              video.src = selectedFiles[i].preview;
-            });
-
-            if (shouldCompress) {
-              console.log(`Compressing video ${file.name}...`);
-              // We don't have granular progress for individual files in multiple upload,
-              // but we can log it or just wait.
-              const compressedBlob = await compressVideo(file);
-              fileToUpload = compressedBlob;
-            }
-          } catch (err) {
-            console.warn('Video compression failed, using original:', err);
-          }
-        }
-        
-        const folder = type === 'image' ? 'images' : type === 'video' ? 'videos' : 'documents';
-        const fileName = `${user.id}/${folder}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
-
-        const { data, error } = await supabase.storage
-          .from('media')
-          .upload(fileName, fileToUpload, {
-            cacheControl: '3600',
-            upsert: false,
-            contentType: file.type || 'application/octet-stream',
-          });
-
-        if (error) {
-          console.error('Upload error:', error);
-          continue;
-        }
-
-        const { data: { publicUrl } } = supabase.storage
-          .from('media')
-          .getPublicUrl(fileName);
-
-        const uploadedFile: UploadedFileData = {
-          url: publicUrl,
-          type,
-          fileName: file.name,
-          fileSize: fileToUpload instanceof Blob ? fileToUpload.size : file.size,
-        };
-        
-        // Add image dimensions if available
-        if (processedImage) {
-          uploadedFile.width = processedImage.dimensions.width;
-          uploadedFile.height = processedImage.dimensions.height;
-          uploadedFile.thumbnail = processedImage.thumbnailDataUrl;
-        }
-        
-        uploadedFiles.push(uploadedFile);
-
-        // Update progress
-        setUploadProgress(Math.round(((i + 1) / totalFiles) * 100));
       }
 
       // If we have a callback for multiple uploads, use it
@@ -908,48 +681,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       if (!user) throw new Error('User not authenticated');
 
       const fileType = selectedFileType || getFileType(selectedFile);
-      let fileToUpload: Blob = selectedFile;
-      let processedImage: ProcessedImage | null = null;
       
-      // Compress images before upload
-      if (fileType === 'image') {
-        try {
-          setUploadPhase('compressing');
-          setUploadProgress(0);
-          processedImage = await processImageForUpload(selectedFile);
-          fileToUpload = processedImage.blob;
-          setUploadProgress(100);
-        } catch (err) {
-          console.warn('Image compression failed, using original:', err);
-        }
-      }
-
-      // Compress video if needed (1080p/4K -> 720p)
-      if (fileType === 'video') {
-        try {
-          const shouldCompress = await checkIfVideoNeedsCompression(preview, selectedFile);
-          if (shouldCompress) {
-            console.log('Video is larger than 720p, compressing...');
-            setUploadPhase('compressing');
-            setUploadProgress(0);
-            
-            const compressedBlob = await compressVideo(selectedFile, (progress) => {
-              setUploadProgress(progress);
-            });
-            fileToUpload = compressedBlob;
-            console.log('Video compression complete');
-            setUploadProgress(100);
-          }
-        } catch (err) {
-          console.warn('Video compression failed, using original:', err);
-        }
-      }
-      
-      const fileExt = selectedFile.name.split('.').pop() || 'bin';
-      const bucket = 'media';
-      const folder = fileType === 'image' ? 'images' : fileType === 'video' ? 'videos' : fileType === 'audio' ? 'audio' : 'documents';
-      const fileName = `${user.id}/${folder}/${Date.now()}_${selectedFile.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
-
       // Get audio duration if it's an audio file
       let audioDuration: number | undefined;
       if (fileType === 'audio' && preview) {
@@ -963,49 +695,28 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       // Simulate progress for better UX
       const progressInterval = startUploadProgressSimulation();
 
-      // Upload to Supabase Storage
-      console.log(`[MediaUploader] Starting upload: ${fileName}, size: ${fileToUpload.size}, type: ${selectedFile.type}`);
-      const uploadStartTime = Date.now();
-
-      const { data, error } = await supabase.storage
-        .from(bucket)
-        .upload(fileName, fileToUpload, {
-          cacheControl: '3600',
-          upsert: false,
-          contentType: selectedFile.type || 'application/octet-stream',
-        });
-
-      const uploadDuration = Date.now() - uploadStartTime;
-      console.log(`[MediaUploader] Upload finished in ${uploadDuration}ms`);
+      const uploadedFile = await processFileForUpload(
+        { file: selectedFile, preview: preview || '', type: fileType },
+        user.id,
+        0
+      );
 
       clearInterval(progressInterval);
-
-      if (error) {
-        console.error('[MediaUploader] Upload error details:', error);
-        if ('statusCode' in error) console.error('[MediaUploader] Status code:', (error as any).statusCode);
-        if ('error' in error) console.error('[MediaUploader] Inner error:', (error as any).error);
-        
-        throw new Error(error.message || 'Upload failed');
-      }
-
-      // Get public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from(bucket)
-        .getPublicUrl(fileName);
-
       setUploadProgress(100);
-      
-      // Call completion callback
-      onUploadComplete(
-        publicUrl,
-        fileType,
-        selectedFile.name,
-        fileToUpload instanceof Blob ? fileToUpload.size : selectedFile.size,
-        processedImage?.dimensions.width,
-        processedImage?.dimensions.height,
-        processedImage?.thumbnailDataUrl,
-        audioDuration
-      );
+
+      if (uploadedFile) {
+        // Call completion callback
+        onUploadComplete(
+          uploadedFile.url,
+          uploadedFile.type,
+          uploadedFile.fileName,
+          uploadedFile.fileSize,
+          uploadedFile.width,
+          uploadedFile.height,
+          uploadedFile.thumbnail,
+          audioDuration
+        );
+      }
       
       // Reset state
       setSelectedFile(null);
@@ -1289,87 +1000,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   };
 
-  // Helper: Render emoji categories - extracted to reduce complexity
-  const renderEmojiCategories = () => (
-    <div className="space-y-4">
-      {Object.entries(emojiCategories).map(([category, emojis]) => (
-        <div key={category}>
-          <h4 className="text-xs text-text-secondary uppercase mb-2">
-            {getEmojiCategoryLabel(category)}
-          </h4>
-          <div className="grid grid-cols-8 gap-1">
-            {emojis.map((emoji, idx) => (
-              <button
-                key={idx}
-                onClick={() => handleEmojiClick(emoji)}
-                className="w-10 h-10 flex items-center justify-center text-2xl hover:bg-bg-hover rounded-lg transition-all hover:scale-110 active:scale-95"
-              >
-                {emoji}
-              </button>
-            ))}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
 
-  // Helper: Get emoji category label - extracted to reduce complexity
-  const getEmojiCategoryLabel = (category: string): string => {
-    const labels: Record<string, string> = {
-      recent: 'Récents',
-      smileys: 'Smileys',
-      gestures: 'Gestes',
-      hearts: 'Cœurs',
-      objects: 'Objets',
-      nature: 'Nature',
-      food: 'Nourriture',
-    };
-    return labels[category] || category;
-  };
-
-  // Helper: Render sticker category button - extracted to reduce complexity
-  const renderStickerCategoryButton = (category: string) => (
-    <button
-      key={category}
-      onClick={() => {
-        setSelectedStickerCategory(category);
-        setStickerSearchQuery('');
-      }}
-      className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
-        selectedStickerCategory === category && !stickerSearchQuery
-          ? 'bg-accent text-white'
-          : 'bg-bg-surface text-text-secondary hover:bg-bg-hover'
-      }`}
-    >
-      {getStickerCategoryLabel(category)}
-    </button>
-  );
-
-  // Helper: Get sticker category label - extracted to reduce complexity
-  const getStickerCategoryLabel = (category: string): string => {
-    const labels: Record<string, string> = {
-      love: '❤️ Amour',
-      happy: '😊 Joyeux',
-      sad: '😢 Triste',
-      angry: '😠 Fâché',
-      cute: '🥰 Mignon',
-      funny: '😂 Drôle',
-      hello: '👋 Salut',
-      bye: '👋 Au revoir',
-      thanks: '🙏 Merci',
-      sorry: '😔 Désolé',
-    };
-    return labels[category] || category;
-  };
-  const emojiCategories = {
-    recent: ['👍', '❤️', '😂', '😮', '😢', '🙏'],
-    smileys: ['😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😂', '🙂', '😊', '😇', '🥰', '😍', '🤩', '😘', '😗', '😚', '😋', '😛', '😜', '🤪', '😝', '🤑', '🤗', '🤭', '🤫', '🤔', '🤐', '🤨', '😐'],
-    gestures: ['👋', '🤚', '🖐️', '✋', '🖖', '👌', '🤌', '🤏', '✌️', '🤞', '🤟', '🤘', '🤙', '👈', '👉', '👆', '🖕', '👇', '☝️', '👍', '👎', '✊', '👊', '🤛', '🤜', '👏', '🙌', '👐', '🤲', '🤝'],
-    hearts: ['❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝', '💟', '♥️'],
-    objects: ['🎉', '🎊', '🎁', '🎈', '🎀', '🏆', '🥇', '🥈', '🥉', '⚽', '🏀', '🏈', '⚾', '🎾', '🏐', '🎱', '🎮', '🎯', '🎲', '🧩'],
-    nature: ['🌸', '🌺', '🌻', '🌹', '🌷', '🌼', '💐', '🌿', '🍀', '🌴', '🌵', '🌲', '🌳', '🍁', '🍂', '🍃', '🌾', '🌱', '🌊', '🔥'],
-    food: ['🍎', '🍊', '🍋', '🍌', '🍉', '🍇', '🍓', '🫐', '🍒', '🍑', '🥭', '🍍', '🥥', '🥝', '🍅', '🥑', '🍕', '🍔', '🍟', '🌭'],
-  };
 
   // Sticker search categories
   const stickerCategories = ['love', 'happy', 'sad', 'angry', 'cute', 'funny', 'hello', 'bye', 'thanks', 'sorry'];
@@ -1920,63 +1551,24 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
 
               {/* Emoji tab */}
               {activeTab === 'emoji' && (
-                renderEmojiCategories()
+                <EmojiPicker
+                  onEmojiSelect={handleEmojiClick}
+                  onCancel={onCancel}
+                />
               )}
 
               {/* Sticker tab */}
               {activeTab === 'sticker' && (
-                <div className="space-y-4">
-                  {/* Search bar */}
-                  <div className="relative">
-                    <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" />
-                    <input
-                      type="text"
-                      value={stickerSearchQuery}
-                      onChange={(e) => setStickerSearchQuery(e.target.value)}
-                      placeholder="Rechercher des stickers..."
-                      className="w-full pl-10 pr-4 py-2 rounded-xl bg-bg-surface text-text-primary placeholder:text-text-secondary outline-none focus:ring-2 focus:ring-accent"
-                    />
-                  </div>
-
-                  {/* Category selector */}
-                  <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4">
-                    {stickerCategories.map(renderStickerCategoryButton)}
-                  </div>
-                  
-                  {/* Stickers grid */}
-                  {loadingStickers ? (
-                    <div className="flex justify-center py-8">
-                      <Loader2 size={32} className="animate-spin text-accent" />
-                    </div>
-                  ) : stickers.length > 0 ? (
-                    <div className="grid grid-cols-3 gap-3">
-                      {stickers.map((sticker) => (
-                        <button
-                          key={sticker.id}
-                          onClick={() => handleStickerSelect(sticker)}
-                          className="aspect-square rounded-xl overflow-hidden bg-transparent hover:bg-bg-hover transition-all p-2"
-                        >
-                          <img
-                            src={sticker.media_formats?.tinywebp?.url || sticker.media_formats?.tinygif?.url}
-                            alt={sticker.content_description || 'Sticker'}
-                            className="w-full h-full object-contain"
-                            loading="lazy"
-                          />
-                        </button>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-center py-8 text-text-secondary">
-                      <p>Aucun sticker trouvé</p>
-                      <p className="text-xs mt-1">Essayez une autre recherche</p>
-                    </div>
-                  )}
-                  
-                  {/* Tenor attribution */}
-                  <p className="text-xs text-text-secondary text-center">
-                    Powered by Tenor
-                  </p>
-                </div>
+                <StickerPicker
+                  stickerCategories={stickerCategories}
+                  selectedStickerCategory={selectedStickerCategory}
+                  setSelectedStickerCategory={setSelectedStickerCategory}
+                  stickerSearchQuery={stickerSearchQuery}
+                  setStickerSearchQuery={setStickerSearchQuery}
+                  loadingStickers={loadingStickers}
+                  stickers={stickers}
+                  handleStickerSelect={handleStickerSelect}
+                />
               )}
 
               {/* GIF tab */}

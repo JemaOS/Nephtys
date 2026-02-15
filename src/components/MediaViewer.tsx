@@ -2,7 +2,8 @@
 // Distributed under the license specified in the root directory of this project.
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { X, ChevronLeft, ChevronRight, Forward, Star, Pin, Smile, Share2, Download, Play, Pause, Volume2, VolumeX, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { MediaViewerHeader, ImageViewer, VideoPlayer, AudioPlayer } from './MediaViewerComponents';
 
 // Constants for zoom levels - extracted to module level
 const MIN_ZOOM_DEFAULT = 0.5;
@@ -10,31 +11,6 @@ const MAX_ZOOM_DEFAULT = 5;
 const ZOOM_STEP_DEFAULT = 0.25;
 const SWIPE_THRESHOLD_DEFAULT = 50;
 const SWIPE_VELOCITY_THRESHOLD_DEFAULT = 0.3;
-
-// Format timestamp helper - extracted to module level
-const formatTimestamp = (ts: string): string => {
-  const date = new Date(ts);
-  const today = new Date();
-  const isToday = date.toDateString() === today.toDateString();
-  
-  if (isToday) {
-    return `Aujourd'hui à ${date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`;
-  }
-  return date.toLocaleDateString('fr-FR', { 
-    day: 'numeric', 
-    month: 'long',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
-};
-
-// Format video time helper - extracted to module level
-const formatVideoTime = (seconds: number): string => {
-  if (!Number.isFinite(seconds) || Number.isNaN(seconds)) return '00:00';
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-};
 
 // Calculate touch distance helper - extracted to module level
 const getTouchDistance = (touches: React.TouchList): number => {
@@ -62,183 +38,6 @@ const checkFullscreenState = (): boolean => {
     (document as any).msFullscreenElement
   );
 };
-
-// Helper component for header actions - extracted to reduce complexity
-const HeaderActions: React.FC<{
-  onForward?: () => void;
-  onStar?: () => void;
-  onPin?: () => void;
-  onReaction?: (emoji: string) => void;
-  onShare: () => void;
-  onDownload: () => void;
-  onClose: () => void;
-  onToggleFullscreen: () => void;
-  isStarred: boolean;
-  showEmojiPicker: boolean;
-  setShowEmojiPicker: (show: boolean) => void;
-  isMobile: boolean;
-  mediaType: string;
-  isFullscreen: boolean;
-  zoom: number;
-  MIN_ZOOM: number;
-  MAX_ZOOM: number;
-  handleZoomIn: () => void;
-  handleZoomOut: () => void;
-  handleResetZoom: () => void;
-  quickEmojis: string[];
-}> = ({
-  onForward,
-  onStar,
-  onPin,
-  onReaction,
-  onShare,
-  onDownload,
-  onClose,
-  onToggleFullscreen,
-  isStarred,
-  showEmojiPicker,
-  setShowEmojiPicker,
-  isMobile,
-  mediaType,
-  isFullscreen,
-  zoom,
-  MIN_ZOOM,
-  MAX_ZOOM,
-  handleZoomIn,
-  handleZoomOut,
-  handleResetZoom,
-  quickEmojis,
-}) => (
-  <div className="flex items-center gap-3 md:gap-4 flex-shrink-0">
-    {/* Zoom controls - only for images, hidden on mobile (use pinch-to-zoom) */}
-    {(mediaType === 'image' || mediaType === 'gif' || mediaType === 'sticker') && !isMobile && (
-      <>
-        <button
-          onClick={(e) => { e.stopPropagation(); handleZoomOut(); }}
-          className="w-10 h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
-          title="Zoom arrière"
-          disabled={zoom <= MIN_ZOOM}
-        >
-          <ZoomOut size={20} className="text-white" />
-        </button>
-        <button
-          onClick={(e) => { e.stopPropagation(); handleZoomIn(); }}
-          className="w-10 h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
-          title="Zoom avant"
-          disabled={zoom >= MAX_ZOOM}
-        >
-          <ZoomIn size={20} className="text-white" />
-        </button>
-        {zoom !== 1 && (
-          <button
-            onClick={(e) => { e.stopPropagation(); handleResetZoom(); }}
-            className="px-2 h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors text-white text-sm"
-            title="Réinitialiser le zoom"
-          >
-            {Math.round(zoom * 100)}%
-          </button>
-        )}
-        <div className="w-px h-6 bg-white/20 mx-1" />
-      </>
-    )}
-    {/* Desktop only buttons */}
-    {onForward && (
-      <button
-        onClick={(e) => { e.stopPropagation(); onForward(); }}
-        className="hidden md:flex w-10 h-10 rounded-full hover:bg-white/10 items-center justify-center transition-colors"
-        title="Transférer"
-      >
-        <Forward size={20} className="text-white" />
-      </button>
-    )}
-    {onStar && (
-      <button
-        onClick={(e) => { e.stopPropagation(); onStar(); }}
-        className="hidden md:flex w-10 h-10 rounded-full hover:bg-white/10 items-center justify-center transition-colors"
-        title={isStarred ? "Retirer des favoris" : "Ajouter aux favoris"}
-      >
-        <Star
-          size={20}
-          className={isStarred ? "text-yellow-400 fill-yellow-400" : "text-white"}
-        />
-      </button>
-    )}
-    {onPin && (
-      <button
-        onClick={(e) => { e.stopPropagation(); onPin(); }}
-        className="hidden md:flex w-10 h-10 rounded-full hover:bg-white/10 items-center justify-center transition-colors"
-        title="Épingler"
-      >
-        <Pin size={20} className="text-white" />
-      </button>
-    )}
-    {onReaction && (
-      <div className="relative hidden md:block">
-        <button
-          onClick={(e) => { e.stopPropagation(); setShowEmojiPicker(!showEmojiPicker); }}
-          className="w-10 h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
-          title="Réagir"
-        >
-          <Smile size={20} className="text-white" />
-        </button>
-        {showEmojiPicker && (
-          <div className="absolute right-0 top-12 bg-bg-surface rounded-xl p-2 shadow-2xl flex gap-1">
-            {quickEmojis.map((emoji) => (
-              <button
-                key={emoji}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onReaction(emoji);
-                  setShowEmojiPicker(false);
-                }}
-                className="w-10 h-10 flex items-center justify-center text-2xl hover:bg-bg-hover rounded-lg transition-colors"
-              >
-                {emoji}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    )}
-    {/* Fullscreen toggle - visible on mobile for videos */}
-    {isMobile && (mediaType === 'video' || mediaType === 'image') && (
-      <button
-        onClick={(e) => { e.stopPropagation(); onToggleFullscreen(); }}
-        className="w-9 h-9 md:w-10 md:h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
-        title={isFullscreen ? "Quitter le plein écran" : "Plein écran"}
-      >
-        <Maximize2 size={18} className={`text-white ${isFullscreen ? 'rotate-45' : ''}`} />
-      </button>
-    )}
-    {/* Share - visible on mobile */}
-    <button
-      onClick={(e) => { e.stopPropagation(); onShare(); }}
-      className="w-9 h-9 md:w-10 md:h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
-      title="Partager"
-    >
-      <Share2 size={18} className="md:hidden text-white" />
-      <Share2 size={20} className="hidden md:block text-white" />
-    </button>
-    {/* Download - visible on mobile */}
-    <button
-      onClick={(e) => { e.stopPropagation(); onDownload(); }}
-      className="w-9 h-9 md:w-10 md:h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
-      title="Télécharger"
-    >
-      <Download size={18} className="md:hidden text-white" />
-      <Download size={20} className="hidden md:block text-white" />
-    </button>
-    {/* Close button - always visible */}
-    <button
-      onClick={(e) => { e.stopPropagation(); onClose(); }}
-      className="w-9 h-9 md:w-10 md:h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
-      title="Fermer"
-    >
-      <X size={22} className="md:hidden text-white" />
-      <X size={24} className="hidden md:block text-white" />
-    </button>
-  </div>
-);
 
 // Custom hook for mobile detection
 const useIsMobile = () => {
@@ -1314,60 +1113,36 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
         minHeight: isMobile ? '100dvh' : '100vh',
       }}
     >
-      {/* Header */}
-      <div
-        className={`absolute top-0 left-0 right-0 z-10 transition-opacity duration-300 ${
-          showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
-        }`}
-        onMouseEnter={() => setIsHoveringControls(true)}
-        onMouseLeave={() => setIsHoveringControls(false)}
-      >
-        <div className="flex items-center justify-between p-3 md:p-4 bg-gradient-to-b from-black/80 to-transparent">
-          {/* Left side - Sender info */}
-          <div className="flex items-center gap-2 md:gap-3 flex-1 min-w-0">
-            {senderAvatar ? (
-              <img
-                src={senderAvatar}
-                alt={senderName}
-                className="w-8 h-8 md:w-10 md:h-10 rounded-full object-cover flex-shrink-0"
-              />
-            ) : (
-              <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold text-sm md:text-base flex-shrink-0">
-                {senderName[0]?.toUpperCase()}
-              </div>
-            )}
-            <div className="min-w-0 flex-1">
-              <p className="text-white font-medium text-sm md:text-base truncate">{senderName}</p>
-              <p className="text-white/60 text-xs md:text-sm truncate">{formatTimestamp(timestamp)}</p>
-            </div>
-          </div>
-
-          {/* Right side - Action buttons - using extracted component */}
-          <HeaderActions
-            onForward={onForward}
-            onStar={onStar}
-            onPin={onPin}
-            onReaction={onReaction}
-            onShare={handleShare}
-            onDownload={handleDownload}
-            onClose={onClose}
-            onToggleFullscreen={toggleFullscreen}
-            isStarred={isStarred}
-            showEmojiPicker={showEmojiPicker}
-            setShowEmojiPicker={setShowEmojiPicker}
-            isMobile={isMobile}
-            mediaType={mediaType}
-            isFullscreen={isFullscreen}
-            zoom={zoom}
-            MIN_ZOOM={MIN_ZOOM}
-            MAX_ZOOM={MAX_ZOOM}
-            handleZoomIn={handleZoomIn}
-            handleZoomOut={handleZoomOut}
-            handleResetZoom={handleResetZoom}
-            quickEmojis={quickEmojis}
-          />
-        </div>
-      </div>
+      <MediaViewerHeader
+        showControls={showControls}
+        setIsHoveringControls={setIsHoveringControls}
+        senderName={senderName}
+        senderAvatar={senderAvatar}
+        timestamp={timestamp}
+        headerActionsProps={{
+          onForward,
+          onStar,
+          onPin,
+          onReaction,
+          onShare: handleShare,
+          onDownload: handleDownload,
+          onClose,
+          onToggleFullscreen: toggleFullscreen,
+          isStarred: isStarred || false,
+          showEmojiPicker,
+          setShowEmojiPicker,
+          isMobile,
+          mediaType,
+          isFullscreen,
+          zoom,
+          MIN_ZOOM,
+          MAX_ZOOM,
+          handleZoomIn,
+          handleZoomOut,
+          handleResetZoom,
+          quickEmojis,
+        }}
+      />
 
       {/* Navigation arrows - Desktop only (hidden on mobile) */}
       {allMedia && allMedia.length > 1 && !isMobile && (
@@ -1417,274 +1192,70 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
       >
         {/* Image, GIF, Sticker - all displayed fullscreen with zoom and swipe */}
         {(mediaType === 'image' || mediaType === 'gif' || mediaType === 'sticker') && (
-          <div
-            ref={imageContainerRef}
-            className={`relative flex items-center justify-center w-full h-full ${
-              zoom > 1 ? 'cursor-grab' : 'cursor-default'
-            } ${isDragging ? 'cursor-grabbing' : ''}`}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            style={{
-              transform: zoom <= 1 ? `translateX(${swipeOffset}px)` : 'none',
-              transition: isSwipeActive ? 'none' : 'transform 0.15s ease-out',
-              willChange: 'transform',
-            }}
-          >
-            <img
-              src={mediaUrl}
-              alt="Media"
-              className="max-w-full max-h-full object-contain select-none"
-              style={{
-                transform: `scale(${zoom}) translate(${position.x / zoom}px, ${position.y / zoom}px)`,
-                transition: isDragging ? 'none' : 'transform 0.1s ease-out',
-                touchAction: 'manipulation',
-                pointerEvents: isSwipeActive ? 'none' : 'auto',
-              }}
-              onClick={(e) => {
-                e.stopPropagation();
-                // Double-click/tap to reset zoom
-                if (e.detail === 2) {
-                  handleResetZoom();
-                }
-              }}
-              draggable={false}
-            />
-            
-            {/* Zoom indicator */}
-            {zoom !== 1 && (
-              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full bg-black/60 text-white text-sm flex items-center gap-2">
-                <span>Zoom: {Math.round(zoom * 100)}%</span>
-                <span className="text-white/60 text-xs hidden md:inline">• Molette pour zoomer • Double-clic pour réinitialiser</span>
-                <span className="text-white/60 text-xs md:hidden">• Pincez pour zoomer</span>
-              </div>
-            )}
-            
-            {/* Swipe hint for mobile when there are multiple media - only show briefly */}
-            {allMedia && allMedia.length > 1 && zoom <= 1 && isMobile && showControls && (
-              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full bg-black/60 text-white text-xs animate-pulse">
-                ← Glissez pour naviguer →
-              </div>
-            )}
-          </div>
+          <ImageViewer
+            mediaUrl={mediaUrl}
+            zoom={zoom}
+            position={position}
+            isDragging={isDragging}
+            swipeOffset={swipeOffset}
+            isSwipeActive={isSwipeActive}
+            handleMouseDown={handleMouseDown}
+            handleMouseMove={handleMouseMove}
+            handleMouseUp={handleMouseUp}
+            handleTouchStart={handleTouchStart}
+            handleTouchMove={handleTouchMove}
+            handleTouchEnd={handleTouchEnd}
+            handleResetZoom={handleResetZoom}
+            imageContainerRef={imageContainerRef}
+            allMedia={allMedia}
+            isMobile={isMobile}
+            showControls={showControls}
+          />
         )}
 
         {/* Video */}
         {mediaType === 'video' && (
-          <div
-            ref={videoContainerRef}
-            className={`relative flex flex-col ${isLandscape && isMobile ? 'w-full h-full' : 'max-w-full max-h-full w-full'} ${isFullscreen ? 'bg-black' : ''}`}
-            onClick={(e) => {
-              // Smart click handling: Single click toggles play/pause immediately, double click toggles fullscreen
-              const now = Date.now();
-              if (now - lastClickTimeRef.current < 300) {
-                toggleFullscreen();
-                lastClickTimeRef.current = 0;
-              } else {
-                togglePlayPause();
-                lastClickTimeRef.current = now;
-              }
-            }}
-          >
-            <div className="flex-1 flex items-center justify-center relative">
-              <video
-                ref={videoRef}
-                src={mediaUrl}
-                muted={isMuted}
-                className={`object-contain ${
-                  isLandscape && isMobile
-                    ? 'w-full h-full max-w-none max-h-none'
-                    : 'max-w-full max-h-[70vh]'
-                }`}
-                playsInline
-                webkit-playsinline="true"
-                // Android-specific attributes for better video handling
-                // @ts-ignore - x5 attributes for Android WebView/browsers
-                x5-video-player-type="h5-page"
-                x5-video-player-fullscreen="true"
-                x5-video-orientation="landscape"
-                // Allow fullscreen on iOS
-                // @ts-ignore
-                allowsInlineMediaPlayback={true}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  // Smart click handling
-                  const now = Date.now();
-                  if (now - lastClickTimeRef.current < 300) {
-                    toggleFullscreen();
-                    lastClickTimeRef.current = 0;
-                  } else {
-                    togglePlayPause();
-                    lastClickTimeRef.current = now;
-                  }
-                }}
-                onPlay={() => setIsPlaying(true)}
-                onPause={() => setIsPlaying(false)}
-                onEnded={() => {
-                  setIsPlaying(false);
-                  setCurrentTime(0);
-                }}
-                onTimeUpdate={handleTimeUpdate}
-                onLoadedMetadata={handleLoadedMetadata}
-              />
-              
-              {/* Video controls overlay - Play/Pause button in center */}
-              <div
-                className={`absolute inset-0 z-40 flex items-center justify-center transition-opacity pointer-events-none ${
-                  showControls || !isPlaying ? 'opacity-100' : 'opacity-0'
-                }`}
-              >
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    togglePlayPause();
-                  }}
-                  className={`w-16 h-16 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center transition-colors ${
-                    showControls || !isPlaying ? 'pointer-events-auto' : 'pointer-events-none'
-                  }`}
-                >
-                  {isPlaying ? (
-                    <Pause size={32} className="text-white" />
-                  ) : (
-                    <Play size={32} className="text-white ml-1" />
-                  )}
-                </button>
-              </div>
-
-              {/* Volume control - top right */}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toggleMute();
-                }}
-                className={`absolute top-4 right-4 z-50 w-10 h-10 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center transition-all ${
-                  showControls ? 'opacity-100' : 'opacity-0'
-                }`}
-              >
-                {isMuted ? (
-                  <VolumeX size={20} className="text-white" />
-                ) : (
-                  <Volume2 size={20} className="text-white" />
-                )}
-              </button>
-            </div>
-
-            {/* Video progress bar - WhatsApp style at bottom */}
-            <div
-              className={`absolute bottom-0 left-0 right-0 z-50 w-full px-4 py-3 bg-gradient-to-t from-black/80 to-transparent transition-opacity ${
-                showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
-              }`}
-              onClick={(e) => e.stopPropagation()}
-              onMouseEnter={() => setIsHoveringControls(true)}
-              onMouseLeave={() => setIsHoveringControls(false)}
-            >
-              <div className="flex items-center gap-3">
-                {/* Current time */}
-                <span className="text-white text-sm font-medium min-w-[45px] text-center">
-                  {formatVideoTime(currentTime)}
-                </span>
-                
-                {/* Progress bar */}
-                <div
-                  ref={progressBarRef}
-                  className="flex-1 h-8 flex items-center cursor-pointer group"
-                  onClick={handleProgressBarClick}
-                  onTouchStart={handleProgressBarTouchStart}
-                  onTouchMove={handleProgressBarTouchMove}
-                  onTouchEnd={handleProgressBarTouchEnd}
-                >
-                  <div className="w-full h-1 bg-white/30 rounded-full relative">
-                    {/* Progress fill - using app accent color */}
-                    <div
-                      className="absolute left-0 top-0 h-full bg-[#787add] rounded-full transition-all"
-                      style={{ width: `${progressPercentage}%` }}
-                    />
-                    {/* Seek handle - using app accent color */}
-                    <div
-                      className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-[#787add] rounded-full shadow-lg transition-transform group-hover:scale-125"
-                      style={{ left: `calc(${progressPercentage}% - 8px)` }}
-                    />
-                  </div>
-                </div>
-                
-                {/* Duration */}
-                <span className="text-white text-sm font-medium min-w-[45px] text-center">
-                  {formatVideoTime(duration)}
-                </span>
-                
-                {/* Playback speed */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    cyclePlaybackRate();
-                  }}
-                  className="text-white text-sm font-medium min-w-[45px] hover:bg-white/10 px-2 py-1 rounded transition-colors"
-                >
-                  x {playbackRate.toFixed(1).replace('.0', ',0')}
-                </button>
-
-                {/* Fullscreen toggle */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggleFullscreen();
-                  }}
-                  className="text-white hover:bg-white/10 p-1.5 rounded transition-colors ml-1"
-                  title={isFullscreen ? "Quitter le plein écran" : "Plein écran"}
-                >
-                  <Maximize2 size={20} className={isFullscreen ? 'rotate-45' : ''} />
-                </button>
-              </div>
-            </div>
-          </div>
+          <VideoPlayer
+            mediaUrl={mediaUrl}
+            isMuted={isMuted}
+            isPlaying={isPlaying}
+            currentTime={currentTime}
+            duration={duration}
+            playbackRate={playbackRate}
+            isFullscreen={isFullscreen}
+            showControls={showControls}
+            videoRef={videoRef}
+            videoContainerRef={videoContainerRef}
+            progressBarRef={progressBarRef}
+            togglePlayPause={togglePlayPause}
+            toggleMute={toggleMute}
+            toggleFullscreen={toggleFullscreen}
+            handleTimeUpdate={handleTimeUpdate}
+            handleLoadedMetadata={handleLoadedMetadata}
+            handleProgressBarClick={handleProgressBarClick}
+            handleProgressBarTouchStart={handleProgressBarTouchStart}
+            handleProgressBarTouchMove={handleProgressBarTouchMove}
+            handleProgressBarTouchEnd={handleProgressBarTouchEnd}
+            cyclePlaybackRate={cyclePlaybackRate}
+            setIsHoveringControls={setIsHoveringControls}
+            isLandscape={isLandscape}
+            isMobile={isMobile}
+            setIsPlaying={setIsPlaying}
+            setCurrentTime={setCurrentTime}
+            lastClickTimeRef={lastClickTimeRef}
+          />
         )}
 
         {/* Audio */}
         {mediaType === 'audio' && (
-          <div className="w-full max-w-md bg-bg-surface rounded-2xl p-6">
-            <audio
-              ref={audioRef}
-              src={mediaUrl}
-              muted={isMuted}
-              onPlay={() => setIsPlaying(true)}
-              onPause={() => setIsPlaying(false)}
-              onEnded={() => setIsPlaying(false)}
-            />
-            
-            <div className="flex flex-col items-center gap-4">
-              {/* Waveform visualization placeholder */}
-              <div className="w-full h-16 bg-bg-hover rounded-lg flex items-center justify-center gap-1">
-                {Array.from({ length: 30 }).map((_, i) => (
-                  <div
-                    key={i}
-                    className={`w-1 bg-accent rounded-full transition-all ${
-                      isPlaying ? 'animate-pulse' : ''
-                    }`}
-                    style={{
-                      height: `${Math.random() * 40 + 10}px`,
-                      animationDelay: `${i * 50}ms`,
-                    }}
-                  />
-                ))}
-              </div>
-
-              {/* Play/Pause button */}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  togglePlayPause();
-                }}
-                className="w-16 h-16 rounded-full bg-accent hover:bg-[#5a5ec9] flex items-center justify-center transition-colors"
-              >
-                {isPlaying ? (
-                  <Pause size={28} className="text-white" />
-                ) : (
-                  <Play size={28} className="text-white ml-1" />
-                )}
-              </button>
-
-              <p className="text-text-secondary text-sm">Message vocal</p>
-            </div>
-          </div>
+          <AudioPlayer
+            mediaUrl={mediaUrl}
+            isMuted={isMuted}
+            isPlaying={isPlaying}
+            audioRef={audioRef}
+            togglePlayPause={togglePlayPause}
+            setIsPlaying={setIsPlaying}
+          />
         )}
       </div>
 

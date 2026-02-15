@@ -166,8 +166,27 @@ export const AudioFilePlayer: React.FC<AudioFilePlayerProps> = ({
       <div className="px-4 py-2">
         <div
           ref={progressRef}
+          role="slider"
+          aria-valuenow={Math.round(progress)}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuetext={`${Math.round(progress)}%`}
+          tabIndex={0}
           onClick={handleProgressClick}
           onMouseDown={() => setIsDragging(true)}
+          onKeyDown={(e) => {
+            if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
+              e.preventDefault();
+              const newTime = Math.min(duration, currentTime + duration * 0.1);
+              audioRef.current && (audioRef.current.currentTime = newTime);
+              setCurrentTime(newTime);
+            } else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
+              e.preventDefault();
+              const newTime = Math.max(0, currentTime - duration * 0.1);
+              audioRef.current && (audioRef.current.currentTime = newTime);
+              setCurrentTime(newTime);
+            }
+          }}
           className={`relative h-1 rounded-full cursor-pointer group ${getProgressBarBgClass(isOwn)}`}
         >
           {/* Progress fill */}

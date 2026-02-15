@@ -197,12 +197,14 @@ export function CallParticipantSelector({ onClose, onSelect, currentParticipants
             <div className="flex justify-center py-8">
               <div className="w-6 h-6 rounded-full border-2 border-primary-500 border-t-transparent animate-spin" />
             </div>
-          ) : filteredContacts.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center px-4">
-              <UserPlus size={48} className="text-white/20 mb-4" />
-              <p className="text-white/50 text-sm">Aucun contact disponible à ajouter</p>
-            </div>
           ) : (
+            <>
+              {filteredContacts.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-center px-4">
+                  <UserPlus size={48} className="text-white/20 mb-4" />
+                  <p className="text-white/50 text-sm">Aucun contact disponible à ajouter</p>
+                </div>
+              ) : (
             <div className="space-y-1">
               {filteredContacts.map((contact) => {
                 const isInvited = invitedIds.has(contact.contact_user_id)

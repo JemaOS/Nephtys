@@ -10,7 +10,7 @@ import { useAuth } from '@/context/AuthContext'
 import { offlineStorage } from '@/lib/offlineStorage'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useOnSupabaseReconnect } from '@/hooks/useSupabaseReconnect'
-import { MessageCircle, Search, Plus, MoreVertical, Check, UserPlus, Users, Pin, BellOff, ArrowLeft, Trash2, Archive, VolumeX, Volume2 } from 'lucide-react'
+import { ChatsSelectionHeader, ChatsHeader, ChatsList, ConversationWithDetails } from './ChatsPageComponents'
 
 // Memoized formatDate function outside component to prevent recreation on every render
 const formatDate = (dateStr: string): string => {
@@ -29,84 +29,62 @@ const formatDate = (dateStr: string): string => {
   }
 }
 
-// Skeleton loader component for conversation items
-const ConversationSkeleton = () => (
-  <div className="space-y-4 p-4">
-    {[1, 2, 3, 4, 5].map((i) => (
-      <div key={i} className="flex items-center gap-3 animate-pulse">
-        <div className="w-12 h-12 rounded-full bg-bg-surface" />
-        <div className="flex-1 space-y-2">
-          <div className="h-4 bg-bg-surface rounded w-1/3" />
-          <div className="h-3 bg-bg-surface rounded w-2/3" />
-        </div>
-      </div>
-    ))}
-  </div>
-)
 
-interface ConversationWithDetails extends Omit<Conversation, 'is_pinned'> {
-  otherUserProfile?: Profile
-  lastMessage?: Message
-  unreadCount?: number
-  is_pinned?: boolean
-  is_muted?: boolean
-}
 
-// Helper to get other user's profile for a direct conversation - extracted to reduce complexity
-const getOtherUserProfile = (
-  convType: string,
-  isSavedMessages: boolean,
-  otherUserIdsForConv: string[],
-  profileMap: Map<string, Profile>,
-  currentUserId: string
-): Profile | undefined => {
-  if (convType !== 'direct') return undefined
-  
-  if (isSavedMessages) {
-    return profileMap.get(currentUserId)
+
+
+// Helper function to check if conversation matches search query
+const matchesSearchQuery = (conv: ConversationWithDetails, query: string): boolean => {
+  // Check conversation name first
+  if (conv.name?.toLowerCase().includes(query)) {
+    return true
   }
   
-  if (otherUserIdsForConv.length === 0) return undefined
-  
-  // Try to find a profile from the other user IDs
-  for (const userId of otherUserIdsForConv) {
-    const profile = profileMap.get(userId)
-    if (profile) return profile
+  if (conv.type === 'direct') {
+    // For direct conversations, check the other user's profile
+    if (conv.otherUserProfile) {
+      const profileName = conv.otherUserProfile.display_name || conv.otherUserProfile.username || ''
+      if (profileName.toLowerCase().includes(query)) {
+        return true
+      }
+    }
+    // If no otherUserProfile, still show the conversation
+    return false
   }
   
-  return undefined
+  // Group conversation without matching name
+  return false
 }
 
-// Helper function to build enriched conversations - extracted to reduce cognitive complexity
-const buildEnrichedConversations = (
-  conversationsData: Conversation[],
-  activeMembers: { conversation_id: string; is_pinned: boolean; is_muted: boolean }[],
-  savedMessagesConvIds: Set<string>,
-  membersByConversation: Map<string, string[]>,
-  profileMap: Map<string, Profile>,
-  lastMessageMap: Map<string, Message>,
-  unreadCountMap: Map<string, number>,
-  currentUserId: string
+// Helper function to filter conversations - extracted to module level
+const filterConversations = (
+  conversations: ConversationWithDetails[],
+  searchQuery: string,
+  activeFilter: 'all' | 'unread' | 'groups'
 ): ConversationWithDetails[] => {
-  return conversationsData.map(conv => {
-    const memberInfo = activeMembers.find(m => m.conversation_id === conv.id)
-    const otherUserIdsForConv = membersByConversation.get(conv.id) || []
-    const isSavedMessages = savedMessagesConvIds.has(conv.id)
-    const otherProfile = getOtherUserProfile(conv.type, isSavedMessages, otherUserIdsForConv, profileMap, currentUserId)
-
-    // Log warning if profile not found for direct conversation
-    if (conv.type === 'direct' && !isSavedMessages && !otherProfile && otherUserIdsForConv.length > 0) {
-      console.warn(`[ChatsPage] Could not find profile for direct conversation ${conv.id}, other user IDs:`, otherUserIdsForConv)
+  return conversations.filter(conv => {
+    // Filtre par recherche
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase()
+      if (!matchesSearchQuery(conv, query)) {
+        // Check if it's a direct without match - still show if no profile
+        if (conv.type === 'direct' && !conv.otherUserProfile) {
+          // Show conversations without profile data
+        } else {
+          return false
+        }
+      }
     }
-
-    return {
-      ...conv,
-      is_pinned: memberInfo?.is_pinned || false,
-      is_muted: memberInfo?.is_muted || false,
-      otherUserProfile: otherProfile,
-      lastMessage: lastMessageMap.get(conv.id),
-      unreadCount: unreadCountMap.get(conv.id) || 0
+    
+    // Filtre par type
+    if (activeFilter === 'unread' && (conv.unreadCount || 0) === 0) {
+      return false
     }
+    if (activeFilter === 'groups' && conv.type !== 'group') {
+      return false
+    }
+    
+    return true
   })
 }
 
@@ -1003,160 +981,7 @@ export function ChatsPage() {
     window.open(`/chat/${conversationId}`, '_blank')
   }
 
-  // Helper function to get platform display name for URLs - extracted to reduce complexity
-const getPlatformDisplayName = (hostname: string): string | null => {
-  // YouTube special handling
-  if (hostname.includes('youtube.com') || hostname.includes('youtu.be')) {
-    return '📹 youtube.com'
-  }
-  // Instagram
-  if (hostname.includes('instagram.com')) {
-    return '📷 instagram.com'
-  }
-  // Twitter/X
-  if (hostname.includes('twitter.com') || hostname.includes('x.com')) {
-    return '🐦 x.com'
-  }
-  // Facebook
-  if (hostname.includes('facebook.com') || hostname.includes('fb.com')) {
-    return '📘 facebook.com'
-  }
-  // TikTok
-  if (hostname.includes('tiktok.com')) {
-    return '🎵 tiktok.com'
-  }
-  // Spotify
-  if (hostname.includes('spotify.com')) {
-    return '🎧 spotify.com'
-  }
-  // LinkedIn
-  if (hostname.includes('linkedin.com')) {
-    return '💼 linkedin.com'
-  }
-  // GitHub
-  if (hostname.includes('github.com')) {
-    return '💻 github.com'
-  }
-  // Generic link with domain
-  return null
-}
-
-// Helper function to process URL and return display text - extracted to reduce complexity
-const processUrlDisplay = (url: string): string => {
-  try {
-    const urlObj = new URL(url)
-    const hostname = urlObj.hostname.replace('www.', '')
-    
-    const platformDisplay = getPlatformDisplayName(hostname)
-    if (platformDisplay) {
-      return platformDisplay
-    }
-    return `🔗 ${hostname}`
-  } catch {
-    return '🔗 Lien'
-  }
-}
-
-// Helper function to get message preview text - extracted to module level for reduced complexity
-export const getLastMessagePreview = (lastMessage: Message | undefined): string => {
-  if (!lastMessage) return 'Aucun message'
-  
-  const msg = lastMessage
-  
-  // Check for GIF pattern: [GIF](url) or caption\n[GIF](url)
-  if (msg.type === 'text' && msg.content) {
-    const gifMatch = msg.content.match(/^(?:[\s\S]*?\n)?\[GIF\]\(https?:\/\/[^\)]+\)$/)
-    if (gifMatch) {
-      // Extract caption if present
-      const captionMatch = msg.content.match(/^([\s\S]*?)\n\[GIF\]/)
-      const caption = captionMatch ? captionMatch[1].trim() : ''
-      return caption ? `GIF • ${caption}` : 'GIF'
-    }
-    
-    // Check for STICKER pattern: [STICKER](url) or caption\n[STICKER](url)
-    const stickerMatch = msg.content.match(/^(?:[\s\S]*?\n)?\[STICKER\]\(https?:\/\/[^\)]+\)$/)
-    if (stickerMatch) {
-      const captionMatch = msg.content.match(/^([\s\S]*?)\n\[STICKER\]/)
-      const caption = captionMatch ? captionMatch[1].trim() : ''
-      return caption ? `Sticker • ${caption}` : 'Sticker'
-    }
-    
-    // Check for URLs and shorten them like WhatsApp
-    const urlRegex = /https?:\/\/[^\s]+/gi
-    const urls = msg.content.match(urlRegex)
-    if (urls && urls.length > 0) {
-      return processUrlDisplay(urls[0])
-    }
-    
-    // Regular text message
-    return msg.content
-  }
-  
-  // Media types
-  if (msg.type === 'image') return '📷 Photo'
-  if (msg.type === 'video') return '🎬 Vidéo'
-  if (msg.type === 'audio') return '🎤 Message vocal'
-  if (msg.type === 'file') return `📎 ${msg.file_name || 'Document'}`
-  
-  return msg.content || '📎 Fichier'
-}
-
-// Helper function to check if conversation matches search query
-export const matchesSearchQuery = (conv: ConversationWithDetails, query: string): boolean => {
-  // Check conversation name first
-  if (conv.name?.toLowerCase().includes(query)) {
-    return true
-  }
-  
-  if (conv.type === 'direct') {
-    // For direct conversations, check the other user's profile
-    if (conv.otherUserProfile) {
-      const profileName = conv.otherUserProfile.display_name || conv.otherUserProfile.username || ''
-      if (profileName.toLowerCase().includes(query)) {
-        return true
-      }
-    }
-    // If no otherUserProfile, still show the conversation
-    return false
-  }
-  
-  // Group conversation without matching name
-  return false
-}
-
-// Helper function to filter conversations - extracted to module level
-export const filterConversations = (
-  conversations: ConversationWithDetails[],
-  searchQuery: string,
-  activeFilter: 'all' | 'unread' | 'groups'
-): ConversationWithDetails[] => {
-  return conversations.filter(conv => {
-    // Filtre par recherche
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase()
-      if (!matchesSearchQuery(conv, query)) {
-        // Check if it's a direct without match - still show if no profile
-        if (conv.type === 'direct' && !conv.otherUserProfile) {
-          // Show conversations without profile data
-        } else {
-          return false
-        }
-      }
-    }
-    
-    // Filtre par type
-    if (activeFilter === 'unread' && (conv.unreadCount || 0) === 0) {
-      return false
-    }
-    if (activeFilter === 'groups' && conv.type !== 'group') {
-      return false
-    }
-    
-    return true
-  })
-}
-
-  // Memoize filtered conversations to prevent unnecessary recalculations
+    // Memoize filtered conversations to prevent unnecessary recalculations
   const filteredConversations = useMemo(() => {
     return filterConversations(conversations, searchQuery, activeFilter)
   }, [conversations, searchQuery, activeFilter])
@@ -1180,342 +1005,49 @@ export const filterConversations = (
     <MainLayout>
       {/* Selection Mode Top Bar - WhatsApp style - ONLY rendered when isSelectionMode is true */}
       {isSelectionMode === true && (
-        <div
-          className="fixed top-0 left-0 right-0 z-50 bg-bg-surface border-b border-bg-hover shadow-lg"
-          style={{ willChange: 'transform' }}
-        >
-          <div className="flex items-center justify-between h-14 px-2">
-            {/* Left side: Back arrow + count */}
-            <div className="flex items-center gap-3">
-              <button
-                onClick={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  console.log('[ChatsPage] Back button clicked - exiting selection mode IMMEDIATELY')
-                  // Exit selection mode immediately - no delays
-                  exitSelectionMode()
-                }}
-                onTouchStart={(e) => {
-                  // Prevent any touch delays
-                  e.stopPropagation()
-                }}
-                onTouchEnd={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  console.log('[ChatsPage] Back button touched - exiting selection mode IMMEDIATELY')
-                  // Exit selection mode immediately - no delays
-                  exitSelectionMode()
-                }}
-                className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-bg-hover active:bg-bg-hover transition-colors touch-manipulation select-none"
-                type="button"
-                aria-label="Quitter le mode sélection"
-              >
-                <ArrowLeft size={24} className="text-text-primary" />
-              </button>
-              <span className="text-lg font-medium text-text-primary">
-                {selectedConversations.size}
-              </span>
-            </div>
-            
-            {/* Right side: Action icons */}
-            <div className="flex items-center gap-1">
-              {/* Pin */}
-              <button
-                onClick={handleBulkPin}
-                className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-bg-hover transition-colors"
-                title={anySelectedPinned ? 'Désépingler' : 'Épingler'}
-              >
-                <Pin size={20} className={anySelectedPinned ? 'text-accent' : 'text-text-primary'} />
-              </button>
-              
-              {/* Mute */}
-              <button
-                onClick={handleBulkMute}
-                className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-bg-hover transition-colors"
-                title={anySelectedMuted ? 'Réactiver le son' : 'Désactiver les notifications'}
-              >
-                {anySelectedMuted ? (
-                  <Volume2 size={20} className="text-text-primary" />
-                ) : (
-                  <VolumeX size={20} className="text-text-primary" />
-                )}
-              </button>
-              
-              {/* Archive */}
-              <button
-                onClick={handleBulkArchive}
-                className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-bg-hover transition-colors"
-                title="Archiver"
-              >
-                <Archive size={20} className="text-text-primary" />
-              </button>
-              
-              {/* Delete */}
-              <button
-                onClick={handleBulkDelete}
-                className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-bg-hover transition-colors"
-                title="Supprimer"
-              >
-                <Trash2 size={20} className="text-red-500" />
-              </button>
-            </div>
-          </div>
-        </div>
+        <ChatsSelectionHeader
+          selectedCount={selectedConversations.size}
+          exitSelectionMode={exitSelectionMode}
+          handleBulkPin={handleBulkPin}
+          handleBulkMute={handleBulkMute}
+          handleBulkArchive={handleBulkArchive}
+          handleBulkDelete={handleBulkDelete}
+          anySelectedPinned={anySelectedPinned}
+          anySelectedMuted={anySelectedMuted}
+        />
       )}
       
       {/* Liste des conversations - Style JemaOS */}
       <div className={`w-full md:w-[420px] bg-bg-secondary flex flex-col md:border-r border-bg-hover pb-20 md:pb-0 ${isSelectionMode === true ? 'pt-14' : ''}`}>
         {/* Header - COMPLETELY Hidden in selection mode - Mutually exclusive with selection bar */}
         {isSelectionMode === false && (
-        <div className="bg-bg-surface p-4">
-          <div className="flex items-center justify-between mb-4">
-            <h1 className="text-xl font-semibold text-text-primary">Discussions</h1>
-            <div className="flex gap-2">
-              <div className="relative">
-                <button
-                  onClick={() => setShowNewMenu(!showNewMenu)}
-                  className="w-10 h-10 rounded-full bg-accent hover:bg-[#5a5ec9] flex items-center justify-center transition-colors"
-                  title="Nouveau"
-                >
-                  <Plus size={20} className="text-white" />
-                </button>
-                
-                {/* New Menu */}
-                {showNewMenu && (
-                  <>
-                    <div className="fixed inset-0 z-40" onClick={() => setShowNewMenu(false)} />
-                    <div className="absolute right-0 top-12 z-50 min-w-[220px] bg-bg-surface rounded-2xl shadow-2xl py-2 border border-bg-hover">
-                      <button
-                        onClick={() => { navigate('/contacts'); setShowNewMenu(false) }}
-                        className="w-full px-4 py-3 text-left hover:bg-bg-hover transition-colors text-text-primary text-sm flex items-center gap-3"
-                      >
-                        <UserPlus size={18} />
-                        <span>Nouveau contact</span>
-                      </button>
-                      <button
-                        onClick={() => { navigate('/groups/new'); setShowNewMenu(false) }}
-                        className="w-full px-4 py-3 text-left hover:bg-bg-hover transition-colors text-text-primary text-sm flex items-center gap-3"
-                      >
-                        <Users size={18} />
-                        <span>Nouveau groupe</span>
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-              <div className="relative">
-                <button
-                  onClick={() => setShowFilterMenu(!showFilterMenu)}
-                  className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1]"
-                  title="Filtres"
-                >
-                  <MoreVertical size={20} />
-                </button>
-                
-                {/* Filter Menu */}
-                {showFilterMenu && (
-                  <>
-                    <div className="fixed inset-0 z-40" onClick={() => setShowFilterMenu(false)} />
-                    <div className="absolute right-0 top-12 z-50 min-w-[200px] bg-bg-surface rounded-2xl shadow-2xl py-2 border border-bg-hover">
-                      <button
-                        onClick={() => { setActiveFilter('all'); setShowFilterMenu(false) }}
-                        className="w-full px-4 py-2 text-left hover:bg-bg-hover transition-colors text-text-primary text-sm flex items-center gap-3"
-                      >
-                        {activeFilter === 'all' && <Check size={16} className="text-[#787add]" />}
-                        <span className={activeFilter === 'all' ? 'ml-0' : 'ml-7'}>Toutes les discussions</span>
-                      </button>
-                      <button
-                        onClick={() => { setActiveFilter('unread'); setShowFilterMenu(false) }}
-                        className="w-full px-4 py-2 text-left hover:bg-bg-hover transition-colors text-text-primary text-sm flex items-center gap-3"
-                      >
-                        {activeFilter === 'unread' && <Check size={16} className="text-[#787add]" />}
-                        <span className={activeFilter === 'unread' ? 'ml-0' : 'ml-7'}>Non lues</span>
-                      </button>
-                      <button
-                        onClick={() => { setActiveFilter('groups'); setShowFilterMenu(false) }}
-                        className="w-full px-4 py-2 text-left hover:bg-bg-hover transition-colors text-text-primary text-sm flex items-center gap-3"
-                      >
-                        {activeFilter === 'groups' && <Check size={16} className="text-[#787add]" />}
-                        <span className={activeFilter === 'groups' ? 'ml-0' : 'ml-7'}>Groupes</span>
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-          
-          {/* Barre de recherche */}
-          <div className="relative">
-            <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" />
-            <input
-              type="text"
-              placeholder="Rechercher ou démarrer une discussion"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full h-9 pl-10 pr-3 bg-bg-surface text-text-primary text-sm rounded-xl border-none outline-none placeholder:text-text-secondary focus:bg-bg-hover"
-            />
-          </div>
-          
-          {/* Filtres */}
-          <div className="flex gap-2 mt-3">
-            <button
-              onClick={() => setActiveFilter('all')}
-              className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                activeFilter === 'all' ? 'bg-[#787add] text-white' : 'hover:bg-bg-hover text-text-secondary'
-              }`}
-            >
-              Tous
-            </button>
-            <button
-              onClick={() => setActiveFilter('unread')}
-              className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                activeFilter === 'unread' ? 'bg-[#787add] text-white' : 'hover:bg-bg-hover text-text-secondary'
-              }`}
-            >
-              Non lus
-            </button>
-            <button
-              onClick={() => setActiveFilter('groups')}
-              className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                activeFilter === 'groups' ? 'bg-[#787add] text-white' : 'hover:bg-bg-hover text-text-secondary'
-              }`}
-            >
-              Groupes
-            </button>
-          </div>
-        </div>
+          <ChatsHeader
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+            showNewMenu={showNewMenu}
+            setShowNewMenu={setShowNewMenu}
+            showFilterMenu={showFilterMenu}
+            setShowFilterMenu={setShowFilterMenu}
+            activeFilter={activeFilter}
+            setActiveFilter={setActiveFilter}
+            navigate={navigate}
+          />
         )}
 
         {/* Liste des conversations */}
-        <div className="flex-1 overflow-y-auto pb-4">
-          {isLoading ? (
-            <ConversationSkeleton />
-          ) : filteredConversations.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-center px-8">
-              <MessageCircle size={64} className="text-[#3b4a54] mb-4" />
-              <h3 className="text-lg font-medium text-text-secondary mb-2">Aucune conversation</h3>
-              <p className="text-sm text-text-secondary">Commencez une nouvelle discussion</p>
-            </div>
-          ) : (
-          filteredConversations.map((conversation) => {
-            // Déterminer le nom à afficher
-            // For "Saved Messages" conversations (self-contact), display "Moi" or user's name
-            const isSavedMessagesConv = conversation.type === 'direct' && conversation.name === 'Messages enregistrés'
-            const displayName = conversation.type === 'group'
-              ? conversation.name || 'Groupe'
-              : isSavedMessagesConv
-                ? 'Moi'
-                : conversation.otherUserProfile?.display_name || conversation.otherUserProfile?.username || 'Utilisateur'
-
-            // Use the module-level helper function for message preview
-            const lastMessagePreview = getLastMessagePreview(conversation.lastMessage)
-
-              const hasUnread = (conversation.unreadCount || 0) > 0
-              const isSelected = selectedConversations.has(conversation.id)
-
-              return (
-                <div
-                  key={conversation.id}
-                  className={`px-4 py-3 cursor-pointer transition-colors ${
-                    isSelected
-                      ? 'bg-accent/20'
-                      : hasUnread
-                        ? 'bg-bg-surface'
-                        : 'hover:bg-bg-surface'
-                  }`}
-                  onClick={() => handleConversationClick(conversation.id)}
-                  onContextMenu={(e) => {
-                    if (!isSelectionMode) {
-                      handleContextMenu(e, conversation.id)
-                    }
-                  }}
-                  onTouchStart={() => handleTouchStart(conversation.id)}
-                  onTouchEnd={handleTouchEnd}
-                  onTouchMove={handleTouchMove}
-                  onMouseDown={(e) => {
-                    // Desktop long press support - only on mobile or when not clicking checkbox area
-                    if (isMobile && e.button === 0) {
-                      handleTouchStart(conversation.id)
-                    }
-                  }}
-                  onMouseUp={handleTouchEnd}
-                  onMouseLeave={handleTouchEnd}
-                >
-                  <div className="flex items-center gap-3">
-                    {/* Selection Checkbox - Only in selection mode (both mobile and desktop) */}
-                    {isSelectionMode && (
-                      <div
-                        className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
-                          isSelected
-                            ? 'bg-[#6063cf] border-[#6063cf]'
-                            : 'border-text-secondary'
-                        }`}
-                      >
-                        {isSelected && (
-                          <Check size={14} className="text-white" strokeWidth={3} />
-                        )}
-                      </div>
-                    )}
-                    
-                    {/* Avatar */}
-                    <div className="relative">
-                      {(conversation.type === 'direct' && conversation.otherUserProfile?.avatar_url) || conversation.avatar_url ? (
-                        <img
-                          src={conversation.type === 'direct' ? conversation.otherUserProfile?.avatar_url! : conversation.avatar_url!}
-                          alt={displayName}
-                          className="w-12 h-12 rounded-full object-cover flex-shrink-0"
-                          key={conversation.type === 'direct' ? conversation.otherUserProfile?.avatar_url : conversation.avatar_url}
-                        />
-                      ) : (
-                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold text-lg flex-shrink-0">
-                          {displayName[0]?.toUpperCase()}
-                        </div>
-                      )}
-                      {!isSelectionMode && conversation.is_pinned && (
-                        <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-accent flex items-center justify-center">
-                          <Pin size={12} className="text-white" />
-                        </div>
-                      )}
-                      {!isSelectionMode && conversation.is_muted && (
-                        <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-[#8696a0] flex items-center justify-center">
-                          <BellOff size={12} className="text-white" />
-                        </div>
-                      )}
-                    </div>
-                    
-                    {/* Contenu */}
-                    <div className="flex-1 min-w-0 border-b border-bg-hover pb-3">
-                      <div className="flex items-start justify-between gap-2 mb-1">
-                        <h3 className={`truncate ${hasUnread ? 'text-white font-medium' : 'text-text-secondary'}`}>
-                          {displayName}
-                        </h3>
-                        {conversation.last_message_at && (
-                          <span className={`text-xs flex-shrink-0 ${hasUnread ? 'text-[#787add]' : 'text-text-secondary'}`}>
-                            {formatDate(conversation.last_message_at)}
-                          </span>
-                        )}
-                      </div>
-                      
-                      <div className="flex items-center justify-between gap-2">
-                        <p className={`text-sm truncate ${hasUnread ? 'text-text-secondary font-medium' : 'text-text-secondary'}`}>
-                          {lastMessagePreview}
-                        </p>
-                        {hasUnread && (
-                          <div className="min-w-[20px] h-5 px-1.5 rounded-full bg-[#787add] flex items-center justify-center flex-shrink-0">
-                            <span className="text-xs font-semibold text-text-primary">
-                              {conversation.unreadCount! > 99 ? '99+' : conversation.unreadCount}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )
-            })
-          )}
-        </div>
+        <ChatsList
+          isLoading={isLoading}
+          filteredConversations={filteredConversations}
+          selectedConversations={selectedConversations}
+          isSelectionMode={isSelectionMode}
+          handleConversationClick={handleConversationClick}
+          handleContextMenu={handleContextMenu}
+          handleTouchStart={handleTouchStart}
+          handleTouchEnd={handleTouchEnd}
+          handleTouchMove={handleTouchMove}
+          isMobile={isMobile}
+          formatDate={formatDate}
+        />
       </div>
 
       {/* Zone de chat vide - Style JemaOS - Desktop only */}

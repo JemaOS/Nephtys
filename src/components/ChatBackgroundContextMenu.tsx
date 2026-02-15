@@ -102,7 +102,18 @@ export const ChatBackgroundContextMenu: React.FC<ChatBackgroundContextMenuProps>
   return (
     <>
       {/* Backdrop */}
-      <div className="fixed inset-0 z-50" onClick={onClose} />
+      <div 
+        className="fixed inset-0 z-50" 
+        onClick={onClose}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            onClose();
+          }
+        }}
+        role="button"
+        tabIndex={0}
+        aria-label="Fermer le menu"
+      />
 
       {/* Context Menu */}
       <div

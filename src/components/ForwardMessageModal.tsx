@@ -189,6 +189,72 @@ export const ForwardMessageModal: React.FC<ForwardMessageModalProps> = ({
     return name[0]?.toUpperCase() || '?';
   };
 
+  // Render conversations list based on loading and empty states
+  const renderConversationsList = () => {
+    if (loading) {
+      return (
+        <div className="flex justify-center items-center py-8">
+          <div className="w-8 h-8 rounded-full border-4 border-accent border-t-transparent animate-spin" />
+        </div>
+      );
+    }
+
+    if (filteredConversations.length === 0) {
+      return (
+        <div className="flex flex-col items-center justify-center py-8 text-center px-4">
+          <p className="text-text-secondary">Aucune conversation trouvée</p>
+        </div>
+      );
+    }
+
+    return filteredConversations.map((conv) => {
+      const isSelected = selectedConversations.has(conv.id);
+      const avatarUrl = getAvatarUrl(conv);
+
+      return (
+        <button
+          key={conv.id}
+          onClick={() => toggleConversation(conv.id)}
+          className="w-full flex items-center gap-3 px-4 py-3 hover:bg-bg-hover transition-colors"
+        >
+          {/* Checkbox */}
+          <div
+            className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+              isSelected
+                ? 'bg-accent border-accent'
+                : 'border-text-tertiary'
+            }`}
+          >
+            {isSelected && <Check size={14} className="text-white" />}
+          </div>
+
+          {/* Avatar */}
+          {avatarUrl ? (
+            <img
+              src={avatarUrl}
+              alt={getConversationName(conv)}
+              className="w-12 h-12 rounded-full object-cover"
+            />
+          ) : (
+            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-accent/80 to-accent flex items-center justify-center text-white font-semibold text-lg">
+              {getInitial(conv)}
+            </div>
+          )}
+
+          {/* Info */}
+          <div className="flex-1 min-w-0 text-left">
+            <h3 className="text-text-primary font-normal truncate">
+              {getConversationName(conv)}
+            </h3>
+            <p className="text-sm text-text-tertiary truncate">
+              {getConversationSubtitle(conv)}
+            </p>
+          </div>
+        </button>
+      );
+    });
+  };
+
   const filteredConversations = conversations.filter(conv => {
     const name = getConversationName(conv).toLowerCase();
     const subtitle = getConversationSubtitle(conv).toLowerCase();
@@ -201,7 +267,18 @@ export const ForwardMessageModal: React.FC<ForwardMessageModalProps> = ({
   return (
     <>
       {/* Backdrop */}
-      <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[250]" onClick={onClose} />
+      <div 
+        className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[250]" 
+        onClick={onClose}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            onClose();
+          }
+        }}
+        role="button"
+        tabIndex={0}
+        aria-label="Fermer le modal"
+      />
 
       {/* Modal */}
       <div className="fixed inset-0 z-[250] flex items-center justify-center p-4">
@@ -238,62 +315,7 @@ export const ForwardMessageModal: React.FC<ForwardMessageModalProps> = ({
 
           {/* Conversations List */}
           <div className="flex-1 overflow-y-auto">
-            {loading ? (
-              <div className="flex justify-center items-center py-8">
-                <div className="w-8 h-8 rounded-full border-4 border-accent border-t-transparent animate-spin" />
-              </div>
-            ) : filteredConversations.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-8 text-center px-4">
-                <p className="text-text-secondary">Aucune conversation trouvée</p>
-              </div>
-            ) : (
-              filteredConversations.map((conv) => {
-                const isSelected = selectedConversations.has(conv.id);
-                const avatarUrl = getAvatarUrl(conv);
-
-                return (
-                  <button
-                    key={conv.id}
-                    onClick={() => toggleConversation(conv.id)}
-                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-bg-hover transition-colors"
-                  >
-                    {/* Checkbox */}
-                    <div
-                      className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
-                        isSelected
-                          ? 'bg-accent border-accent'
-                          : 'border-text-tertiary'
-                      }`}
-                    >
-                      {isSelected && <Check size={14} className="text-white" />}
-                    </div>
-
-                    {/* Avatar */}
-                    {avatarUrl ? (
-                      <img
-                        src={avatarUrl}
-                        alt={getConversationName(conv)}
-                        className="w-12 h-12 rounded-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-accent/80 to-accent flex items-center justify-center text-white font-semibold text-lg">
-                        {getInitial(conv)}
-                      </div>
-                    )}
-
-                    {/* Info */}
-                    <div className="flex-1 min-w-0 text-left">
-                      <h3 className="text-text-primary font-normal truncate">
-                        {getConversationName(conv)}
-                      </h3>
-                      <p className="text-sm text-text-tertiary truncate">
-                        {getConversationSubtitle(conv)}
-                      </p>
-                    </div>
-                  </button>
-                );
-              })
-            )}
+            {renderConversationsList()}
           </div>
 
           {/* Footer with Forward Button */}

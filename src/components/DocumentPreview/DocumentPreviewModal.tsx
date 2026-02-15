@@ -5,6 +5,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { X, Send, Plus, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RotateCw, Loader2, FileText, FileSpreadsheet, Presentation, File, FileArchive } from 'lucide-react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import { DocumentPreviewHeader, DocumentPreviewFooter, DocumentPreviewContent, FileTypeInfo } from './DocumentPreviewComponents';
 
 // Configure PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = pdfjsWorker;
@@ -27,7 +28,7 @@ const getTouchDistance = (touches: React.TouchList): number => {
 };
 
 // Get file type info based on extension
-const getFileTypeInfo = (fileName: string): { type: 'pdf' | 'word' | 'excel' | 'powerpoint' | 'text' | 'archive' | 'other'; label: string; color: string; icon: React.ReactNode } => {
+const getFileTypeInfo = (fileName: string): FileTypeInfo => {
   const ext = fileName.split('.').pop()?.toLowerCase() || '';
   
   if (ext === 'pdf') {
@@ -340,6 +341,12 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
     }
   };
 
+  // Helper function to get cursor style
+  const getCursorStyle = (): string => {
+    if (!isPDF) return 'default';
+    return isDragging ? 'grabbing' : 'grab';
+  };
+
   return (
     <div className="fixed inset-0 bg-bg-primary z-[120] flex flex-col">
       {/* Header - Dark with file info - Responsive */}
@@ -426,133 +433,33 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
         )}
       </div>
 
-      {/* Content Area - Touch enabled */}
-      <div
-        ref={containerRef}
-        className={`flex-1 overflow-auto bg-[#525659] flex justify-center select-none ${canPreview ? 'items-start' : 'items-center'}`}
-        style={{ cursor: isPDF ? (isDragging ? 'grabbing' : 'grab') : 'default' }}
-        onMouseDown={isPDF ? handleMouseDown : undefined}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-      >
-        {/* Loading state */}
-        {loading && (
-          <div className="flex items-center justify-center h-full w-full">
-            <div className="flex flex-col items-center gap-3">
-              <Loader2 size={40} className="animate-spin text-white" />
-              <span className="text-sm text-white/70">Chargement...</span>
-            </div>
-          </div>
-        )}
-
-        {/* Error state */}
-        {error && (
-          <div className="flex items-center justify-center h-full w-full">
-            <div className="flex flex-col items-center gap-3 text-center px-4">
-              <div className="w-16 h-16 rounded-full bg-red-500/20 flex items-center justify-center">
-                <span className="text-3xl">📄</span>
-              </div>
-              <span className="text-sm text-white/70">{error}</span>
-              <button
-                onClick={onClose}
-                className="mt-2 px-4 py-2 rounded-lg bg-white/10 text-white text-sm hover:bg-white/20 transition-colors"
-              >
-                Fermer
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* PDF Document - Using CSS transform for smooth zooming - Responsive */}
-        {isPDF && fileUrl && containerWidth > 0 && (
-          <div
-            ref={pdfWrapperRef}
-            className="py-2 sm:py-4 transition-transform duration-100 ease-out origin-top touch-none"
-            style={{
-              transform: `scale(${scale})`,
-              transformOrigin: 'top center',
-            }}
-          >
-            <Document
-              file={fileUrl}
-              onLoadSuccess={handleLoadSuccess}
-              onLoadError={handleLoadError}
-              loading={null}
-              error={null}
-            >
-              <Page
-                pageNumber={currentPage}
-                width={containerWidth}
-                className="shadow-2xl rounded-sm sm:rounded-lg overflow-hidden"
-                renderTextLayer={false}
-                renderAnnotationLayer={false}
-                loading={
-                  <div
-                    className="flex items-center justify-center bg-white"
-                    style={{
-                      width: containerWidth,
-                      height: isMobile ? '70vh' : '600px'
-                    }}
-                  >
-                    <Loader2 size={isMobile ? 24 : 32} className="animate-spin text-gray-400" />
-                  </div>
-                }
-              />
-            </Document>
-          </div>
-        )}
-
-        {/* Mobile pinch hint - shown briefly */}
-        {isPDF && isMobile && !loading && !error && (
-          <div className="absolute bottom-20 left-1/2 -translate-x-1/2 bg-black/60 text-white text-xs px-3 py-1.5 rounded-full pointer-events-none opacity-0 animate-fade-in-out">
-            Pincez pour zoomer
-          </div>
-        )}
-
-        {/* Text file preview - Responsive */}
-        {isText && textContent !== null && !loading && (
-          <div className="w-full max-w-4xl mx-auto p-2 sm:p-4">
-            <pre className="bg-[#1e1e1e] text-gray-200 p-3 sm:p-4 rounded-lg overflow-auto text-xs sm:text-sm font-mono whitespace-pre-wrap break-words shadow-2xl max-h-[70vh]">
-              {textContent}
-            </pre>
-          </div>
-        )}
-
-        {/* Non-previewable file info card (Word, Excel, PowerPoint, etc.) - Responsive */}
-        {!canPreview && !loading && (
-          <div className="p-3 sm:p-4 w-full max-w-sm sm:max-w-md">
-            <div className="bg-[#1f2c34] rounded-xl sm:rounded-2xl p-5 sm:p-8 w-full shadow-2xl">
-              <div className="flex flex-col items-center text-center">
-                {/* File icon - Responsive size */}
-                <div className={`w-16 h-16 sm:w-24 sm:h-24 rounded-xl sm:rounded-2xl ${fileTypeInfo.color} flex items-center justify-center mb-4 sm:mb-6 shadow-lg`}>
-                  {React.cloneElement(fileTypeInfo.icon as React.ReactElement, {
-                    size: isMobile ? 24 : 32
-                  })}
-                </div>
-                
-                {/* File name - Responsive text */}
-                <h3 className="text-white font-semibold text-base sm:text-lg mb-2 break-all line-clamp-2">
-                  {file.name}
-                </h3>
-                
-                {/* File info - Responsive */}
-                <div className="text-white/60 text-xs sm:text-sm space-y-0.5 sm:space-y-1 mb-4 sm:mb-6">
-                  <p>Taille: {formatFileSize(file.size)}</p>
-                  <p>Type: {fileTypeInfo.label}</p>
-                </div>
-                
-                {/* Info message - Responsive */}
-                <div className="bg-white/5 rounded-lg p-3 sm:p-4 w-full">
-                  <p className="text-white/70 text-xs sm:text-sm leading-relaxed">
-                    {getPreviewMessage(fileTypeInfo.type)}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
+      <DocumentPreviewContent
+        containerRef={containerRef}
+        canPreview={canPreview}
+        getCursorStyle={getCursorStyle}
+        isPDF={isPDF}
+        handleMouseDown={handleMouseDown}
+        handleTouchStart={handleTouchStart}
+        handleTouchMove={handleTouchMove}
+        handleTouchEnd={handleTouchEnd}
+        loading={loading}
+        error={error}
+        onClose={onClose}
+        fileUrl={fileUrl}
+        containerWidth={containerWidth}
+        pdfWrapperRef={pdfWrapperRef}
+        scale={scale}
+        handleLoadSuccess={handleLoadSuccess}
+        handleLoadError={handleLoadError}
+        currentPage={currentPage}
+        isMobile={isMobile}
+        isText={isText}
+        textContent={textContent}
+        file={file}
+        fileTypeInfo={fileTypeInfo}
+        formatFileSize={formatFileSize}
+        getPreviewMessage={getPreviewMessage}
+      />
 
       {/* Bottom bar with caption input and send button - Responsive */}
       <div className="p-2 sm:p-3 md:p-4 border-t border-[#1f2c34] bg-[#1f2c34] safe-area-bottom">

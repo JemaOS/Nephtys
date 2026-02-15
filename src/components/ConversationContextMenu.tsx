@@ -64,7 +64,18 @@ export function ConversationContextMenu({
     return (
       <>
         {/* Overlay - tap anywhere to close */}
-        <div className="fixed inset-0 z-40 bg-black/20" onClick={onClose} />
+        <div 
+          className="fixed inset-0 z-40 bg-black/20" 
+          onClick={onClose}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              onClose();
+            }
+          }}
+          role="button"
+          tabIndex={0}
+          aria-label="Fermer le menu"
+        />
         
         {/* Top Action Bar - WhatsApp style */}
         <div
@@ -134,7 +145,18 @@ export function ConversationContextMenu({
   return (
     <>
       {/* Overlay */}
-      <div className="fixed inset-0 z-40" onClick={onClose} />
+      <div 
+        className="fixed inset-0 z-40" 
+        onClick={onClose}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            onClose();
+          }
+        }}
+        role="button"
+        tabIndex={0}
+        aria-label="Fermer le menu"
+      />
       
       {/* Menu */}
       <div
@@ -145,9 +167,9 @@ export function ConversationContextMenu({
           top: `${y}px`,
         }}
       >
-        {menuItems.map((item, idx) => (
+        {menuItems.map((item) => (
           <button
-            key={idx}
+            key={item.label}
             onClick={() => {
               item.onClick()
               onClose()
@@ -212,9 +234,9 @@ function MoreOptionsMenu({
       
       {isOpen && (
         <div className="absolute right-0 top-12 z-50 min-w-[220px] bg-bg-surface rounded-lg shadow-2xl py-2 border border-bg-hover">
-          {moreItems.map((item, idx) => (
+          {moreItems.map((item) => (
             <button
-              key={idx}
+              key={item.label}
               onClick={() => {
                 item.onClick()
                 setIsOpen(false)
