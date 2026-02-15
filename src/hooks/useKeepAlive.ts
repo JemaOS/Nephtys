@@ -123,7 +123,7 @@ export function useKeepAlive(
       
       // Check if we've already tried reloading recently
       const lastReload = sessionStorage.getItem('pwa-force-reload');
-      const timeSinceLastReload = lastReload ? Date.now() - parseInt(lastReload) : Infinity;
+      const timeSinceLastReload = lastReload ? Date.now() - Number.parseInt(lastReload) : Infinity;
       
       // Only reload if we haven't reloaded in the last 2 minutes
       if (timeSinceLastReload > 120000) {
