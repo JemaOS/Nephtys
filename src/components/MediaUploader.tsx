@@ -81,6 +81,20 @@ const getDocumentIconConfig = (extension: string): { bgColor: string; icon: Reac
   };
 };
 
+// Module-level helper: Check if video needs compression
+const checkVideoNeedsCompression = async (previewUrl: string): Promise<boolean> => {
+  return new Promise<boolean>((resolve) => {
+    const video = document.createElement('video');
+    video.preload = 'metadata';
+    video.onloadedmetadata = () => {
+      const height = video.videoHeight;
+      resolve(height > 720);
+    };
+    video.onerror = () => resolve(false);
+    video.src = previewUrl;
+  });
+};
+
 // Custom Audio Preview Player Component - Minimalist design
 const AudioPreviewPlayer: React.FC<{ file: File; preview: string | null }> = ({ file, preview }) => {
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -575,7 +589,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
 
     // Compress video if needed
     if (type === 'video') {
-      const shouldCompress = await checkVideoCompression(preview);
+      const shouldCompress = await checkVideoNeedsCompression(preview);
       if (shouldCompress) {
         console.log(`Compressing video ${file.name}...`);
         const compressedBlob = await compressVideo(file);
@@ -689,20 +703,6 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
     }
     
     return uploadedFile;
-  };
-
-  // Check if video needs compression - extracted to reduce complexity
-  const checkVideoNeedsCompression = async (previewUrl: string): Promise<boolean> => {
-    return new Promise<boolean>((resolve) => {
-      const video = document.createElement('video');
-      video.preload = 'metadata';
-      video.onloadedmetadata = () => {
-        const height = video.videoHeight;
-        resolve(height > 720);
-      };
-      video.onerror = () => resolve(false);
-      video.src = previewUrl;
-    });
   };
   const handleMultipleUpload = async () => {
     if (selectedFiles.length === 0) return;
