@@ -58,6 +58,31 @@ interface CallLog {
   conversation_avatar?: string
 }
 
+// Module-level helper: Format call duration
+export const formatCallDuration = (seconds: number | null): string => {
+  if (!seconds) return '0:00'
+  const mins = Math.floor(seconds / 60)
+  const secs = seconds % 60
+  return `${mins}:${secs.toString().padStart(2, '0')}`
+}
+
+// Module-level helper: Format date
+export const formatCallDate = (dateStr: string): string => {
+  const date = new Date(dateStr)
+  const now = new Date()
+  const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24))
+  
+  if (diffDays === 0) {
+    return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+  } else if (diffDays === 1) {
+    return 'Hier'
+  } else if (diffDays < 7) {
+    return date.toLocaleDateString('fr-FR', { weekday: 'short' })
+  } else {
+    return date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })
+  }
+}
+
 // Helper component for rendering a single call item - extracted to reduce complexity
 const CallItem = ({
   call,
@@ -101,29 +126,6 @@ const CallItem = ({
   
   const isMissed = call.status === 'missed' || call.status === 'rejected'
   const isAnswered = call.status === 'answered' || call.status === 'ended'
-
-  const formatDuration = (seconds: number | null) => {
-    if (!seconds) return '0:00'
-    const mins = Math.floor(seconds / 60)
-    const secs = seconds % 60
-    return `${mins}:${secs.toString().padStart(2, '0')}`
-  }
-
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr)
-    const now = new Date()
-    const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24))
-    
-    if (diffDays === 0) {
-      return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
-    } else if (diffDays === 1) {
-      return 'Hier'
-    } else if (diffDays < 7) {
-      return date.toLocaleDateString('fr-FR', { weekday: 'short' })
-    } else {
-      return date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })
-    }
-  }
 
   return (
     <div
@@ -200,13 +202,13 @@ const CallItem = ({
             {isGroupCall && <span className="text-xs">Groupe</span>}
             
             <span>
-              {isMissed ? 'Manqué' : isAnswered && call.duration ? formatDuration(call.duration) : 'Non répondu'}
+              {isMissed ? 'Manqué' : isAnswered && call.duration ? formatCallDuration(call.duration) : 'Non répondu'}
             </span>
           </div>
         </div>
 
         <div className="text-xs text-text-secondary flex-shrink-0">
-          {formatDate(call.started_at)}
+          {formatCallDate(call.started_at)}
         </div>
       </div>
     </div>
@@ -704,28 +706,7 @@ export function CallsPage() {
     }
   }
 
-  const formatDuration = (seconds: number | null) => {
-    if (!seconds) return '0:00'
-    const mins = Math.floor(seconds / 60)
-    const secs = seconds % 60
-    return `${mins}:${secs.toString().padStart(2, '0')}`
-  }
-
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr)
-    const now = new Date()
-    const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24))
-    
-    if (diffDays === 0) {
-      return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
-    } else if (diffDays === 1) {
-      return 'Hier'
-    } else if (diffDays < 7) {
-      return date.toLocaleDateString('fr-FR', { weekday: 'short' })
-    } else {
-      return date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })
-    }
-  }
+  // Use module-level formatCallDuration and formatCallDate
 
   const handleStartCall = () => {
     setShowContactsModal(true)
@@ -1472,7 +1453,7 @@ export function CallsPage() {
                 {selectedCall.duration && (
                   <div className="flex items-center justify-between">
                     <span className="text-text-secondary">Durée</span>
-                    <span className="text-gray-800 dark:text-white">{formatDuration(selectedCall.duration)}</span>
+                    <span className="text-gray-800 dark:text-white">{formatCallDuration(selectedCall.duration)}</span>
                   </div>
                 )}
 
@@ -1652,7 +1633,7 @@ export function CallsPage() {
               {selectedCall.duration && (
                 <div className="flex items-center justify-between">
                   <span className="text-text-secondary">Durée</span>
-                  <span className="text-gray-800 dark:text-white">{formatDuration(selectedCall.duration)}</span>
+                  <span className="text-gray-800 dark:text-white">{formatCallDuration(selectedCall.duration)}</span>
                 </div>
               )}
 
