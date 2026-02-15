@@ -130,7 +130,7 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({
             </p>
           )}
         </div>
-      </div>
+      </button>
 
       {/* Green accent bar on the left */}
       <div className="absolute left-0 top-0 bottom-0 w-1 bg-accent" />
