@@ -83,6 +83,42 @@ export const formatCallDate = (dateStr: string): string => {
   }
 }
 
+// Module-level helper: Get call display info - extracted to reduce complexity
+const getCallDisplayInfo = (call: CallLog, userId: string | undefined): { 
+  displayName: string; 
+  avatarUrl: string | null | undefined;
+  isOutgoing: boolean;
+  isGroupCall: boolean;
+} => {
+  const isOutgoing = call.caller_id === userId;
+  const isGroupCall = call.is_group_call;
+  
+  if (isGroupCall) {
+    return {
+      displayName: call.conversation_name || 'Groupe',
+      avatarUrl: call.conversation_avatar,
+      isOutgoing,
+      isGroupCall
+    };
+  }
+  
+  const otherProfile = isOutgoing ? call.callee_profile : call.caller_profile;
+  return {
+    displayName: otherProfile?.display_name || otherProfile?.username || 'Utilisateur',
+    avatarUrl: otherProfile?.avatar_url,
+    isOutgoing,
+    isGroupCall
+  };
+};
+
+// Module-level helper: Get call status info - extracted to reduce complexity
+const getCallStatusInfo = (status: string): { isMissed: boolean; isAnswered: boolean } => {
+  return {
+    isMissed: status === 'missed' || status === 'rejected',
+    isAnswered: status === 'answered' || status === 'ended'
+  };
+};
+
 // Helper component for rendering a single call item - extracted to reduce complexity
 const CallItem = ({
   call,
@@ -109,23 +145,8 @@ const CallItem = ({
   onTouchMove: () => void;
   isMobile: boolean;
 }) => {
-  const isOutgoing = call.caller_id === user?.id
-  const isGroupCall = call.is_group_call
-  
-  let displayName: string
-  let avatarUrl: string | null | undefined
-  
-  if (isGroupCall) {
-    displayName = call.conversation_name || 'Groupe'
-    avatarUrl = call.conversation_avatar
-  } else {
-    const otherProfile = isOutgoing ? call.callee_profile : call.caller_profile
-    displayName = otherProfile?.display_name || otherProfile?.username || 'Utilisateur'
-    avatarUrl = otherProfile?.avatar_url
-  }
-  
-  const isMissed = call.status === 'missed' || call.status === 'rejected'
-  const isAnswered = call.status === 'answered' || call.status === 'ended'
+  const { displayName, avatarUrl, isOutgoing, isGroupCall } = getCallDisplayInfo(call, user?.id);
+  const { isMissed, isAnswered } = getCallStatusInfo(call.status);
 
   return (
     <div
