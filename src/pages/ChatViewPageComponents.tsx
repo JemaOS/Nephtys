@@ -43,6 +43,35 @@ const getMessageTypeInfo = (message: Message) => {
   return { isEmojiOnlyMessage, emojiCount, isGifMessage, isStickerMessage, isGifOrStickerMessage, mediaUrl, mediaType, isMediaMessage, isDocumentMessage, gifMatch, stickerMatch }
 }
 
+// Extracted component for system messages to reduce nesting complexity in MessageList
+const SystemMessageItem = ({ messageId, content }: { messageId: string, content: string }) => (
+  <div
+    key={messageId}
+    id={`message-${messageId}`}
+    className="flex justify-center my-4 px-4"
+  >
+    <div className="relative bg-white/10 dark:bg-white/5 backdrop-blur-xl px-5 py-3 rounded-2xl max-w-[85%] sm:max-w-[70%] text-center border border-white/20 dark:border-white/10 shadow-lg">
+      {/* Subtle gradient overlay */}
+      <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-accent/10 to-transparent pointer-events-none" />
+      
+      {/* Icon */}
+      <div className="flex justify-center mb-2">
+        <div className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-accent">
+            <circle cx="12" cy="12" r="10"/>
+            <polyline points="12 6 12 12 16 14"/>
+          </svg>
+        </div>
+      </div>
+      
+      {/* Message content */}
+      <p className="text-xs sm:text-sm text-text-secondary leading-relaxed relative z-10">
+        {content}
+      </p>
+    </div>
+  </div>
+)
+
 // Utility function to detect emoji-only messages
 export const isEmojiOnly = (text: string): { isEmoji: boolean; emojiCount: number } => {
   if (!text || text.trim() === '') return { isEmoji: false, emojiCount: 0 }
@@ -610,31 +639,11 @@ export const MessageList: React.FC<MessageListProps> = ({
             // Render system messages with glassmorphism 2025 style
             if (isSystemMessage) {
               return (
-                <div
+                <SystemMessageItem
                   key={message.id}
-                  id={`message-${message.id}`}
-                  className="flex justify-center my-4 px-4"
-                >
-                  <div className="relative bg-white/10 dark:bg-white/5 backdrop-blur-xl px-5 py-3 rounded-2xl max-w-[85%] sm:max-w-[70%] text-center border border-white/20 dark:border-white/10 shadow-lg">
-                    {/* Subtle gradient overlay */}
-                    <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-accent/10 to-transparent pointer-events-none" />
-                    
-                    {/* Icon */}
-                    <div className="flex justify-center mb-2">
-                      <div className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-accent">
-                          <circle cx="12" cy="12" r="10"/>
-                          <polyline points="12 6 12 12 16 14"/>
-                        </svg>
-                      </div>
-                    </div>
-                    
-                    {/* Message content */}
-                    <p className="text-xs sm:text-sm text-text-secondary leading-relaxed relative z-10">
-                      {systemMessageContent}
-                    </p>
-                  </div>
-                </div>
+                  messageId={message.id}
+                  content={systemMessageContent}
+                />
               )
             }
             

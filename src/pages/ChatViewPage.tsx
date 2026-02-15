@@ -525,14 +525,7 @@ export function ChatViewPage() {
         const newMsg = payload.new as Message
         // Avoid duplicates: check if message already exists (including temp messages)
         setMessages(prev => {
-          // Check if this message ID already exists
-          const exists = prev.some(m => m.id === newMsg.id)
-          if (exists) {
-            console.log('[ChatViewPage] Message already exists, skipping:', newMsg.id)
-            return prev
-          }
-          
-        // Check if there's a temp message that should be replaced
+          // Check if there's a temp message that should be replaced
           // Temp messages start with 'temp-' and have the same media_url
           const tempIndex = prev.findIndex(m =>
             m.id.startsWith('temp-') &&
