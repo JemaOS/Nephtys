@@ -58,6 +58,161 @@ interface CallLog {
   conversation_avatar?: string
 }
 
+// Helper component for rendering a single call item - extracted to reduce complexity
+const CallItem = ({
+  call,
+  user,
+  isSelected,
+  selectedCall,
+  isSelectionMode,
+  onClick,
+  onContextMenu,
+  onTouchStart,
+  onTouchEnd,
+  onTouchMove,
+  isMobile
+}: {
+  call: CallLog;
+  user: any;
+  isSelected: boolean;
+  selectedCall: CallLog | null;
+  isSelectionMode: boolean;
+  onClick: () => void;
+  onContextMenu: (e: React.MouseEvent) => void;
+  onTouchStart: () => void;
+  onTouchEnd: () => void;
+  onTouchMove: () => void;
+  isMobile: boolean;
+}) => {
+  const isOutgoing = call.caller_id === user?.id
+  const isGroupCall = call.is_group_call
+  
+  let displayName: string
+  let avatarUrl: string | null | undefined
+  
+  if (isGroupCall) {
+    displayName = call.conversation_name || 'Groupe'
+    avatarUrl = call.conversation_avatar
+  } else {
+    const otherProfile = isOutgoing ? call.callee_profile : call.caller_profile
+    displayName = otherProfile?.display_name || otherProfile?.username || 'Utilisateur'
+    avatarUrl = otherProfile?.avatar_url
+  }
+  
+  const isMissed = call.status === 'missed' || call.status === 'rejected'
+  const isAnswered = call.status === 'answered' || call.status === 'ended'
+
+  const formatDuration = (seconds: number | null) => {
+    if (!seconds) return '0:00'
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins}:${secs.toString().padStart(2, '0')}`
+  }
+
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr)
+    const now = new Date()
+    const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24))
+    
+    if (diffDays === 0) {
+      return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+    } else if (diffDays === 1) {
+      return 'Hier'
+    } else if (diffDays < 7) {
+      return date.toLocaleDateString('fr-FR', { weekday: 'short' })
+    } else {
+      return date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })
+    }
+  }
+
+  return (
+    <div
+      className={`px-4 py-3 transition-colors cursor-pointer ${
+        isSelected
+          ? 'bg-accent/20'
+          : selectedCall?.id === call.id
+            ? 'bg-bg-surface'
+            : 'hover:bg-bg-surface'
+      }`}
+      onClick={onClick}
+      onContextMenu={onContextMenu}
+      onTouchStart={onTouchStart}
+      onTouchEnd={onTouchEnd}
+      onTouchMove={onTouchMove}
+      onMouseDown={(e) => {
+        if (isMobile && e.button === 0) {
+          onTouchStart()
+        }
+      }}
+      onMouseUp={onTouchEnd}
+      onMouseLeave={onTouchEnd}
+    >
+      <div className="flex items-center gap-3">
+        {isSelectionMode && (
+          <div
+            className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
+              isSelected
+                ? 'bg-[#6063cf] border-[#6063cf]'
+                : 'border-text-secondary'
+            }`}
+          >
+            {isSelected && (
+              <Check size={14} className="text-white" strokeWidth={3} />
+            )}
+          </div>
+        )}
+        
+        {avatarUrl ? (
+          <img
+            src={avatarUrl}
+            alt={displayName}
+            className="w-12 h-12 rounded-full object-cover flex-shrink-0"
+          />
+        ) : isGroupCall ? (
+          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-accent to-primary-600 flex items-center justify-center text-white flex-shrink-0">
+            <Users size={24} />
+          </div>
+        ) : (
+          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold text-lg flex-shrink-0">
+            {displayName[0]?.toUpperCase()}
+          </div>
+        )}
+        
+        <div className="flex-1 min-w-0 border-b border-bg-hover pb-3">
+          <div className="flex items-center gap-2 mb-1">
+            {isGroupCall && <Users size={14} className="text-text-secondary flex-shrink-0" />}
+            <h3 className={`truncate ${isMissed ? 'text-[#ea4335]' : 'text-text-primary'}`}>
+              {displayName}
+            </h3>
+          </div>
+          
+          <div className="flex items-center gap-2 text-sm text-text-secondary">
+            {isMissed ? (
+              <PhoneMissed size={14} className="text-[#ea4335]" />
+            ) : isOutgoing ? (
+              <PhoneOutgoing size={14} />
+            ) : (
+              <PhoneIncoming size={14} />
+            )}
+            
+            {call.type === 'video' && <Video size={14} />}
+            
+            {isGroupCall && <span className="text-xs">Groupe</span>}
+            
+            <span>
+              {isMissed ? 'Manqué' : isAnswered && call.duration ? formatDuration(call.duration) : 'Non répondu'}
+            </span>
+          </div>
+        </div>
+
+        <div className="text-xs text-text-secondary flex-shrink-0">
+          {formatDate(call.started_at)}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function CallsPage() {
   // Initialize from cache for instant display
   const [calls, setCalls] = useState<CallLog[]>(() => getCache<CallLog[]>('calls') || [])
@@ -1202,122 +1357,23 @@ export function CallsPage() {
             </div>
           ) : (
             filteredCalls.map((call) => {
-              const isOutgoing = call.caller_id === user?.id
-              const isGroupCall = call.is_group_call
-              
-              // For group calls, use conversation info; for direct calls, use profile
-              let displayName: string
-              let avatarUrl: string | null | undefined
-              
-              if (isGroupCall) {
-                displayName = call.conversation_name || 'Groupe'
-                avatarUrl = call.conversation_avatar
-              } else {
-                const otherProfile = isOutgoing ? call.callee_profile : call.caller_profile
-                displayName = otherProfile?.display_name || otherProfile?.username || 'Utilisateur'
-                avatarUrl = otherProfile?.avatar_url
-              }
-              
-              const isMissed = call.status === 'missed' || call.status === 'rejected'
-              const isAnswered = call.status === 'answered' || call.status === 'ended'
-
               const isSelected = selectedCalls.has(call.id)
               
               return (
-                <div
+                <CallItem
                   key={call.id}
-                  className={`px-4 py-3 transition-colors cursor-pointer ${
-                    isSelected
-                      ? 'bg-accent/20'
-                      : selectedCall?.id === call.id
-                        ? 'bg-bg-surface'
-                        : 'hover:bg-bg-surface'
-                  }`}
+                  call={call}
+                  user={user}
+                  isSelected={isSelected}
+                  selectedCall={selectedCall}
+                  isSelectionMode={isSelectionMode}
                   onClick={() => handleCallClick(call)}
                   onContextMenu={(e) => handleCallContextMenu(e, call)}
                   onTouchStart={() => handleTouchStart(call.id)}
                   onTouchEnd={handleTouchEnd}
                   onTouchMove={handleTouchMove}
-                  onMouseDown={(e) => {
-                    // Desktop long press support - only on mobile
-                    if (isMobile && e.button === 0) {
-                      handleTouchStart(call.id)
-                    }
-                  }}
-                  onMouseUp={handleTouchEnd}
-                  onMouseLeave={handleTouchEnd}
-                >
-                  <div className="flex items-center gap-3">
-                    {/* Selection Checkbox - Only in selection mode */}
-                    {isSelectionMode && (
-                      <div
-                        className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
-                          isSelected
-                            ? 'bg-[#6063cf] border-[#6063cf]'
-                            : 'border-text-secondary'
-                        }`}
-                      >
-                        {isSelected && (
-                          <Check size={14} className="text-white" strokeWidth={3} />
-                        )}
-                      </div>
-                    )}
-                    
-                    {/* Avatar */}
-                    {avatarUrl ? (
-                      <img
-                        src={avatarUrl}
-                        alt={displayName}
-                        className="w-12 h-12 rounded-full object-cover flex-shrink-0"
-                      />
-                    ) : isGroupCall ? (
-                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-accent to-primary-600 flex items-center justify-center text-white flex-shrink-0">
-                        <Users size={24} />
-                      </div>
-                    ) : (
-                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold text-lg flex-shrink-0">
-                        {displayName[0]?.toUpperCase()}
-                      </div>
-                    )}
-                    
-                    {/* Info */}
-                    <div className="flex-1 min-w-0 border-b border-bg-hover pb-3">
-                      <div className="flex items-center gap-2 mb-1">
-                        {isGroupCall && <Users size={14} className="text-text-secondary flex-shrink-0" />}
-                        <h3 className={`truncate ${isMissed ? 'text-[#ea4335]' : 'text-text-primary'}`}>
-                          {displayName}
-                        </h3>
-                      </div>
-                      
-                      <div className="flex items-center gap-2 text-sm text-text-secondary">
-                        {/* Icône de direction */}
-                        {isMissed ? (
-                          <PhoneMissed size={14} className="text-[#ea4335]" />
-                        ) : isOutgoing ? (
-                          <PhoneOutgoing size={14} />
-                        ) : (
-                          <PhoneIncoming size={14} />
-                        )}
-                        
-                        {/* Type d'appel */}
-                        {call.type === 'video' && <Video size={14} />}
-                        
-                        {/* Indicateur appel de groupe */}
-                        {isGroupCall && <span className="text-xs">Groupe</span>}
-                        
-                        {/* Statut */}
-                        <span>
-                          {isMissed ? 'Manqué' : isAnswered && call.duration ? formatDuration(call.duration) : 'Non répondu'}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Date */}
-                    <div className="text-xs text-text-secondary flex-shrink-0">
-                      {formatDate(call.started_at)}
-                    </div>
-                  </div>
-                </div>
+                  isMobile={isMobile}
+                />
               )
             })
           )}

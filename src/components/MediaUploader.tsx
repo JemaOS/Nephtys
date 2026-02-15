@@ -365,6 +365,68 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
     }
   };
 
+  // Helper: Check if video needs compression - extracted to reduce complexity
+  const checkIfVideoNeedsCompression = async (previewUrl: string | null, file: File): Promise<boolean> => {
+    return new Promise<boolean>((resolve) => {
+      const video = document.createElement('video');
+      video.preload = 'metadata';
+      video.onloadedmetadata = () => {
+        const height = video.videoHeight;
+        resolve(height > 720);
+      };
+      video.onerror = () => resolve(false);
+      video.src = previewUrl || URL.createObjectURL(file);
+    });
+  };
+
+  // Helper: Get audio duration - extracted to reduce complexity
+  const getAudioDuration = async (previewUrl: string): Promise<number | undefined> => {
+    try {
+      return await new Promise<number>((resolve) => {
+        const audio = new Audio(previewUrl);
+        audio.addEventListener('loadedmetadata', () => {
+          resolve(Math.round(audio.duration));
+        });
+        audio.addEventListener('error', () => {
+          resolve(0);
+        });
+      });
+    } catch (err) {
+      console.warn('Could not get audio duration:', err);
+      return undefined;
+    }
+  };
+
+  // Helper: Compress video if needed - extracted to reduce complexity
+  const compressVideoIfNeeded = async (file: File, previewUrl: string | null): Promise<Blob> => {
+    const shouldCompress = await checkIfVideoNeedsCompression(previewUrl, file);
+    if (shouldCompress) {
+      console.log('Video is larger than 720p, compressing...');
+      setUploadPhase('compressing');
+      setUploadProgress(0);
+      
+      const compressedBlob = await compressVideo(file, (progress) => {
+        setUploadProgress(progress);
+      });
+      console.log('Video compression complete');
+      setUploadProgress(100);
+      return compressedBlob;
+    }
+    return file;
+  };
+
+  // Helper: Simulate upload progress - extracted to reduce complexity
+  const startUploadProgressSimulation = (): ReturnType<typeof setInterval> => {
+    return setInterval(() => {
+      setUploadProgress(prev => {
+        if (prev >= 90) {
+          return 90;
+        }
+        return prev + 10;
+      });
+    }, 200);
+  };
+
   // Handle multiple file selection (WhatsApp-like)
   const handleMultipleFileSelect = async (files: FileList, forcedType?: 'image' | 'video' | 'file' | 'audio') => {
     const newFiles: Array<{ file: File; preview: string; type: 'image' | 'video' | 'file' | 'audio' }> = [];
@@ -785,7 +847,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       if (fileType === 'image') {
         try {
           setUploadPhase('compressing');
-          setUploadProgress(0); // Indeterminate or start
+          setUploadProgress(0);
           processedImage = await processImageForUpload(selectedFile);
           fileToUpload = processedImage.blob;
           setUploadProgress(100);
@@ -797,27 +859,13 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       // Compress video if needed (1080p/4K -> 720p)
       if (fileType === 'video') {
         try {
-          // Check dimensions
-          const shouldCompress = await new Promise<boolean>((resolve) => {
-            const video = document.createElement('video');
-            video.preload = 'metadata';
-            video.onloadedmetadata = () => {
-              const height = video.videoHeight;
-              // Clean up if we created a URL
-              if (!preview) window.URL.revokeObjectURL(video.src);
-              resolve(height > 720);
-            };
-            video.onerror = () => resolve(false);
-            video.src = preview || URL.createObjectURL(selectedFile);
-          });
-
+          const shouldCompress = await checkIfVideoNeedsCompression(preview, selectedFile);
           if (shouldCompress) {
             console.log('Video is larger than 720p, compressing...');
             setUploadPhase('compressing');
             setUploadProgress(0);
             
             const compressedBlob = await compressVideo(selectedFile, (progress) => {
-              // Direct progress from compression (0-100)
               setUploadProgress(progress);
             });
             fileToUpload = compressedBlob;
@@ -830,46 +878,24 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       }
       
       const fileExt = selectedFile.name.split('.').pop() || 'bin';
-      // Use 'media' bucket for all file types to ensure consistency
       const bucket = 'media';
-      // Create a subfolder based on file type for organization
       const folder = fileType === 'image' ? 'images' : fileType === 'video' ? 'videos' : fileType === 'audio' ? 'audio' : 'documents';
       const fileName = `${user.id}/${folder}/${Date.now()}_${selectedFile.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
 
       // Get audio duration if it's an audio file
       let audioDuration: number | undefined;
       if (fileType === 'audio' && preview) {
-        try {
-          audioDuration = await new Promise<number>((resolve) => {
-            const audio = new Audio(preview);
-            audio.addEventListener('loadedmetadata', () => {
-              resolve(Math.round(audio.duration));
-            });
-            audio.addEventListener('error', () => {
-              resolve(0);
-            });
-          });
-        } catch (err) {
-          console.warn('Could not get audio duration:', err);
-        }
+        audioDuration = await getAudioDuration(preview);
       }
 
       // Start Upload Phase
       setUploadPhase('uploading');
       setUploadProgress(0);
 
-      // Simulate progress for better UX (since Supabase doesn't give us upload progress easily)
-      const progressInterval = setInterval(() => {
-        setUploadProgress(prev => {
-          if (prev >= 90) {
-            // Don't clear interval here, let it sit at 90 until done
-            return 90;
-          }
-          return prev + 10;
-        });
-      }, 200);
+      // Simulate progress for better UX
+      const progressInterval = startUploadProgressSimulation();
 
-      // Upload vers Supabase Storage
+      // Upload to Supabase Storage
       console.log(`[MediaUploader] Starting upload: ${fileName}, size: ${fileToUpload.size}, type: ${selectedFile.type}`);
       const uploadStartTime = Date.now();
 
@@ -888,21 +914,20 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
 
       if (error) {
         console.error('[MediaUploader] Upload error details:', error);
-        // Log specific error properties that might help diagnose
         if ('statusCode' in error) console.error('[MediaUploader] Status code:', (error as any).statusCode);
         if ('error' in error) console.error('[MediaUploader] Inner error:', (error as any).error);
         
         throw new Error(error.message || 'Upload failed');
       }
 
-      // Obtenir l'URL publique
+      // Get public URL
       const { data: { publicUrl } } = supabase.storage
         .from(bucket)
         .getPublicUrl(fileName);
 
       setUploadProgress(100);
       
-      // Include image dimensions or audio duration if available
+      // Call completion callback
       onUploadComplete(
         publicUrl,
         fileType,
@@ -914,7 +939,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
         audioDuration
       );
       
-      // Reset
+      // Reset state
       setSelectedFile(null);
       setSelectedFileType(null);
       setPreview(null);
@@ -1196,105 +1221,78 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   };
 
-  // Helper to render tab button - extracted to reduce complexity
-  const renderTabButton = (tab: 'attach' | 'emoji' | 'sticker' | 'gif', label: string) => (
-    <button
-      onClick={() => setActiveTab(tab)}
-      className={`flex-1 py-3 text-sm font-medium transition-colors ${
-        activeTab === tab ? 'text-accent border-b-2 border-accent' : 'text-text-secondary'
-      }`}
-    >
-      {label}
-    </button>
-  );
-
-  // Helper to render attach tab button - extracted to reduce complexity
-  const renderAttachButton = (icon: React.ReactNode, label: string, onClick: () => void, mobileOnly = false) => (
-    <button
-      onClick={onClick}
-      className={`flex flex-col items-center gap-2 p-2 sm:p-3 rounded-xl bg-bg-surface hover:bg-bg-hover transition-colors ${mobileOnly ? 'sm:hidden' : ''} ${mobileOnly ? '' : ''}`}
-    >
-      <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-accent flex items-center justify-center ${mobileOnly ? '' : ''}`}>
-        {icon}
-      </div>
-      <span className="text-[10px] sm:text-xs text-text-primary">{label}</span>
-    </button>
-  );
-
-  // Helper to render attach tab content - extracted to reduce complexity
-  const renderAttachTab = () => (
+  // Helper: Render emoji categories - extracted to reduce complexity
+  const renderEmojiCategories = () => (
     <div className="space-y-4">
-      <div className="grid grid-cols-5 gap-2 sm:gap-3">
-        {/* Camera */}
-        <button
-          onClick={() => {
-            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-            if (isMobile) {
-              cameraInputRef.current?.click();
-            } else {
-              startCamera('photo');
-            }
-          }}
-          className="flex flex-col items-center gap-2 p-2 sm:p-3 rounded-xl bg-bg-surface hover:bg-bg-hover transition-colors"
-        >
-          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-accent flex items-center justify-center">
-            <Camera size={20} className="text-white sm:hidden" />
-            <Camera size={24} className="text-white hidden sm:block" />
+      {Object.entries(emojiCategories).map(([category, emojis]) => (
+        <div key={category}>
+          <h4 className="text-xs text-text-secondary uppercase mb-2">
+            {getEmojiCategoryLabel(category)}
+          </h4>
+          <div className="grid grid-cols-8 gap-1">
+            {emojis.map((emoji, idx) => (
+              <button
+                key={idx}
+                onClick={() => handleEmojiClick(emoji)}
+                className="w-10 h-10 flex items-center justify-center text-2xl hover:bg-bg-hover rounded-lg transition-all hover:scale-110 active:scale-95"
+              >
+                {emoji}
+              </button>
+            ))}
           </div>
-          <span className="text-[10px] sm:text-xs text-text-primary">Caméra</span>
-        </button>
-        
-        {/* Gallery */}
-        <button
-          onClick={() => imageInputRef.current?.click()}
-          className="flex flex-col items-center gap-2 p-2 sm:p-3 rounded-xl bg-bg-surface hover:bg-bg-hover transition-colors"
-        >
-          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-accent flex items-center justify-center">
-            <Image size={20} className="text-white sm:hidden" />
-            <Image size={24} className="text-white hidden sm:block" />
-          </div>
-          <span className="text-[10px] sm:text-xs text-text-primary">Galerie</span>
-        </button>
-        
-        {/* Video */}
-        <button
-          onClick={() => videoInputRef.current?.click()}
-          className="flex flex-col items-center gap-2 p-2 sm:p-3 rounded-xl bg-bg-surface hover:bg-bg-hover transition-colors"
-        >
-          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-accent flex items-center justify-center">
-            <Video size={20} className="text-white sm:hidden" />
-            <Video size={24} className="text-white hidden sm:block" />
-          </div>
-          <span className="text-[10px] sm:text-xs text-text-primary">Vidéo</span>
-        </button>
-        
-        {/* Audio */}
-        <button
-          onClick={() => audioInputRef.current?.click()}
-          className="flex flex-col items-center gap-2 p-2 sm:p-3 rounded-xl bg-bg-surface hover:bg-bg-hover transition-colors"
-        >
-          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-accent flex items-center justify-center">
-            <Music size={20} className="text-white sm:hidden" />
-            <Music size={24} className="text-white hidden sm:block" />
-          </div>
-          <span className="text-[10px] sm:text-xs text-text-primary">Audio</span>
-        </button>
-        
-        {/* Document */}
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          className="flex flex-col items-center gap-2 p-2 sm:p-3 rounded-xl bg-bg-surface hover:bg-bg-hover transition-colors"
-        >
-          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-accent flex items-center justify-center">
-            <FileIcon size={20} className="text-white sm:hidden" />
-            <FileIcon size={24} className="text-white hidden sm:block" />
-          </div>
-          <span className="text-[10px] sm:text-xs text-text-primary">Document</span>
-        </button>
-      </div>
+        </div>
+      ))}
     </div>
   );
-  // Emoji categories
+
+  // Helper: Get emoji category label - extracted to reduce complexity
+  const getEmojiCategoryLabel = (category: string): string => {
+    const labels: Record<string, string> = {
+      recent: 'Récents',
+      smileys: 'Smileys',
+      gestures: 'Gestes',
+      hearts: 'Cœurs',
+      objects: 'Objets',
+      nature: 'Nature',
+      food: 'Nourriture',
+    };
+    return labels[category] || category;
+  };
+
+  // Helper: Render sticker category button - extracted to reduce complexity
+  const renderStickerCategoryButton = (category: string) => (
+    <button
+      key={category}
+      onClick={() => {
+        setSelectedStickerCategory(category);
+        setStickerSearchQuery('');
+      }}
+      className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
+        selectedStickerCategory === category && !stickerSearchQuery
+          ? 'bg-accent text-white'
+          : 'bg-bg-surface text-text-secondary hover:bg-bg-hover'
+      }`}
+    >
+      {getStickerCategoryLabel(category)}
+    </button>
+  );
+
+  // Helper: Get sticker category label - extracted to reduce complexity
+  const getStickerCategoryLabel = (category: string): string => {
+    const labels: Record<string, string> = {
+      love: '❤️ Amour',
+      happy: '😊 Joyeux',
+      sad: '😢 Triste',
+      angry: '😠 Fâché',
+      cute: '🥰 Mignon',
+      funny: '😂 Drôle',
+      hello: '👋 Salut',
+      bye: '👋 Au revoir',
+      thanks: '🙏 Merci',
+      sorry: '😔 Désolé',
+    };
+    return labels[category] || category;
+  };
   const emojiCategories = {
     recent: ['👍', '❤️', '😂', '😮', '😢', '🙏'],
     smileys: ['😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😂', '🙂', '😊', '😇', '🥰', '😍', '🤩', '😘', '😗', '😚', '😋', '😛', '😜', '🤪', '😝', '🤑', '🤗', '🤭', '🤫', '🤔', '🤐', '🤨', '😐'],
@@ -1854,32 +1852,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
 
               {/* Emoji tab */}
               {activeTab === 'emoji' && (
-                <div className="space-y-4">
-                  {Object.entries(emojiCategories).map(([category, emojis]) => (
-                    <div key={category}>
-                      <h4 className="text-xs text-text-secondary uppercase mb-2">
-                        {category === 'recent' ? 'Récents' :
-                         category === 'smileys' ? 'Smileys' :
-                         category === 'gestures' ? 'Gestes' :
-                         category === 'hearts' ? 'Cœurs' :
-                         category === 'objects' ? 'Objets' :
-                         category === 'nature' ? 'Nature' :
-                         category === 'food' ? 'Nourriture' : category}
-                      </h4>
-                      <div className="grid grid-cols-8 gap-1">
-                        {emojis.map((emoji, idx) => (
-                          <button
-                            key={idx}
-                            onClick={() => handleEmojiClick(emoji)}
-                            className="w-10 h-10 flex items-center justify-center text-2xl hover:bg-bg-hover rounded-lg transition-all hover:scale-110 active:scale-95"
-                          >
-                            {emoji}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                renderEmojiCategories()
               )}
 
               {/* Sticker tab */}
@@ -1899,31 +1872,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
 
                   {/* Category selector */}
                   <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4">
-                    {stickerCategories.map((category) => (
-                      <button
-                        key={category}
-                        onClick={() => {
-                          setSelectedStickerCategory(category);
-                          setStickerSearchQuery('');
-                        }}
-                        className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
-                          selectedStickerCategory === category && !stickerSearchQuery
-                            ? 'bg-accent text-white'
-                            : 'bg-bg-surface text-text-secondary hover:bg-bg-hover'
-                        }`}
-                      >
-                        {category === 'love' ? '❤️ Amour' :
-                         category === 'happy' ? '😊 Joyeux' :
-                         category === 'sad' ? '😢 Triste' :
-                         category === 'angry' ? '😠 Fâché' :
-                         category === 'cute' ? '🥰 Mignon' :
-                         category === 'funny' ? '😂 Drôle' :
-                         category === 'hello' ? '👋 Salut' :
-                         category === 'bye' ? '👋 Au revoir' :
-                         category === 'thanks' ? '🙏 Merci' :
-                         '😔 Désolé'}
-                      </button>
-                    ))}
+                    {stickerCategories.map(renderStickerCategoryButton)}
                   </div>
                   
                   {/* Stickers grid */}
