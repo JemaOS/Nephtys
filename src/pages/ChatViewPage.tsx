@@ -38,6 +38,7 @@ import { DeleteMessageDialog } from '@/components/DeleteMessageDialog'
 import { ForwardMessageModal } from '@/components/ForwardMessageModal'
 import { QuickReactionBar } from '@/components/QuickReactionBar'
 import { CallMessage } from '@/components/CallMessage'
+import { MessageItem } from '@/components/MessageItem'
 
 // Call log interface for displaying call messages in chat
 interface CallLog {
@@ -787,54 +788,62 @@ export function ChatViewPage() {
     setShowEmojiPicker(false)
   }
 
+  // Extract group member loading to helper function
+  const loadGroupMembers = async (convId: string): Promise<Map<string, Profile>> => {
+    const { data: members } = await supabase
+      .from('conversation_members')
+      .select('user_id')
+      .eq('conversation_id', convId)
+    
+    if (members && members.length > 0) {
+      const memberIds = members.map(m => m.user_id)
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('*')
+        .in('id', memberIds)
+      
+      if (profiles) {
+        const profileMap = new Map<string, Profile>()
+        profiles.forEach(p => profileMap.set(p.id, p))
+        return profileMap
+      }
+    }
+    return new Map()
+  }
+
+  // Extract direct conversation user loading to helper function
+  const loadDirectConversationUser = async (convId: string, userId: string): Promise<Profile | null> => {
+    const { data: allMembers } = await supabase.from('conversation_members').select('user_id').eq('conversation_id', convId)
+    
+    // Check if this is a "Saved Messages" conversation (only one member = self)
+    if (allMembers && allMembers.length === 1 && allMembers[0].user_id === userId) {
+      const { data: selfProfile } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle()
+      return selfProfile
+    }
+    
+    // Normal direct conversation - find the other user
+    const { data: members } = await supabase.from('conversation_members').select('user_id').eq('conversation_id', convId).neq('user_id', userId)
+    if (members && members.length > 0) {
+      const { data: otherUserData } = await supabase.from('profiles').select('*').eq('id', members[0].user_id).maybeSingle()
+      return otherUserData
+    }
+    return null
+  }
+
   const loadConversation = async () => {
     const { data, error } = await supabase.from('conversations').select('*').eq('id', conversationId!).maybeSingle()
     if (!error && data) {
       setConversation(data)
-      setCache(`conv_${conversationId}`, data) // Cache conversation
+      setCache(`conv_${conversationId}`, data)
       
       if (data.type === 'group') {
-        // Load all group member profiles
-        const { data: members } = await supabase
-          .from('conversation_members')
-          .select('user_id')
-          .eq('conversation_id', conversationId!)
-        
-        if (members && members.length > 0) {
-          const memberIds = members.map(m => m.user_id)
-          const { data: profiles } = await supabase
-            .from('profiles')
-            .select('*')
-            .in('id', memberIds)
-          
-          if (profiles) {
-            const profileMap = new Map<string, Profile>()
-            profiles.forEach(p => profileMap.set(p.id, p))
-            setGroupMemberProfiles(profileMap)
-          }
-        }
+        const profileMap = await loadGroupMembers(conversationId!)
+        setGroupMemberProfiles(profileMap)
       } else if (data.type === 'direct') {
-        // First, get all members of this conversation
-        const { data: allMembers } = await supabase.from('conversation_members').select('user_id').eq('conversation_id', conversationId!)
-        
-        // Check if this is a "Saved Messages" conversation (only one member = self)
-        if (allMembers && allMembers.length === 1 && allMembers[0].user_id === user!.id) {
-          // This is "Saved Messages" - use own profile
-          const { data: selfProfile } = await supabase.from('profiles').select('*').eq('id', user!.id).maybeSingle()
-          if (selfProfile) {
-            setOtherUser(selfProfile)
-            setCache(`user_${conversationId}`, selfProfile) // Cache user profile
-          }
-        } else {
-          // Normal direct conversation - find the other user
-          const { data: members } = await supabase.from('conversation_members').select('user_id').eq('conversation_id', conversationId!).neq('user_id', user!.id)
-          if (members && members.length > 0) {
-            const { data: otherUserData } = await supabase.from('profiles').select('*').eq('id', members[0].user_id).maybeSingle()
-            if (otherUserData) {
-              setOtherUser(otherUserData)
-              setCache(`user_${conversationId}`, otherUserData) // Cache user profile
-            }
-          }
+        const otherUserData = await loadDirectConversationUser(conversationId!, user!.id)
+        if (otherUserData) {
+          setOtherUser(otherUserData)
+          setCache(`user_${conversationId}`, otherUserData)
         }
       }
     }
