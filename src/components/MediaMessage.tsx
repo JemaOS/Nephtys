@@ -651,100 +651,35 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
     }
   }, [type]);
 
+  // Use extracted ImageRenderer component - reduces cognitive complexity
   if (type === 'image') {
-    const containerStyle = getContainerStyle();
-    const hasKnownDimensions = !!imageDimensions;
-    
     return (
       <>
-        <div
-          className="relative cursor-pointer overflow-hidden rounded-xl border-[3px] border-[#787add] group message-media-container"
-          style={{ ...containerStyle, boxSizing: 'border-box' }}
-          onClick={() => !imageError && setIsFullscreen(true)}
-        >
-          {/* Hover Actions Button */}
-          {onOpenMenu && (
-            <MessageHoverActions
-              isVisible={showHoverActions}
-              isOwn={isOwn}
-              onOpenMenu={onOpenMenu}
-            />
-          )}
-          {/* Blur placeholder background - shown while loading */}
-          {!imageLoaded && !imageError && thumbnail && (
-            <div
-              className="absolute inset-0 bg-cover bg-center"
-              style={{
-                backgroundImage: `url(${thumbnail})`,
-                filter: 'blur(10px)',
-                transform: 'scale(1.1)', // Prevent blur edges from showing
-              }}
-            />
-          )}
-          
-          {/* Skeleton loading state - shown when no thumbnail */}
-          {!imageLoaded && !imageError && !thumbnail && (
-            <div
-              className="absolute inset-0 bg-gradient-to-br from-[#1a1a1a] to-[#2a2a2a] animate-pulse"
-              style={hasKnownDimensions ? {} : { aspectRatio: '4/3' }}
-            />
-          )}
-          
-          {/* Loading spinner overlay */}
-          {!imageLoaded && !imageError && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black/20 z-10">
-              <div className="w-8 h-8 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-            </div>
-          )}
-          
-          {/* Error state */}
-          {imageError && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#1a1a1a] text-text-secondary">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-                <circle cx="8.5" cy="8.5" r="1.5"/>
-                <polyline points="21 15 16 10 5 21"/>
-              </svg>
-              <span className="text-xs mt-2">Image non disponible</span>
-            </div>
-          )}
-          
-          {/* Actual image */}
-          <img
-            src={url}
-            alt="Image"
-            className={`w-full h-full object-cover transition-opacity duration-300 ${
-              imageLoaded ? 'opacity-100' : 'opacity-0'
-            }`}
-            loading="lazy"
-            onLoad={(e) => {
-              const img = e.target as HTMLImageElement;
-              // Update dimensions if we didn't have them from props
-              if (!propWidth || !propHeight) {
-                setImageDimensions({ width: img.naturalWidth, height: img.naturalHeight });
-              }
-              setImageLoaded(true);
-            }}
-            onError={() => {
-              setImageError(true);
-            }}
-          />
-          
-          {/* Gradient overlay for timestamp visibility */}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent pointer-events-none" />
-          
-          {/* Timestamp and status overlay - WhatsApp style */}
-          {imageLoaded && !imageError && (
-            <MediaTimestampOverlay
-              timestamp={timestamp}
-              status={status}
-              isOwn={isOwn}
-            />
-          )}
-        </div>
-        {caption && (
-          <p className="mt-1.5 text-sm whitespace-pre-wrap break-words">{caption}</p>
-        )}
+        <ImageRenderer
+          url={url}
+          thumbnail={thumbnail}
+          caption={caption}
+          imageDimensions={imageDimensions}
+          propWidth={propWidth}
+          propHeight={propHeight}
+          imageLoaded={imageLoaded}
+          imageError={imageError}
+          timestamp={timestamp}
+          status={status}
+          isOwn={isOwn}
+          isStarred={isStarred}
+          showHoverActions={showHoverActions}
+          onOpenMenu={onOpenMenu}
+          onImageLoad={(e) => {
+            const img = e.target as HTMLImageElement;
+            if (!propWidth || !propHeight) {
+              setImageDimensions({ width: img.naturalWidth, height: img.naturalHeight });
+            }
+            setImageLoaded(true);
+          }}
+          onImageError={() => setImageError(true)}
+          onImageClick={() => !imageError && setIsFullscreen(true)}
+        />
 
         {/* MediaViewer for fullscreen */}
         <MediaViewer
@@ -758,7 +693,6 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
           isStarred={isStarred}
           onClose={() => {
             setIsFullscreen(false);
-            // Reset viewer index to original when closing
             if (currentIndex !== undefined) {
               setViewerIndex(currentIndex);
             }
@@ -775,70 +709,21 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
     );
   }
 
+  // Use extracted VideoRenderer component - reduces cognitive complexity
   if (type === 'video') {
     return (
       <>
-        <div
-          className="relative cursor-pointer overflow-hidden rounded-xl border-[3px] border-[#787add] max-w-[280px] group message-media-container"
-          onClick={() => setIsFullscreen(true)}
-        >
-          {/* Hover Actions Button */}
-          {onOpenMenu && (
-            <MessageHoverActions
-              isVisible={showHoverActions}
-              isOwn={isOwn}
-              onOpenMenu={onOpenMenu}
-            />
-          )}
-          {/* Video with WhatsApp-style frame */}
-          <div className="relative bg-black" style={{ borderRadius: '9px' }}>
-            <video
-              ref={videoRef}
-              src={url}
-              className="w-full h-auto object-cover"
-              style={{ maxHeight: '400px' }}
-              muted
-              playsInline
-              preload="metadata"
-            />
-            {/* Play button overlay */}
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="w-14 h-14 rounded-full bg-black/60 flex items-center justify-center backdrop-blur-sm">
-                <Play size={28} className="text-white ml-1" fill="white" />
-              </div>
-            </div>
-            {/* Gradient overlay for timestamp visibility */}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent pointer-events-none" />
-            
-            {/* Video info overlay - bottom left */}
-            <div className="absolute bottom-2 left-2 flex items-center gap-1.5">
-              {/* HD badge */}
-              <span className="px-1.5 py-0.5 bg-white/90 text-black text-[10px] font-bold rounded">
-                HD
-              </span>
-              {/* Duration */}
-              {videoDuration && (
-                <span className="text-white text-xs font-medium drop-shadow-lg">
-                  {videoDuration}
-                </span>
-              )}
-            </div>
-            
-            {/* Timestamp and status overlay - WhatsApp style */}
-            <MediaTimestampOverlay
-              timestamp={timestamp}
-              status={status}
-              isOwn={isOwn}
-            />
-            {/* Picture-in-picture icon - top left */}
-            <div className="absolute top-2 left-2">
-              <Copy size={16} className="text-white drop-shadow-lg" />
-            </div>
-          </div>
-        </div>
-        {caption && (
-          <p className="mt-1.5 text-sm whitespace-pre-wrap break-words">{caption}</p>
-        )}
+        <VideoRenderer
+          url={url}
+          caption={caption}
+          videoDuration={videoDuration}
+          timestamp={timestamp}
+          status={status}
+          isOwn={isOwn}
+          showHoverActions={showHoverActions}
+          onOpenMenu={onOpenMenu}
+          onVideoClick={() => setIsFullscreen(true)}
+        />
 
         {/* MediaViewer for fullscreen video */}
         <MediaViewer
@@ -852,7 +737,6 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
           isStarred={isStarred}
           onClose={() => {
             setIsFullscreen(false);
-            // Reset viewer index to original when closing
             if (currentIndex !== undefined) {
               setViewerIndex(currentIndex);
             }
