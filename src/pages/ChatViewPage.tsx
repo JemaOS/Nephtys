@@ -532,7 +532,7 @@ export function ChatViewPage() {
             return prev
           }
           
-          // Check if there's a temp message that should be replaced
+        // Check if there's a temp message that should be replaced
           // Temp messages start with 'temp-' and have the same media_url
           const tempIndex = prev.findIndex(m =>
             m.id.startsWith('temp-') &&

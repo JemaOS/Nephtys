@@ -233,7 +233,7 @@ export const ImageRenderer: React.FC<{
   isStarred: boolean;
   showHoverActions: boolean;
   onOpenMenu?: (e: React.MouseEvent) => void;
-  onImageLoad: () => void;
+  onImageLoad?: (e: React.SyntheticEvent) => void;
   onImageError: () => void;
   onImageClick: () => void;
 }> = ({
@@ -323,7 +323,11 @@ export const ImageRenderer: React.FC<{
             imageLoaded ? 'opacity-100' : 'opacity-0'
           }`}
           loading="lazy"
-          onLoad={onImageLoad}
+          onLoad={(e) => {
+            if (onImageLoad) {
+              onImageLoad(e);
+            }
+          }}
           onError={onImageError}
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent pointer-events-none" />

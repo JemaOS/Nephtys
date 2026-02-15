@@ -12,6 +12,37 @@ import { AudioFilePlayer } from '@/components/AudioFilePlayer'
 import { LinkPreview } from '@/components/LinkPreview'
 import { formatTime } from '@/components/MessageItemComponents'
 
+// Helper to extract message type info - extracted to reduce complexity in MessageList
+const getMessageTypeInfo = (message: Message) => {
+  // Check if this is an emoji-only message (1-3 emojis, no other text)
+  const emojiCheck = message.type === 'text' && message.content && !message.media_url
+    ? isEmojiOnly(message.content)
+    : { isEmoji: false, emojiCount: 0 }
+  const isEmojiOnlyMessage = emojiCheck.isEmoji
+  const emojiCount = emojiCheck.emojiCount
+
+  // Check if this is a GIF or Sticker message
+  const gifMatch = message.type === 'text' && message.content && !message.media_url
+    ? message.content.match(/^(?:\[Transféré\]\s*)?([\s\S]*?)\[GIF\]\((https?:\/\/[^\)]+)\)$/)
+    : null
+  const stickerMatch = message.type === 'text' && message.content && !message.media_url
+    ? message.content.match(/^(?:\[Transféré\]\s*)?([\s\S]*?)\[STICKER\]\((https?:\/\/[^\)]+)\)$/)
+    : null
+  const isGifMessage = !!gifMatch
+  const isStickerMessage = !!stickerMatch
+  const isGifOrStickerMessage = isGifMessage || isStickerMessage
+
+  // Check if this is an image or video message
+  const mediaUrl = message.media_url || message.file_url
+  const mediaType = message.media_type || message.type
+  
+  const isMediaMessage = mediaUrl && (mediaType === 'image' || mediaType === 'video') && message.type !== 'audio'
+  // Check if this is a document/file message
+  const isDocumentMessage = mediaUrl && mediaType === 'file'
+
+  return { isEmojiOnlyMessage, emojiCount, isGifMessage, isStickerMessage, isGifOrStickerMessage, mediaUrl, mediaType, isMediaMessage, isDocumentMessage, gifMatch, stickerMatch }
+}
+
 // Utility function to detect emoji-only messages
 export const isEmojiOnly = (text: string): { isEmoji: boolean; emojiCount: number } => {
   if (!text || text.trim() === '') return { isEmoji: false, emojiCount: 0 }
@@ -607,32 +638,16 @@ export const MessageList: React.FC<MessageListProps> = ({
               )
             }
             
-            // Check if this is an emoji-only message (1-3 emojis, no other text)
-            const emojiCheck = message.type === 'text' && message.content && !message.media_url
-              ? isEmojiOnly(message.content)
-              : { isEmoji: false, emojiCount: 0 }
-            const isEmojiOnlyMessage = emojiCheck.isEmoji
-            const emojiCount = emojiCheck.emojiCount
+            // Extract message type to avoid deep nesting
+            const { isEmojiOnlyMessage, emojiCount, isGifMessage, isStickerMessage, isGifOrStickerMessage, mediaUrl, mediaType, isMediaMessage, isDocumentMessage, gifMatch, stickerMatch } = getMessageTypeInfo(message)
             
-            // Check if this is a GIF or Sticker message (should be rendered without bubble like WhatsApp)
-            const gifMatch = message.type === 'text' && message.content && !message.media_url
-              ? message.content.match(/^(?:\[Transféré\]\s*)?([\s\S]*?)\[GIF\]\((https?:\/\/[^\)]+)\)$/)
-              : null
-            const stickerMatch = message.type === 'text' && message.content && !message.media_url
-              ? message.content.match(/^(?:\[Transféré\]\s*)?([\s\S]*?)\[STICKER\]\((https?:\/\/[^\)]+)\)$/)
-              : null
-            const isGifMessage = !!gifMatch
-            const isStickerMessage = !!stickerMatch
-            const isGifOrStickerMessage = isGifMessage || isStickerMessage
-            
-            // Check if this is an image or video message (should be rendered without bubble like WhatsApp)
-            const mediaUrl = message.media_url || message.file_url
-            const mediaType = message.media_type || message.type
-            
-            const isMediaMessage = mediaUrl && (mediaType === 'image' || mediaType === 'video') && message.type !== 'audio'
-            // Check if this is a document/file message
-            const isDocumentMessage = mediaUrl && mediaType === 'file'
-            
+            // Extract message type to avoid deep nesting in return statement
+            const messageType = isEmojiOnlyMessage ? 'emoji' 
+              : isGifOrStickerMessage ? 'gifOrSticker'
+              : isMediaMessage ? 'media'
+              : isDocumentMessage ? 'document'
+              : 'text'
+
             return (
               <div
                 key={message.id}

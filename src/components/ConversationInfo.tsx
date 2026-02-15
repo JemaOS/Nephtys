@@ -541,6 +541,22 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
     }
   };
 
+  // Helper to get participant count text
+  const getParticipantCountText = (): string => {
+    if (conversationType === 'group') {
+      return `Groupe • ${members.length} membres`;
+    }
+    return '';
+  };
+
+  // Helper to get direct conversation subtitle
+  const getDirectConversationSubtitle = (): string | null => {
+    if (conversationType === 'direct' && otherUser) {
+      return `@${otherUser.username}`;
+    }
+    return null;
+  };
+
   // Transform media messages for MediaViewer
   const getMediaViewerItems = () => mediaMessages.map(m => {
     const isVideo = m.type === 'video' || m.media_type === 'video';
@@ -603,10 +619,10 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
               </div>
               <h3 className="text-2xl font-semibold text-text-primary mb-1">{conversationName}</h3>
               {conversationType === 'group' && (
-                <p className="text-sm text-text-secondary">Groupe • {members.length} membres</p>
+                <p className="text-sm text-text-secondary">{getParticipantCountText()}</p>
               )}
               {conversationType === 'direct' && otherUser && (
-                <p className="text-sm text-text-secondary">@{otherUser.username}</p>
+                <p className="text-sm text-text-secondary">{getDirectConversationSubtitle()}</p>
               )}
             </div>
 

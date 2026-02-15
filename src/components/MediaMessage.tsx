@@ -242,6 +242,19 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
     return 'image';
   };
 
+  // Helper: Get current media info (from allMedia or defaults) - extracted to reduce complexity
+  const getCurrentMediaInfo = () => {
+    const media = allMedia && allMedia[viewerIndex];
+    return {
+      url: media ? media.url : url,
+      type: media ? media.type : getViewerMediaType(),
+      senderName: media ? media.senderName : senderName,
+      senderAvatar: media ? media.senderAvatar : senderAvatar,
+      timestamp: media ? media.timestamp : timestamp,
+      isOwn: media ? media.isOwn : isOwn,
+    };
+  };
+
   // Handle video metadata load
   useEffect(() => {
     if (type === 'video' && videoRef.current) {
@@ -275,7 +288,7 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
           isStarred={isStarred}
           showHoverActions={showHoverActions}
           onOpenMenu={onOpenMenu}
-          onImageLoad={(e) => {
+          onImageLoad={(e: any) => {
             const img = e.target as HTMLImageElement;
             if (!propWidth || !propHeight) {
               setImageDimensions({ width: img.naturalWidth, height: img.naturalHeight });
@@ -289,12 +302,12 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
         {/* MediaViewer for fullscreen */}
         <MediaViewer
           isOpen={isFullscreen}
-          mediaUrl={allMedia && allMedia[viewerIndex] ? allMedia[viewerIndex].url : url}
-          mediaType={allMedia && allMedia[viewerIndex] ? allMedia[viewerIndex].type : getViewerMediaType()}
-          senderName={allMedia && allMedia[viewerIndex] ? allMedia[viewerIndex].senderName : senderName}
-          senderAvatar={allMedia && allMedia[viewerIndex] ? allMedia[viewerIndex].senderAvatar : senderAvatar}
-          timestamp={allMedia && allMedia[viewerIndex] ? allMedia[viewerIndex].timestamp : timestamp}
-          isOwn={allMedia && allMedia[viewerIndex] ? allMedia[viewerIndex].isOwn : isOwn}
+          mediaUrl={getCurrentMediaInfo().url}
+          mediaType={getCurrentMediaInfo().type}
+          senderName={getCurrentMediaInfo().senderName}
+          senderAvatar={getCurrentMediaInfo().senderAvatar}
+          timestamp={getCurrentMediaInfo().timestamp}
+          isOwn={getCurrentMediaInfo().isOwn}
           isStarred={isStarred}
           onClose={() => {
             setIsFullscreen(false);
@@ -333,12 +346,12 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
         {/* MediaViewer for fullscreen video */}
         <MediaViewer
           isOpen={isFullscreen}
-          mediaUrl={allMedia && allMedia[viewerIndex] ? allMedia[viewerIndex].url : url}
-          mediaType={allMedia && allMedia[viewerIndex] ? allMedia[viewerIndex].type : 'video'}
-          senderName={allMedia && allMedia[viewerIndex] ? allMedia[viewerIndex].senderName : senderName}
-          senderAvatar={allMedia && allMedia[viewerIndex] ? allMedia[viewerIndex].senderAvatar : senderAvatar}
-          timestamp={allMedia && allMedia[viewerIndex] ? allMedia[viewerIndex].timestamp : timestamp}
-          isOwn={allMedia && allMedia[viewerIndex] ? allMedia[viewerIndex].isOwn : isOwn}
+          mediaUrl={getCurrentMediaInfo().url}
+          mediaType={getCurrentMediaInfo().type}
+          senderName={getCurrentMediaInfo().senderName}
+          senderAvatar={getCurrentMediaInfo().senderAvatar}
+          timestamp={getCurrentMediaInfo().timestamp}
+          isOwn={getCurrentMediaInfo().isOwn}
           isStarred={isStarred}
           onClose={() => {
             setIsFullscreen(false);

@@ -64,20 +64,15 @@ const filterConversations = (
   activeFilter: 'all' | 'unread' | 'groups'
 ): ConversationWithDetails[] => {
   return conversations.filter(conv => {
-    // Filtre par recherche
+    // Filter by search
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase()
       if (!matchesSearchQuery(conv, query)) {
-        // Check if it's a direct without match - still show if no profile
-        if (conv.type === 'direct' && !conv.otherUserProfile) {
-          // Show conversations without profile data
-        } else {
-          return false
-        }
+        return false
       }
     }
     
-    // Filtre par type
+    // Filter by type
     if (activeFilter === 'unread' && (conv.unreadCount || 0) === 0) {
       return false
     }

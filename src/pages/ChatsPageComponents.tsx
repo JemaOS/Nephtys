@@ -1,5 +1,5 @@
 import React from 'react'
-import { ArrowLeft, Pin, Volume2, VolumeX, Archive, Trash2, Plus, UserPlus, Users, MoreVertical, Check, Search, MessageCircle, BellOff, Lock } from 'lucide-react'
+import { ArrowLeft, Pin, Volume2, VolumeX, Archive, Trash2, Plus, UserPlus, Users, MoreVertical, Check, Search, MessageCircle, BellOff } from 'lucide-react'
 import { Conversation, Profile, Message } from '@/lib/supabase'
 
 export interface ConversationWithDetails extends Omit<Conversation, 'is_pinned'> {
@@ -12,14 +12,23 @@ export interface ConversationWithDetails extends Omit<Conversation, 'is_pinned'>
 
 // Helper function to get platform display name for URLs
 const getPlatformDisplayName = (hostname: string): string | null => {
-  if (hostname.includes('youtube.com') || hostname.includes('youtu.be')) return '📹 youtube.com'
-  if (hostname.includes('instagram.com')) return '📷 instagram.com'
-  if (hostname.includes('twitter.com') || hostname.includes('x.com')) return '🐦 x.com'
-  if (hostname.includes('facebook.com') || hostname.includes('fb.com')) return '📘 facebook.com'
-  if (hostname.includes('tiktok.com')) return '🎵 tiktok.com'
-  if (hostname.includes('spotify.com')) return '🎧 spotify.com'
-  if (hostname.includes('linkedin.com')) return '💼 linkedin.com'
-  if (hostname.includes('github.com')) return '💻 github.com'
+  const map: Record<string, string> = {
+    'youtube.com': '📹 youtube.com',
+    'youtu.be': '📹 youtube.com',
+    'instagram.com': '📷 instagram.com',
+    'twitter.com': '🐦 x.com',
+    'x.com': '🐦 x.com',
+    'facebook.com': '📘 facebook.com',
+    'fb.com': '📘 facebook.com',
+    'tiktok.com': '🎵 tiktok.com',
+    'spotify.com': '🎧 spotify.com',
+    'linkedin.com': '💼 linkedin.com',
+    'github.com': '💻 github.com'
+  }
+
+  for (const key in map) {
+    if (hostname.includes(key)) return map[key]
+  }
   return null
 }
 
@@ -36,42 +45,62 @@ const processUrlDisplay = (url: string): string => {
   }
 }
 
+// Helper function to extract GIF/Sticker caption
+const extractMediaCaption = (content: string, mediaType: 'GIF' | 'STICKER'): string | null => {
+  const regex = new RegExp(`^(?:[\\s\\S]*?\\n)?\\[${mediaType}\\]\\(https?:\\/\\/[^)]+\\)$`)
+  const match = content.match(regex)
+  if (!match) return null
+
+  const captionRegex = new RegExp(`^([\\s\\S]*?)\\n\\[${mediaType}\\]`)
+  const captionMatch = content.match(captionRegex)
+  return captionMatch ? captionMatch[1].trim() : ''
+}
+
 // Helper function to get message preview text
+const getTextPreview = (msg: Message): string => {
+  const { content } = msg
+
+  const gifCaption = extractMediaCaption(content, 'GIF')
+  if (gifCaption !== null) {
+    return gifCaption ? `GIF • ${gifCaption}` : 'GIF'
+  }
+
+  const stickerCaption = extractMediaCaption(content, 'STICKER')
+  if (stickerCaption !== null) {
+    return stickerCaption ? `Sticker • ${stickerCaption}` : 'Sticker'
+  }
+
+  const urlRegex = /https?:\/\/[^\s]+/gi
+  const urls = content.match(urlRegex)
+  if (urls && urls.length > 0) {
+    return processUrlDisplay(urls[0])
+  }
+
+  return content
+}
+
 export const getLastMessagePreview = (lastMessage: Message | undefined): string => {
   if (!lastMessage) return 'Aucun message'
-  
-  const msg = lastMessage
-  
-  if (msg.type === 'text' && msg.content) {
-    const gifMatch = msg.content.match(/^(?:[\s\S]*?\n)?\[GIF\]\(https?:\/\/[^\)]+\)$/)
-    if (gifMatch) {
-      const captionMatch = msg.content.match(/^([\s\S]*?)\n\[GIF\]/)
-      const caption = captionMatch ? captionMatch[1].trim() : ''
-      return caption ? `GIF • ${caption}` : 'GIF'
-    }
-    
-    const stickerMatch = msg.content.match(/^(?:[\s\S]*?\n)?\[STICKER\]\(https?:\/\/[^\)]+\)$/)
-    if (stickerMatch) {
-      const captionMatch = msg.content.match(/^([\s\S]*?)\n\[STICKER\]/)
-      const caption = captionMatch ? captionMatch[1].trim() : ''
-      return caption ? `Sticker • ${caption}` : 'Sticker'
-    }
-    
-    const urlRegex = /https?:\/\/[^\s]+/gi
-    const urls = msg.content.match(urlRegex)
-    if (urls && urls.length > 0) {
-      return processUrlDisplay(urls[0])
-    }
-    
-    return msg.content
+
+  const { type, content } = lastMessage
+
+  if (type === 'text' && content) {
+    return getTextPreview(lastMessage)
   }
-  
-  if (msg.type === 'image') return '📷 Photo'
-  if (msg.type === 'video') return '🎬 Vidéo'
-  if (msg.type === 'audio') return '🎤 Message vocal'
-  if (msg.type === 'file') return `📎 ${msg.file_name || 'Document'}`
-  
-  return msg.content || '📎 Fichier'
+
+  if (type === 'image') return '📷 Photo'
+  if (type === 'video') return '🎬 Vidéo'
+  if (type === 'audio') return '🎤 Message vocal'
+  if (type === 'file') return `📎 ${lastMessage.file_name || 'Document'}`
+
+  return content || '📎 Fichier'
+}
+
+// Helper to determine row background color
+const getConversationRowClass = (isSelected: boolean, hasUnread: boolean): string => {
+  if (isSelected) return 'bg-accent/20'
+  if (hasUnread) return 'bg-bg-surface'
+  return 'hover:bg-bg-surface'
 }
 
 export const ChatsSelectionHeader = ({
@@ -110,6 +139,12 @@ export const ChatsSelectionHeader = ({
             e.preventDefault()
             e.stopPropagation()
             exitSelectionMode()
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              exitSelectionMode()
+            }
           }}
           className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-bg-hover active:bg-bg-hover transition-colors touch-manipulation select-none"
           type="button"
@@ -199,7 +234,11 @@ export const ChatsHeader = ({
           
           {showNewMenu && (
             <>
-              <div className="fixed inset-0 z-40" onClick={() => setShowNewMenu(false)} />
+              <button
+                className="fixed inset-0 z-40 bg-transparent border-none cursor-default"
+                onClick={() => setShowNewMenu(false)}
+                aria-label="Fermer le menu"
+              />
               <div className="absolute right-0 top-12 z-50 min-w-[220px] bg-bg-surface rounded-2xl shadow-2xl py-2 border border-bg-hover">
                 <button
                   onClick={() => { navigate('/contacts'); setShowNewMenu(false) }}
@@ -230,7 +269,11 @@ export const ChatsHeader = ({
           
           {showFilterMenu && (
             <>
-              <div className="fixed inset-0 z-40" onClick={() => setShowFilterMenu(false)} />
+              <button
+                className="fixed inset-0 z-40 bg-transparent border-none cursor-default"
+                onClick={() => setShowFilterMenu(false)}
+                aria-label="Fermer le menu"
+              />
               <div className="absolute right-0 top-12 z-50 min-w-[200px] bg-bg-surface rounded-2xl shadow-2xl py-2 border border-bg-hover">
                 <button
                   onClick={() => { setActiveFilter('all'); setShowFilterMenu(false) }}
@@ -315,6 +358,20 @@ export const ConversationSkeleton = () => (
   </div>
 )
 
+// Helper to get display name
+const getDisplayName = (conversation: ConversationWithDetails): string => {
+  if (conversation.type === 'group') {
+    return conversation.name || 'Groupe'
+  }
+  
+  const isSavedMessagesConv = conversation.name === 'Messages enregistrés'
+  if (isSavedMessagesConv) {
+    return 'Moi'
+  }
+  
+  return conversation.otherUserProfile?.display_name || conversation.otherUserProfile?.username || 'Utilisateur'
+}
+
 export const ChatsList = ({
   isLoading,
   filteredConversations,
@@ -351,28 +408,16 @@ export const ChatsList = ({
       </div>
     ) : (
       filteredConversations.map((conversation) => {
-        const isSavedMessagesConv = conversation.type === 'direct' && conversation.name === 'Messages enregistrés'
-        const displayName = conversation.type === 'group'
-          ? conversation.name || 'Groupe'
-          : isSavedMessagesConv
-            ? 'Moi'
-            : conversation.otherUserProfile?.display_name || conversation.otherUserProfile?.username || 'Utilisateur'
-
+        const displayName = getDisplayName(conversation)
         const lastMessagePreview = getLastMessagePreview(conversation.lastMessage)
-
         const hasUnread = (conversation.unreadCount || 0) > 0
         const isSelected = selectedConversations.has(conversation.id)
+        const rowClass = getConversationRowClass(isSelected, hasUnread)
 
         return (
           <div
             key={conversation.id}
-            className={`px-4 py-3 cursor-pointer transition-colors ${
-              isSelected
-                ? 'bg-accent/20'
-                : hasUnread
-                  ? 'bg-bg-surface'
-                  : 'hover:bg-bg-surface'
-            }`}
+            className={`px-4 py-3 cursor-pointer transition-colors ${rowClass}`}
             onClick={() => handleConversationClick(conversation.id)}
             onContextMenu={(e) => {
               if (!isSelectionMode) {
@@ -389,6 +434,13 @@ export const ChatsList = ({
             }}
             onMouseUp={handleTouchEnd}
             onMouseLeave={handleTouchEnd}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                handleConversationClick(conversation.id)
+              }
+            }}
           >
             <div className="flex items-center gap-3">
               {isSelectionMode && (
@@ -406,12 +458,19 @@ export const ChatsList = ({
               )}
               
               <div className="relative">
-                {(conversation.type === 'direct' && conversation.otherUserProfile?.avatar_url) || conversation.avatar_url ? (
+                {conversation.type === 'direct' && conversation.otherUserProfile?.avatar_url ? (
                   <img
-                    src={conversation.type === 'direct' ? conversation.otherUserProfile?.avatar_url! : conversation.avatar_url!}
+                    src={conversation.otherUserProfile.avatar_url}
                     alt={displayName}
                     className="w-12 h-12 rounded-full object-cover flex-shrink-0"
-                    key={conversation.type === 'direct' ? conversation.otherUserProfile?.avatar_url : conversation.avatar_url}
+                    key={conversation.otherUserProfile.avatar_url}
+                  />
+                ) : conversation.avatar_url ? (
+                  <img
+                    src={conversation.avatar_url}
+                    alt={displayName}
+                    className="w-12 h-12 rounded-full object-cover flex-shrink-0"
+                    key={conversation.avatar_url}
                   />
                 ) : (
                   <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold text-lg flex-shrink-0">
@@ -449,7 +508,7 @@ export const ChatsList = ({
                   {hasUnread && (
                     <div className="min-w-[20px] h-5 px-1.5 rounded-full bg-[#787add] flex items-center justify-center flex-shrink-0">
                       <span className="text-xs font-semibold text-text-primary">
-                        {conversation.unreadCount! > 99 ? '99+' : conversation.unreadCount}
+                        {(conversation.unreadCount || 0) > 99 ? '99+' : conversation.unreadCount}
                       </span>
                     </div>
                   )}
