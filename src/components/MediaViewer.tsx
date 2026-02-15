@@ -1274,6 +1274,14 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   // Calculate progress percentage
   const progressPercentage = duration > 0 ? (currentTime / duration) * 100 : 0;
 
+  // Helper: Get file extension based on media type - extracted to reduce complexity
+  const getMediaExtension = (type: string): string => {
+    if (type === 'video') return 'mp4';
+    if (type === 'audio') return 'webm';
+    if (type === 'gif') return 'gif';
+    return 'jpg';
+  };
+
   const handleDownload = async () => {
     try {
       const response = await fetch(mediaUrl);
@@ -1281,7 +1289,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      const extension = mediaType === 'video' ? 'mp4' : mediaType === 'audio' ? 'webm' : mediaType === 'gif' ? 'gif' : 'jpg';
+      const extension = getMediaExtension(mediaType);
       a.download = `media-${Date.now()}.${extension}`;
       document.body.appendChild(a);
       a.click();
