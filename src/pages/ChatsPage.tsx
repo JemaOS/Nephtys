@@ -52,6 +52,31 @@ interface ConversationWithDetails extends Omit<Conversation, 'is_pinned'> {
   is_muted?: boolean
 }
 
+// Helper to get other user's profile for a direct conversation - extracted to reduce complexity
+const getOtherUserProfile = (
+  convType: string,
+  isSavedMessages: boolean,
+  otherUserIdsForConv: string[],
+  profileMap: Map<string, Profile>,
+  currentUserId: string
+): Profile | undefined => {
+  if (convType !== 'direct') return undefined
+  
+  if (isSavedMessages) {
+    return profileMap.get(currentUserId)
+  }
+  
+  if (otherUserIdsForConv.length === 0) return undefined
+  
+  // Try to find a profile from the other user IDs
+  for (const userId of otherUserIdsForConv) {
+    const profile = profileMap.get(userId)
+    if (profile) return profile
+  }
+  
+  return undefined
+}
+
 // Helper function to build enriched conversations - extracted to reduce cognitive complexity
 const buildEnrichedConversations = (
   conversationsData: Conversation[],
@@ -66,34 +91,12 @@ const buildEnrichedConversations = (
   return conversationsData.map(conv => {
     const memberInfo = activeMembers.find(m => m.conversation_id === conv.id)
     const otherUserIdsForConv = membersByConversation.get(conv.id) || []
-    
-    // Check if this is a "Saved Messages" conversation
     const isSavedMessages = savedMessagesConvIds.has(conv.id)
-    
-    // Get the other user's profile
-    let otherProfile: Profile | undefined
-    if (conv.type === 'direct') {
-      if (isSavedMessages) {
-        otherProfile = profileMap.get(currentUserId)
-      } else if (otherUserIdsForConv.length > 0) {
-        otherProfile = profileMap.get(otherUserIdsForConv[0])
-        
-        // Fallback: find any available profile
-        if (!otherProfile) {
-          for (const userId of otherUserIdsForConv) {
-            const profile = profileMap.get(userId)
-            if (profile) {
-              otherProfile = profile
-              break
-            }
-          }
-        }
-      }
-      
-      // Log warning if profile not found
-      if (!otherProfile && !isSavedMessages) {
-        console.warn(`[ChatsPage] Could not find profile for direct conversation ${conv.id}, other user IDs:`, otherUserIdsForConv)
-      }
+    const otherProfile = getOtherUserProfile(conv.type, isSavedMessages, otherUserIdsForConv, profileMap, currentUserId)
+
+    // Log warning if profile not found for direct conversation
+    if (conv.type === 'direct' && !isSavedMessages && !otherProfile && otherUserIdsForConv.length > 0) {
+      console.warn(`[ChatsPage] Could not find profile for direct conversation ${conv.id}, other user IDs:`, otherUserIdsForConv)
     }
 
     return {
