@@ -255,6 +255,8 @@ export function CallParticipantSelector({ onClose, onSelect, currentParticipants
               })}
             </div>
           )}
+            </>
+          )}
         </div>
       </div>
     </div>

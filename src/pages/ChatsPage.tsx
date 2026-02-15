@@ -10,6 +10,7 @@ import { useAuth } from '@/context/AuthContext'
 import { offlineStorage } from '@/lib/offlineStorage'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useOnSupabaseReconnect } from '@/hooks/useSupabaseReconnect'
+import { fetchAllConversationData } from '@/lib/conversationService'
 import { ChatsSelectionHeader, ChatsHeader, ChatsList, ConversationWithDetails } from './ChatsPageComponents'
 
 // Memoized formatDate function outside component to prevent recreation on every render
@@ -515,181 +516,21 @@ export function ChatsPage() {
     }
 
     try {
-      // Step 1: Get all conversation memberships for the user (single query)
-      // With retry logic for connection issues
-      let memberData: any[] | null = null
-      let memberError: any = null
-      let retryCount = 0
-      const maxRetries = 2
-      
-      while (retryCount <= maxRetries) {
-        const result = await supabase
-          .from('conversation_members')
-          .select('conversation_id, is_pinned, is_muted, is_archived')
-          .eq('user_id', user.id)
-        
-        memberData = result.data
-        memberError = result.error
-        
-        if (!memberError && memberData) {
-          // Success! Update the last successful query time
-          updateLastSuccessfulQuery()
-          break
-        }
-        
-        retryCount++
-        if (retryCount <= maxRetries) {
-          console.log(`[ChatsPage] Query failed, retrying (${retryCount}/${maxRetries})...`)
-          await new Promise(resolve => setTimeout(resolve, 1000 * retryCount)) // Exponential backoff
-        }
-      }
+      const { enrichedConversations, error, type } = await fetchAllConversationData(user.id)
 
-      if (memberError) {
-        console.error('Error loading members after retries:', memberError)
-        // Dispatch connection lost event if all retries failed
-        window.dispatchEvent(new CustomEvent('supabase-connection-lost'))
+      if (error) {
+        console.error(`Error loading ${type}:`, error)
+        if (type === 'members') {
+          // Dispatch connection lost event if all retries failed
+          window.dispatchEvent(new CustomEvent('supabase-connection-lost'))
+        }
         return
       }
 
-      if (!memberData || memberData.length === 0) {
+      if (!enrichedConversations || enrichedConversations.length === 0) {
         setConversations([])
         return
       }
-
-      // Filter non-archived conversations
-      const activeMembers = memberData.filter(m => !m.is_archived)
-      const conversationIds = activeMembers.map(m => m.conversation_id)
-      
-      if (conversationIds.length === 0) {
-        setConversations([])
-        return
-      }
-
-      // Step 2: Fetch all conversations (single query)
-      const { data: conversationsData, error: convError } = await supabase
-        .from('conversations')
-        .select('*')
-        .in('id', conversationIds)
-        .order('last_message_at', { ascending: false, nullsFirst: true })
-        .order('created_at', { ascending: false })
-
-      if (convError) {
-        console.error('Error loading conversations:', convError)
-        return
-      }
-
-      if (!conversationsData || conversationsData.length === 0) {
-        setConversations([])
-        return
-      }
-
-      // Step 3: Batch fetch all members for all conversations (single query)
-      // Include all members (not just others) to detect "Saved Messages" conversations
-      const { data: allMembersIncludingSelf } = await supabase
-        .from('conversation_members')
-        .select('conversation_id, user_id')
-        .in('conversation_id', conversationIds)
-      
-      // Filter to get other members (for normal conversations)
-      const allMembers = allMembersIncludingSelf?.filter(m => m.user_id !== user.id) || []
-      
-      // Detect "Saved Messages" conversations (only one member = self)
-      const savedMessagesConvIds = new Set<string>()
-      const memberCountByConv = new Map<string, number>()
-      allMembersIncludingSelf?.forEach(m => {
-        memberCountByConv.set(m.conversation_id, (memberCountByConv.get(m.conversation_id) || 0) + 1)
-      })
-      memberCountByConv.forEach((count, convId) => {
-        if (count === 1) {
-          savedMessagesConvIds.add(convId)
-        }
-      })
-
-      // Step 4: Get unique user IDs and batch fetch all profiles (single query)
-      // Include current user's profile for "Saved Messages" conversations
-      const otherUserIds = [...new Set(allMembers?.map(m => m.user_id) || [])]
-      
-      // For direct conversations, we need to ensure we have all other user profiles
-      // Get all direct conversation IDs
-      const directConvIds = conversationsData
-        .filter(c => c.type === 'direct')
-        .map(c => c.id)
-      
-      // Get all user IDs from direct conversations (excluding self)
-      const directConvOtherUserIds = allMembers
-        .filter(m => directConvIds.includes(m.conversation_id))
-        .map(m => m.user_id)
-      
-      // Combine all user IDs we need to fetch
-      const userIdsToFetch = [
-        ...new Set([
-          ...otherUserIds,
-          ...directConvOtherUserIds,
-          ...(savedMessagesConvIds.size > 0 ? [user.id] : [])
-        ])
-      ]
-      
-      const { data: profiles } = userIdsToFetch.length > 0
-        ? await supabase
-            .from('profiles')
-            .select('*')
-            .in('id', userIdsToFetch)
-        : { data: [] }
-
-      const profileMap = new Map(profiles?.map(p => [p.id, p]) || [])
-
-      // Step 5: Batch fetch last messages for all conversations (single query)
-      // Get recent messages and filter to get the last one per conversation
-      const { data: recentMessages } = await supabase
-        .from('messages')
-        .select('*')
-        .in('conversation_id', conversationIds)
-        .is('deleted_at', null)
-        .order('created_at', { ascending: false })
-        .limit(conversationIds.length * 2) // Get enough to have at least 1 per conversation
-
-      // Group by conversation and take the first (most recent) for each
-      const lastMessageMap = new Map<string, Message>()
-      recentMessages?.forEach(msg => {
-        if (!lastMessageMap.has(msg.conversation_id)) {
-          lastMessageMap.set(msg.conversation_id, msg)
-        }
-      })
-
-      // Step 6: Batch count unread messages (single query)
-      const { data: unreadData } = await supabase
-        .from('messages')
-        .select('conversation_id')
-        .in('conversation_id', conversationIds)
-        .neq('sender_id', user.id)
-        .neq('status', 'read')
-        .is('deleted_at', null)
-
-      // Count unread per conversation
-      const unreadCountMap = new Map<string, number>()
-      unreadData?.forEach(msg => {
-        unreadCountMap.set(msg.conversation_id, (unreadCountMap.get(msg.conversation_id) || 0) + 1)
-      })
-
-      // Step 7: Build the members by conversation map
-      const membersByConversation = new Map<string, string[]>()
-      allMembers?.forEach(m => {
-        const existing = membersByConversation.get(m.conversation_id) || []
-        existing.push(m.user_id)
-        membersByConversation.set(m.conversation_id, existing)
-      })
-
-      // Step 8: Build the enriched conversations array using helper function
-      const enrichedConversations = buildEnrichedConversations(
-        conversationsData,
-        activeMembers,
-        savedMessagesConvIds,
-        membersByConversation,
-        profileMap,
-        lastMessageMap,
-        unreadCountMap,
-        user.id
-      )
 
       // Sort: pinned first, then by last_message_at
       const sorted = enrichedConversations.sort((a, b) => {
