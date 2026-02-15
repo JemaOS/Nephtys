@@ -530,62 +530,71 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
     }
   };
 
+  // Helper to fetch file as blob - extracted for complexity reduction
+  const fetchFileBlob = async (): Promise<{ blob: Blob; mimeType: string } | null> => {
+    try {
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const mimeType = blob.type || getMimeTypeFromExtension(fileName || '');
+      return { blob, mimeType };
+    } catch (error) {
+      console.error('Error fetching file:', error);
+      return null;
+    }
+  };
+
+  // Helper to share file using Web Share API - extracted for complexity reduction
+  const shareFileWithAPI = async (blob: Blob, mimeType: string): Promise<boolean | 'aborted'> => {
+    if (!navigator.canShare) return false;
+    
+    const shareFile = new window.File([blob], fileName || 'document', { type: mimeType });
+    if (!navigator.canShare({ files: [shareFile] })) return false;
+    
+    try {
+      await navigator.share({ files: [shareFile], title: fileName || 'Document' });
+      return true;
+    } catch (error: any) {
+      if (error.name === 'AbortError') return 'aborted';
+      throw error;
+    }
+  };
+
+  // Helper to open file with fallback - extracted for complexity reduction
+  const openFileWithFallback = async (blob: Blob, mimeType: string): Promise<void> => {
+    const fileUrl = URL.createObjectURL(blob);
+    const newWindow = window.open(fileUrl, '_blank');
+    
+    if (!newWindow) {
+      const a = document.createElement('a');
+      a.href = fileUrl;
+      a.download = fileName || 'document';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+    
+    setTimeout(() => URL.revokeObjectURL(fileUrl), 5000);
+  };
+
   // Open file with native app using Web Share API (shows "Open with" dialog on mobile)
   const handleOpenFile = useCallback(async () => {
     // On mobile/PWA, try to use Web Share API to show "Open with" dialog
     if (isMobile || isPWA) {
-      try {
-        // Fetch the file
-        const response = await fetch(url);
-        const blob = await response.blob();
-        
-        // Get the correct MIME type
-        const mimeType = blob.type || getMimeTypeFromExtension(fileName || '');
-        
-        // Create a File object (required for Web Share API)
-        const shareFile = new window.File([blob], fileName || 'document', { type: mimeType });
-        
-        // Check if Web Share API with files is supported
-        if (navigator.canShare?.({ files: [shareFile] })) {
-          // Use Web Share API - this shows the native "Open with" / "Share" dialog
-          await navigator.share({
-            files: [shareFile],
-            title: fileName || 'Document',
-          });
-          return;
-        }
-        
-        // Fallback: Try to open directly (some browsers support this)
-        const fileUrl = URL.createObjectURL(shareFile);
-        
-        // On Android Chrome, opening a blob URL can trigger the "Open with" dialog
-        const newWindow = window.open(fileUrl, '_blank');
-        
-        // If popup was blocked or didn't work, fall back to download
-        if (!newWindow) {
-          const a = document.createElement('a');
-          a.href = fileUrl;
-          a.download = fileName || 'document';
-          document.body.appendChild(a);
-          a.click();
-          a.remove();
-        }
-        
-        // Clean up after a delay
-        setTimeout(() => {
-          URL.revokeObjectURL(fileUrl);
-        }, 5000);
-      } catch (error: any) {
-        // If user cancelled the share dialog, don't show error
-        if (error.name === 'AbortError') {
-          console.log('Share cancelled by user');
-          return;
-        }
-        
-        console.error('Error opening file:', error);
-        // Fallback to download
+      const fileData = await fetchFileBlob();
+      if (!fileData) {
         handleDownload();
+        return;
       }
+      
+      const { blob, mimeType } = fileData;
+      
+      // Try Web Share API first
+      const shareResult = await shareFileWithAPI(blob, mimeType);
+      if (shareResult === true) return;
+      if (shareResult === 'aborted') return;
+      
+      // Fallback: try to open directly
+      await openFileWithFallback(blob, mimeType);
     } else {
       // On desktop, open in new tab
       window.open(url, '_blank', 'noopener,noreferrer');

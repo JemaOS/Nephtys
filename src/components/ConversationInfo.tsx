@@ -192,6 +192,13 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
     }
   };
 
+  const buildEphemeralSystemMessage = (duration: number | null): string | null => {
+    if (duration) {
+      return `[SYSTEM]Vous avez mis à jour le délai avant disparition. Les nouveaux messages disparaîtront de cette discussion ${getEphemeralLabel(duration)} après avoir été envoyés, sauf s'ils sont gardés.`;
+    }
+    return '[SYSTEM]Vous avez désactivé les messages éphémères.';
+  };
+
   const handleSetEphemeralDuration = async (duration: number | null) => {
     // Store ephemeral setting in localStorage
     if (duration === null) {
@@ -204,10 +211,7 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
     setShowEphemeralMenu(false);
     
     // Send a system message to notify about ephemeral mode change
-    // Use [SYSTEM] prefix to identify system messages for special rendering
-    const systemMessageContent = duration
-      ? `[SYSTEM]Vous avez mis à jour le délai avant disparition. Les nouveaux messages disparaîtront de cette discussion ${getEphemeralLabel(duration)} après avoir été envoyés, sauf s'ils sont gardés.`
-      : '[SYSTEM]Vous avez désactivé les messages éphémères.';
+    const systemMessageContent = buildEphemeralSystemMessage(duration);
     
     try {
       const { error } = await supabase.from('messages').insert({

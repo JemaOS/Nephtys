@@ -163,6 +163,25 @@ const drawHeart = (ctx: CanvasRenderingContext2D, x: number, y: number, width: n
   else ctx.stroke();
 };
 
+// Helper function to calculate average color for a block - extracted to reduce complexity
+const calculateBlockAverage = (data: Uint8ClampedArray, width: number, startX: number, startY: number, blockSize: number, imgWidth: number, imgHeight: number): { r: number; g: number; b: number; a: number; count: number } => {
+  let r = 0, g = 0, b = 0, a = 0, count = 0;
+  const maxDy = Math.min(blockSize, imgHeight - startY);
+  const maxDx = Math.min(blockSize, imgWidth - startX);
+  
+  for (let dy = 0; dy < maxDy; dy++) {
+    for (let dx = 0; dx < maxDx; dx++) {
+      const i = ((startY + dy) * imgWidth + (startX + dx)) * 4;
+      r += data[i];
+      g += data[i + 1];
+      b += data[i + 2];
+      a += data[i + 3];
+      count++;
+    }
+  }
+  return { r, g, b, a, count };
+};
+
 // Helper function to apply pixelate effect - extracted to reduce complexity
 const applyPixelateEffect = (imageData: ImageData, blockSize: number): ImageData => {
   const { data, width, height } = imageData;
@@ -171,37 +190,24 @@ const applyPixelateEffect = (imageData: ImageData, blockSize: number): ImageData
   for (let y = 0; y < height; y += blockSize) {
     for (let x = 0; x < width; x += blockSize) {
       // Calculate average color for this block
-      let r = 0, g = 0, b = 0, a = 0, count = 0;
-
-      // Accumulate pixel values
-      const maxDy = Math.min(blockSize, height - y);
-      const maxDx = Math.min(blockSize, width - x);
-      
-      for (let dy = 0; dy < maxDy; dy++) {
-        for (let dx = 0; dx < maxDx; dx++) {
-          const i = ((y + dy) * width + (x + dx)) * 4;
-          r += data[i];
-          g += data[i + 1];
-          b += data[i + 2];
-          a += data[i + 3];
-          count++;
-        }
-      }
+      const { r, g, b, a, count } = calculateBlockAverage(data, width, x, y, blockSize, width, height);
 
       // Calculate average
-      r = Math.floor(r / count);
-      g = Math.floor(g / count);
-      b = Math.floor(b / count);
-      a = Math.floor(a / count);
+      const avgR = Math.floor(r / count);
+      const avgG = Math.floor(g / count);
+      const avgB = Math.floor(b / count);
+      const avgA = Math.floor(a / count);
 
       // Apply average to all pixels in block
+      const maxDy = Math.min(blockSize, height - y);
+      const maxDx = Math.min(blockSize, width - x);
       for (let dy = 0; dy < maxDy; dy++) {
         for (let dx = 0; dx < maxDx; dx++) {
           const i = ((y + dy) * width + (x + dx)) * 4;
-          data[i] = r;
-          data[i + 1] = g;
-          data[i + 2] = b;
-          data[i + 3] = a;
+          data[i] = avgR;
+          data[i + 1] = avgG;
+          data[i + 2] = avgB;
+          data[i + 3] = avgA;
         }
       }
     }
@@ -561,17 +567,8 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
     setShapeOverlays(prev => [...prev, newShape]);
   }, [selectedShape, selectedColor, shapeFilled]);
 
-  // Mouse/Touch handlers with useCallback to prevent unnecessary re-renders
-  const handlePointerDown = useCallback((e: React.MouseEvent | React.TouchEvent) => {
-    // Prevent default to stop scrolling and other browser behaviors
-    if ('touches' in e) {
-      e.preventDefault();
-    }
-    
-    const coords = getCanvasCoords(e);
-    if (!coords) return;
-
-    // Route to appropriate handler based on active tool
+  // Route pointer event to appropriate tool handler - extracted to reduce complexity
+  const routeToolHandler = useCallback((coords: { x: number; y: number }) => {
     if (activeTool === 'draw') {
       handleDrawStart(coords);
     } else if (activeTool === 'crop' || cropMode) {
@@ -583,7 +580,21 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
     } else if (activeTool === 'shape') {
       handleShapeTool(coords);
     }
-  }, [activeTool, cropMode, getCanvasCoords, handleDrawStart, handleCropStart, handleBlurStart, handleTextTool, handleShapeTool]);
+  }, [activeTool, cropMode, handleDrawStart, handleCropStart, handleBlurStart, handleTextTool, handleShapeTool]);
+
+  // Mouse/Touch handlers with useCallback to prevent unnecessary re-renders
+  const handlePointerDown = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    // Prevent default to stop scrolling and other browser behaviors
+    if ('touches' in e) {
+      e.preventDefault();
+    }
+    
+    const coords = getCanvasCoords(e);
+    if (!coords) return;
+
+    // Route to appropriate handler based on active tool
+    routeToolHandler(coords);
+  }, [getCanvasCoords, routeToolHandler]);
 
   const handlePointerMove = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     // Prevent default to stop scrolling during drag

@@ -142,12 +142,11 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
   const isText = fileTypeInfo.type === 'text';
   const canPreview = isPDF || isText;
 
-  // Create object URL for the file and load text content if applicable
-  useEffect(() => {
+  // Load file and set up URL
+  const initializeFile = useCallback(async (file: File, isText: boolean, isPDF: boolean) => {
     const url = URL.createObjectURL(file);
     setFileUrl(url);
     
-    // Load text content for text files
     if (isText) {
       const reader = new FileReader();
       reader.onload = (e) => {
@@ -159,15 +158,19 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
         setLoading(false);
       };
       reader.readAsText(file);
+      return () => URL.revokeObjectURL(url);
     } else if (!isPDF) {
-      // For non-previewable files, just show the info card
       setLoading(false);
     }
     
-    return () => {
-      URL.revokeObjectURL(url);
-    };
-  }, [file, isText, isPDF]);
+    return () => URL.revokeObjectURL(url);
+  }, []);
+
+  // Create object URL for the file and load text content if applicable
+  useEffect(() => {
+    const cleanup = initializeFile(file, isText, isPDF);
+    return cleanup;
+  }, [file, isText, isPDF, initializeFile]);
 
   // Track container width for responsive PDF sizing and detect mobile
   useEffect(() => {
