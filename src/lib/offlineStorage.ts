@@ -56,7 +56,7 @@ class OfflineStorage {
   private initFailed = false;
 
   // In-memory cache for instant access (survives navigation, not page refresh)
-  private memoryCache: {
+  private readonly memoryCache: {
     conversations: any[] | null;
     messages: Map<string, any[]>;
   } = {
@@ -75,7 +75,8 @@ class OfflineStorage {
   // Lazy initialization - called on first async operation
   private async ensureInitialized(): Promise<boolean> {
     if (this.initPromise) {
-      return this.initPromise.then(() => this.isInitialized && this.db !== null);
+      const isReady = await this.initPromise;
+      return this.isInitialized && this.db !== null;
     }
     
     this.initPromise = this.init().catch((error) => {
@@ -96,7 +97,7 @@ class OfflineStorage {
         return;
       }
       
-      const timestamp = parseInt(timestampStr, 10);
+      const timestamp = Number.parseInt(timestampStr, 10);
       const age = Date.now() - timestamp;
       
       // Check if cache is too old
