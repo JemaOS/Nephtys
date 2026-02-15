@@ -117,6 +117,13 @@ export const CallItem = ({
     <div
       className={`px-4 py-3 transition-colors cursor-pointer ${containerClass}`}
       onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          onClick();
+        }
+      }}
+      role="button"
+      tabIndex={0}
       onContextMenu={onContextMenu}
       onTouchStart={onTouchStart}
       onTouchEnd={onTouchEnd}
@@ -348,6 +355,8 @@ export const CallContextMenu = ({
       <div
         className="fixed inset-0 z-40"
         onClick={handleCloseContextMenu}
+        onKeyDown={(e) => e.stopPropagation()}
+        role="presentation"
       />
       
       {/* Menu contextuel */}

@@ -105,9 +105,9 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
     </div>
 
     {/* Messages éphémères */}
-    <div
+    <button
       onClick={() => setShowEphemeralMenu(!showEphemeralMenu)}
-      className="bg-bg-surface rounded-xl p-4 cursor-pointer hover:bg-bg-hover transition-colors"
+      className="w-full text-left bg-bg-surface rounded-xl p-4 cursor-pointer hover:bg-bg-hover transition-colors"
     >
       <div className="flex items-center gap-3">
         <div className={`w-10 h-10 rounded-full flex items-center justify-center ${ephemeralDuration ? 'bg-accent/20' : 'bg-bg-hover'}`}>
@@ -121,12 +121,12 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
         </div>
         <ChevronRight size={18} className="text-text-secondary" />
       </div>
-    </div>
+    </button>
 
     {/* Notifications */}
-    <div
+    <button
       onClick={handleToggleMute}
-      className="bg-bg-surface rounded-xl p-4 cursor-pointer hover:bg-bg-hover transition-colors"
+      className="w-full text-left bg-bg-surface rounded-xl p-4 cursor-pointer hover:bg-bg-hover transition-colors"
     >
       <div className="flex items-center gap-3">
         <div className="w-10 h-10 rounded-full bg-bg-hover flex items-center justify-center">
@@ -136,12 +136,12 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           {isMuted ? 'Activer les notifications' : 'Désactiver les notifications'}
         </span>
       </div>
-    </div>
+    </button>
 
     {/* Archiver */}
-    <div
+    <button
       onClick={handleArchive}
-      className="bg-bg-surface rounded-xl p-4 cursor-pointer hover:bg-bg-hover transition-colors"
+      className="w-full text-left bg-bg-surface rounded-xl p-4 cursor-pointer hover:bg-bg-hover transition-colors"
     >
       <div className="flex items-center gap-3">
         <div className="w-10 h-10 rounded-full bg-bg-hover flex items-center justify-center">
@@ -149,12 +149,12 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
         </div>
         <span className="text-sm text-text-primary">Archiver la conversation</span>
       </div>
-    </div>
+    </button>
 
     {/* Supprimer */}
-    <div
+    <button
       onClick={handleDelete}
-      className="bg-bg-surface rounded-xl p-4 cursor-pointer hover:bg-red-500/10 transition-colors"
+      className="w-full text-left bg-bg-surface rounded-xl p-4 cursor-pointer hover:bg-red-500/10 transition-colors"
     >
       <div className="flex items-center gap-3">
         <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center">
@@ -162,7 +162,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
         </div>
         <span className="text-sm text-red-500">Supprimer la conversation</span>
       </div>
-    </div>
+    </button>
   </div>
 );
 
@@ -298,13 +298,13 @@ export const MediaTab: React.FC<MediaTabProps> = ({
   return (
     <div className="grid grid-cols-3 gap-2">
       {mediaMessages.map((media) => (
-        <div
+        <button
           key={media.id}
           onClick={() => {
             setSelectedMedia(media);
             setIsMediaViewerOpen(true);
           }}
-          className="aspect-square rounded-lg overflow-hidden bg-bg-hover hover:opacity-80 transition-opacity cursor-pointer relative group"
+          className="w-full aspect-square rounded-lg overflow-hidden bg-bg-hover hover:opacity-80 transition-opacity cursor-pointer relative group"
         >
           {(media.type === 'video' || media.media_type === 'video') ? (
             <>
@@ -325,7 +325,7 @@ export const MediaTab: React.FC<MediaTabProps> = ({
               className="w-full h-full object-cover"
             />
           )}
-        </div>
+        </button>
       ))}
     </div>
   );

@@ -57,7 +57,7 @@ export const MessageContent: React.FC<{ message: Message; isOwn: boolean }> = ({
         : (message as any).link_preview
       if (previewData.url) {
         displayContent = message.content.replace(previewData.url, '').trim()
-        displayContent = displayContent.replace(/^[\s\-–—:]+|[\s\-–—:]+$/g, '').trim()
+        displayContent = displayContent.replace(/(^[\s\-–—:]+)|([\s\-–—:]+$)/g, '').trim()
       }
     } catch {
       // Keep original content
@@ -105,7 +105,17 @@ export const ReplyQuote: React.FC<{
     : otherUserDisplayName || 'Utilisateur'
   
   return (
-    <div onClick={(e) => { e.stopPropagation(); onScrollToMessage(replyMessage.id); }}>
+    <div
+      onClick={(e) => { e.stopPropagation(); onScrollToMessage(replyMessage.id); }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.stopPropagation();
+          onScrollToMessage(replyMessage.id);
+        }
+      }}
+      role="button"
+      tabIndex={0}
+    >
       <MessageReply
         replyToMessage={{
           id: replyMessage.id,

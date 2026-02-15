@@ -15,7 +15,6 @@ export const AudioPreviewPlayer: React.FC<{ file: File; preview: string | null }
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
-  const progressRef = useRef<HTMLDivElement>(null);
 
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
@@ -51,40 +50,13 @@ export const AudioPreviewPlayer: React.FC<{ file: File; preview: string | null }
     setCurrentTime(0);
   };
 
-  const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (progressRef.current && audioRef.current) {
-      const rect = progressRef.current.getBoundingClientRect();
-      const percent = (e.clientX - rect.left) / rect.width;
-      const newTime = percent * duration;
+  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newTime = parseFloat(e.target.value);
+    setCurrentTime(newTime);
+    if (audioRef.current) {
       audioRef.current.currentTime = newTime;
-      setCurrentTime(newTime);
     }
   };
-
-  const handleProgressDrag = useCallback((e: MouseEvent) => {
-    if (progressRef.current && audioRef.current && isDragging) {
-      const rect = progressRef.current.getBoundingClientRect();
-      const percent = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-      const newTime = percent * duration;
-      audioRef.current.currentTime = newTime;
-      setCurrentTime(newTime);
-    }
-  }, [isDragging, duration]);
-
-  const handleMouseUp = useCallback(() => {
-    setIsDragging(false);
-  }, []);
-
-  useEffect(() => {
-    if (isDragging) {
-      window.addEventListener('mousemove', handleProgressDrag);
-      window.addEventListener('mouseup', handleMouseUp);
-      return () => {
-        window.removeEventListener('mousemove', handleProgressDrag);
-        window.removeEventListener('mouseup', handleMouseUp);
-      };
-    }
-  }, [isDragging, handleProgressDrag, handleMouseUp]);
 
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
@@ -109,23 +81,24 @@ export const AudioPreviewPlayer: React.FC<{ file: File; preview: string | null }
         {/* Custom audio player */}
         <div className="w-full max-w-sm">
           {/* Progress bar */}
-          <div
-            ref={progressRef}
-            onClick={handleProgressClick}
+          <input
+            type="range"
+            min={0}
+            max={duration || 0}
+            step={0.1}
+            value={currentTime}
+            onChange={handleSeek}
             onMouseDown={() => setIsDragging(true)}
-            className="relative h-1.5 bg-bg-hover rounded-full cursor-pointer group"
-          >
-            {/* Progress fill */}
-            <div
-              className="absolute left-0 top-0 h-full bg-accent rounded-full transition-all"
-              style={{ width: `${progress}%` }}
-            />
-            {/* Drag handle */}
-            <div
-              className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-accent rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-              style={{ left: `calc(${progress}% - 6px)` }}
-            />
-          </div>
+            onMouseUp={() => setIsDragging(false)}
+            onTouchStart={() => setIsDragging(true)}
+            onTouchEnd={() => setIsDragging(false)}
+            className="w-full h-1.5 rounded-full cursor-pointer appearance-none bg-bg-hover"
+            style={{
+              backgroundSize: `${progress}% 100%`,
+              backgroundImage: `linear-gradient(#6b6fdb, #6b6fdb)`,
+              backgroundRepeat: 'no-repeat'
+            }}
+          />
           
           {/* Time display */}
           <div className="flex justify-between text-xs text-text-tertiary mt-2">

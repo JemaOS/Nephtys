@@ -1153,7 +1153,7 @@ export function CallsPage() {
             <span className="text-gray-800 dark:text-white text-sm">{new Date(call.started_at).toLocaleString('fr-FR')}</span>
           </div>
 
-          {call.duration && (
+          {call.duration !== null && (
             <div className="flex items-center justify-between">
               <span className="text-text-secondary">Durée</span>
               <span className="text-gray-800 dark:text-white">{formatCallDuration(call.duration)}</span>

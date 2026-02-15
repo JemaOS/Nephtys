@@ -323,6 +323,13 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
           handleResetZoom();
         }
       }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          handleResetZoom();
+        }
+      }}
+      role="button"
+      tabIndex={0}
       draggable={false}
     />
     
@@ -420,6 +427,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           lastClickTimeRef.current = now;
         }
       }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          togglePlayPause();
+        }
+      }}
+      role="button"
+      tabIndex={0}
     >
       <div className="flex-1 flex items-center justify-center relative">
         <video
@@ -520,27 +534,24 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           </span>
           
           {/* Progress bar */}
-          <div
-            ref={progressBarRef}
-            className="flex-1 h-8 flex items-center cursor-pointer group"
-            onClick={handleProgressBarClick}
-            onTouchStart={handleProgressBarTouchStart}
-            onTouchMove={handleProgressBarTouchMove}
-            onTouchEnd={handleProgressBarTouchEnd}
-          >
-            <div className="w-full h-1 bg-white/30 rounded-full relative">
-              {/* Progress fill - using app accent color */}
-              <div
-                className="absolute left-0 top-0 h-full bg-[#787add] rounded-full transition-all"
-                style={{ width: `${progressPercentage}%` }}
-              />
-              {/* Seek handle - using app accent color */}
-              <div
-                className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-[#787add] rounded-full shadow-lg transition-transform group-hover:scale-125"
-                style={{ left: `calc(${progressPercentage}% - 8px)` }}
-              />
-            </div>
-          </div>
+          <input
+            type="range"
+            min={0}
+            max={duration || 0}
+            step={0.1}
+            value={currentTime}
+            onChange={(e) => {
+               const newTime = parseFloat(e.target.value);
+               setCurrentTime(newTime);
+               if (videoRef.current) videoRef.current.currentTime = newTime;
+            }}
+            className="flex-1 h-1.5 rounded-full cursor-pointer appearance-none bg-white/30 accent-[#787add]"
+            style={{
+              backgroundSize: `${progressPercentage}% 100%`,
+              backgroundImage: `linear-gradient(#787add, #787add)`,
+              backgroundRepeat: 'no-repeat'
+            }}
+          />
           
           {/* Duration */}
           <span className="text-white text-sm font-medium min-w-[45px] text-center">

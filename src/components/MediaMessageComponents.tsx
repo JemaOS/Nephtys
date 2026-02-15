@@ -474,16 +474,17 @@ export const FileMessage: React.FC<FileMessageProps> = ({
       {hasThumbnail ? (
         <div className="rounded-xl overflow-hidden max-w-[320px]">
           {/* Thumbnail image of first page - clickable */}
-          <div
-            className="relative bg-white cursor-pointer"
+          <button
+            className="relative w-full bg-white cursor-pointer block"
             onClick={handleOpenFile}
+            aria-label="Ouvrir le fichier"
           >
             <img
               src={thumbnail}
               alt={fileName || 'PDF'}
               className="w-full h-auto max-h-[200px] object-cover object-top"
             />
-          </div>
+          </button>
           
           {/* File info section - accent color background */}
           <div className="bg-[#5a5cc9] p-3">
