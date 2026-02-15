@@ -115,7 +115,7 @@ export const uploadThumbnail = async (
   const thumbnailFileName = `${userId}/thumbnails/${Date.now()}_${fileName.replace(/\.[^/.]+$/, '')}_thumb.jpg`;
 
   // Upload to storage
-  const { data, error } = await supabase.storage
+  const { error } = await supabase.storage
     .from('media')
     .upload(thumbnailFileName, blob, {
       cacheControl: '3600',

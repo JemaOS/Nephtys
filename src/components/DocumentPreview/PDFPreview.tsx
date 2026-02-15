@@ -35,7 +35,7 @@ export const PDFPreview: React.FC<PDFPreviewProps> = ({
   const [error, setError] = useState<string | null>(null);
 
   // Create file source for react-pdf
-  const fileSource = typeof file === 'string' ? file : file;
+  const fileSource = file;
 
   const handleLoadSuccess = useCallback(({ numPages }: { numPages: number }) => {
     setNumPages(numPages);
