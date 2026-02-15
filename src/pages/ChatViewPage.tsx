@@ -200,21 +200,6 @@ export function ChatViewPage() {
   const navigate = useNavigate()
   const { user, profile } = useAuth()
   
-  // If no conversation ID, show empty state (when mounted in persistent layout)
-  if (!conversationId) {
-    return (
-      <div className="flex-1 hidden md:flex items-center justify-center bg-bg-primary">
-        <div className="text-center px-8">
-          <div className="text-6xl mb-4">💬</div>
-          <h2 className="text-xl font-light text-text-secondary mb-2">Nephtys</h2>
-          <p className="text-text-secondary text-sm">
-            Sélectionnez une conversation pour commencer à discuter
-          </p>
-        </div>
-      </div>
-    )
-  }
-  
   // Initialize state from IndexedDB cache for instant display (like WhatsApp)
   const [conversation, setConversation] = useState<Conversation | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
@@ -1878,6 +1863,22 @@ export function ChatViewPage() {
     : isSavedMessages
       ? 'Moi'
       : otherUser?.display_name || otherUser?.username || 'Utilisateur'
+
+  // If no conversation ID, show empty state (when mounted in persistent layout)
+  // This MUST be after all hooks to avoid React error #310
+  if (!conversationId) {
+    return (
+      <div className="flex-1 hidden md:flex items-center justify-center bg-bg-primary">
+        <div className="text-center px-8">
+          <div className="text-6xl mb-4">💬</div>
+          <h2 className="text-xl font-light text-text-secondary mb-2">Nephtys</h2>
+          <p className="text-text-secondary text-sm">
+            Sélectionnez une conversation pour commencer à discuter
+          </p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <MainLayout>
