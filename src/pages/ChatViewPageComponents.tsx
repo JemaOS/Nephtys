@@ -23,10 +23,10 @@ const getMessageTypeInfo = (message: Message) => {
 
   // Check if this is a GIF or Sticker message
   const gifMatch = message.type === 'text' && message.content && !message.media_url
-    ? message.content.match(/^(?:\[Transféré\]\s*)?([\s\S]*?)\[GIF\]\((https?:\/\/[^\)]+)\)$/)
+    ? message.content.match(/^(?:\[Transféré\]\s*)?([\s\S]*?)\[GIF\]\((https?:\/\/[^)]+)\)$/)
     : null
   const stickerMatch = message.type === 'text' && message.content && !message.media_url
-    ? message.content.match(/^(?:\[Transféré\]\s*)?([\s\S]*?)\[STICKER\]\((https?:\/\/[^\)]+)\)$/)
+    ? message.content.match(/^(?:\[Transféré\]\s*)?([\s\S]*?)\[STICKER\]\((https?:\/\/[^)]+)\)$/)
     : null
   const isGifMessage = !!gifMatch
   const isStickerMessage = !!stickerMatch
@@ -396,7 +396,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
       >
         {(conversation?.type === 'direct' && otherUser?.avatar_url) || conversation?.avatar_url ? (
           <img
-            src={conversation?.type === 'direct' ? otherUser?.avatar_url! : conversation?.avatar_url!}
+            src={conversation?.type === 'direct' ? otherUser?.avatar_url : conversation?.avatar_url}
             alt={displayName}
             className="w-10 h-10 rounded-full object-cover"
             key={conversation?.type === 'direct' ? otherUser?.avatar_url : conversation?.avatar_url}
