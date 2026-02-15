@@ -87,48 +87,6 @@ const loadFileUrl = async (file: File, isText: boolean): Promise<{ url: string; 
   return { url, textContent: null, error: null };
 };
 
-// Update container dimensions - extracted to reduce complexity
-const updateContainerDimensions = (
-  containerRef: React.RefObject<HTMLDivElement>,
-  setContainerWidth: (width: number) => void,
-  setIsMobile: (mobile: boolean) => void
-): void => {
-  const windowWidth = window.innerWidth;
-  const mobile = windowWidth < 768;
-  setIsMobile(mobile);
-  
-  if (containerRef.current) {
-    const padding = mobile ? 16 : 64;
-    const width = containerRef.current.clientWidth - padding;
-    const maxWidth = mobile ? windowWidth - 16 : Math.min(800, windowWidth - 100);
-    setContainerWidth(Math.min(width, maxWidth));
-  }
-};
-
-// Get file type info based on extension
-const getFileTypeInfo = (fileName: string): { type: 'pdf' | 'word' | 'excel' | 'powerpoint' | 'text' | 'archive' | 'other'; label: string; color: string; icon: React.ReactNode } => {
-  const ext = fileName.split('.').pop()?.toLowerCase() || '';
-  
-  if (ext === 'pdf') {
-    return { type: 'pdf', label: 'PDF', color: 'bg-red-500', icon: <FileText size={32} className="text-white" /> };
-  }
-  if (['doc', 'docx', 'odt', 'rtf'].includes(ext)) {
-    return { type: 'word', label: 'Word', color: 'bg-blue-600', icon: <FileText size={32} className="text-white" /> };
-  }
-  if (['xls', 'xlsx', 'csv', 'ods'].includes(ext)) {
-    return { type: 'excel', label: 'Excel', color: 'bg-green-600', icon: <FileSpreadsheet size={32} className="text-white" /> };
-  }
-  if (['ppt', 'pptx', 'odp'].includes(ext)) {
-    return { type: 'powerpoint', label: 'PowerPoint', color: 'bg-orange-500', icon: <Presentation size={32} className="text-white" /> };
-  }
-  if (['txt', 'md', 'json', 'xml', 'html', 'css', 'js', 'ts'].includes(ext)) {
-    return { type: 'text', label: ext.toUpperCase(), color: 'bg-gray-500', icon: <FileText size={32} className="text-white" /> };
-  }
-  if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) {
-    return { type: 'archive', label: ext.toUpperCase(), color: 'bg-yellow-600', icon: <FileArchive size={32} className="text-white" /> };
-  }
-  return { type: 'other', label: ext.toUpperCase() || 'FILE', color: 'bg-gray-500', icon: <File size={32} className="text-white" /> };
-};
 
 interface DocumentPreviewModalProps {
   file: File;
