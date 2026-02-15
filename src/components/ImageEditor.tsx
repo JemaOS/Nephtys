@@ -164,14 +164,16 @@ const drawHeart = (ctx: CanvasRenderingContext2D, x: number, y: number, width: n
 };
 
 // Helper function to calculate average color for a block - extracted to reduce complexity
-const calculateBlockAverage = (data: Uint8ClampedArray, width: number, startX: number, startY: number, blockSize: number, imgWidth: number, imgHeight: number): { r: number; g: number; b: number; a: number; count: number } => {
+const calculateBlockAverage = (data: Uint8ClampedArray, imgWidth: number, startX: number, startY: number, blockSize: number, imgHeight: number): { r: number; g: number; b: number; a: number; count: number } => {
   let r = 0, g = 0, b = 0, a = 0, count = 0;
   const maxDy = Math.min(blockSize, imgHeight - startY);
   const maxDx = Math.min(blockSize, imgWidth - startX);
+  const rowOffset = startY * imgWidth;
   
   for (let dy = 0; dy < maxDy; dy++) {
+    const rowIndex = (rowOffset + dy * imgWidth + startX) * 4;
     for (let dx = 0; dx < maxDx; dx++) {
-      const i = ((startY + dy) * imgWidth + (startX + dx)) * 4;
+      const i = rowIndex + dx * 4;
       r += data[i];
       g += data[i + 1];
       b += data[i + 2];
@@ -190,7 +192,7 @@ const applyPixelateEffect = (imageData: ImageData, blockSize: number): ImageData
   for (let y = 0; y < height; y += blockSize) {
     for (let x = 0; x < width; x += blockSize) {
       // Calculate average color for this block
-      const { r, g, b, a, count } = calculateBlockAverage(data, width, x, y, blockSize, width, height);
+      const { r, g, b, a, count } = calculateBlockAverage(data, width, x, y, blockSize, height);
 
       // Calculate average
       const avgR = Math.floor(r / count);
