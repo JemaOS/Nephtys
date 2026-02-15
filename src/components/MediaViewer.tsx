@@ -30,7 +30,7 @@ const formatTimestamp = (ts: string): string => {
 
 // Format video time helper - extracted to module level
 const formatVideoTime = (seconds: number): string => {
-  if (!isFinite(seconds) || isNaN(seconds)) return '00:00';
+  if (!Number.isFinite(seconds) || Number.isNaN(seconds)) return '00:00';
   const mins = Math.floor(seconds / 60);
   const secs = Math.floor(seconds % 60);
   return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
@@ -1191,7 +1191,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
 
   // Format time for video progress (MM:SS)
   const formatVideoTime = (seconds: number): string => {
-    if (!isFinite(seconds) || isNaN(seconds)) return '00:00';
+    if (!Number.isFinite(seconds) || Number.isNaN(seconds)) return '00:00';
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
@@ -1285,7 +1285,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
       a.download = `media-${Date.now()}.${extension}`;
       document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
+      a.remove();
       window.URL.revokeObjectURL(url);
       onDownload?.();
     } catch (error) {

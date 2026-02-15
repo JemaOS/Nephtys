@@ -12,27 +12,18 @@ interface GlassCardProps {
 }
 
 export function GlassCard({ children, className, onClick, hover = false }: GlassCardProps) {
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (onClick && (e.key === 'Enter' || e.key === ' ')) {
-      e.preventDefault();
-      onClick();
-    }
-  };
+  const Component = onClick ? 'button' : 'div';
 
   return (
-    <div
+    <Component
       className={cn(
         'bg-glass-surface-light backdrop-blur-[30px] border border-glass-border rounded-lg p-8 shadow-glass-md transition-all duration-slow',
         hover && 'hover:bg-opacity-60 hover:backdrop-blur-[35px] hover:shadow-glass-lg cursor-pointer',
-        onClick && 'cursor-pointer',
         className
       )}
       onClick={onClick}
-      role={onClick ? 'button' : undefined}
-      tabIndex={onClick ? 0 : -1}
-      onKeyDown={onClick ? handleKeyDown : undefined}
     >
       {children}
-    </div>
+    </Component>
   )
 }

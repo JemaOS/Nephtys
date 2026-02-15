@@ -66,14 +66,14 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
 
     const handleLoadedMetadata = () => {
       console.log('Audio loaded - duration:', audio.duration, 'src:', url);
-      if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
+      if (audio.duration && !Number.isNaN(audio.duration) && Number.isFinite(audio.duration)) {
         setAudioDuration(audio.duration);
       }
     };
 
     const handleDurationChange = () => {
       console.log('Duration changed:', audio.duration);
-      if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
+      if (audio.duration && !Number.isNaN(audio.duration) && Number.isFinite(audio.duration)) {
         setAudioDuration(audio.duration);
       }
     };
@@ -97,7 +97,7 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
 
     const handleCanPlay = () => {
       console.log('Audio can play - ready state:', audio.readyState, 'duration:', audio.duration);
-      if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
+      if (audio.duration && !Number.isNaN(audio.duration) && Number.isFinite(audio.duration)) {
         setAudioDuration(audio.duration);
       }
     };
@@ -176,7 +176,7 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
         console.log('Audio decoded successfully, duration:', audioBufferRef.current.duration);
         
         // Update duration
-        if (audioBufferRef.current.duration && isFinite(audioBufferRef.current.duration)) {
+        if (audioBufferRef.current.duration && Number.isFinite(audioBufferRef.current.duration)) {
           setAudioDuration(audioBufferRef.current.duration);
         }
       }
@@ -287,7 +287,7 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
         URL.revokeObjectURL(blobUrl);
       });
       newAudio.addEventListener('loadedmetadata', () => {
-        if (newAudio.duration && !isNaN(newAudio.duration) && isFinite(newAudio.duration)) {
+        if (newAudio.duration && !Number.isNaN(newAudio.duration) && Number.isFinite(newAudio.duration)) {
           setAudioDuration(newAudio.duration);
         }
       });
@@ -384,11 +384,19 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
       a.download = `voice-message-${Date.now()}.${fileExtension}`;
       document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
+      a.remove();
       window.URL.revokeObjectURL(downloadUrl);
     } catch (error) {
       console.error('Error downloading voice message:', error);
     }
+  };
+
+  // Helper to get waveform bar color based on state
+  const getWaveformBarColor = (isActive: boolean, isOwnMessage: boolean): string => {
+    if (isActive) {
+      return isOwnMessage ? 'rgba(255, 255, 255, 0.95)' : '#8286ef';
+    }
+    return isOwnMessage ? 'rgba(255, 255, 255, 0.35)' : 'rgba(130, 134, 239, 0.35)';
   };
 
   const progress = audioDuration > 0 ? (currentTime / audioDuration) * 100 : 0;
@@ -430,17 +438,16 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
             {waveformHeights.map((height, i) => {
               const barProgress = (i / waveformHeights.length) * 100;
               const isActive = barProgress <= progress;
+              const barColor = getWaveformBarColor(isActive, isOwn);
               
               return (
                 <div
-                  key={i}
+                  key={`waveform-${i}-${url}`}
                   className="flex-1 rounded-full"
                   style={{
                     height: `${height * 100}%`,
                     minHeight: '4px',
-                    backgroundColor: isActive
-                      ? (isOwn ? 'rgba(255, 255, 255, 0.95)' : '#8286ef')
-                      : (isOwn ? 'rgba(255, 255, 255, 0.35)' : 'rgba(130, 134, 239, 0.35)'),
+                    backgroundColor: barColor,
                   }}
                 />
               );
