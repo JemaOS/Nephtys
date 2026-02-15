@@ -4,6 +4,183 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { X, ChevronLeft, ChevronRight, Forward, Star, Pin, Smile, Share2, Download, Play, Pause, Volume2, VolumeX, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
 
+// Helper component for header actions - extracted to reduce complexity
+const HeaderActions: React.FC<{
+  onForward?: () => void;
+  onStar?: () => void;
+  onPin?: () => void;
+  onReaction?: (emoji: string) => void;
+  onShare: () => void;
+  onDownload: () => void;
+  onClose: () => void;
+  onToggleFullscreen: () => void;
+  isStarred: boolean;
+  showEmojiPicker: boolean;
+  setShowEmojiPicker: (show: boolean) => void;
+  isMobile: boolean;
+  mediaType: string;
+  isFullscreen: boolean;
+  zoom: number;
+  MIN_ZOOM: number;
+  MAX_ZOOM: number;
+  handleZoomIn: () => void;
+  handleZoomOut: () => void;
+  handleResetZoom: () => void;
+  quickEmojis: string[];
+}> = ({
+  onForward,
+  onStar,
+  onPin,
+  onReaction,
+  onShare,
+  onDownload,
+  onClose,
+  onToggleFullscreen,
+  isStarred,
+  showEmojiPicker,
+  setShowEmojiPicker,
+  isMobile,
+  mediaType,
+  isFullscreen,
+  zoom,
+  MIN_ZOOM,
+  MAX_ZOOM,
+  handleZoomIn,
+  handleZoomOut,
+  handleResetZoom,
+  quickEmojis,
+}) => (
+  <div className="flex items-center gap-3 md:gap-4 flex-shrink-0">
+    {/* Zoom controls - only for images, hidden on mobile (use pinch-to-zoom) */}
+    {(mediaType === 'image' || mediaType === 'gif' || mediaType === 'sticker') && !isMobile && (
+      <>
+        <button
+          onClick={(e) => { e.stopPropagation(); handleZoomOut(); }}
+          className="w-10 h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
+          title="Zoom arrière"
+          disabled={zoom <= MIN_ZOOM}
+        >
+          <ZoomOut size={20} className="text-white" />
+        </button>
+        <button
+          onClick={(e) => { e.stopPropagation(); handleZoomIn(); }}
+          className="w-10 h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
+          title="Zoom avant"
+          disabled={zoom >= MAX_ZOOM}
+        >
+          <ZoomIn size={20} className="text-white" />
+        </button>
+        {zoom !== 1 && (
+          <button
+            onClick={(e) => { e.stopPropagation(); handleResetZoom(); }}
+            className="px-2 h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors text-white text-sm"
+            title="Réinitialiser le zoom"
+          >
+            {Math.round(zoom * 100)}%
+          </button>
+        )}
+        <div className="w-px h-6 bg-white/20 mx-1" />
+      </>
+    )}
+    {/* Desktop only buttons */}
+    {onForward && (
+      <button
+        onClick={(e) => { e.stopPropagation(); onForward(); }}
+        className="hidden md:flex w-10 h-10 rounded-full hover:bg-white/10 items-center justify-center transition-colors"
+        title="Transférer"
+      >
+        <Forward size={20} className="text-white" />
+      </button>
+    )}
+    {onStar && (
+      <button
+        onClick={(e) => { e.stopPropagation(); onStar(); }}
+        className="hidden md:flex w-10 h-10 rounded-full hover:bg-white/10 items-center justify-center transition-colors"
+        title={isStarred ? "Retirer des favoris" : "Ajouter aux favoris"}
+      >
+        <Star
+          size={20}
+          className={isStarred ? "text-yellow-400 fill-yellow-400" : "text-white"}
+        />
+      </button>
+    )}
+    {onPin && (
+      <button
+        onClick={(e) => { e.stopPropagation(); onPin(); }}
+        className="hidden md:flex w-10 h-10 rounded-full hover:bg-white/10 items-center justify-center transition-colors"
+        title="Épingler"
+      >
+        <Pin size={20} className="text-white" />
+      </button>
+    )}
+    {onReaction && (
+      <div className="relative hidden md:block">
+        <button
+          onClick={(e) => { e.stopPropagation(); setShowEmojiPicker(!showEmojiPicker); }}
+          className="w-10 h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
+          title="Réagir"
+        >
+          <Smile size={20} className="text-white" />
+        </button>
+        {showEmojiPicker && (
+          <div className="absolute right-0 top-12 bg-bg-surface rounded-xl p-2 shadow-2xl flex gap-1">
+            {quickEmojis.map((emoji) => (
+              <button
+                key={emoji}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onReaction(emoji);
+                  setShowEmojiPicker(false);
+                }}
+                className="w-10 h-10 flex items-center justify-center text-2xl hover:bg-bg-hover rounded-lg transition-colors"
+              >
+                {emoji}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    )}
+    {/* Fullscreen toggle - visible on mobile for videos */}
+    {isMobile && (mediaType === 'video' || mediaType === 'image') && (
+      <button
+        onClick={(e) => { e.stopPropagation(); onToggleFullscreen(); }}
+        className="w-9 h-9 md:w-10 md:h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
+        title={isFullscreen ? "Quitter le plein écran" : "Plein écran"}
+      >
+        <Maximize2 size={18} className={`text-white ${isFullscreen ? 'rotate-45' : ''}`} />
+      </button>
+    )}
+    {/* Share - visible on mobile */}
+    <button
+      onClick={(e) => { e.stopPropagation(); onShare(); }}
+      className="w-9 h-9 md:w-10 md:h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
+      title="Partager"
+    >
+      <Share2 size={18} className="md:hidden text-white" />
+      <Share2 size={20} className="hidden md:block text-white" />
+    </button>
+    {/* Download - visible on mobile */}
+    <button
+      onClick={(e) => { e.stopPropagation(); onDownload(); }}
+      className="w-9 h-9 md:w-10 md:h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
+      title="Télécharger"
+    >
+      <Download size={18} className="md:hidden text-white" />
+      <Download size={20} className="hidden md:block text-white" />
+    </button>
+    {/* Close button - always visible */}
+    <button
+      onClick={(e) => { e.stopPropagation(); onClose(); }}
+      className="w-9 h-9 md:w-10 md:h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
+      title="Fermer"
+    >
+      <X size={22} className="md:hidden text-white" />
+      <X size={24} className="hidden md:block text-white" />
+    </button>
+  </div>
+);
+
 // Custom hook for mobile detection
 const useIsMobile = () => {
   const [isMobile, setIsMobile] = useState(false);
@@ -1123,136 +1300,30 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
             </div>
           </div>
 
-          {/* Right side - Action buttons */}
-          <div className="flex items-center gap-3 md:gap-4 flex-shrink-0">
-            {/* Zoom controls - only for images, hidden on mobile (use pinch-to-zoom) */}
-            {(mediaType === 'image' || mediaType === 'gif' || mediaType === 'sticker') && !isMobile && (
-              <>
-                <button
-                  onClick={(e) => { e.stopPropagation(); handleZoomOut(); }}
-                  className="w-10 h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
-                  title="Zoom arrière"
-                  disabled={zoom <= MIN_ZOOM}
-                >
-                  <ZoomOut size={20} className="text-white" />
-                </button>
-                <button
-                  onClick={(e) => { e.stopPropagation(); handleZoomIn(); }}
-                  className="w-10 h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
-                  title="Zoom avant"
-                  disabled={zoom >= MAX_ZOOM}
-                >
-                  <ZoomIn size={20} className="text-white" />
-                </button>
-                {zoom !== 1 && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleResetZoom(); }}
-                    className="px-2 h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors text-white text-sm"
-                    title="Réinitialiser le zoom"
-                  >
-                    {Math.round(zoom * 100)}%
-                  </button>
-                )}
-                <div className="w-px h-6 bg-white/20 mx-1" />
-              </>
-            )}
-            {/* Desktop only buttons */}
-            {onForward && (
-              <button
-                onClick={(e) => { e.stopPropagation(); onForward(); }}
-                className="hidden md:flex w-10 h-10 rounded-full hover:bg-white/10 items-center justify-center transition-colors"
-                title="Transférer"
-              >
-                <Forward size={20} className="text-white" />
-              </button>
-            )}
-            {onStar && (
-              <button
-                onClick={(e) => { e.stopPropagation(); onStar(); }}
-                className="hidden md:flex w-10 h-10 rounded-full hover:bg-white/10 items-center justify-center transition-colors"
-                title={isStarred ? "Retirer des favoris" : "Ajouter aux favoris"}
-              >
-                <Star
-                  size={20}
-                  className={isStarred ? "text-yellow-400 fill-yellow-400" : "text-white"}
-                />
-              </button>
-            )}
-            {onPin && (
-              <button
-                onClick={(e) => { e.stopPropagation(); onPin(); }}
-                className="hidden md:flex w-10 h-10 rounded-full hover:bg-white/10 items-center justify-center transition-colors"
-                title="Épingler"
-              >
-                <Pin size={20} className="text-white" />
-              </button>
-            )}
-            {onReaction && (
-              <div className="relative hidden md:block">
-                <button
-                  onClick={(e) => { e.stopPropagation(); setShowEmojiPicker(!showEmojiPicker); }}
-                  className="w-10 h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
-                  title="Réagir"
-                >
-                  <Smile size={20} className="text-white" />
-                </button>
-                {showEmojiPicker && (
-                  <div className="absolute right-0 top-12 bg-bg-surface rounded-xl p-2 shadow-2xl flex gap-1">
-                    {quickEmojis.map((emoji) => (
-                      <button
-                        key={emoji}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onReaction(emoji);
-                          setShowEmojiPicker(false);
-                        }}
-                        className="w-10 h-10 flex items-center justify-center text-2xl hover:bg-bg-hover rounded-lg transition-colors"
-                      >
-                        {emoji}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-            {/* Fullscreen toggle - visible on mobile for videos */}
-            {isMobile && (mediaType === 'video' || mediaType === 'image') && (
-              <button
-                onClick={(e) => { e.stopPropagation(); toggleFullscreen(); }}
-                className="w-9 h-9 md:w-10 md:h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
-                title={isFullscreen ? "Quitter le plein écran" : "Plein écran"}
-              >
-                <Maximize2 size={18} className={`text-white ${isFullscreen ? 'rotate-45' : ''}`} />
-              </button>
-            )}
-            {/* Share - visible on mobile */}
-            <button
-              onClick={(e) => { e.stopPropagation(); handleShare(); }}
-              className="w-9 h-9 md:w-10 md:h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
-              title="Partager"
-            >
-              <Share2 size={18} className="md:hidden text-white" />
-              <Share2 size={20} className="hidden md:block text-white" />
-            </button>
-            {/* Download - visible on mobile */}
-            <button
-              onClick={(e) => { e.stopPropagation(); handleDownload(); }}
-              className="w-9 h-9 md:w-10 md:h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
-              title="Télécharger"
-            >
-              <Download size={18} className="md:hidden text-white" />
-              <Download size={20} className="hidden md:block text-white" />
-            </button>
-            {/* Close button - always visible */}
-            <button
-              onClick={(e) => { e.stopPropagation(); onClose(); }}
-              className="w-9 h-9 md:w-10 md:h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
-              title="Fermer"
-            >
-              <X size={22} className="md:hidden text-white" />
-              <X size={24} className="hidden md:block text-white" />
-            </button>
-          </div>
+          {/* Right side - Action buttons - using extracted component */}
+          <HeaderActions
+            onForward={onForward}
+            onStar={onStar}
+            onPin={onPin}
+            onReaction={onReaction}
+            onShare={handleShare}
+            onDownload={handleDownload}
+            onClose={onClose}
+            onToggleFullscreen={toggleFullscreen}
+            isStarred={isStarred}
+            showEmojiPicker={showEmojiPicker}
+            setShowEmojiPicker={setShowEmojiPicker}
+            isMobile={isMobile}
+            mediaType={mediaType}
+            isFullscreen={isFullscreen}
+            zoom={zoom}
+            MIN_ZOOM={MIN_ZOOM}
+            MAX_ZOOM={MAX_ZOOM}
+            handleZoomIn={handleZoomIn}
+            handleZoomOut={handleZoomOut}
+            handleResetZoom={handleResetZoom}
+            quickEmojis={quickEmojis}
+          />
         </div>
       </div>
 
