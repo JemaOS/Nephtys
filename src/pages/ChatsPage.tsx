@@ -30,6 +30,15 @@ const formatDate = (dateStr: string): string => {
   }
 }
 
+// Helper to sort conversations - pinned first, then by last_message_at
+const sortConversations = (conversations: ConversationWithDetails[]): ConversationWithDetails[] => {
+  return [...conversations].sort((a, b) => {
+    if (a.is_pinned && !b.is_pinned) return -1
+    if (!a.is_pinned && b.is_pinned) return 1
+    return new Date(b.last_message_at || 0).getTime() - new Date(a.last_message_at || 0).getTime()
+  })
+}
+
 
 
 
@@ -576,11 +585,7 @@ const createConversationDataMap = (convs: ConversationWithDetails[]) => {
       }
 
       // Sort: pinned first, then by last_message_at
-      const sorted = enrichedConversations.sort((a, b) => {
-        if (a.is_pinned && !b.is_pinned) return -1
-        if (!a.is_pinned && b.is_pinned) return 1
-        return new Date(b.last_message_at || 0).getTime() - new Date(a.last_message_at || 0).getTime()
-      })
+      const sorted = sortConversations(enrichedConversations)
 
       // Analyze conversation changes to determine update strategy
       const { hasNewConversations, hasRemovedConversations, hasDataChanged, pinnedOrderChanged } = analyzeConversationChanges(conversations, sorted)
@@ -606,11 +611,7 @@ const createConversationDataMap = (convs: ConversationWithDetails[]) => {
         if (hasDataChanged || pinnedOrderChanged) {
           // Re-sort only if pinned status changed
           if (pinnedOrderChanged) {
-            const resorted = updatedConversations.sort((a, b) => {
-              if (a.is_pinned && !b.is_pinned) return -1
-              if (!a.is_pinned && b.is_pinned) return 1
-              return new Date(b.last_message_at || 0).getTime() - new Date(a.last_message_at || 0).getTime()
-            })
+            const resorted = sortConversations(updatedConversations)
             setConversations(resorted)
             await offlineStorage.saveConversations(resorted)
           } else {
