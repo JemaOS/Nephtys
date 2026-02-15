@@ -513,7 +513,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
 
     // Compress video if needed
     if (type === 'video') {
-      const shouldCompress = await checkVideoCompressionNeeded(preview);
+      const shouldCompress = await checkVideoCompression(preview);
       if (shouldCompress) {
         console.log(`Compressing video ${file.name}...`);
         const compressedBlob = await compressVideo(file);
@@ -561,8 +561,8 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
     return uploadedFile;
   };
 
-  // Helper: Check if video needs compression
-  const checkVideoCompressionNeeded = async (previewUrl: string): Promise<boolean> => {
+  // Extract video compression check to reduce complexity
+  const checkVideoCompression = async (previewUrl: string): Promise<boolean> => {
     return new Promise<boolean>((resolve) => {
       const video = document.createElement('video');
       video.preload = 'metadata';
