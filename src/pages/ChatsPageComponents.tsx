@@ -380,6 +380,7 @@ const renderConversationItem = (
   isSelectionMode: boolean,
   handleConversationClick: (id: string) => void,
   handleContextMenu: (e: React.MouseEvent, id: string) => void,
+  handleConversationHover: ((id: string) => void) | undefined,
   formatDate: (date: string) => string
 ) => {
   const displayName = getDisplayName(conversation)
@@ -400,6 +401,7 @@ const renderConversationItem = (
       selectedConversations={selectedConversations}
       handleConversationClick={handleConversationClick}
       handleContextMenu={handleContextMenu}
+      handleConversationHover={handleConversationHover}
       formatDate={formatDate}
       rowClass={rowClass}
     />
@@ -416,6 +418,7 @@ const ConversationItem = ({
   selectedConversations,
   handleConversationClick,
   handleContextMenu,
+  handleConversationHover,
   formatDate,
   rowClass
 }: {
@@ -428,6 +431,7 @@ const ConversationItem = ({
   selectedConversations: Set<string>;
   handleConversationClick: (id: string) => void;
   handleContextMenu: (e: React.MouseEvent, id: string) => void;
+  handleConversationHover?: (id: string) => void;
   formatDate: (date: string) => string;
   rowClass: string;
 }) => {
@@ -435,6 +439,7 @@ const ConversationItem = ({
     <div
       className={`px-4 py-3 cursor-pointer transition-colors ${rowClass}`}
       onClick={() => handleConversationClick(conversation.id)}
+      onMouseEnter={() => handleConversationHover?.(conversation.id)}
       onContextMenu={(e) => {
         if (!isSelectionMode) {
           handleContextMenu(e, conversation.id)
@@ -535,6 +540,7 @@ export const ChatsList = ({
   handleTouchStart,
   handleTouchEnd,
   handleTouchMove,
+  handleConversationHover,
   isMobile,
   formatDate
 }: {
@@ -547,6 +553,7 @@ export const ChatsList = ({
   handleTouchStart: (id: string) => void;
   handleTouchEnd: () => void;
   handleTouchMove: () => void;
+  handleConversationHover?: (id: string) => void;
   isMobile: boolean;
   formatDate: (date: string) => string;
 }) => (
@@ -567,6 +574,7 @@ export const ChatsList = ({
           isSelectionMode,
           handleConversationClick,
           handleContextMenu,
+          handleConversationHover,
           formatDate
         )
       )

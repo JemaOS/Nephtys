@@ -39,6 +39,7 @@ import { QuickReactionBar } from '@/components/QuickReactionBar'
 import { CallMessage } from '@/components/CallMessage'
 import { MessageItem } from '@/components/MessageItem'
 import { ChatHeader, CallLog, TimelineItem, MessageList } from './ChatViewPageComponents'
+import { getCachedConversation, getCachedMessages, getCachedProfile, cacheConversation, cacheMessages, cacheProfile } from '@/lib/localCache'
 
 // Utility function to detect emoji-only messages (1-3 emojis without other text)
 // Uses a comprehensive regex pattern to match emojis including compound emojis
@@ -199,25 +200,16 @@ export function ChatViewPage() {
   const navigate = useNavigate()
   const { user, profile } = useAuth()
   
-  // Initialize state from cache for instant display
-  const [conversation, setConversation] = useState<Conversation | null>(() =>
-    conversationId ? getCache<Conversation>(`conv_${conversationId}`) : null
-  )
-  const [messages, setMessages] = useState<Message[]>(() =>
-    conversationId ? getCache<Message[]>(`msgs_${conversationId}`) || [] : []
-  )
+  // Initialize state from IndexedDB cache for instant display (like WhatsApp)
+  const [conversation, setConversation] = useState<Conversation | null>(null)
+  const [messages, setMessages] = useState<Message[]>([])
   const [callLogs, setCallLogs] = useState<CallLog[]>([])
   const [filteredMessages, setFilteredMessages] = useState<Message[]>([])
   const [newMessage, setNewMessage] = useState('')
-  const [loading, setLoading] = useState(() => {
-    // If we have cached messages, don't show loading spinner
-    const cachedMsgs = conversationId ? getCache<Message[]>(`msgs_${conversationId}`) : null
-    return !cachedMsgs || cachedMsgs.length === 0
-  })
+  const [loading, setLoading] = useState(true) // Start with loading true, will set false after cache check
   const [sending, setSending] = useState(false)
-  const [otherUser, setOtherUser] = useState<Profile | null>(() =>
-    conversationId ? getCache<Profile>(`user_${conversationId}`) : null
-  )
+  const [otherUser, setOtherUser] = useState<Profile | null>(null)
+  const [initialDataLoaded, setInitialDataLoaded] = useState(false)
   // Map of group member profiles (user_id -> Profile) for group conversations
   const [groupMemberProfiles, setGroupMemberProfiles] = useState<Map<string, Profile>>(new Map())
   const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null)
@@ -291,6 +283,68 @@ export function ChatViewPage() {
   const { permission, requestPermission, sendNotification, subscribeToConversation, unsubscribeFromConversation } = useNotifications()
   const { wallpaper } = useTheme()
   const isMobile = useIsMobile()
+
+  // Load data from IndexedDB first (instant), then sync with Supabase in background
+  useEffect(() => {
+    if (!conversationId || initialDataLoaded) return
+
+    const loadFromCache = async () => {
+      try {
+        // Try to load from IndexedDB first for instant display
+        const [cachedConv, cachedMsgs, cachedUser] = await Promise.all([
+          getCachedConversation(conversationId),
+          getCachedMessages(conversationId),
+          user ? getCachedProfile(user.id) : Promise.resolve(null)
+        ])
+
+        // Apply cached data immediately for instant display
+        if (cachedConv) {
+          console.log('[ChatViewPage] Loaded conversation from IndexedDB cache')
+          setConversation(cachedConv)
+          
+          // Also load other user for direct conversations
+          if (cachedConv.type === 'direct') {
+            const memberIds = await import('@/lib/supabase').then(async (supabase) => {
+              const { data } = await supabase.supabase
+                .from('conversation_members')
+                .select('user_id')
+                .eq('conversation_id', conversationId)
+                .neq('user_id', user?.id)
+              return data?.map(m => m.user_id) || []
+            })
+            if (memberIds.length > 0) {
+              const otherProfile = await getCachedProfile(memberIds[0])
+              if (otherProfile) {
+                setOtherUser(otherProfile)
+              }
+            }
+          }
+        }
+
+        if (cachedMsgs && cachedMsgs.length > 0) {
+          console.log('[ChatViewPage] Loaded', cachedMsgs.length, 'messages from IndexedDB cache')
+          setMessages(cachedMsgs)
+          setLoading(false) // Show content immediately from cache
+        } else {
+          // No cache - will show skeleton until data loads
+          setLoading(true)
+        }
+
+        setInitialDataLoaded(true)
+
+        // Now sync with Supabase in background
+        loadConversation()
+        loadMessages()
+      } catch (error) {
+        console.error('[ChatViewPage] Error loading from cache:', error)
+        setInitialDataLoaded(true)
+        loadConversation()
+        loadMessages()
+      }
+    }
+
+    loadFromCache()
+  }, [conversationId, user?.id])
   
   // Get real-time presence status for the other user
   const { statusText: otherUserStatusText, isOnline: otherUserIsOnline } = useUserPresence(otherUser?.id)
@@ -792,16 +846,21 @@ export function ChatViewPage() {
     const { data, error } = await supabase.from('conversations').select('*').eq('id', conversationId!).maybeSingle()
     if (!error && data) {
       setConversation(data)
+      // Cache to both localStorage and IndexedDB
       setCache(`conv_${conversationId}`, data)
+      await cacheConversation(data)
       
       if (data.type === 'group') {
         const profileMap = await loadGroupMembers(conversationId!)
         setGroupMemberProfiles(profileMap)
+        // Cache group member profiles
+        profileMap.forEach(p => cacheProfile(p))
       } else if (data.type === 'direct') {
         const otherUserData = await loadDirectConversationUser(conversationId!, user!.id)
         if (otherUserData) {
           setOtherUser(otherUserData)
           setCache(`user_${conversationId}`, otherUserData)
+          await cacheProfile(otherUserData)
         }
       }
     }
@@ -813,7 +872,7 @@ export function ChatViewPage() {
   }
 
   const loadMessages = async () => {
-    // Only show loading if we don't have cached messages
+    // Don't set loading to true if we already have cached messages (instant display)
     const hasCachedMessages = messages.length > 0
     if (!hasCachedMessages) {
       setLoading(true)
@@ -822,7 +881,9 @@ export function ChatViewPage() {
     const { data, error } = await supabase.from('messages').select('*').eq('conversation_id', conversationId!).is('deleted_at', null).order('created_at', { ascending: true }).limit(100)
     if (!error && data) {
       setMessages(data)
-      setCache(`msgs_${conversationId}`, data) // Cache messages
+      // Cache to both localStorage and IndexedDB
+      setCache(`msgs_${conversationId}`, data)
+      await cacheMessages(data, conversationId!)
       setFilteredMessages([])
       if (user) {
         const unreadMessages = data.filter(msg => msg.sender_id !== user.id && msg.status !== 'read')
