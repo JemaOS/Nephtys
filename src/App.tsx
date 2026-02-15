@@ -1,7 +1,7 @@
 // Copyright (c) 2025 Jema Technology.
 // Distributed under the license specified in the root directory of this project.
 
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { ThemeProvider } from './context/ThemeContext'
@@ -151,97 +151,59 @@ function PublicRoute({ children }: { readonly children: React.ReactNode }) {
   return user ? <Navigate to="/chats" /> : <>{children}</>
 }
 
-// Persistent Chat Layout - keeps both conversation list and chat view mounted
-// This eliminates the flicker when navigating between conversations (WhatsApp-style)
-function ChatLayout() {
-  const location = useLocation()
-  const isChatView = location.pathname.startsWith('/chat/')
-  
-  return (
-    <div className="flex h-screen overflow-hidden">
-      {/* Conversation list - always mounted, hidden on mobile when in chat */}
-      <div 
-        className={`
-          ${isChatView ? 'hidden md:flex' : 'flex'} 
-          w-full md:w-[420px] 
-          flex-shrink-0
-        `}
-      >
-        <ChatsPage />
-      </div>
-      
-      {/* Chat view - always mounted in background, shown when viewing a conversation */}
-      <div 
-        className={`
-          flex-1
-          ${!isChatView ? 'hidden md:flex' : 'flex'}
-        `}
-      >
-        <ChatViewPage />
-      </div>
-    </div>
-  )
-}
-
 function AppRoutes() {
-  const location = useLocation()
-  
-  // Check if we're in chat mode (conversation list + chat view)
-  const isChatMode = location.pathname === '/chats' || location.pathname.startsWith('/chat/')
-  
   return (
     <ErrorBoundary>
       <Suspense fallback={<LoadingScreen />}>
         <Routes>
           <Route path="/auth" element={
-            <PublicRoute>
-              <AuthPage />
-            </PublicRoute>
-          } />
-          
-          {/* Chat mode - persistent layout with both list and chat view */}
-          <Route path="/chats" element={
-            <PrivateRoute>
-              <ChatLayout />
-            </PrivateRoute>
-          } />
-          
-          <Route path="/chat/:conversationId" element={
-            <PrivateRoute>
-              <ChatLayout />
-            </PrivateRoute>
-          } />
-          
-          <Route path="/contacts" element={
-            <PrivateRoute>
-              <ContactsPage />
-            </PrivateRoute>
-          } />
-          
-          <Route path="/groups/new" element={
-            <PrivateRoute>
-              <GroupsPage />
-            </PrivateRoute>
-          } />
-          
-          <Route path="/calls" element={
-            <PrivateRoute>
-              <CallsPage />
-            </PrivateRoute>
-          } />
-          
-          <Route path="/archived" element={
-            <PrivateRoute>
-              <ArchivedPage />
-            </PrivateRoute>
-          } />
-          
-          <Route path="/settings" element={
-            <PrivateRoute>
-              <SettingsPage />
-            </PrivateRoute>
-          } />
-          
+          <PublicRoute>
+            <AuthPage />
+          </PublicRoute>
+        } />
+        
+        <Route path="/chats" element={
+          <PrivateRoute>
+            <ChatsPage />
+          </PrivateRoute>
+        } />
+        
+        <Route path="/chat/:conversationId" element={
+          <PrivateRoute>
+            <ChatViewPage />
+          </PrivateRoute>
+        } />
+        
+        <Route path="/contacts" element={
+          <PrivateRoute>
+            <ContactsPage />
+          </PrivateRoute>
+        } />
+        
+        <Route path="/groups/new" element={
+          <PrivateRoute>
+            <GroupsPage />
+          </PrivateRoute>
+        } />
+        
+        <Route path="/calls" element={
+          <PrivateRoute>
+            <CallsPage />
+          </PrivateRoute>
+        } />
+        
+        <Route path="/archived" element={
+          <PrivateRoute>
+            <ArchivedPage />
+          </PrivateRoute>
+        } />
+        
+        <Route path="/settings" element={
+          <PrivateRoute>
+            <SettingsPage />
+          </PrivateRoute>
+        } />
+        
           <Route path="/" element={<Navigate to="/chats" />} />
         </Routes>
       </Suspense>

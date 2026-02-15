@@ -2,11 +2,12 @@
 // Distributed under the license specified in the root directory of this project.
 
 import { useEffect, useLayoutEffect, useState, useRef, useCallback, useMemo } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { useTheme } from '@/context/ThemeContext'
 import { MainLayout } from '@/components/MainLayout'
 import { supabase, Message, Conversation, Profile } from '@/lib/supabase'
+import { offlineStorage } from '@/lib/offlineStorage'
 import { useUserPresence } from '@/hooks/usePresence'
 import { ArrowLeft, Send, Phone, Video, MoreVertical, Search, Smile, Mic, Plus, Reply, UserPlus, Archive, Trash2, Bell, BellOff, Lock, Star, Forward, Pin, Info, Share2, Copy } from 'lucide-react'
 import { EmojiPicker } from '@/components/EmojiPicker'
@@ -39,7 +40,6 @@ import { QuickReactionBar } from '@/components/QuickReactionBar'
 import { CallMessage } from '@/components/CallMessage'
 import { MessageItem } from '@/components/MessageItem'
 import { ChatHeader, CallLog, TimelineItem, MessageList } from './ChatViewPageComponents'
-import { getCachedConversation, getCachedMessages, getCachedProfile, cacheConversation, cacheMessages, cacheProfile } from '@/lib/localCache'
 
 // Utility function to detect emoji-only messages (1-3 emojis without other text)
 // Uses a comprehensive regex pattern to match emojis including compound emojis
@@ -198,18 +198,48 @@ const startAudioCall = async (
 export function ChatViewPage() {
   const { conversationId } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
   const { user, profile } = useAuth()
   
-  // Initialize state from IndexedDB cache for instant display (like WhatsApp)
-  const [conversation, setConversation] = useState<Conversation | null>(null)
-  const [messages, setMessages] = useState<Message[]>([])
+  // Initialize state from cache for instant display
+  const [conversation, setConversation] = useState<Conversation | null>(() => {
+    // 1. Try location state (fastest, passed from ChatsPage)
+    if (location.state?.conversation) {
+      return location.state.conversation
+    }
+    
+    // 2. Try individual cache
+    if (conversationId) {
+      const cached = getCache<Conversation>(`conv_${conversationId}`)
+      if (cached) return cached
+      
+      // 3. Try to find in offlineStorage list (if loaded)
+      const allConvs = offlineStorage.getConversationsSync()
+      if (allConvs) {
+        const found = allConvs.find((c: any) => c.id === conversationId)
+        if (found) return found
+      }
+    }
+    return null
+  })
+  const [messages, setMessages] = useState<Message[]>(() =>
+    conversationId ? getCache<Message[]>(`msgs_${conversationId}`) || [] : []
+  )
   const [callLogs, setCallLogs] = useState<CallLog[]>([])
   const [filteredMessages, setFilteredMessages] = useState<Message[]>([])
   const [newMessage, setNewMessage] = useState('')
-  const [loading, setLoading] = useState(true) // Start with loading true, will set false after cache check
+  const [loading, setLoading] = useState(() => {
+    // If we have cached messages, don't show loading spinner
+    const cachedMsgs = conversationId ? getCache<Message[]>(`msgs_${conversationId}`) : null
+    return !cachedMsgs || cachedMsgs.length === 0
+  })
   const [sending, setSending] = useState(false)
-  const [otherUser, setOtherUser] = useState<Profile | null>(null)
-  const [initialDataLoaded, setInitialDataLoaded] = useState(false)
+  const [otherUser, setOtherUser] = useState<Profile | null>(() => {
+    if (location.state?.conversation?.otherUserProfile) {
+      return location.state.conversation.otherUserProfile
+    }
+    return conversationId ? getCache<Profile>(`user_${conversationId}`) : null
+  })
   // Map of group member profiles (user_id -> Profile) for group conversations
   const [groupMemberProfiles, setGroupMemberProfiles] = useState<Map<string, Profile>>(new Map())
   const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null)
@@ -278,73 +308,17 @@ export function ChatViewPage() {
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null)
   const longPressMessageRef = useRef<Message | null>(null)
   
+  // State for infinite scroll and prefetching
+  const [hasMoreMessages, setHasMoreMessages] = useState(true)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const oldestMessageRef = useRef<string | null>(null)
+  const scrollPositionRef = useRef(0)
+  
   const { reactions, addReaction, removeReaction } = useMessageReactions(conversationId || '')
   const { startCall, startGroupCall } = useCall()
   const { permission, requestPermission, sendNotification, subscribeToConversation, unsubscribeFromConversation } = useNotifications()
   const { wallpaper } = useTheme()
   const isMobile = useIsMobile()
-
-  // Load data from IndexedDB first (instant), then sync with Supabase in background
-  useEffect(() => {
-    if (!conversationId || initialDataLoaded) return
-
-    const loadFromCache = async () => {
-      try {
-        // Try to load from IndexedDB first for instant display
-        const [cachedConv, cachedMsgs, cachedUser] = await Promise.all([
-          getCachedConversation(conversationId),
-          getCachedMessages(conversationId),
-          user ? getCachedProfile(user.id) : Promise.resolve(null)
-        ])
-
-        // Apply cached data immediately for instant display
-        if (cachedConv) {
-          console.log('[ChatViewPage] Loaded conversation from IndexedDB cache')
-          setConversation(cachedConv)
-          
-          // Also load other user for direct conversations
-          if (cachedConv.type === 'direct') {
-            const memberIds = await import('@/lib/supabase').then(async (supabase) => {
-              const { data } = await supabase.supabase
-                .from('conversation_members')
-                .select('user_id')
-                .eq('conversation_id', conversationId)
-                .neq('user_id', user?.id)
-              return data?.map(m => m.user_id) || []
-            })
-            if (memberIds.length > 0) {
-              const otherProfile = await getCachedProfile(memberIds[0])
-              if (otherProfile) {
-                setOtherUser(otherProfile)
-              }
-            }
-          }
-        }
-
-        if (cachedMsgs && cachedMsgs.length > 0) {
-          console.log('[ChatViewPage] Loaded', cachedMsgs.length, 'messages from IndexedDB cache')
-          setMessages(cachedMsgs)
-          setLoading(false) // Show content immediately from cache
-        } else {
-          // No cache - will show skeleton until data loads
-          setLoading(true)
-        }
-
-        setInitialDataLoaded(true)
-
-        // Now sync with Supabase in background
-        loadConversation()
-        loadMessages()
-      } catch (error) {
-        console.error('[ChatViewPage] Error loading from cache:', error)
-        setInitialDataLoaded(true)
-        loadConversation()
-        loadMessages()
-      }
-    }
-
-    loadFromCache()
-  }, [conversationId, user?.id])
   
   // Get real-time presence status for the other user
   const { statusText: otherUserStatusText, isOnline: otherUserIsOnline } = useUserPresence(otherUser?.id)
@@ -449,18 +423,31 @@ export function ChatViewPage() {
   }, [allMediaItems])
 
   const getWallpaperStyle = () => {
+    // Only hide if we are showing messages (not loading) and haven't scrolled yet
+    const shouldHide = !loading && messages.length > 0 && !isInitialScrollDone
+    
+    const style: React.CSSProperties = {
+      opacity: shouldHide ? 0 : 1,
+    }
+
     switch (wallpaper) {
       case 'dark':
-        return { backgroundColor: '#000000' }
+        style.backgroundColor = '#000000'
+        break
       case 'light':
-        return { backgroundColor: '#e5ddd5' }
+        style.backgroundColor = '#e5ddd5'
+        break
       case 'gradient':
-        return { background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }
+        style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+        break
       case 'custom':
-        return { backgroundColor: '#1a1a2e' }
+        style.backgroundColor = '#1a1a2e'
+        break
       default:
-        return {} // Use CSS variable from bg-primary instead of hardcoded color
+        // Use CSS variable from bg-primary instead of hardcoded color
+        break
     }
+    return style
   }
 
   // Load call logs for this conversation
@@ -681,11 +668,13 @@ export function ChatViewPage() {
   const prevMessageCountRef = useRef(0)
   const hasScrolledInitially = useRef(false)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
+  const [isInitialScrollDone, setIsInitialScrollDone] = useState(false)
   
   // Reset initial scroll flag when conversation changes - MUST run before scroll effect
   useLayoutEffect(() => {
     hasScrolledInitially.current = false
     prevMessageCountRef.current = 0
+    setIsInitialScrollDone(false)
   }, [conversationId])
 
   // Scroll to bottom INSTANTLY when conversation loads (initial load)
@@ -693,33 +682,24 @@ export function ChatViewPage() {
   useLayoutEffect(() => {
     // Only run when messages are loaded and we haven't scrolled yet for this conversation
     if (loading || !conversationId) return
-    if (messages.length === 0) return
+    
+    // If no messages, we are done
+    if (messages.length === 0) {
+      setIsInitialScrollDone(true)
+      return
+    }
+    
     if (hasScrolledInitially.current) return
     
-    hasScrolledInitially.current = true
+    // Scroll immediately before paint
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
+    }
     
-    // Timeout to ensure all content (including images) has been laid out
-    // Increased to 150ms to handle image loading better
-    const timeoutId = setTimeout(() => {
-      if (messagesContainerRef.current) {
-        // Scroll to the absolute bottom of the container
-        messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
-      }
-    }, 150)
-
-    // Secondary scroll attempt to catch late rendering (e.g. images)
-    const timeoutId2 = setTimeout(() => {
-      if (messagesContainerRef.current) {
-        messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
-      }
-    }, 300)
+    hasScrolledInitially.current = true
+    setIsInitialScrollDone(true)
     
     prevMessageCountRef.current = messages.length
-    
-    return () => {
-      clearTimeout(timeoutId)
-      clearTimeout(timeoutId2)
-    }
   }, [loading, messages.length, conversationId])
   
   // Handle new messages with smooth scroll (after initial load)
@@ -802,65 +782,140 @@ export function ChatViewPage() {
 
   // Extract group member loading to helper function
   const loadGroupMembers = async (convId: string): Promise<Map<string, Profile>> => {
-    const { data: members } = await supabase
-      .from('conversation_members')
-      .select('user_id')
-      .eq('conversation_id', convId)
+    // OPTIMIZATION: Try to get member IDs from cache first
+    // This avoids the network roundtrip to fetch member list
+    let memberIds: string[] = getCache<string[]>(`members_${convId}`) || []
     
-    if (members && members.length > 0) {
-      const memberIds = members.map(m => m.user_id)
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('*')
-        .in('id', memberIds)
+    if (memberIds.length === 0) {
+      const { data: members } = await supabase
+        .from('conversation_members')
+        .select('user_id')
+        .eq('conversation_id', convId)
       
-      if (profiles) {
-        const profileMap = new Map<string, Profile>()
-        profiles.forEach(p => profileMap.set(p.id, p))
-        return profileMap
+      if (members && members.length > 0) {
+        memberIds = members.map(m => m.user_id)
+        setCache(`members_${convId}`, memberIds)
       }
+    } else {
+      // Stale-while-revalidate: Refresh member list in background
+      supabase
+        .from('conversation_members')
+        .select('user_id')
+        .eq('conversation_id', convId)
+        .then(({ data: members }) => {
+          if (members && members.length > 0) {
+            const newIds = members.map(m => m.user_id)
+            // Only update cache if changed
+            if (JSON.stringify(newIds.sort()) !== JSON.stringify(memberIds.sort())) {
+              setCache(`members_${convId}`, newIds)
+            }
+          }
+        })
+    }
+    
+    if (memberIds.length > 0) {
+      // OPTIMIZATION: Try to get profiles from cache first (instant)
+      // This prevents the "double delay" where messages load but names are missing
+      const cachedProfilesMap = await offlineStorage.getProfilesFromDB(memberIds)
+      const cachedProfiles = Array.from(cachedProfilesMap.values()) as unknown as Profile[]
+      
+      // Create initial map from cache
+      const profileMap = new Map<string, Profile>()
+      cachedProfiles.forEach(p => profileMap.set(p.id, p))
+      
+      // Identify missing profiles
+      const missingIds = memberIds.filter(id => !cachedProfilesMap.has(id))
+      
+      if (missingIds.length > 0) {
+        // Fetch only missing profiles
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('*')
+          .in('id', missingIds)
+        
+        if (profiles) {
+          // Cache the newly fetched profiles for next time
+          offlineStorage.cacheProfiles(profiles)
+          
+          // Add new profiles to map
+          profiles.forEach(p => profileMap.set(p.id, p))
+        }
+      }
+      
+      return profileMap
     }
     return new Map()
   }
 
   // Extract direct conversation user loading to helper function
   const loadDirectConversationUser = async (convId: string, userId: string): Promise<Profile | null> => {
-    const { data: allMembers } = await supabase.from('conversation_members').select('user_id').eq('conversation_id', convId)
+    // Try cache first for the user ID association
+    // We cache the "other user ID" for this conversation to avoid the conversation_members lookup
+    let otherUserId = getCache<string>(`direct_user_id_${convId}`)
     
-    // Check if this is a "Saved Messages" conversation (only one member = self)
-    if (allMembers && allMembers.length === 1 && allMembers[0].user_id === userId) {
-      const { data: selfProfile } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle()
-      return selfProfile
+    if (!otherUserId) {
+      const { data: allMembers } = await supabase.from('conversation_members').select('user_id').eq('conversation_id', convId)
+      
+      // Check if this is a "Saved Messages" conversation (only one member = self)
+      if (allMembers && allMembers.length === 1 && allMembers[0].user_id === userId) {
+        otherUserId = userId
+      } else if (allMembers && allMembers.length > 0) {
+        // Find the other user
+        const otherMember = allMembers.find(m => m.user_id !== userId)
+        if (otherMember) {
+          otherUserId = otherMember.user_id
+        }
+      }
+      
+      if (otherUserId) {
+        setCache(`direct_user_id_${convId}`, otherUserId)
+      }
+    }
+
+    if (otherUserId) {
+      // OPTIMIZATION: Try cache first for the profile data
+      const cachedProfile = await offlineStorage.getProfileFromDB(otherUserId)
+      if (cachedProfile) return cachedProfile as unknown as Profile
+      
+      const { data: userData } = await supabase.from('profiles').select('*').eq('id', otherUserId).maybeSingle()
+      if (userData) offlineStorage.cacheProfiles([userData])
+      return userData
     }
     
-    // Normal direct conversation - find the other user
-    const { data: members } = await supabase.from('conversation_members').select('user_id').eq('conversation_id', convId).neq('user_id', userId)
-    if (members && members.length > 0) {
-      const { data: otherUserData } = await supabase.from('profiles').select('*').eq('id', members[0].user_id).maybeSingle()
-      return otherUserData
-    }
     return null
   }
 
   const loadConversation = async () => {
+    // OPTIMIZATION: Trigger member loading immediately if we have cached conversation data
+    // This ensures profiles appear instantly along with cached messages
+    if (conversation) {
+      if (conversation.type === 'group') {
+        loadGroupMembers(conversationId!).then(profileMap => {
+          setGroupMemberProfiles(prev => {
+            // Only update if we have more data or if it's the initial load
+            if (prev.size === 0 || profileMap.size > prev.size) {
+              return profileMap
+            }
+            return prev
+          })
+        })
+      }
+      // For direct chats, otherUser is already initialized from cache in useState
+    }
+
     const { data, error } = await supabase.from('conversations').select('*').eq('id', conversationId!).maybeSingle()
     if (!error && data) {
       setConversation(data)
-      // Cache to both localStorage and IndexedDB
       setCache(`conv_${conversationId}`, data)
-      await cacheConversation(data)
       
       if (data.type === 'group') {
         const profileMap = await loadGroupMembers(conversationId!)
         setGroupMemberProfiles(profileMap)
-        // Cache group member profiles
-        profileMap.forEach(p => cacheProfile(p))
       } else if (data.type === 'direct') {
         const otherUserData = await loadDirectConversationUser(conversationId!, user!.id)
         if (otherUserData) {
           setOtherUser(otherUserData)
           setCache(`user_${conversationId}`, otherUserData)
-          await cacheProfile(otherUserData)
         }
       }
     }
@@ -872,7 +927,7 @@ export function ChatViewPage() {
   }
 
   const loadMessages = async () => {
-    // Don't set loading to true if we already have cached messages (instant display)
+    // Only show loading if we don't have cached messages
     const hasCachedMessages = messages.length > 0
     if (!hasCachedMessages) {
       setLoading(true)
@@ -881,10 +936,25 @@ export function ChatViewPage() {
     const { data, error } = await supabase.from('messages').select('*').eq('conversation_id', conversationId!).is('deleted_at', null).order('created_at', { ascending: true }).limit(100)
     if (!error && data) {
       setMessages(data)
-      // Cache to both localStorage and IndexedDB
-      setCache(`msgs_${conversationId}`, data)
-      await cacheMessages(data, conversationId!)
+      setCache(`msgs_${conversationId}`, data) // Cache messages
+      
+      // Cache profiles for offline access
+      const senderIds = [...new Set(data.map(m => m.sender_id))]
+      if (senderIds.length > 0) {
+        const { data: profiles } = await supabase.from('profiles').select('*').in('id', senderIds)
+        if (profiles && profiles.length > 0) {
+          offlineStorage.cacheProfiles(profiles)
+        }
+      }
+      
       setFilteredMessages([])
+      
+      // Track oldest message for infinite scroll
+      if (data.length > 0) {
+        oldestMessageRef.current = data[0].id
+        setHasMoreMessages(data.length >= 100)
+      }
+      
       if (user) {
         const unreadMessages = data.filter(msg => msg.sender_id !== user.id && msg.status !== 'read')
         if (unreadMessages.length > 0) {
@@ -894,6 +964,65 @@ export function ChatViewPage() {
     }
     setLoading(false)
   }
+
+  // Load older messages for infinite scroll (when scrolling up)
+  const loadMoreMessages = async () => {
+    if (isLoadingMore || !hasMoreMessages || !oldestMessageRef.current) return
+    
+    setIsLoadingMore(true)
+    try {
+      const { data, error } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('conversation_id', conversationId!)
+        .is('deleted_at', null)
+        .lt('created_at', (await supabase.from('messages').select('created_at').eq('id', oldestMessageRef.current).maybeSingle())?.data?.created_at || '')
+        .order('created_at', { ascending: true })
+        .limit(50)
+      
+      if (!error && data && data.length > 0) {
+        // Prepend older messages to the list
+        setMessages(prev => {
+          const existingIds = new Set(prev.map(m => m.id))
+          const newMessages = data.filter(m => !existingIds.has(m.id))
+          return [...newMessages, ...prev]
+        })
+        
+        // Update oldest message reference
+        oldestMessageRef.current = data[0].id
+        setHasMoreMessages(data.length >= 50)
+        
+        // Cache new profiles
+        const senderIds = [...new Set(data.map(m => m.sender_id))]
+        if (senderIds.length > 0) {
+          const { data: profiles } = await supabase.from('profiles').select('*').in('id', senderIds)
+          if (profiles && profiles.length > 0) {
+            offlineStorage.cacheProfiles(profiles)
+          }
+        }
+      } else {
+        setHasMoreMessages(false)
+      }
+    } catch (err) {
+      console.error('Error loading more messages:', err)
+    } finally {
+      setIsLoadingMore(false)
+    }
+  }
+
+  // Prefetch more messages when user scrolls near top
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.currentTarget
+    const scrollTop = target.scrollTop
+    
+    // Save scroll position for restoration
+    scrollPositionRef.current = scrollTop
+    
+    // Load more when scrolled within 200px of the top
+    if (scrollTop < 200 && hasMoreMessages && !isLoadingMore) {
+      loadMoreMessages()
+    }
+  }, [hasMoreMessages, isLoadingMore])
 
   const updateMessageStatus = async (messageId: string, status: 'delivered' | 'read') => {
     await supabase.from('messages').update({ status }).eq('id', messageId)
@@ -1864,13 +1993,6 @@ export function ChatViewPage() {
       ? 'Moi'
       : otherUser?.display_name || otherUser?.username || 'Utilisateur'
 
-  // If no conversation ID, show empty state (when mounted in persistent layout)
-  // This MUST be after all hooks to avoid React error #310
-  // Return null to let ChatsPage handle the display
-  if (!conversationId) {
-    return null
-  }
-
   return (
     <MainLayout>
       <div className="flex-1 flex flex-col bg-bg-primary h-full overflow-hidden">
@@ -1988,6 +2110,9 @@ export function ChatViewPage() {
           messagesContainerRef={messagesContainerRef}
           getWallpaperStyle={getWallpaperStyle}
           handleBackgroundContextMenu={handleBackgroundContextMenu}
+          onScroll={handleScroll}
+          isLoadingMore={isLoadingMore}
+          hasMoreMessages={hasMoreMessages}
           linkPreview={linkPreview}
           replyToMessage={replyToMessage}
           isLoadingPreview={isLoadingPreview}

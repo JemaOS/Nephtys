@@ -93,7 +93,31 @@ const checkVideoNeedsCompression = async (previewUrl: string): Promise<boolean> 
 
 // Tenor GIF API - use environment variable for security
 const TENOR_API_KEY = import.meta.env.VITE_TENOR_API_KEY || '';
+const FALLBACK_TENOR_KEY = 'LIVDSRZULELA'; // Public test key (V1 API)
 const TENOR_CLIENT_KEY = 'nephtys_app';
+
+// Helper to normalize Tenor API response (V1 -> V2 format)
+const normalizeTenorResult = (result: any) => {
+  if (result.media_formats) {
+    // V2 format
+    return result;
+  } else if (result.media && result.media.length > 0) {
+    // V1 format -> convert to V2-like structure for compatibility
+    const media = result.media[0];
+    return {
+      ...result,
+      media_formats: {
+        gif: media.gif,
+        tinygif: media.tinygif,
+        mediumgif: media.mediumgif,
+        nanogif: media.nanogif,
+        webp: media.webp,
+        tinywebp: media.tinywebp,
+      }
+    };
+  }
+  return result;
+};
 
 interface UploadedFileData {
   url: string;
@@ -1013,13 +1037,19 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
   const fetchStickers = async (query: string = 'love') => {
     setLoadingStickers(true);
     try {
-      const endpoint = `https://tenor.googleapis.com/v2/search?q=${encodeURIComponent(query + ' sticker')}&key=${TENOR_API_KEY}&client_key=${TENOR_CLIENT_KEY}&limit=20&media_filter=tinywebp,webp`;
+      let endpoint;
+      if (TENOR_API_KEY) {
+        endpoint = `https://tenor.googleapis.com/v2/search?q=${encodeURIComponent(query + ' sticker')}&key=${TENOR_API_KEY}&client_key=${TENOR_CLIENT_KEY}&limit=20&media_filter=tinywebp,webp`;
+      } else {
+        // Fallback to V1 API
+        endpoint = `https://g.tenor.com/v1/search?q=${encodeURIComponent(query + ' sticker')}&key=${FALLBACK_TENOR_KEY}&limit=20`;
+      }
       
       const response = await fetch(endpoint);
       const data = await response.json();
       
       if (data.results) {
-        setStickers(data.results);
+        setStickers(data.results.map(normalizeTenorResult));
       }
     } catch (error) {
       console.error('Error fetching stickers:', error);
@@ -1071,15 +1101,23 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
   const fetchGifs = async (query: string = '') => {
     setLoadingGifs(true);
     try {
-      const endpoint = query
-        ? `https://tenor.googleapis.com/v2/search?q=${encodeURIComponent(query)}&key=${TENOR_API_KEY}&client_key=${TENOR_CLIENT_KEY}&limit=20`
-        : `https://tenor.googleapis.com/v2/featured?key=${TENOR_API_KEY}&client_key=${TENOR_CLIENT_KEY}&limit=20`;
+      let endpoint;
+      if (TENOR_API_KEY) {
+        endpoint = query
+          ? `https://tenor.googleapis.com/v2/search?q=${encodeURIComponent(query)}&key=${TENOR_API_KEY}&client_key=${TENOR_CLIENT_KEY}&limit=20`
+          : `https://tenor.googleapis.com/v2/featured?key=${TENOR_API_KEY}&client_key=${TENOR_CLIENT_KEY}&limit=20`;
+      } else {
+        // Fallback to V1 API
+        endpoint = query
+          ? `https://g.tenor.com/v1/search?q=${encodeURIComponent(query)}&key=${FALLBACK_TENOR_KEY}&limit=20`
+          : `https://g.tenor.com/v1/trending?key=${FALLBACK_TENOR_KEY}&limit=20`;
+      }
       
       const response = await fetch(endpoint);
       const data = await response.json();
       
       if (data.results) {
-        setGifs(data.results);
+        setGifs(data.results.map(normalizeTenorResult));
       }
     } catch (error) {
       console.error('Error fetching GIFs:', error);

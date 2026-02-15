@@ -11,8 +11,6 @@ import { offlineStorage } from '@/lib/offlineStorage'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useOnSupabaseReconnect } from '@/hooks/useSupabaseReconnect'
 import { fetchAllConversationData } from '@/lib/conversationService'
-import { preloadConversationData, preloadAllConversations } from '@/lib/preloadConversations'
-import { cacheConversation, cacheMessages, cacheProfile, getCachedConversation } from '@/lib/localCache'
 import { ChatsSelectionHeader, ChatsHeader, ChatsList, ConversationWithDetails } from './ChatsPageComponents'
 
 // Memoized formatDate function outside component to prevent recreation on every render
@@ -322,11 +320,6 @@ export function ChatsPage() {
   // Long press duration (ms) - WhatsApp uses ~500ms
   const LONG_PRESS_DURATION = 500
   
-  // Preload conversation data on hover for instant display
-  const handleConversationHover = useCallback((conversationId: string) => {
-    preloadConversationData(conversationId, user?.id)
-  }, [user?.id])
-  
   // Debounced reload function to prevent excessive reloads from real-time subscriptions
   const debouncedReload = useCallback(() => {
     if (reloadTimeoutRef.current) {
@@ -435,9 +428,12 @@ export function ChatsPage() {
     if (isSelectionMode) {
       toggleConversationSelection(conversationId)
     } else {
-      navigate(`/chat/${conversationId}`)
+      // OPTIMIZATION: Pass conversation data in state to avoid fetching it again
+      // This ensures instant transition with no loading state for header/profile
+      const conversation = conversations.find(c => c.id === conversationId)
+      navigate(`/chat/${conversationId}`, { state: { conversation } })
     }
-  }, [isSelectionMode, toggleConversationSelection, navigate])
+  }, [isSelectionMode, toggleConversationSelection, navigate, conversations])
   
   // Bulk actions for selected conversations
   const handleBulkPin = async () => {
@@ -925,7 +921,6 @@ export function ChatsPage() {
           handleTouchStart={handleTouchStart}
           handleTouchEnd={handleTouchEnd}
           handleTouchMove={handleTouchMove}
-          handleConversationHover={handleConversationHover}
           isMobile={isMobile}
           formatDate={formatDate}
         />

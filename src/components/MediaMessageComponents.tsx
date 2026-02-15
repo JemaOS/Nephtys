@@ -1,7 +1,42 @@
-import React, { useRef } from 'react';
+import React, { useRef, useEffect, useCallback } from 'react';
 import { Download, File, Play, Copy, ChevronDown, FileText, FileSpreadsheet, FileImage, FileArchive } from 'lucide-react';
 import { MessageHoverActions } from './MessageHoverActions';
 import { calculateDisplayDimensions } from '@/lib/imageUtils';
+
+// Custom hook to preload next images in viewport
+const useMediaPreloader = (mediaUrls: string[], currentIndex: number) => {
+  useEffect(() => {
+    // Preload next 2 images after current one
+    for (let i = 1; i <= 2; i++) {
+      const nextIndex = currentIndex + i;
+      if (nextIndex < mediaUrls.length) {
+        const img = new Image();
+        img.src = mediaUrls[nextIndex];
+      }
+    }
+  }, [mediaUrls, currentIndex]);
+};
+
+// Generate srcSet for responsive images (if using Supabase storage with transformations)
+const generateSrcSet = (url: string, widths: number[] = [320, 640, 960, 1280]): string => {
+  if (!url || !url.includes('supabase')) return '';
+  
+  // For Supabase storage, we can use the public URL with transformation params
+  // This assumes the storage bucket supports image transformations
+  return widths
+    .map(w => `${url}?width=${w} ${w}w`)
+    .join(', ');
+};
+
+// Generate blur placeholder URL (tiny version for fast loading)
+const generateBlurPlaceholder = (url: string): string => {
+  if (!url) return '';
+  // For Supabase, add width param to get a tiny version
+  if (url.includes('supabase')) {
+    return `${url}?width=20&quality=10`;
+  }
+  return url;
+};
 
 // Helper function to format file size
 export const formatFileSize = (bytes?: number): string => {
@@ -236,11 +271,26 @@ export const ImageRenderer: React.FC<{
   onImageLoad?: (e: React.SyntheticEvent) => void;
   onImageError: () => void;
   onImageClick: () => void;
+  // New props for optimization
+  preloadNext?: boolean;
+  nextImageUrl?: string;
 }> = ({
   url, thumbnail, caption, imageDimensions, propWidth, propHeight,
   imageLoaded, imageError, timestamp, status, isOwn, isStarred,
-  showHoverActions, onOpenMenu, onImageLoad, onImageError, onImageClick
+  showHoverActions, onOpenMenu, onImageLoad, onImageError, onImageClick,
+  preloadNext, nextImageUrl
 }) => {
+  // Preload next image when this one loads
+  useEffect(() => {
+    if (imageLoaded && preloadNext && nextImageUrl) {
+      const img = new Image();
+      img.src = nextImageUrl;
+    }
+  }, [imageLoaded, preloadNext, nextImageUrl]);
+  
+  // Generate srcSet for responsive loading
+  const srcSet = generateSrcSet(url);
+  const blurPlaceholder = thumbnail || generateBlurPlaceholder(url);
   const getContainerStyle = (): React.CSSProperties => {
     if (imageDimensions) {
       const displayDims = calculateDisplayDimensions(imageDimensions);
@@ -285,11 +335,12 @@ export const ImageRenderer: React.FC<{
             onOpenMenu={onOpenMenu}
           />
         )}
-        {!imageLoaded && !imageError && thumbnail && (
+        {/* Blur-up placeholder - shows tiny thumbnail while loading */}
+        {!imageLoaded && !imageError && blurPlaceholder && (
           <div
-            className="absolute inset-0 bg-cover bg-center"
+            className="absolute inset-0 bg-cover bg-center transition-opacity duration-300"
             style={{
-              backgroundImage: `url(${thumbnail})`,
+              backgroundImage: `url(${blurPlaceholder})`,
               filter: 'blur(10px)',
               transform: 'scale(1.1)',
             }}
@@ -318,11 +369,14 @@ export const ImageRenderer: React.FC<{
         )}
         <img
           src={url}
+          srcSet={srcSet}
+          sizes="(max-width: 480px) 100vw, (max-width: 768px) 50vw, 33vw"
           alt=""
           className={`w-full h-full object-cover transition-opacity duration-300 ${
             imageLoaded ? 'opacity-100' : 'opacity-0'
           }`}
           loading="lazy"
+          decoding="async"
           onLoad={(e) => {
             if (onImageLoad) {
               onImageLoad(e);

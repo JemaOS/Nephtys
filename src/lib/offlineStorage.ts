@@ -7,10 +7,11 @@
 // Uses localStorage as a fast synchronous cache layer for instant display
 
 const DB_NAME = 'nephtys-offline-db';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // Incremented for profiles store
 const MESSAGES_STORE = 'messages';
 const CONVERSATIONS_STORE = 'conversations';
 const PENDING_STORE = 'pending-messages';
+const PROFILES_STORE = 'profiles';
 
 // localStorage keys for instant cache (survives page refresh)
 const LS_CONVERSATIONS_KEY = 'nephtys_conversations_cache';
@@ -38,6 +39,19 @@ interface OfflineMessage {
   ephemeral_expires_at?: string;
 }
 
+// Profile for offline caching (mirrors Profile from supabase.ts)
+interface CachedProfile {
+  id: string;
+  username: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  bio: string | null;
+  session_id: string;
+  public_key: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 interface PendingMessage {
   tempId: string;
   conversation_id: string;
@@ -59,9 +73,11 @@ class OfflineStorage {
   private readonly memoryCache: {
     conversations: any[] | null;
     messages: Map<string, any[]>;
+    profiles: Map<string, CachedProfile>;
   } = {
     conversations: null,
-    messages: new Map()
+    messages: new Map(),
+    profiles: new Map()
   };
 
   constructor() {
@@ -242,6 +258,12 @@ class OfflineStorage {
           if (!db.objectStoreNames.contains(PENDING_STORE)) {
             const pendingStore = db.createObjectStore(PENDING_STORE, { keyPath: 'tempId' });
             pendingStore.createIndex('conversation_id', 'conversation_id', { unique: false });
+          }
+
+          // Create profiles store for caching user profiles
+          if (!db.objectStoreNames.contains(PROFILES_STORE)) {
+            const profilesStore = db.createObjectStore(PROFILES_STORE, { keyPath: 'id' });
+            profilesStore.createIndex('username', 'username', { unique: false });
           }
         };
 
@@ -596,6 +618,165 @@ class OfflineStorage {
   // Check if storage is available
   isAvailable(): boolean {
     return this.isInitialized && !this.initFailed && this.db !== null;
+  }
+
+  // ==================== PROFILE CACHING ====================
+  // Cache profiles for instant access - avoids network requests
+
+  /**
+   * Cache multiple profiles in IndexedDB
+   * Call this when loading conversation data to enable instant profile display
+   */
+  async cacheProfiles(profiles: CachedProfile[]): Promise<void> {
+    if (!profiles || profiles.length === 0) return;
+    
+    // Update memory cache immediately (instant access)
+    profiles.forEach(profile => {
+      this.memoryCache.profiles.set(profile.id, profile);
+    });
+    
+    const ready = await this.ensureReady();
+    if (!ready) {
+      console.warn('[OfflineStorage] Cannot cache profiles - DB not ready');
+      return;
+    }
+    
+    return new Promise((resolve) => {
+      try {
+        const transaction = this.db!.transaction([PROFILES_STORE], 'readwrite');
+        const store = transaction.objectStore(PROFILES_STORE);
+
+        profiles.forEach(profile => store.put(profile));
+
+        transaction.oncomplete = () => {
+          console.log(`[OfflineStorage] Cached ${profiles.length} profiles`);
+          resolve();
+        };
+        transaction.onerror = () => {
+          console.error('[OfflineStorage] Failed to cache profiles:', transaction.error);
+          resolve();
+        };
+      } catch (error) {
+        console.error('[OfflineStorage] Exception caching profiles:', error);
+        resolve();
+      }
+    });
+  }
+
+  /**
+   * Get a single profile from cache (instant)
+   * Use this BEFORE making Supabase queries for profiles
+   */
+  getCachedProfile(userId: string): CachedProfile | null {
+    // First check memory cache (fastest)
+    if (this.memoryCache.profiles.has(userId)) {
+      return this.memoryCache.profiles.get(userId)!;
+    }
+    return null;
+  }
+
+  /**
+   * Get multiple profiles from cache in batch (instant)
+   * Returns a map of userId -> profile
+   */
+  getCachedProfiles(userIds: string[]): Map<string, CachedProfile> {
+    const result = new Map<string, CachedProfile>();
+    
+    for (const userId of userIds) {
+      const profile = this.getCachedProfile(userId);
+      if (profile) {
+        result.set(userId, profile);
+      }
+    }
+    
+    return result;
+  }
+
+  /**
+   * Get a single profile from IndexedDB (async fallback)
+   */
+  async getProfileFromDB(userId: string): Promise<CachedProfile | null> {
+    // Check memory cache first
+    if (this.memoryCache.profiles.has(userId)) {
+      return this.memoryCache.profiles.get(userId)!;
+    }
+    
+    const ready = await this.ensureReady();
+    if (!ready) return null;
+    
+    return new Promise((resolve) => {
+      try {
+        const transaction = this.db!.transaction([PROFILES_STORE], 'readonly');
+        const store = transaction.objectStore(PROFILES_STORE);
+        const request = store.get(userId);
+
+        request.onsuccess = () => {
+          if (request.result) {
+            // Update memory cache
+            this.memoryCache.profiles.set(userId, request.result);
+          }
+          resolve(request.result || null);
+        };
+        request.onerror = () => resolve(null);
+      } catch {
+        resolve(null);
+      }
+    });
+  }
+
+  /**
+   * Get multiple profiles from IndexedDB in batch
+   */
+  async getProfilesFromDB(userIds: string[]): Promise<Map<string, CachedProfile>> {
+    const result = new Map<string, CachedProfile>();
+    
+    // First check memory cache
+    for (const userId of userIds) {
+      if (this.memoryCache.profiles.has(userId)) {
+        result.set(userId, this.memoryCache.profiles.get(userId)!);
+      }
+    }
+    
+    // Find missing IDs
+    const missingIds = userIds.filter(id => !result.has(id));
+    if (missingIds.length === 0) return result;
+    
+    const ready = await this.ensureReady();
+    if (!ready) return result;
+    
+    return new Promise((resolve) => {
+      try {
+        const transaction = this.db!.transaction([PROFILES_STORE], 'readonly');
+        const store = transaction.objectStore(PROFILES_STORE);
+        
+        let completed = 0;
+        const profiles: CachedProfile[] = [];
+        
+        for (const userId of missingIds) {
+          const request = store.get(userId);
+          request.onsuccess = () => {
+            if (request.result) {
+              profiles.push(request.result);
+              result.set(userId, request.result);
+              // Update memory cache
+              this.memoryCache.profiles.set(userId, request.result);
+            }
+            completed++;
+            if (completed === missingIds.length) {
+              resolve(result);
+            }
+          };
+          request.onerror = () => {
+            completed++;
+            if (completed === missingIds.length) {
+              resolve(result);
+            }
+          };
+        }
+      } catch {
+        resolve(result);
+      }
+    });
   }
 }
 

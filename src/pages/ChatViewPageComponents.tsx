@@ -572,6 +572,10 @@ interface MessageListProps {
   replyToMessage: Message | null
   isLoadingPreview: boolean
   otherUser: Profile | null
+  // Infinite scroll props
+  onScroll?: (e: React.UIEvent<HTMLDivElement>) => void
+  isLoadingMore?: boolean
+  hasMoreMessages?: boolean
 }
 
 export const MessageList: React.FC<MessageListProps> = ({
@@ -613,7 +617,10 @@ export const MessageList: React.FC<MessageListProps> = ({
   linkPreview,
   replyToMessage,
   isLoadingPreview,
-  otherUser
+  otherUser,
+  onScroll,
+  isLoadingMore,
+  hasMoreMessages
 }) => {
   return (
     <div
@@ -625,7 +632,20 @@ export const MessageList: React.FC<MessageListProps> = ({
       }`}
       style={getWallpaperStyle()}
       onContextMenu={handleBackgroundContextMenu}
+      onScroll={onScroll}
     >
+      {/* Loading indicator for infinite scroll */}
+      {isLoadingMore && (
+        <div className="flex justify-center py-2">
+          <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+        </div>
+      )}
+      {/* "Load more" hint */}
+      {!isLoadingMore && hasMoreMessages && messages.length > 0 && (
+        <div className="flex justify-center py-2 opacity-50">
+          <span className="text-xs text-text-secondary">↓ Faire défiler vers le haut pour charger plus</span>
+        </div>
+      )}
       {loading ? (
         <MessageListSkeleton count={8} />
       ) : messages.length === 0 ? (
