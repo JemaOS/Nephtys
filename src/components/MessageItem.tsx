@@ -75,6 +75,64 @@ const formatTime = (timestamp: string): string => {
   return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
 }
 
+// Message type properties interface
+interface MessageTypeProps {
+  mediaUrl: string | false
+  mediaType: string
+  isGifMessage: boolean
+  isStickerMessage: boolean
+  isSystemMessage: boolean
+  isEmojiOnlyMessage: boolean
+  emojiCount: number
+  isMediaMessage: boolean
+  isDocumentMessage: boolean
+}
+
+// Helper function to determine message type properties - extracted to reduce complexity
+const getMessageType = (message: Message): MessageTypeProps => {
+  const mediaUrl = message.media_url || message.file_url || ''
+  const mediaType = message.media_type || message.type
+  
+  // Check for GIF
+  const gifMatch = message.type === 'text' && message.content && !mediaUrl
+    ? message.content.match(/^(?:\[Transféré\]\s*)?([\s\S]*?)\[GIF\]\((https?:\/\/[^\)]+)\)$/)
+    : null
+  const isGifMessage = !!gifMatch
+  
+  // Check for sticker
+  const stickerMatch = message.type === 'text' && message.content && !mediaUrl
+    ? message.content.match(/^(?:\[Transféré\]\s*)?([\s\S]*?)\[STICKER\]\((https?:\/\/[^\)]+)\)$/)
+    : null
+  const isStickerMessage = !!stickerMatch
+  
+  // Check for system message
+  const isSystemMessage = message.type === 'text' && message.content?.startsWith('[SYSTEM]')
+  
+  // Check for emoji-only
+  let isEmojiOnlyMessage = false
+  let emojiCount = 0
+  if (message.type === 'text' && message.content && !mediaUrl) {
+    const emojiCheck = isEmojiOnly(message.content)
+    isEmojiOnlyMessage = emojiCheck.isEmoji
+    emojiCount = emojiCheck.emojiCount
+  }
+  
+  const isMediaMessage = mediaUrl && (mediaType === 'image' || mediaType === 'video') && message.type !== 'audio'
+  const isDocumentMessage = mediaUrl && mediaType === 'file'
+  
+  return {
+    mediaUrl: mediaUrl || false,
+    mediaType,
+    isGifMessage,
+    isStickerMessage: isStickerMessage || isGifMessage,
+    isSystemMessage,
+    isEmojiOnlyMessage,
+    emojiCount,
+    isMediaMessage,
+    isDocumentMessage
+  }
+}
+
 // Props for MessageItem component
 interface MessageItemProps {
   message: Message
@@ -213,6 +271,110 @@ const ReplyQuote: React.FC<{
   )
 }
 
+// Quick actions component - extracted to reduce complexity
+const MessageQuickActions: React.FC<{
+  position: 'left' | 'right'
+  isOwn: boolean
+  isHovered: boolean
+  isSelectionMode: boolean
+  messageId: string
+  onReply: (message: Message) => void
+  onForward: (message: Message) => void
+}> = ({ position, isOwn, isHovered, isSelectionMode, messageId, onReply, onForward }) => {
+  const showOnLeft = isOwn && position === 'left'
+  const showOnRight = !isOwn && position === 'right'
+  
+  if (!isHovered || isSelectionMode) return null
+  if (position === 'left' && !showOnLeft) return null
+  if (position === 'right' && !showOnRight) return null
+  
+  return (
+    <div className={`flex items-center gap-0.5 md:gap-1 ${position === 'left' ? 'mr-1 md:mr-2' : 'ml-1 md:ml-2 pb-4'}`}>
+      <button
+        onClick={() => onReply({ id: messageId } as Message)}
+        className="md:hidden w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] flex items-center justify-center transition-colors shadow-md"
+        title="Répondre"
+      >
+        <Reply size={16} className="text-[#8696a0]" />
+      </button>
+      <button
+        onClick={() => onForward({ id: messageId } as Message)}
+        className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
+        title="Transférer"
+      >
+        <Forward size={16} className="text-[#8696a0]" />
+      </button>
+      <button
+        className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
+        title="Réagir"
+      >
+        <Smile size={16} className="text-[#8696a0]" />
+      </button>
+      <button
+        onClick={() => onReply({ id: messageId } as Message)}
+        className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
+        title="Répondre"
+      >
+        <Reply size={16} className="text-[#8696a0]" />
+      </button>
+    </div>
+  )
+}
+
+// Selection checkbox component - extracted to reduce complexity
+const MessageSelectionCheckbox: React.FC<{
+  isOwn: boolean
+  isSelected: boolean
+  isSelectionMode: boolean
+  messageId: string
+  onSelectMessage: (messageId: string) => void
+}> = ({ isOwn, isSelected, isSelectionMode, messageId, onSelectMessage }) => {
+  if (!isSelectionMode) return null
+  
+  return (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        onSelectMessage(messageId);
+      }}
+      className={`absolute top-1/2 -translate-y-1/2 ${
+        isOwn ? '-left-10' : '-right-10'
+      } w-7 h-7 rounded-full flex items-center justify-center transition-all ${
+        isSelected
+          ? 'bg-[#787add] text-white'
+          : 'bg-bg-surface hover:bg-bg-hover text-text-tertiary border border-bg-hover'
+      }`}
+      type="button"
+      aria-label={isSelected ? 'Désélectionner le message' : 'Sélectionner le message'}
+    >
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="20 6 9 17 4 12"></polyline>
+      </svg>
+    </button>
+  )
+}
+
+// Timestamp component - extracted to reduce complexity
+const MessageTimestamp: React.FC<{
+  message: Message
+  isOwn: boolean
+  mediaUrl: string | false
+  mediaType: string
+}> = ({ message, isOwn, mediaUrl, mediaType }) => {
+  const showInBubble = !(mediaUrl && (mediaType === 'image' || mediaType === 'video') && message.type !== 'audio')
+  if (!showInBubble) return null
+  
+  return (
+    <div className={`flex items-center justify-end gap-1 mt-1 text-xs ${isOwn ? 'text-[#2d2f6e]' : 'text-text-secondary'}`}>
+      {message.is_starred && (
+        <Star size={12} className="fill-current" />
+      )}
+      <span>{formatTime(message.created_at)}</span>
+      <MessageStatusIcons status={message.status} isOwn={isOwn} />
+    </div>
+  )
+}
+
 // Main MessageItem component
 export const MessageItem: React.FC<MessageItemProps> = ({
   message,
@@ -240,30 +402,10 @@ export const MessageItem: React.FC<MessageItemProps> = ({
   isMobile,
   messages
 }) => {
+  // Extract all message type properties at once - reduces cognitive complexity
+  const msgType = getMessageType(message)
   const messageReactions = reactions.filter(r => r.message_id === message.id)
-  const emojiCheck = message.type === 'text' && message.content && !message.media_url
-    ? isEmojiOnly(message.content)
-    : { isEmoji: false, emojiCount: 0 }
-  const isEmojiOnlyMessage = emojiCheck.isEmoji
-  const emojiCount = emojiCheck.emojiCount
-  
-  const gifMatch = message.type === 'text' && message.content && !message.media_url
-    ? message.content.match(/^(?:\[Transféré\]\s*)?([\s\S]*?)\[GIF\]\((https?:\/\/[^\)]+)\)$/)
-    : null
-  const stickerMatch = message.type === 'text' && message.content && !message.media_url
-    ? message.content.match(/^(?:\[Transféré\]\s*)?([\s\S]*?)\[STICKER\]\((https?:\/\/[^\)]+)\)$/)
-    : null
-  const isGifMessage = !!gifMatch
-  const isStickerMessage = !!stickerMatch
-  const isGifOrStickerMessage = isGifMessage || isStickerMessage
-  
-  const mediaUrl = message.media_url || message.file_url
-  const mediaType = message.media_type || message.type
-  const isMediaMessage = mediaUrl && (mediaType === 'image' || mediaType === 'video') && message.type !== 'audio'
-  const isDocumentMessage = mediaUrl && mediaType === 'file'
-  
-  const isSystemMessage = message.type === 'text' && message.content?.startsWith('[SYSTEM]')
-  const systemMessageContent = isSystemMessage ? message.content.replace('[SYSTEM]', '') : ''
+  const systemMessageContent = msgType.isSystemMessage ? message.content.replace('[SYSTEM]', '') : ''
   
   const senderInfo = getSenderInfoForMessage(
     message.sender_id,
@@ -274,95 +416,12 @@ export const MessageItem: React.FC<MessageItemProps> = ({
     conversationType
   )
   
-  // Quick action buttons
-  const QuickActions: React.FC<{ position: 'left' | 'right' }> = ({ position }) => {
-    const showOnLeft = isOwn && position === 'left'
-    const showOnRight = !isOwn && position === 'right'
-    const isHovered = hoveredMessageId === message.id && !isSelectionMode
-    
-    if (!isHovered) return null
-    if (position === 'left' && !showOnLeft) return null
-    if (position === 'right' && !showOnRight) return null
-    
-    return (
-      <div className={`flex items-center gap-0.5 md:gap-1 ${position === 'left' ? 'mr-1 md:mr-2' : 'ml-1 md:ml-2 pb-4'}`}>
-        <button
-          onClick={() => onReply(message)}
-          className="md:hidden w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] flex items-center justify-center transition-colors shadow-md"
-          title="Répondre"
-        >
-          <Reply size={16} className="text-[#8696a0]" />
-        </button>
-        <button
-          onClick={() => onForward(message)}
-          className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
-          title="Transférer"
-        >
-          <Forward size={16} className="text-[#8696a0]" />
-        </button>
-        <button
-          onClick={(e) => {
-            const rect = e.currentTarget.getBoundingClientRect();
-            // Quick reaction - this would need a callback
-          }}
-          className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
-          title="Réagir"
-        >
-          <Smile size={16} className="text-[#8696a0]" />
-        </button>
-        <button
-          onClick={() => onReply(message)}
-          className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
-          title="Répondre"
-        >
-          <Reply size={16} className="text-[#8696a0]" />
-        </button>
-      </div>
-    )
-  }
+  // Quick action handlers
+  const handleReply = () => onReply(message)
+  const handleForward = () => onForward(message)
   
-  // Selection checkbox
-  const SelectionCheckbox: React.FC = () => {
-    if (!isSelectionMode) return null
-    
-    return (
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onSelectMessage(message.id);
-        }}
-        className={`absolute top-1/2 -translate-y-1/2 ${
-          isOwn ? '-left-10' : '-right-10'
-        } w-7 h-7 rounded-full flex items-center justify-center transition-all ${
-          isSelected
-            ? 'bg-[#787add] text-white'
-            : 'bg-bg-surface hover:bg-bg-hover text-text-tertiary border border-bg-hover'
-        }`}
-        type="button"
-        aria-label={isSelected ? 'Désélectionner le message' : 'Sélectionner le message'}
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <polyline points="20 6 9 17 4 12"></polyline>
-        </svg>
-      </button>
-    )
-  }
-  
-  // Timestamp component
-  const MessageTimestamp: React.FC = () => {
-    const showInBubble = !(mediaUrl && (mediaType === 'image' || mediaType === 'video') && message.type !== 'audio')
-    if (!showInBubble) return null
-    
-    return (
-      <div className={`flex items-center justify-end gap-1 mt-1 text-xs ${isOwn ? 'text-[#2d2f6e]' : 'text-text-secondary'}`}>
-        {message.is_starred && (
-          <Star size={12} className="fill-current" />
-        )}
-        <span>{formatTime(message.created_at)}</span>
-        <MessageStatusIcons status={message.status} isOwn={isOwn} />
-      </div>
-    )
-  }
+  // Check if message is hovered
+  const isHovered = hoveredMessageId === message.id && !isSelectionMode
   
   // Handle click for selection mode
   const handleClick = () => {
@@ -372,7 +431,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
   }
   
   // System message rendering
-  if (isSystemMessage) {
+  if (msgType.isSystemMessage) {
     return (
       <div
         id={`message-${message.id}`}
@@ -397,7 +456,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
   }
   
   // Emoji-only message rendering
-  if (isEmojiOnlyMessage) {
+  if (msgType.isEmojiOnlyMessage) {
     return (
       <div
         id={`message-${message.id}`}
@@ -406,7 +465,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
         onMouseLeave={() => setHoveredMessageId(null)}
         onClick={handleClick}
       >
-        <QuickActions position="left" />
+        <MessageQuickActions position="left" isOwn={isOwn} isHovered={isHovered} isSelectionMode={isSelectionMode} messageId={message.id} onReply={handleReply} onForward={handleForward} />
         <div className="max-w-[85%] sm:max-w-[75%] md:max-w-[70%] lg:max-w-[65%] relative group">
           <MessageHoverActions
             isVisible={hoveredMessageId === message.id}
@@ -414,7 +473,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
             onOpenMenu={() => {}}
           />
           <div className={`${
-            emojiCount === 1 ? 'text-7xl' : emojiCount === 2 ? 'text-6xl' : 'text-5xl'
+            msgType.emojiCount === 1 ? 'text-7xl' : msgType.emojiCount === 2 ? 'text-6xl' : 'text-5xl'
           } leading-none py-1`}>
             {message.content}
           </div>
@@ -430,7 +489,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
             </div>
           </div>
         </div>
-        <SelectionCheckbox />
+        <MessageSelectionCheckbox isOwn={isOwn} isSelected={isSelected} isSelectionMode={isSelectionMode} messageId={message.id} onSelectMessage={onSelectMessage} />
         {messageReactions.length > 0 && (
           <MessageReactions reactions={messageReactions} currentUserId={currentUserId} onReactionClick={onAddReaction} onReactionRemove={onRemoveReaction} />
         )}
@@ -439,7 +498,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
   }
   
   // Media message rendering
-  if (isMediaMessage) {
+  if (msgType.isMediaMessage) {
     return (
       <div
         id={`message-${message.id}`}
@@ -448,11 +507,11 @@ export const MessageItem: React.FC<MessageItemProps> = ({
         onMouseLeave={() => setHoveredMessageId(null)}
         onClick={handleClick}
       >
-        <QuickActions position="left" />
+        <MessageQuickActions position="left" isOwn={isOwn} isHovered={isHovered} isSelectionMode={isSelectionMode} messageId={message.id} onReply={handleReply} onForward={handleForward} />
         <div className="max-w-[85%] sm:max-w-[75%] md:max-w-[70%] lg:max-w-[65%] relative">
           <MediaMessage
-            url={mediaUrl!}
-            type={mediaType as 'image' | 'video' | 'file'}
+            url={msgType.mediaUrl as string}
+            type={msgType.mediaType as 'image' | 'video' | 'file'}
             fileName={message.file_name}
             fileSize={message.file_size}
             caption={message.content}
@@ -477,7 +536,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
             onNavigate={() => {}}
           />
         </div>
-        <SelectionCheckbox />
+        <MessageSelectionCheckbox isOwn={isOwn} isSelected={isSelected} isSelectionMode={isSelectionMode} messageId={message.id} onSelectMessage={onSelectMessage} />
         {messageReactions.length > 0 && (
           <MessageReactions reactions={messageReactions} currentUserId={currentUserId} onReactionClick={onAddReaction} onReactionRemove={onRemoveReaction} />
         )}
@@ -486,7 +545,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
   }
   
   // Document message rendering
-  if (isDocumentMessage) {
+  if (msgType.isDocumentMessage) {
     return (
       <div
         id={`message-${message.id}`}
@@ -495,7 +554,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
         onMouseLeave={() => setHoveredMessageId(null)}
         onClick={handleClick}
       >
-        <QuickActions position="left" />
+        <MessageQuickActions position="left" isOwn={isOwn} isHovered={isHovered} isSelectionMode={isSelectionMode} messageId={message.id} onReply={handleReply} onForward={handleForward} />
         <div className="max-w-[85%] sm:max-w-[75%] md:max-w-[70%] lg:max-w-[65%] relative">
           <MessageHoverActions
             isVisible={hoveredMessageId === message.id}
@@ -503,7 +562,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
             onOpenMenu={() => {}}
           />
           <MediaMessage
-            url={mediaUrl!}
+            url={msgType.mediaUrl as string}
             type="file"
             fileName={message.file_name}
             fileSize={message.file_size}
@@ -523,7 +582,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
             onOpenMenu={() => {}}
           />
         </div>
-        <SelectionCheckbox />
+        <MessageSelectionCheckbox isOwn={isOwn} isSelected={isSelected} isSelectionMode={isSelectionMode} messageId={message.id} onSelectMessage={onSelectMessage} />
         {messageReactions.length > 0 && (
           <MessageReactions reactions={messageReactions} currentUserId={currentUserId} onReactionClick={onAddReaction} onReactionRemove={onRemoveReaction} />
         )}
@@ -540,7 +599,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
       onMouseLeave={() => setHoveredMessageId(null)}
       onClick={handleClick}
     >
-      <QuickActions position="left" />
+      <MessageQuickActions position="left" isOwn={isOwn} isHovered={isHovered} isSelectionMode={isSelectionMode} messageId={message.id} onReply={handleReply} onForward={handleForward} />
       <div className={`max-w-[85%] sm:max-w-[75%] md:max-w-[70%] lg:max-w-[65%] relative px-3 py-2 rounded-2xl ${isOwn ? 'bg-[#787add] text-white rounded-br-none' : 'bg-bg-surface text-text-primary rounded-bl-none'}`}>
         <MessageHoverActions
           isVisible={hoveredMessageId === message.id}
@@ -569,10 +628,10 @@ export const MessageItem: React.FC<MessageItemProps> = ({
         {!(message.media_url || message.file_url) && message.content && (
           <MessageContent message={message} isOwn={isOwn} />
         )}
-        <MessageTimestamp />
+        <MessageTimestamp message={message} isOwn={isOwn} mediaUrl={msgType.mediaUrl} mediaType={msgType.mediaType} />
       </div>
-      <QuickActions position="right" />
-      <SelectionCheckbox />
+      <MessageQuickActions position="right" isOwn={isOwn} isHovered={isHovered} isSelectionMode={isSelectionMode} messageId={message.id} onReply={handleReply} onForward={handleForward} />
+      <MessageSelectionCheckbox isOwn={isOwn} isSelected={isSelected} isSelectionMode={isSelectionMode} messageId={message.id} onSelectMessage={onSelectMessage} />
       {messageReactions.length > 0 && (
         <MessageReactions reactions={messageReactions} currentUserId={currentUserId} onReactionClick={onAddReaction} onReactionRemove={onRemoveReaction} />
       )}
