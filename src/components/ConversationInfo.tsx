@@ -10,6 +10,44 @@ import {
 import { supabase, Profile, Message } from '@/lib/supabase';
 import { MediaViewer } from './MediaViewer';
 
+// Helper functions at module level to reduce component complexity
+
+// Format file size helper
+const formatFileSize = (bytes: number | null): string => {
+  if (!bytes) return 'Taille inconnue';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+// Format date helper
+const formatDate = (dateString: string): string => {
+  const date = new Date(dateString);
+  return date.toLocaleDateString('fr-FR', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric'
+  });
+};
+
+// Get ephemeral label helper
+const getEphemeralLabel = (duration: number | null): string => {
+  if (!duration) return 'Désactivés';
+  if (duration === 3600) return '1 heure';
+  if (duration === 86400) return '24 heures';
+  if (duration === 604800) return '7 jours';
+  if (duration === 7776000) return '90 jours';
+  return `${Math.floor(duration / 86400)} jours`;
+};
+
+// Build ephemeral system message helper
+const buildEphemeralSystemMessage = (duration: number | null): string | null => {
+  if (duration) {
+    return `[SYSTEM]Vous avez mis à jour le délai avant disparition. Les nouveaux messages disparaîtront de cette discussion ${getEphemeralLabel(duration)} après avoir été envoyés, sauf s'ils sont gardés.`;
+  }
+  return '[SYSTEM]Vous avez désactivé les messages éphémères.';
+};
+
 interface ConversationInfoProps {
   conversationId: string;
   conversationType: 'direct' | 'group';
@@ -192,12 +230,6 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
     }
   };
 
-  const buildEphemeralSystemMessage = (duration: number | null): string | null => {
-    if (duration) {
-      return `[SYSTEM]Vous avez mis à jour le délai avant disparition. Les nouveaux messages disparaîtront de cette discussion ${getEphemeralLabel(duration)} après avoir été envoyés, sauf s'ils sont gardés.`;
-    }
-    return '[SYSTEM]Vous avez désactivé les messages éphémères.';
-  };
 
   const handleSetEphemeralDuration = async (duration: number | null) => {
     // Store ephemeral setting in localStorage
@@ -236,14 +268,6 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
     }
   };
 
-  const getEphemeralLabel = (duration: number | null): string => {
-    if (!duration) return 'Désactivés';
-    if (duration === 3600) return '1 heure';
-    if (duration === 86400) return '24 heures';
-    if (duration === 604800) return '7 jours';
-    if (duration === 7776000) return '90 jours';
-    return `${Math.floor(duration / 86400)} jours`;
-  };
 
   const loadAvailableContacts = async () => {
     const memberUserIds = new Set(members.map(m => m.user_id));
@@ -395,21 +419,6 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
     }
   };
 
-  const formatFileSize = (bytes: number | null): string => {
-    if (!bytes) return 'Taille inconnue';
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
-
-  const formatDate = (dateString: string): string => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('fr-FR', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric'
-    });
-  };
 
   const filteredContacts = availableContacts.filter(contact =>
     contact.username.toLowerCase().includes(contactSearchQuery.toLowerCase()) ||

@@ -9,6 +9,23 @@ import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 // Configure PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
+// Helper functions to reduce component complexity
+
+// Format file size helper
+const formatFileSize = (bytes: number): string => {
+  if (bytes < 1024) return bytes + ' o';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(0) + ' ko';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' Mo';
+};
+
+// Touch distance helper
+const getTouchDistance = (touches: React.TouchList): number => {
+  if (touches.length < 2) return 0;
+  const dx = touches[0].clientX - touches[1].clientX;
+  const dy = touches[0].clientY - touches[1].clientY;
+  return Math.sqrt(dx * dx + dy * dy);
+};
+
 // Get file type info based on extension
 const getFileTypeInfo = (fileName: string): { type: 'pdf' | 'word' | 'excel' | 'powerpoint' | 'text' | 'archive' | 'other'; label: string; color: string; icon: React.ReactNode } => {
   const ext = fileName.split('.').pop()?.toLowerCase() || '';
@@ -34,15 +51,6 @@ const getFileTypeInfo = (fileName: string): { type: 'pdf' | 'word' | 'excel' | '
   return { type: 'other', label: ext.toUpperCase() || 'FILE', color: 'bg-gray-500', icon: <File size={32} className="text-white" /> };
 };
 
-interface DocumentPreviewModalProps {
-  file: File;
-  onClose: () => void;
-  onSend: (caption: string) => void;
-  uploading?: boolean;
-  uploadProgress?: number;
-  uploadPhase?: 'idle' | 'compressing' | 'uploading';
-}
-
 // Get preview message based on file type
 const getPreviewMessage = (fileType: string): string => {
   switch (fileType) {
@@ -57,21 +65,6 @@ const getPreviewMessage = (fileType: string): string => {
     default:
       return "Ce fichier ne peut pas être prévisualisé. Envoyez-le pour l'ouvrir avec une application compatible.";
   }
-};
-
-// Format file size helper
-const formatFileSize = (bytes: number): string => {
-  if (bytes < 1024) return bytes + ' o';
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(0) + ' ko';
-  return (bytes / (1024 * 1024)).toFixed(1) + ' Mo';
-};
-
-// Touch distance helper
-const getTouchDistance = (touches: React.TouchList): number => {
-  if (touches.length < 2) return 0;
-  const dx = touches[0].clientX - touches[1].clientX;
-  const dy = touches[0].clientY - touches[1].clientY;
-  return Math.sqrt(dx * dx + dy * dy);
 };
 
 // Load file and get URL
@@ -111,6 +104,41 @@ const updateContainerDimensions = (
     setContainerWidth(Math.min(width, maxWidth));
   }
 };
+
+// Get file type info based on extension
+const getFileTypeInfo = (fileName: string): { type: 'pdf' | 'word' | 'excel' | 'powerpoint' | 'text' | 'archive' | 'other'; label: string; color: string; icon: React.ReactNode } => {
+  const ext = fileName.split('.').pop()?.toLowerCase() || '';
+  
+  if (ext === 'pdf') {
+    return { type: 'pdf', label: 'PDF', color: 'bg-red-500', icon: <FileText size={32} className="text-white" /> };
+  }
+  if (['doc', 'docx', 'odt', 'rtf'].includes(ext)) {
+    return { type: 'word', label: 'Word', color: 'bg-blue-600', icon: <FileText size={32} className="text-white" /> };
+  }
+  if (['xls', 'xlsx', 'csv', 'ods'].includes(ext)) {
+    return { type: 'excel', label: 'Excel', color: 'bg-green-600', icon: <FileSpreadsheet size={32} className="text-white" /> };
+  }
+  if (['ppt', 'pptx', 'odp'].includes(ext)) {
+    return { type: 'powerpoint', label: 'PowerPoint', color: 'bg-orange-500', icon: <Presentation size={32} className="text-white" /> };
+  }
+  if (['txt', 'md', 'json', 'xml', 'html', 'css', 'js', 'ts'].includes(ext)) {
+    return { type: 'text', label: ext.toUpperCase(), color: 'bg-gray-500', icon: <FileText size={32} className="text-white" /> };
+  }
+  if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) {
+    return { type: 'archive', label: ext.toUpperCase(), color: 'bg-yellow-600', icon: <FileArchive size={32} className="text-white" /> };
+  }
+  return { type: 'other', label: ext.toUpperCase() || 'FILE', color: 'bg-gray-500', icon: <File size={32} className="text-white" /> };
+};
+
+interface DocumentPreviewModalProps {
+  file: File;
+  onClose: () => void;
+  onSend: (caption: string) => void;
+  uploading?: boolean;
+  uploadProgress?: number;
+  uploadPhase?: 'idle' | 'compressing' | 'uploading';
+}
+
 
 export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
   file,
