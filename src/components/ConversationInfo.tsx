@@ -210,7 +210,7 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
       : '[SYSTEM]Vous avez désactivé les messages éphémères.';
     
     try {
-      const { data, error } = await supabase.from('messages').insert({
+      const { error } = await supabase.from('messages').insert({
         conversation_id: conversationId,
         sender_id: currentUserId,
         content: systemMessageContent,
@@ -242,7 +242,7 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
   };
 
   const loadAvailableContacts = async () => {
-    const memberUserIds = members.map(m => m.user_id);
+    const memberUserIds = new Set(members.map(m => m.user_id));
     
     // Only load contacts that the current user has explicitly added
     // If a user deletes a contact, they should no longer see that person
@@ -265,8 +265,8 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
       }
     }
 
-    // Get only the contacts I explicitly added, excluding current group members
-    const myContactIds = deduplicatedContacts.filter(id => !memberUserIds.includes(id));
+    // Filter out current group members using Set.has for better performance
+    const myContactIds = deduplicatedContacts.filter(id => !memberUserIds.has(id));
 
     if (myContactIds.length > 0) {
       const { data: profiles } = await supabase

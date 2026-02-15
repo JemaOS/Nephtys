@@ -32,7 +32,7 @@ export class ErrorBoundary extends React.Component<
       const lastReload = sessionStorage.getItem('chunk_reload_time');
       const now = Date.now();
       
-      if (!lastReload || (now - parseInt(lastReload)) > 10000) {
+      if (!lastReload || (now - Number.parseInt(lastReload)) > 10000) {
         sessionStorage.setItem('chunk_reload_time', String(now));
         window.location.reload();
       }

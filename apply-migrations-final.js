@@ -85,4 +85,4 @@ async function applyMigrations() {
   console.log(`\n🎉 Une fois fait, toutes les fonctionnalités seront actives!`);
 }
 
-applyMigrations().catch(console.error);
+await applyMigrations();

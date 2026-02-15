@@ -35,7 +35,7 @@ export function CallMessage({
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60
     if (mins > 0) {
-      return `${mins} min ${secs > 0 ? `${secs} s` : ''}`
+      return secs > 0 ? `${mins} min ${secs} s` : `${mins} min`
     }
     return `${secs} s`
   }
@@ -158,6 +158,9 @@ export function CallMessage({
           max-w-[85%] sm:max-w-[70%]
           ${onClick ? 'cursor-pointer hover:bg-bg-surface transition-colors' : ''}
         `}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => e.key === 'Enter' && onClick?.()}
         onClick={onClick}
       >
         {/* Call direction/status icon */}
@@ -188,7 +191,7 @@ export function CallMessage({
             <span>{formatTime(timestamp)}</span>
             
             {/* Group call duration (if answered and has participants) */}
-            {isGroupCall && isAnswered && duration && participantCount && participantCount > 0 && (
+            {Boolean(isGroupCall && isAnswered && duration && participantCount && participantCount > 0) && (
               <>
                 <span>·</span>
                 <span>{formatDuration(duration)}</span>

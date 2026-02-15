@@ -133,6 +133,28 @@ export function CallParticipantSelector({ onClose, onSelect, currentParticipants
     }
   }
 
+  // Helper function to get status badge class
+  const getStatusBadgeClass = (isInvited: boolean, isInviting: boolean): string => {
+    if (isInvited) {
+      return 'bg-green-500 text-white'
+    }
+    if (isInviting) {
+      return 'bg-white/10 text-white'
+    }
+    return 'bg-white/5 text-white/50 group-hover:bg-primary-500 group-hover:text-white'
+  }
+
+  // Helper function to get status badge icon
+  const getStatusBadgeIcon = (isInvited: boolean, isInviting: boolean): React.ReactNode => {
+    if (isInviting) {
+      return <Loader2 size={16} className="animate-spin" />
+    }
+    if (isInvited) {
+      return <Check size={16} />
+    }
+    return <UserPlus size={16} />
+  }
+
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-[150]">
       <div className="w-full max-w-md bg-gray-900 border border-white/10 rounded-2xl flex flex-col max-h-[80vh] shadow-2xl">
@@ -222,19 +244,9 @@ export function CallParticipantSelector({ onClose, onSelect, currentParticipants
                     </div>
                     
                     <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
-                      isInvited
-                        ? 'bg-green-500 text-white'
-                        : isInviting
-                          ? 'bg-white/10 text-white'
-                          : 'bg-white/5 text-white/50 group-hover:bg-primary-500 group-hover:text-white'
+                      getStatusBadgeClass(isInvited, isInviting)
                     }`}>
-                      {isInviting ? (
-                        <Loader2 size={16} className="animate-spin" />
-                      ) : isInvited ? (
-                        <Check size={16} />
-                      ) : (
-                        <UserPlus size={16} />
-                      )}
+                      {getStatusBadgeIcon(isInvited, isInviting)}
                     </div>
                   </button>
                 )
