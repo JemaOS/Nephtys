@@ -970,7 +970,10 @@ export function CallsPage() {
   }
 
   const handleCreateCallLink = () => {
-    const callLink = `${window.location.origin}/call/${Math.random().toString(36).substring(2, 10)}`
+    const randomBytes = new Uint8Array(8);
+    crypto.getRandomValues(randomBytes);
+    const randomString = Array.from(randomBytes, (byte) => byte.toString(16).padStart(2, '0')).join('').substring(0, 8);
+    const callLink = `${window.location.origin}/call/${randomString}`
     navigator.clipboard.writeText(callLink)
     alert(`Lien d'appel copié !\n${callLink}`)
   }

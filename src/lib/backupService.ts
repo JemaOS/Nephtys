@@ -540,7 +540,10 @@ async function uploadBase64File(
     
     // Generate unique file path
     const ext = fileName.split('.').pop() || 'bin'
-    const uniqueName = `restored/${userId}/${Date.now()}_${Math.random().toString(36).substr(2, 9)}.${ext}`
+    const randomBytes = new Uint8Array(8);
+    crypto.getRandomValues(randomBytes);
+    const randomString = Array.from(randomBytes, (byte) => byte.toString(16).padStart(2, '0')).join('').substring(0, 9);
+    const uniqueName = `restored/${userId}/${Date.now()}_${randomString}.${ext}`
     
     // Upload to Supabase storage
     const { error } = await supabase.storage

@@ -39,7 +39,7 @@ vi.mock('../../src/lib/supabase', () => {
     storage: {
       from: vi.fn(() => ({
         upload: vi.fn(),
-        getPublicUrl: vi.fn().mockReturnValue({ data: { publicUrl: 'http://fake.url' } }),
+        getPublicUrl: vi.fn().mockReturnValue({ data: { publicUrl: 'https://fake.url' } }),
       })),
     },
     auth: {

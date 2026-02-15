@@ -13,6 +13,8 @@ const mockSignOut = vi.fn();
 // Helper function for maybeSingle mock
 const createMaybeSingleMock = () => Promise.resolve({ data: null, error: null });
 
+const TEST_PASSWORD = 'password123';
+
 vi.mock('../../src/lib/supabase', () => ({
   supabase: {
     functions: {
@@ -106,7 +108,7 @@ describe('AuthFlow', () => {
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith('auth-with-username', {
-        body: { action: 'signin', username: 'testuser', password: 'password123' },
+        body: { action: 'signin', username: 'testuser', password: TEST_PASSWORD },
       });
       expect(mockSetSession).toHaveBeenCalledWith({
         access_token: 'fake-token',

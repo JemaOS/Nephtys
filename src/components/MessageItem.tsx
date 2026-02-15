@@ -23,6 +23,9 @@ import {
 const isEmojiOnly = (text: string): { isEmoji: boolean; emojiCount: number } => {
   if (!text || text.trim() === '') return { isEmoji: false, emojiCount: 0 }
   
+  // Limit length to avoid ReDoS on long strings
+  if (text.length > 100) return { isEmoji: false, emojiCount: 0 }
+  
   const trimmed = text.trim()
   const emojiPattern = /(?:\p{Emoji_Presentation}|\p{Emoji}\uFE0F?|\p{Regional_Indicator}{2}|[\u0023\u002A\u0030-\u0039]\uFE0F?\u20E3)(?:\u200D(?:\p{Emoji_Presentation}|\p{Emoji}\uFE0F?))*(?:\p{Emoji_Modifier})?/gu
   

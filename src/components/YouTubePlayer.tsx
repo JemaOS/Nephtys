@@ -19,13 +19,33 @@ interface Position {
  * Extract YouTube video ID from various URL formats
  */
 export const extractYouTubeVideoId = (url: string): string | null => {
+  try {
+    // Try using URL API first - safer and more robust
+    const urlObj = new URL(url);
+    const hostname = urlObj.hostname;
+    
+    if (hostname.includes('youtube.com') || hostname.includes('www.youtube.com')) {
+      if (urlObj.pathname === '/watch') {
+        return urlObj.searchParams.get('v');
+      }
+      if (urlObj.pathname.startsWith('/embed/') || urlObj.pathname.startsWith('/v/') || urlObj.pathname.startsWith('/shorts/')) {
+        return urlObj.pathname.split('/')[2];
+      }
+    }
+    
+    if (hostname.includes('youtu.be')) {
+      return urlObj.pathname.slice(1);
+    }
+  } catch (e) {
+    // Continue to regex fallback if URL parsing fails
+  }
+
   const patterns = [
     /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/v\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/,
-    /youtube\.com\/watch\?.*v=([a-zA-Z0-9_-]{11})/,
   ];
 
   for (const pattern of patterns) {
-    const match = url.match(pattern);
+    const match = pattern.exec(url);
     if (match && match[1]) {
       return match[1];
     }
