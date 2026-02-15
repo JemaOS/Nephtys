@@ -522,35 +522,20 @@ export function ChatViewPage() {
       }, (payload) => {
         console.log('[ChatViewPage] Realtime INSERT received:', payload.new?.id)
         const newMsg = payload.new as Message
-        // Avoid duplicates: check if message already exists (including temp messages)
-        // Temp messages start with 'temp-' and have the same media_url
+        
+        // Check for temp message to replace
         const tempIndex = messages.findIndex(m =>
           m.id.startsWith('temp-') &&
           m.media_url === newMsg.media_url &&
           m.sender_id === newMsg.sender_id
         )
 
-        // Helper to add message to state
-        const addMessage = (currentMessages: Message[]) => {
-          if (tempIndex !== -1) {
-             // Replace temp message with real one
-             console.log('[ChatViewPage] Replacing temp message with real one:', newMsg.id)
-             const newMessages = [...currentMessages]
-             newMessages[tempIndex] = newMsg
-             return newMessages
-          }
-          console.log('[ChatViewPage] Adding new message:', newMsg.id)
-          return [...currentMessages, newMsg]
-        }
-
-        setMessages(addMessage)
+        // Use helper to update messages
+        setMessages(prev => getUpdatedMessages(prev, newMsg, tempIndex))
+        
+        // Handle notification if not own message
         if (newMsg.sender_id !== user.id) {
-          updateMessageStatus(newMsg.id, 'delivered')
-          if (document.hidden && permission === 'granted') {
-            const senderName = otherUser?.display_name || otherUser?.username || 'Quelqu\'un'
-            const preview = newMsg.type === 'text' ? newMsg.content : '📎 Fichier'
-            sendNotification(senderName, preview, { conversationId, messageId: newMsg.id, url: `/chat/${conversationId}` })
-          }
+          handleNewMessageNotification(newMsg, newMsg.sender_id)
         }
       })
       .on('postgres_changes', {
@@ -559,7 +544,7 @@ export function ChatViewPage() {
       }, (payload) => {
         console.log('[ChatViewPage] Realtime UPDATE received:', payload.new?.id)
         const updatedMsg = payload.new as Message
-        setMessages(prev => prev.map(m => m.id === updatedMsg.id ? updatedMsg : m))
+        setMessages(prev => updateMessageInList(prev, updatedMsg))
       })
       .on('postgres_changes', {
         event: 'DELETE', schema: 'public', table: 'messages',
@@ -568,7 +553,7 @@ export function ChatViewPage() {
         console.log('[ChatViewPage] Realtime DELETE received:', payload.old?.id)
         const deletedId = (payload.old as any)?.id
         if (deletedId) {
-          setMessages(prev => prev.filter(m => m.id !== deletedId))
+          setMessages(prev => removeMessageFromList(prev, deletedId))
         }
       })
       .subscribe((status) => {
@@ -851,6 +836,38 @@ export function ChatViewPage() {
 
   const updateMessageStatus = async (messageId: string, status: 'delivered' | 'read') => {
     await supabase.from('messages').update({ status }).eq('id', messageId)
+  }
+
+  // Helper to add or replace a message in the list (extracted to reduce complexity)
+  const getUpdatedMessages = (currentMessages: Message[], newMsg: Message, tempIndex: number): Message[] => {
+    if (tempIndex !== -1) {
+      console.log('[ChatViewPage] Replacing temp message with real one:', newMsg.id)
+      const newMessages = [...currentMessages]
+      newMessages[tempIndex] = newMsg
+      return newMessages
+    }
+    console.log('[ChatViewPage] Adding new message:', newMsg.id)
+    return [...currentMessages, newMsg]
+  }
+
+  // Helper to update a message in the list
+  const updateMessageInList = (currentMessages: Message[], updatedMsg: Message): Message[] => {
+    return currentMessages.map(m => m.id === updatedMsg.id ? updatedMsg : m)
+  }
+
+  // Helper to remove a message from the list
+  const removeMessageFromList = (currentMessages: Message[], deletedId: string): Message[] => {
+    return currentMessages.filter(m => m.id !== deletedId)
+  }
+
+  // Helper to handle notifications for new messages (extracted to reduce complexity)
+  const handleNewMessageNotification = async (newMsg: Message, senderId: string) => {
+    await updateMessageStatus(newMsg.id, 'delivered')
+    if (document.hidden && permission === 'granted') {
+      const senderName = otherUser?.display_name || otherUser?.username || 'Quelqu\'un'
+      const preview = newMsg.type === 'text' ? newMsg.content : '📎 Fichier'
+      sendNotification(senderName, preview, { conversationId, messageId: newMsg.id, url: `/chat/${conversationId}` })
+    }
   }
 
   // Load ephemeral setting from localStorage (since DB doesn't have this column)

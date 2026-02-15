@@ -2,6 +2,76 @@ import React from 'react'
 import { ArrowLeft, CheckCheck, Trash2, UserPlus, Search, Phone, Video, PhoneIncoming, PhoneOutgoing, PhoneMissed, Users, Star, Check, MessageCircle, X } from 'lucide-react'
 import { formatCallDuration, formatCallDate } from './CallsPage'
 
+// Helper to get display name and avatar
+const getCallDisplayInfo = (call: any, user: any) => {
+  const isGroupCall = call.is_group_call
+  const isOutgoing = call.caller_id === user?.id
+  
+  let displayName: string
+  let avatarUrl: string | null | undefined
+
+  if (isGroupCall) {
+    displayName = call.conversation_name || 'Groupe'
+    avatarUrl = call.conversation_avatar
+  } else {
+    const otherProfile = isOutgoing ? call.callee_profile : call.caller_profile
+    displayName = otherProfile?.display_name || otherProfile?.username || 'Utilisateur'
+    avatarUrl = otherProfile?.avatar_url
+  }
+  
+  return { displayName, avatarUrl, isGroupCall, isOutgoing }
+}
+
+// Helper to check call status
+const getCallStatus = (call: any) => {
+  const isMissed = call.status === 'missed' || call.status === 'rejected'
+  const isAnswered = call.status === 'answered' || call.status === 'ended'
+  return { isMissed, isAnswered }
+}
+
+// Helper to render avatar
+const renderCallAvatar = (avatarUrl: string | null | undefined, isGroupCall: boolean, displayName: string) => {
+  if (avatarUrl) {
+    return (
+      <img
+        src={avatarUrl}
+        alt={displayName}
+        className="w-12 h-12 rounded-full object-cover flex-shrink-0"
+      />
+    )
+  }
+  if (isGroupCall) {
+    return (
+      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-accent to-primary-600 flex items-center justify-center text-white flex-shrink-0">
+        <Users size={24} />
+      </div>
+    )
+  }
+  return (
+    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold text-lg flex-shrink-0">
+      {displayName[0]?.toUpperCase()}
+    </div>
+  )
+}
+
+// Helper to render status icon
+const renderStatusIcon = (isMissed: boolean, isOutgoing: boolean) => {
+  if (isMissed) {
+    return <PhoneMissed size={14} className="text-[#ea4335]" />
+  }
+  if (isOutgoing) {
+    return <PhoneOutgoing size={14} />
+  }
+  return <PhoneIncoming size={14} />
+}
+
+// Helper to get status text
+const getStatusText = (call: any, isMissed: boolean, isAnswered: boolean): string => {
+  if (isMissed) return 'Manqué'
+  if (isAnswered && call.duration) return formatCallDuration(call.duration)
+  return 'Non répondu'
+}
+
 // Helper component for rendering a single call item
 export const CallItem = ({
   call,
@@ -28,43 +98,30 @@ export const CallItem = ({
   onTouchMove: () => void;
   isMobile: boolean;
 }) => {
-  const isOutgoing = call.caller_id === user?.id;
-  const isGroupCall = call.is_group_call;
+  const { displayName, avatarUrl, isGroupCall, isOutgoing } = getCallDisplayInfo(call, user)
+  const { isMissed, isAnswered } = getCallStatus(call)
   
-  let displayName: string;
-  let avatarUrl: string | null | undefined;
+  const containerClass = isSelected
+    ? 'bg-accent/20'
+    : selectedCall?.id === call.id
+      ? 'bg-bg-surface'
+      : 'hover:bg-bg-surface'
 
-  if (isGroupCall) {
-    displayName = call.conversation_name || 'Groupe';
-    avatarUrl = call.conversation_avatar;
-  } else {
-    const otherProfile = isOutgoing ? call.callee_profile : call.caller_profile;
-    displayName = otherProfile?.display_name || otherProfile?.username || 'Utilisateur';
-    avatarUrl = otherProfile?.avatar_url;
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (isMobile && e.button === 0) {
+      onTouchStart()
+    }
   }
-
-  const isMissed = call.status === 'missed' || call.status === 'rejected';
-  const isAnswered = call.status === 'answered' || call.status === 'ended';
 
   return (
     <div
-      className={`px-4 py-3 transition-colors cursor-pointer ${
-        isSelected
-          ? 'bg-accent/20'
-          : selectedCall?.id === call.id
-            ? 'bg-bg-surface'
-            : 'hover:bg-bg-surface'
-      }`}
+      className={`px-4 py-3 transition-colors cursor-pointer ${containerClass}`}
       onClick={onClick}
       onContextMenu={onContextMenu}
       onTouchStart={onTouchStart}
       onTouchEnd={onTouchEnd}
       onTouchMove={onTouchMove}
-      onMouseDown={(e) => {
-        if (isMobile && e.button === 0) {
-          onTouchStart()
-        }
-      }}
+      onMouseDown={handleMouseDown}
       onMouseUp={onTouchEnd}
       onMouseLeave={onTouchEnd}
     >
@@ -83,21 +140,7 @@ export const CallItem = ({
           </div>
         )}
         
-        {avatarUrl ? (
-          <img
-            src={avatarUrl}
-            alt={displayName}
-            className="w-12 h-12 rounded-full object-cover flex-shrink-0"
-          />
-        ) : isGroupCall ? (
-          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-accent to-primary-600 flex items-center justify-center text-white flex-shrink-0">
-            <Users size={24} />
-          </div>
-        ) : (
-          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold text-lg flex-shrink-0">
-            {displayName[0]?.toUpperCase()}
-          </div>
-        )}
+        {renderCallAvatar(avatarUrl, isGroupCall, displayName)}
         
         <div className="flex-1 min-w-0 border-b border-bg-hover pb-3">
           <div className="flex items-center gap-2 mb-1">
@@ -108,20 +151,14 @@ export const CallItem = ({
           </div>
           
           <div className="flex items-center gap-2 text-sm text-text-secondary">
-            {isMissed ? (
-              <PhoneMissed size={14} className="text-[#ea4335]" />
-            ) : isOutgoing ? (
-              <PhoneOutgoing size={14} />
-            ) : (
-              <PhoneIncoming size={14} />
-            )}
+            {renderStatusIcon(isMissed, isOutgoing)}
             
             {call.type === 'video' && <Video size={14} />}
             
             {isGroupCall && <span className="text-xs">Groupe</span>}
             
             <span>
-              {isMissed ? 'Manqué' : isAnswered && call.duration ? formatCallDuration(call.duration) : 'Non répondu'}
+              {getStatusText(call, isMissed, isAnswered)}
             </span>
           </div>
         </div>

@@ -502,6 +502,54 @@ export function ChatsPage() {
     }
   }
 
+  // Helper to analyze conversation changes and determine update strategy
+  const analyzeConversationChanges = (currentConvs: ConversationWithDetails[], newConvs: ConversationWithDetails[]) => {
+    // Create a map of conversation data for comparison
+    const createDataMap = (convs: ConversationWithDetails[]) => {
+      const map = new Map<string, string>()
+      convs.forEach(c => {
+        map.set(c.id, JSON.stringify({
+          last_message_at: c.last_message_at,
+          unreadCount: c.unreadCount,
+          is_pinned: c.is_pinned,
+          is_muted: c.is_muted,
+          lastMessageId: c.lastMessage?.id,
+          lastMessageContent: c.lastMessage?.content?.substring(0, 50),
+          otherUserName: c.otherUserProfile?.display_name || c.otherUserProfile?.username,
+          otherUserAvatar: c.otherUserProfile?.avatar_url
+        }))
+      })
+      return map
+    }
+
+    const currentDataMap = createDataMap(currentConvs)
+    const newDataMap = createDataMap(newConvs)
+
+    // Check if any conversation data has actually changed
+    let hasDataChanged = currentConvs.length !== newConvs.length
+    if (!hasDataChanged) {
+      for (const [id, data] of newDataMap) {
+        if (currentDataMap.get(id) !== data) {
+          hasDataChanged = true
+          break
+        }
+      }
+    }
+
+    // Check if there are new conversations or removed conversations
+    const currentIds = new Set(currentConvs.map(c => c.id))
+    const newIds = new Set(newConvs.map(c => c.id))
+    const hasNewConversations = newConvs.some(c => !currentIds.has(c.id))
+    const hasRemovedConversations = currentConvs.some(c => !newIds.has(c.id))
+
+    // Also check if order has changed for pinned items
+    const currentPinnedOrder = currentConvs.filter(c => c.is_pinned).map(c => c.id).join(',')
+    const newPinnedOrder = newConvs.filter(c => c.is_pinned).map(c => c.id).join(',')
+    const pinnedOrderChanged = currentPinnedOrder !== newPinnedOrder
+
+    return { hasNewConversations, hasRemovedConversations, hasDataChanged, pinnedOrderChanged }
+  }
+
   // Load conversations from server (can be called with or without loading state)
   const loadConversationsFromServer = async (showLoading: boolean = true) => {
     if (!user) return
@@ -533,51 +581,10 @@ export function ChatsPage() {
         if (!a.is_pinned && b.is_pinned) return 1
         return new Date(b.last_message_at || 0).getTime() - new Date(a.last_message_at || 0).getTime()
       })
-      
-      // Compare data by content (not order) to avoid unnecessary re-renders
-      // Create a map of conversation data for comparison
-      const createDataMap = (convs: ConversationWithDetails[]) => {
-        const map = new Map<string, string>()
-        convs.forEach(c => {
-          map.set(c.id, JSON.stringify({
-            last_message_at: c.last_message_at,
-            unreadCount: c.unreadCount,
-            is_pinned: c.is_pinned,
-            is_muted: c.is_muted,
-            lastMessageId: c.lastMessage?.id,
-            lastMessageContent: c.lastMessage?.content?.substring(0, 50),
-            otherUserName: c.otherUserProfile?.display_name || c.otherUserProfile?.username,
-            otherUserAvatar: c.otherUserProfile?.avatar_url
-          }))
-        })
-        return map
-      }
-      
-      const currentDataMap = createDataMap(conversations)
-      const newDataMap = createDataMap(sorted)
-      
-      // Check if any conversation data has actually changed
-      let hasDataChanged = conversations.length !== sorted.length
-      if (!hasDataChanged) {
-        for (const [id, data] of newDataMap) {
-          if (currentDataMap.get(id) !== data) {
-            hasDataChanged = true
-            break
-          }
-        }
-      }
-      
-      // Check if there are new conversations or removed conversations
-      const currentIds = new Set(conversations.map(c => c.id))
-      const newIds = new Set(sorted.map(c => c.id))
-      const hasNewConversations = sorted.some(c => !currentIds.has(c.id))
-      const hasRemovedConversations = conversations.some(c => !newIds.has(c.id))
-      
-      // Also check if order has changed for pinned items (important for UX)
-      const currentPinnedOrder = conversations.filter(c => c.is_pinned).map(c => c.id).join(',')
-      const newPinnedOrder = sorted.filter(c => c.is_pinned).map(c => c.id).join(',')
-      const pinnedOrderChanged = currentPinnedOrder !== newPinnedOrder
-      
+
+      // Analyze conversation changes to determine update strategy
+      const { hasNewConversations, hasRemovedConversations, hasDataChanged, pinnedOrderChanged } = analyzeConversationChanges(conversations, sorted)
+
       console.log('[ChatsPage] Comparison:', {
         hasDataChanged,
         pinnedOrderChanged,

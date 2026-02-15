@@ -521,24 +521,30 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
 
   // Helper to get sender name from message
   const getSenderName = (senderId: string): string => {
-    if (conversationType === 'group') {
-      const member = members.find(m => m.user_id === senderId);
-      return member?.display_name || member?.username || 'Utilisateur';
-    } else {
-      const participant = directParticipants.find(p => p.user.id === senderId);
-      return participant?.user.display_name || participant?.user.username || 'Utilisateur';
+    const participant = conversationType === 'group' 
+      ? members.find(m => m.user_id === senderId) 
+      : directParticipants.find(p => p.user.id === senderId)
+    
+    if (participant) {
+      return 'display_name' in participant 
+        ? (participant.display_name || participant.username || 'Utilisateur')
+        : (participant.user.display_name || participant.user.username || 'Utilisateur')
     }
+    return 'Utilisateur'
   };
 
   // Helper to get sender avatar from message
   const getSenderAvatar = (senderId: string): string | undefined => {
-    if (conversationType === 'group') {
-      const member = members.find(m => m.user_id === senderId);
-      return member?.avatar_url || undefined;
-    } else {
-      const participant = directParticipants.find(p => p.user.id === senderId);
-      return participant?.user.avatar_url || undefined;
+    const participant = conversationType === 'group' 
+      ? members.find(m => m.user_id === senderId)
+      : directParticipants.find(p => p.user.id === senderId)
+    
+    if (participant) {
+      return 'avatar_url' in participant 
+        ? participant.avatar_url 
+        : participant.user.avatar_url
     }
+    return undefined
   };
 
   // Helper to get participant count text

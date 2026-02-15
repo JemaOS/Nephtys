@@ -1044,11 +1044,65 @@ export function CallsPage() {
     return call.type === 'video' ? 'Appel vidéo' : 'Appel vocal'
   }
 
-  // Helper to get duration text
-  const getCallDurationText = (call: CallLog): string => {
-    const isMissed = call.status === 'missed' || call.status === 'rejected'
-    const isAnswered = call.status === 'answered' || call.status === 'ended'
-    return isMissed ? 'Non répondu' : (isAnswered && call.duration ? formatCallDuration(call.duration) : 'Non répondu')
+  // Helper: Render call status display
+  const renderCallStatus = (call: CallLog): string => {
+    switch (call.status) {
+      case 'answered': return 'Répondu'
+      case 'missed': return 'Manqué'
+      case 'rejected': return 'Refusé'
+      case 'ended': return 'Terminé'
+      default: return 'Initié'
+    }
+  }
+
+  // Helper: Render avatar based on call details
+  const renderCallAvatar = (avatarUrl: string | null | undefined, isGroupCall: boolean, displayName: string) => {
+    if (avatarUrl) {
+      return <img src={avatarUrl} alt={displayName} className="w-20 h-20 rounded-full object-cover" />
+    }
+    if (isGroupCall) {
+      return (
+        <div className="w-20 h-20 rounded-full bg-gradient-to-br from-accent to-primary-600 flex items-center justify-center text-white">
+          <Users size={36} />
+        </div>
+      )
+    }
+    return (
+      <div className="w-20 h-20 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-2xl">
+        {displayName[0]?.toUpperCase()}
+      </div>
+    )
+  }
+
+  // Helper: Handle favorite button click
+  const handleFavoriteClick = (call: CallLog) => {
+    if (call.is_group_call) {
+      toggleFavorite(call.conversation_id, true)
+    } else {
+      const isOut = call.caller_id === user?.id
+      const otherProfile = isOut ? call.callee_profile : call.caller_profile
+      if (otherProfile) {
+        toggleFavorite(otherProfile.id, false)
+      }
+    }
+  }
+
+  // Helper: Handle call back action
+  const handleCallBack = async (call: CallLog) => {
+    if (call.is_group_call) {
+      try {
+        await startGroupCall(call.conversation_id, {
+          audio: true,
+          video: call.type === 'video'
+        })
+        setSelectedCall(null)
+      } catch (error) {
+        console.error('Erreur lors du rappel de groupe:', error)
+        alert('Impossible de \'appel de groupe')
+      }
+    } else {
+      handleRecall()
+    }
   }
 
   // Component: Call Details Content (shared between mobile and desktop)
@@ -1057,23 +1111,15 @@ export function CallsPage() {
     
     const displayName = getCallDisplayName(call)
     const avatarUrl = getCallAvatarUrl(call)
+    const isCallMissedOrRejected = call.status === 'missed' || call.status === 'rejected'
+    const statusClass = isCallMissedOrRejected ? 'text-[#ea4335]' : 'text-primary-600 dark:text-primary-400'
     
     return (
       <>
         {/* Contact Section */}
         <div className="bg-bg-hover rounded-2xl p-6">
           <div className="flex flex-col items-center gap-4">
-            {avatarUrl ? (
-              <img src={avatarUrl} alt={displayName} className="w-20 h-20 rounded-full object-cover" />
-            ) : isGroupCall ? (
-              <div className="w-20 h-20 rounded-full bg-gradient-to-br from-accent to-primary-600 flex items-center justify-center text-white">
-                <Users size={36} />
-              </div>
-            ) : (
-              <div className="w-20 h-20 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-2xl">
-                {displayName[0]?.toUpperCase()}
-              </div>
-            )}
+            {renderCallAvatar(avatarUrl, isGroupCall, displayName)}
             <div className="text-center">
               <h3 className="text-lg font-medium text-text-primary mb-1 flex items-center justify-center gap-2">
                 {isGroupCall && <Users size={18} className="text-text-secondary" />}
@@ -1113,11 +1159,8 @@ export function CallsPage() {
 
           <div className="flex items-center justify-between">
             <span className="text-text-secondary">Statut</span>
-            <span className={`${call.status === 'missed' || call.status === 'rejected' ? 'text-[#ea4335]' : 'text-primary-600 dark:text-primary-400'}`}>
-              {call.status === 'answered' ? 'Répondu' :
-               call.status === 'missed' ? 'Manqué' :
-               call.status === 'rejected' ? 'Refusé' :
-               call.status === 'ended' ? 'Terminé' : 'Initié'}
+            <span className={statusClass}>
+              {renderCallStatus(call)}
             </span>
           </div>
         </div>
@@ -1126,17 +1169,7 @@ export function CallsPage() {
         <div className="space-y-3">
           {/* Favoris */}
           <button
-            onClick={() => {
-              if (call.is_group_call) {
-                toggleFavorite(call.conversation_id, true)
-              } else {
-                const isOut = call.caller_id === user?.id
-                const otherProfile = isOut ? call.callee_profile : call.caller_profile
-                if (otherProfile) {
-                  toggleFavorite(otherProfile.id, false)
-                }
-              }
-            }}
+            onClick={() => handleFavoriteClick(call)}
             className="w-full py-3 rounded-xl bg-bg-hover hover:bg-bg-surface text-text-primary font-medium flex items-center justify-center gap-2"
           >
             <Star size={20} className={isFavorite(call) ? 'fill-[#6b6fdb] text-accent' : ''} />
@@ -1154,22 +1187,7 @@ export function CallsPage() {
           </button>
           {/* Rappeler */}
           <button
-            onClick={async () => {
-              if (call.is_group_call) {
-                try {
-                  await startGroupCall(call.conversation_id, {
-                    audio: true,
-                    video: call.type === 'video'
-                  })
-                  setSelectedCall(null)
-                } catch (error) {
-                  console.error('Erreur lors du rappel de groupe:', error)
-                  alert('Impossible de \'appel de groupe')
-                }
-              } else {
-                handleRecall()
-              }
-            }}
+            onClick={() => handleCallBack(call)}
             className="w-full py-3 rounded-xl bg-bg-hover hover:bg-bg-surface text-text-primary font-medium flex items-center justify-center gap-2"
           >
             <Phone size={20} />
