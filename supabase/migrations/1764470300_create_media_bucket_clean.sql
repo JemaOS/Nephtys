@@ -1,5 +1,5 @@
 -- Clean media bucket creation
-DO $
+DO $$
 DECLARE
   bucket_id_val TEXT := 'media';
 BEGIN
@@ -54,4 +54,4 @@ BEGIN
   ADD COLUMN IF NOT EXISTS file_size BIGINT;
 
   CREATE INDEX IF NOT EXISTS idx_messages_media_type ON public.messages(media_type) WHERE media_type IS NOT NULL;
-END $;
+END $$;

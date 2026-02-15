@@ -3,7 +3,7 @@
 -- Date: 2025-11-30
 
 -- Define constants to avoid duplication
-DO $
+DO $$
 DECLARE
   bucket_id_val TEXT := 'media';
 BEGIN
@@ -51,7 +51,7 @@ BEGIN
     bucket_id = %L
     AND (storage.foldername(name))[1] = auth.uid()::text
   )', bucket_id_val);
-END $;
+END $$;
 
 -- Add media-related columns to messages table if not exists
 ALTER TABLE public.messages

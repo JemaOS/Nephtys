@@ -1,6 +1,6 @@
 -- Allow uploads to restored/ folder for authenticated users (matching their user ID)
 
-DO $
+DO $$
 DECLARE
   bucket_id_val TEXT := 'media';
   folder_avatars TEXT := 'avatars';
@@ -81,4 +81,4 @@ BEGIN
       )
     )
   )', bucket_id_val, folder_avatars, folder_groups, folder_restored);
-END $;
+END $$;

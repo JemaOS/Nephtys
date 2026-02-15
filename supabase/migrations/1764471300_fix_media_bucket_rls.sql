@@ -1,6 +1,6 @@
 -- Fix RLS policies for media bucket to allow avatars and group photos
 
-DO $
+DO $$
 DECLARE
   bucket_id_val TEXT := 'media';
   folder_avatars TEXT := 'avatars';
@@ -69,4 +69,4 @@ BEGIN
       (storage.foldername(name))[1] = auth.uid()::text
     )
   )', bucket_id_val, folder_avatars, folder_groups);
-END $;
+END $$;
