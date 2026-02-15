@@ -128,11 +128,11 @@ export const AudioFilePlayer: React.FC<AudioFilePlayerProps> = ({
 
   useEffect(() => {
     if (isDragging) {
-      window.addEventListener('mousemove', handleProgressDrag);
-      window.addEventListener('mouseup', handleMouseUp);
+      globalThis.addEventListener('mousemove', handleProgressDrag);
+      globalThis.addEventListener('mouseup', handleMouseUp);
       return () => {
-        window.removeEventListener('mousemove', handleProgressDrag);
-        window.removeEventListener('mouseup', handleMouseUp);
+        globalThis.removeEventListener('mousemove', handleProgressDrag);
+        globalThis.removeEventListener('mouseup', handleMouseUp);
       };
     }
   }, [isDragging, handleProgressDrag, handleMouseUp]);
@@ -255,7 +255,9 @@ export const AudioFilePlayer: React.FC<AudioFilePlayerProps> = ({
         onEnded={handleEnded}
         preload="metadata"
         className="hidden"
-      />
+      >
+        <track kind="captions" />
+      </audio>
     </div>
   );
 };

@@ -25,7 +25,7 @@ const replacements = [
 ];
 
 function processFile(filePath) {
-  let content = fs.readFileSync(filePath, { encoding: 'utf8' });
+  let content = readFileSync(filePath, { encoding: 'utf8' });
   let modified = false;
   let changes = [];
   
@@ -40,7 +40,7 @@ function processFile(filePath) {
   }
   
   if (modified) {
-    fs.writeFileSync(filePath, content, { encoding: 'utf8' });
+    writeFileSync(filePath, content, { encoding: 'utf8' });
     console.log(`✅ Fixed: ${filePath}`);
     changes.forEach(c => console.log(c));
     console.log('');
@@ -51,11 +51,11 @@ function processFile(filePath) {
 
 function processDirectory(dirPath) {
   let count = 0;
-  const items = fs.readdirSync(dirPath);
+  const items = readdirSync(dirPath);
   
   for (const item of items) {
     const fullPath = join(dirPath, item);
-    const stat = fs.statSync(fullPath);
+    const stat = statSync(fullPath);
     
     if (stat.isDirectory() && !item.startsWith('.') && item !== 'node_modules') {
       count += processDirectory(fullPath);

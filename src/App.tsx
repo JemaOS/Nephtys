@@ -23,7 +23,7 @@ const ArchivedPage = lazy(() => import('./pages/ArchivedPage').then(module => ({
 const SettingsPage = lazy(() => import('./pages/SettingsPage').then(module => ({ default: module.SettingsPage })))
 
 // Optimized loading component that shows quickly and doesn't block
-function LoadingScreen({ message = 'Chargement...' }: { message?: string }) {
+function LoadingScreen({ message = 'Chargement...' }: { readonly message?: string }) {
   const [showSlowWarning, setShowSlowWarning] = useState(false);
   
   useEffect(() => {
@@ -48,7 +48,7 @@ function LoadingScreen({ message = 'Chargement...' }: { message?: string }) {
   );
 }
 
-function PrivateRoute({ children }: { children: React.ReactNode }) {
+function PrivateRoute({ children }: { readonly children: React.ReactNode }) {
   const { user, loading, isOffline } = useAuth()
   
   // Show loading only briefly - if we have cached user, show content immediately
@@ -127,7 +127,7 @@ function SupabaseReconnectHandler() {
   return null // This component doesn't render anything
 }
 
-function PublicRoute({ children }: { children: React.ReactNode }) {
+function PublicRoute({ children }: { readonly children: React.ReactNode }) {
   const { user, loading } = useAuth()
   
   // Show loading only briefly
@@ -135,7 +135,7 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
     return <LoadingScreen />;
   }
   
-  return !user ? <>{children}</> : <Navigate to="/chats" />
+  return user ? <Navigate to="/chats" /> : <>{children}</>
 }
 
 function AppRoutes() {
