@@ -644,7 +644,7 @@ export const MessageList: React.FC<MessageListProps> = ({
       ) : (
         <>
           <div>
-          {timelineItems.map((item) => renderTimelineItem(item))}
+          {timelineItems.map((item) => {
             // Render call messages
             if (item.type === 'call') {
               const call = item.data as CallLog
