@@ -1001,105 +1001,105 @@ export function ChatsPage() {
   }
 
   // Helper function to get platform display name for URLs - extracted to reduce complexity
-  const getPlatformDisplayName = (hostname: string): string | null => {
-    // YouTube special handling
-    if (hostname.includes('youtube.com') || hostname.includes('youtu.be')) {
-      return '📹 youtube.com'
-    }
-    // Instagram
-    if (hostname.includes('instagram.com')) {
-      return '📷 instagram.com'
-    }
-    // Twitter/X
-    if (hostname.includes('twitter.com') || hostname.includes('x.com')) {
-      return '🐦 x.com'
-    }
-    // Facebook
-    if (hostname.includes('facebook.com') || hostname.includes('fb.com')) {
-      return '📘 facebook.com'
-    }
-    // TikTok
-    if (hostname.includes('tiktok.com')) {
-      return '🎵 tiktok.com'
-    }
-    // Spotify
-    if (hostname.includes('spotify.com')) {
-      return '🎧 spotify.com'
-    }
-    // LinkedIn
-    if (hostname.includes('linkedin.com')) {
-      return '💼 linkedin.com'
-    }
-    // GitHub
-    if (hostname.includes('github.com')) {
-      return '💻 github.com'
-    }
-    // Generic link with domain
-    return null
+const getPlatformDisplayName = (hostname: string): string | null => {
+  // YouTube special handling
+  if (hostname.includes('youtube.com') || hostname.includes('youtu.be')) {
+    return '📹 youtube.com'
   }
+  // Instagram
+  if (hostname.includes('instagram.com')) {
+    return '📷 instagram.com'
+  }
+  // Twitter/X
+  if (hostname.includes('twitter.com') || hostname.includes('x.com')) {
+    return '🐦 x.com'
+  }
+  // Facebook
+  if (hostname.includes('facebook.com') || hostname.includes('fb.com')) {
+    return '📘 facebook.com'
+  }
+  // TikTok
+  if (hostname.includes('tiktok.com')) {
+    return '🎵 tiktok.com'
+  }
+  // Spotify
+  if (hostname.includes('spotify.com')) {
+    return '🎧 spotify.com'
+  }
+  // LinkedIn
+  if (hostname.includes('linkedin.com')) {
+    return '💼 linkedin.com'
+  }
+  // GitHub
+  if (hostname.includes('github.com')) {
+    return '💻 github.com'
+  }
+  // Generic link with domain
+  return null
+}
 
-  // Helper function to process URL and return display text - extracted to reduce complexity
-  const processUrlDisplay = (url: string): string => {
-    try {
-      const urlObj = new URL(url)
-      const hostname = urlObj.hostname.replace('www.', '')
-      
-      const platformDisplay = getPlatformDisplayName(hostname)
-      if (platformDisplay) {
-        return platformDisplay
-      }
-      return `🔗 ${hostname}`
-    } catch {
-      return '🔗 Lien'
+// Helper function to process URL and return display text - extracted to reduce complexity
+const processUrlDisplay = (url: string): string => {
+  try {
+    const urlObj = new URL(url)
+    const hostname = urlObj.hostname.replace('www.', '')
+    
+    const platformDisplay = getPlatformDisplayName(hostname)
+    if (platformDisplay) {
+      return platformDisplay
     }
+    return `🔗 ${hostname}`
+  } catch {
+    return '🔗 Lien'
   }
+}
 
-  // Helper function to get message preview text - extracted to module level for reduced complexity
-  const getLastMessagePreview = (lastMessage: Message | undefined): string => {
-    if (!lastMessage) return 'Aucun message'
-    
-    const msg = lastMessage
-    
-    // Check for GIF pattern: [GIF](url) or caption\n[GIF](url)
-    if (msg.type === 'text' && msg.content) {
-      const gifMatch = msg.content.match(/^(?:[\s\S]*?\n)?\[GIF\]\(https?:\/\/[^\)]+\)$/)
-      if (gifMatch) {
-        // Extract caption if present
-        const captionMatch = msg.content.match(/^([\s\S]*?)\n\[GIF\]/)
-        const caption = captionMatch ? captionMatch[1].trim() : ''
-        return caption ? `GIF • ${caption}` : 'GIF'
-      }
-      
-      // Check for STICKER pattern: [STICKER](url) or caption\n[STICKER](url)
-      const stickerMatch = msg.content.match(/^(?:[\s\S]*?\n)?\[STICKER\]\(https?:\/\/[^\)]+\)$/)
-      if (stickerMatch) {
-        const captionMatch = msg.content.match(/^([\s\S]*?)\n\[STICKER\]/)
-        const caption = captionMatch ? captionMatch[1].trim() : ''
-        return caption ? `Sticker • ${caption}` : 'Sticker'
-      }
-      
-      // Check for URLs and shorten them like WhatsApp
-      const urlRegex = /https?:\/\/[^\s]+/gi
-      const urls = msg.content.match(urlRegex)
-      if (urls && urls.length > 0) {
-        return processUrlDisplay(urls[0])
-      }
-      
-      // Regular text message
-      return msg.content
+// Helper function to get message preview text - extracted to module level for reduced complexity
+export const getLastMessagePreview = (lastMessage: Message | undefined): string => {
+  if (!lastMessage) return 'Aucun message'
+  
+  const msg = lastMessage
+  
+  // Check for GIF pattern: [GIF](url) or caption\n[GIF](url)
+  if (msg.type === 'text' && msg.content) {
+    const gifMatch = msg.content.match(/^(?:[\s\S]*?\n)?\[GIF\]\(https?:\/\/[^\)]+\)$/)
+    if (gifMatch) {
+      // Extract caption if present
+      const captionMatch = msg.content.match(/^([\s\S]*?)\n\[GIF\]/)
+      const caption = captionMatch ? captionMatch[1].trim() : ''
+      return caption ? `GIF • ${caption}` : 'GIF'
     }
     
-    // Media types
-    if (msg.type === 'image') return '📷 Photo'
-    if (msg.type === 'video') return '🎬 Vidéo'
-    if (msg.type === 'audio') return '🎤 Message vocal'
-    if (msg.type === 'file') return `📎 ${msg.file_name || 'Document'}`
+    // Check for STICKER pattern: [STICKER](url) or caption\n[STICKER](url)
+    const stickerMatch = msg.content.match(/^(?:[\s\S]*?\n)?\[STICKER\]\(https?:\/\/[^\)]+\)$/)
+    if (stickerMatch) {
+      const captionMatch = msg.content.match(/^([\s\S]*?)\n\[STICKER\]/)
+      const caption = captionMatch ? captionMatch[1].trim() : ''
+      return caption ? `Sticker • ${caption}` : 'Sticker'
+    }
     
-    return msg.content || '📎 Fichier'
+    // Check for URLs and shorten them like WhatsApp
+    const urlRegex = /https?:\/\/[^\s]+/gi
+    const urls = msg.content.match(urlRegex)
+    if (urls && urls.length > 0) {
+      return processUrlDisplay(urls[0])
+    }
+    
+    // Regular text message
+    return msg.content
   }
+  
+  // Media types
+  if (msg.type === 'image') return '📷 Photo'
+  if (msg.type === 'video') return '🎬 Vidéo'
+  if (msg.type === 'audio') return '🎤 Message vocal'
+  if (msg.type === 'file') return `📎 ${msg.file_name || 'Document'}`
+  
+  return msg.content || '📎 Fichier'
+}
 
 // Helper function to check if conversation matches search query
-const matchesSearchQuery = (conv: ConversationWithDetails, query: string): boolean => {
+export const matchesSearchQuery = (conv: ConversationWithDetails, query: string): boolean => {
   // Check conversation name first
   if (conv.name?.toLowerCase().includes(query)) {
     return true
@@ -1121,8 +1121,8 @@ const matchesSearchQuery = (conv: ConversationWithDetails, query: string): boole
   return false
 }
 
-// Helper function to filter conversations
-const filterConversations = (
+// Helper function to filter conversations - extracted to module level
+export const filterConversations = (
   conversations: ConversationWithDetails[],
   searchQuery: string,
   activeFilter: 'all' | 'unread' | 'groups'
