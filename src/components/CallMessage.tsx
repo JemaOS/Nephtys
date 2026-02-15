@@ -149,18 +149,16 @@ export function CallMessage({
 
   return (
     <div className="flex justify-center my-3 px-4">
-      <div
+      <button
+        type="button"
         className={`
           relative flex items-center gap-3 px-4 py-3 rounded-2xl
           bg-bg-surface/80 backdrop-blur-sm
           border border-bg-hover
           shadow-sm
-          max-w-[85%] sm:max-w-[70%]
+          max-w-[85%] sm:max-w-[70%] w-full text-left
           ${onClick ? 'cursor-pointer hover:bg-bg-surface transition-colors' : ''}
         `}
-        role="button"
-        tabIndex={0}
-        onKeyDown={(e) => e.key === 'Enter' && onClick?.()}
         onClick={onClick}
       >
         {/* Call direction/status icon */}
@@ -210,7 +208,7 @@ export function CallMessage({
             {getCallbackIcon()}
           </div>
         )}
-      </div>
+      </button>
     </div>
   );
 }

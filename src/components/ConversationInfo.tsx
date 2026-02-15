@@ -884,9 +884,9 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
             <p className="text-xs text-text-secondary mb-2">
               {formatDate(message.created_at)}
             </p>
-            {urls.map((url, index) => (
+            {urls.map((url) => (
               <a
-                key={index}
+                key={url}
                 href={url}
                 target="_blank"
                 rel="noopener noreferrer"

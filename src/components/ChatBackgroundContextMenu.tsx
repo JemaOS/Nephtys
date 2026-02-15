@@ -113,11 +113,11 @@ export const ChatBackgroundContextMenu: React.FC<ChatBackgroundContextMenuProps>
           top: adjustedPosition.y,
         }}
       >
-        {menuItems.map((item, index) => {
+        {menuItems.map((item) => {
           const Icon = item.icon;
           return (
             <button
-              key={index}
+              key={item.label}
               onClick={item.onClick}
               className="w-full flex items-center gap-3 px-4 py-3 hover:bg-bg-hover transition-colors text-left text-text-primary"
               type="button"

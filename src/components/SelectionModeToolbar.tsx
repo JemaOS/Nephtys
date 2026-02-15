@@ -50,11 +50,11 @@ export const SelectionModeToolbar: React.FC<SelectionModeToolbarProps> = ({
       </div>
 
       <div className="flex items-center gap-2">
-        {actions.map((action, index) => {
+        {actions.map((action) => {
           const Icon = action.icon;
           return (
             <button
-              key={index}
+              key={action.label}
               onClick={action.onClick}
               disabled={!hasSelection}
               className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${

@@ -158,7 +158,7 @@ export const MessageContextMenu: React.FC<MessageContextMenuProps> = ({
         a.download = `download-${Date.now()}`;
         document.body.appendChild(a);
         a.click();
-        document.body.removeChild(a);
+        a.remove();
         window.URL.revokeObjectURL(url);
       } catch (error) {
         console.error('Error downloading file:', error);
@@ -306,11 +306,11 @@ export const MessageContextMenu: React.FC<MessageContextMenuProps> = ({
 
         {/* Menu Items */}
         <div className="py-2 max-h-[300px] overflow-y-auto">
-          {visibleItems.map((item, index) => {
+          {visibleItems.map((item) => {
             const Icon = item.icon;
             return (
               <button
-                key={index}
+                key={item.label}
                 onClick={item.onClick}
                 className={`w-full flex items-center gap-3 px-4 py-2.5 hover:bg-bg-hover transition-colors text-left ${
                   item.danger ? 'text-[#ea4335]' : 'text-text-primary'
