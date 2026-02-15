@@ -678,7 +678,7 @@ export class E2EEMessagingService {
     
     for (let i = 0; i < count; i++) {
       const keyPair = generateX25519KeyPair();
-      const keyId = Math.floor(Math.random() * 0xFFFFFFFF);
+      const keyId = crypto.getRandomValues(new Uint32Array(1))[0];
       
       this.keyBundle!.oneTimePreKeys.push({
         keyId,

@@ -88,6 +88,38 @@ interface MessageTypeProps {
   isDocumentMessage: boolean
 }
 
+// Helper to parse special messages (GIF, Sticker) safely to avoid ReDoS
+const parseSpecialMessage = (content: string, tag: string): RegExpMatchArray | null => {
+  // Safe parsing to avoid ReDoS
+  // Format: [Optional Prefix] [Content] [TAG](URL)
+  
+  // 1. Check if it ends with the tag
+  // We use a simple regex anchored at the end
+  const suffixRegex = new RegExp(`\\[${tag}\\]\\((https?:\\/\\/[^\\)]+)\\)$`)
+  const match = content.match(suffixRegex)
+  
+  if (!match) return null
+  
+  // Ensure it's at the very end
+  if (!content.endsWith(match[0])) return null
+  
+  const url = match[1]
+  const beforeTag = content.substring(0, content.length - match[0].length)
+  
+  // 2. Handle prefix
+  const prefixRegex = /^(?:\[Transféré\]\s*)?/
+  const prefixMatch = beforeTag.match(prefixRegex)
+  const prefix = prefixMatch ? prefixMatch[0] : ''
+  
+  const realContent = beforeTag.substring(prefix.length)
+  
+  // Return in the format expected by the component: [fullMatch, content, url]
+  const result = [content, realContent, url] as RegExpMatchArray
+  result.index = 0
+  result.input = content
+  return result
+}
+
 // Helper function to determine message type properties - extracted to reduce complexity
 const getMessageType = (message: Message): MessageTypeProps => {
   const mediaUrl = message.media_url || message.file_url || ''
@@ -95,13 +127,13 @@ const getMessageType = (message: Message): MessageTypeProps => {
   
   // Check for GIF
   const gifMatch = message.type === 'text' && message.content && !mediaUrl
-    ? message.content.match(/^(?:\[Transféré\]\s*)?([\s\S]*?)\[GIF\]\((https?:\/\/[^\)]+)\)$/)
+    ? parseSpecialMessage(message.content, 'GIF')
     : null
   const isGifMessage = !!gifMatch
   
   // Check for sticker
   const stickerMatch = message.type === 'text' && message.content && !mediaUrl
-    ? message.content.match(/^(?:\[Transféré\]\s*)?([\s\S]*?)\[STICKER\]\((https?:\/\/[^\)]+)\)$/)
+    ? parseSpecialMessage(message.content, 'STICKER')
     : null
   const isStickerMessage = !!stickerMatch
   

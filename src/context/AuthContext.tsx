@@ -96,6 +96,18 @@ function cacheProfile(profile: Profile | null): void {
   }
 }
 
+// Helper: Generate secure random string
+const generateSecureRandomString = (length: number = 12): string => {
+  const charset = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  let result = '';
+  const values = new Uint8Array(length);
+  crypto.getRandomValues(values);
+  for (let i = 0; i < length; i++) {
+    result += charset[values[i] % charset.length];
+  }
+  return result;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
@@ -370,8 +382,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // Créer un compte temporaire avec un email valide
       const timestamp = Date.now()
-      const randomId = Math.random().toString(36).substring(2, 8)
-      const randomPassword = Math.random().toString(36).substring(2) + Math.random().toString(36).substring(2) + '!A1'
+      const randomId = generateSecureRandomString(6)
+      const randomPassword = generateSecureRandomString(16) + '!A1'
       
       const uniqueUsername = `${sanitizedInput}${timestamp.toString(36)}`
       
