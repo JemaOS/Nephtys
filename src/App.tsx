@@ -2,6 +2,7 @@
 // Distributed under the license specified in the root directory of this project.
 
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { ThemeProvider } from './context/ThemeContext'
 import { CallProvider } from './context/CallContext'
@@ -12,6 +13,18 @@ import { useKeepAlive } from './hooks/useKeepAlive'
 import { startConnectionMonitoring, stopConnectionMonitoring } from './lib/supabase'
 import { useEffect, useState, useCallback, lazy, Suspense } from 'react'
 import { ErrorBoundary } from './components/ErrorBoundary'
+
+// Create a QueryClient with optimized caching for instant user profile display
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: Infinity, // Profiles don't change often, cache indefinitely until page refresh
+      gcTime: 1000 * 60 * 30, // Keep unused data for 30 minutes
+      refetchOnWindowFocus: false, // Don't refetch when window regains focus (prevents flickering)
+      retry: 1, // Only retry once on failure
+    },
+  },
+})
 
 const AuthPage = lazy(() => import('./pages/AuthPage').then(module => ({ default: module.AuthPage })))
 const ChatsPage = lazy(() => import('./pages/ChatsPage').then(module => ({ default: module.ChatsPage })))
@@ -201,16 +214,18 @@ function AppRoutes() {
 function App() {
   return (
     <BrowserRouter>
-      <ThemeProvider>
-        <AuthProvider>
-          <CallProvider>
-            <SupabaseReconnectHandler />
-            <OfflineIndicator />
-            <PersistentCallScreen />
-            <AppRoutes />
-          </CallProvider>
-        </AuthProvider>
-      </ThemeProvider>
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <AuthProvider>
+            <CallProvider>
+              <SupabaseReconnectHandler />
+              <OfflineIndicator />
+              <PersistentCallScreen />
+              <AppRoutes />
+            </CallProvider>
+          </AuthProvider>
+        </ThemeProvider>
+      </QueryClientProvider>
     </BrowserRouter>
   )
 }

@@ -10,6 +10,7 @@ import { MediaMessage } from '@/components/MediaMessage'
 import { VoiceMessage } from '@/components/VoiceMessage'
 import { AudioFilePlayer } from '@/components/AudioFilePlayer'
 import { LinkPreview } from '@/components/LinkPreview'
+import { MessageListSkeleton } from '@/components/MessageListSkeleton'
 import { formatTime } from '@/components/MessageItemComponents'
 
 // Helper to extract message type info - extracted to reduce complexity in MessageList
@@ -626,9 +627,7 @@ export const MessageList: React.FC<MessageListProps> = ({
       onContextMenu={handleBackgroundContextMenu}
     >
       {loading ? (
-        <div className="flex justify-center items-center h-full">
-          <div className="w-8 h-8 rounded-full border-4 border-[#787add] border-t-transparent animate-spin" />
-        </div>
+        <MessageListSkeleton count={8} />
       ) : messages.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-full text-center space-y-3 px-8">
           <div className="w-16 h-16 rounded-full bg-bg-surface flex items-center justify-center">

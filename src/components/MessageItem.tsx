@@ -220,8 +220,8 @@ const renderTextContent = (message: Message, isOwn: boolean, msgType: MessageTyp
   )
 }
 
-// Main MessageItem component
-export const MessageItem: React.FC<MessageItemProps> = ({
+// Main MessageItem component - wrapped with React.memo for performance
+export const MessageItem: React.FC<MessageItemProps> = React.memo(({
   message,
   isOwn,
   userId,
@@ -471,6 +471,6 @@ export const MessageItem: React.FC<MessageItemProps> = ({
       {renderReactions()}
     </div>
   )
-}
+})
 
 export default MessageItem
