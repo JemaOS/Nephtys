@@ -330,6 +330,19 @@ export function ChatsPage() {
     }, 500) // 500ms debounce
   }, [loadConversationsFromServer])
   
+  // Instant handler for conversation deletion (when user is removed from conversation)
+  const handleConversationMemberRemoved = useCallback((payload: any) => {
+    if (!user) return
+    
+    const member = payload.old
+    // Check if the current user was removed from a conversation
+    if (member && member.user_id === user.id) {
+      console.log('[ChatsPage] Current user removed from conversation:', member.conversation_id)
+      // Instantly remove the conversation from the list
+      setConversations(prev => prev.filter(c => c.id !== member.conversation_id))
+    }
+  }, [user])
+  
   // Cleanup timeout on unmount
   useEffect(() => {
     return () => {
@@ -611,7 +624,14 @@ export function ChatsPage() {
             schema: 'public',
             table: 'conversation_members'
           },
-          () => debouncedReload()
+          (payload) => {
+            // Handle DELETE events instantly (user removed from conversation)
+            if (payload.eventType === 'DELETE') {
+              handleConversationMemberRemoved(payload)
+            }
+            // For other events, use debounced reload
+            debouncedReload()
+          }
         )
         .subscribe()
 

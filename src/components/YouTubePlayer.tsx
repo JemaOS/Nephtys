@@ -213,6 +213,12 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
           className="absolute top-0 left-0 right-0 z-20 bg-gradient-to-b from-black/80 to-transparent p-2 flex items-center justify-between cursor-grab active:cursor-grabbing"
           onMouseDown={handleDragStart}
           onTouchStart={handleDragStart}
+          role="button"
+          tabIndex={0}
+          aria-label="Déplacer le lecteur"
+          onKeyDown={(e) => {
+            // Allow keyboard navigation if needed
+          }}
         >
           {/* Drag indicator */}
           <div className="flex items-center gap-1.5 flex-1 mr-2">

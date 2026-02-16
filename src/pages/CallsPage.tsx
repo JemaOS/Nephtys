@@ -1717,10 +1717,11 @@ export function CallsPage() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm text-[#787add]">Nom d'utilisateur (pseudo)</label>
+              <label htmlFor="add-contact-username" className="text-sm text-[#787add]">Nom d'utilisateur (pseudo)</label>
               <div className="relative">
                 <UserPlus size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" />
                 <input
+                  id="add-contact-username"
                   type="text"
                   placeholder="pseudo_utilisateur"
                   value={usernameToAdd}
@@ -1781,6 +1782,14 @@ export function CallsPage() {
           <div
             className="fixed inset-0 z-40"
             onClick={handleCloseContextMenu}
+            role="button"
+            tabIndex={0}
+            aria-label="Fermer le menu"
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                handleCloseContextMenu()
+              }
+            }}
           />
           
           {/* Menu contextuel */}

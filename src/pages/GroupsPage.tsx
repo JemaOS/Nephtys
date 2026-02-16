@@ -146,10 +146,11 @@ export function GroupsPage() {
           {/* Group Info */}
           <div className="space-y-4">
             <div className="space-y-2">
-              <label className="text-sm text-accent">Nom du groupe</label>
+              <label htmlFor="group-name" className="text-sm text-accent">Nom du groupe</label>
               <div className="relative">
                 <Users size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" />
                 <input
+                  id="group-name"
                   type="text"
                   placeholder="Ex: Famille, Amis, Projet..."
                   value={groupName}
@@ -160,8 +161,9 @@ export function GroupsPage() {
             </div>
             
             <div className="space-y-2">
-              <label className="text-sm text-accent">Description (optionnel)</label>
+              <label htmlFor="group-description" className="text-sm text-accent">Description (optionnel)</label>
               <textarea
+                id="group-description"
                 value={groupDescription}
                 onChange={(e) => setGroupDescription(e.target.value)}
                 placeholder="Décrivez le groupe..."

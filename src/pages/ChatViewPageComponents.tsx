@@ -312,7 +312,18 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
             {/* Selection mode dropdown menu */}
             {showSelectionMenu && (
               <>
-                <div className="fixed inset-0 z-40" onClick={() => setShowSelectionMenu(false)} />
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setShowSelectionMenu(false)}
+                  role="button"
+                  tabIndex={0}
+                  aria-label="Fermer le menu"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                      setShowSelectionMenu(false)
+                    }
+                  }}
+                />
                 <div className="absolute right-0 top-12 z-50 min-w-[200px] bg-bg-surface rounded-2xl shadow-2xl py-2 border border-bg-hover">
                   <button
                     onClick={() => {
@@ -495,7 +506,18 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
           
           {showConversationMenu && (
             <>
-              <div className="fixed inset-0 z-40" onClick={() => setShowConversationMenu(false)} />
+              <div
+                className="fixed inset-0 z-40"
+                onClick={() => setShowConversationMenu(false)}
+                role="button"
+                tabIndex={0}
+                aria-label="Fermer le menu"
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    setShowConversationMenu(false)
+                  }
+                }}
+              />
               <div className="absolute right-0 top-12 z-50 min-w-[240px] bg-bg-surface rounded-2xl shadow-2xl py-2 border border-bg-hover">
                 {/* For group conversations: add members. For direct: create new group */}
                 <button
@@ -1141,7 +1163,8 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = ({
           handleSelectMessage(message.id)
         }
       }}
-      role="button"
+      role="article"
+      aria-label={`Message de ${isOwn ? 'vous' : 'autre utilisateur'}`}
       tabIndex={0}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -1337,6 +1360,9 @@ export const MessageList: React.FC<MessageListProps> = ({
       style={getWallpaperStyle()}
       onContextMenu={handleBackgroundContextMenu}
       onScroll={onScroll}
+      role="region"
+      aria-label="Liste des messages"
+      tabIndex={0}
     >
       <div ref={messagesContentRef} className="flex flex-col min-h-full">
       {/* Loading indicator for infinite scroll */}

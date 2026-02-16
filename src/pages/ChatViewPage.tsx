@@ -642,7 +642,14 @@ export function ChatViewPage() {
       }, (payload) => {
         console.log('[ChatViewPage] Realtime UPDATE received:', payload.new?.id)
         const updatedMsg = payload.new as Message
-        setMessages(prev => updateMessageInList(prev, updatedMsg))
+        
+        // Check if message was soft-deleted (has deleted_at)
+        if (updatedMsg.deleted_at) {
+          console.log('[ChatViewPage] Message soft-deleted, removing from list:', updatedMsg.id)
+          setMessages(prev => removeMessageFromList(prev, updatedMsg.id))
+        } else {
+          setMessages(prev => updateMessageInList(prev, updatedMsg))
+        }
       })
       .on('postgres_changes', {
         event: 'DELETE', schema: 'public', table: 'messages',
@@ -675,6 +682,26 @@ export function ChatViewPage() {
         loadConversation()
       })
       .subscribe()
+
+    // Subscribe to conversation_members changes to detect when user is removed from conversation
+    const memberLeftChannel = supabase
+      .channel(`member-left:${conversationId}`)
+      .on('postgres_changes', {
+        event: 'DELETE',
+        schema: 'public',
+        table: 'conversation_members',
+        filter: `conversation_id=eq.${conversationId}`
+      }, (payload) => {
+        console.log('[ChatViewPage] Member left conversation:', payload.old)
+        // Check if the current user was removed
+        if (payload.old && payload.old.user_id === user?.id) {
+          console.log('[ChatViewPage] Current user was removed from conversation, redirecting...')
+          navigate('/chats')
+        }
+      })
+      .subscribe((status) => {
+        console.log('[ChatViewPage] Member left channel subscription status:', status)
+      })
 
     // Handle visibility change - refresh data when app comes back to foreground
     // This is critical for PWA on mobile where the app may be suspended
@@ -714,6 +741,7 @@ export function ChatViewPage() {
       supabase.removeChannel(callLogsChannel)
       supabase.removeChannel(messagesChannel)
       supabase.removeChannel(profilesChannel)
+      supabase.removeChannel(memberLeftChannel)
       unsubscribeFromConversation(conversationId)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       window.removeEventListener('supabase-reconnected', handleSupabaseReconnect)

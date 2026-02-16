@@ -887,6 +887,14 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
           onTouchMove={handlePointerMove}
           onTouchEnd={handlePointerUp}
           onTouchCancel={handlePointerUp}
+          role="application"
+          aria-label="Zone de dessin"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              onCancel();
+            }
+          }}
         >
           <canvas
             ref={canvasRef}
@@ -897,7 +905,6 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
               userSelect: 'none',
             }}
             aria-label="Éditeur d'image"
-            role="img"
           />
           <canvas
             ref={overlayCanvasRef}

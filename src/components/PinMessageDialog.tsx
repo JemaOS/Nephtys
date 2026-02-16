@@ -25,6 +25,8 @@ export const PinMessageDialog: React.FC<PinMessageDialogProps> = ({
 }) => {
   const [selectedDuration, setSelectedDuration] = useState<PinDuration>('7d');
 
+  const dialogRef = React.useRef<HTMLDivElement>(null);
+
   if (!isOpen) return null;
 
   const handlePin = () => {
@@ -40,13 +42,27 @@ export const PinMessageDialog: React.FC<PinMessageDialogProps> = ({
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-black/50 z-[250] flex items-center justify-center w-full h-full cursor-default"
-        onClick={onClose}
-        role="presentation"
+        onClick={(e) => {
+          if (dialogRef.current && !dialogRef.current.contains(e.target as Node)) {
+            onClose();
+          }
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') {
+            onClose();
+          }
+        }}
+        role="button"
+        tabIndex={0}
+        aria-label="Fermer la boîte de dialogue"
       >
         {/* Dialog */}
         <div 
+          ref={dialogRef}
           className="bg-bg-surface rounded-lg shadow-2xl w-full max-w-md mx-4 overflow-hidden cursor-auto text-left"
-          onClick={(e) => e.stopPropagation()}
+          role="dialog"
+          aria-modal="true"
+          tabIndex={-1}
         >
           {/* Header */}
           <div className="px-6 py-4">

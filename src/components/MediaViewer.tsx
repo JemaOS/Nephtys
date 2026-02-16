@@ -1069,15 +1069,29 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
 
   const quickEmojis = ['❤️', '😂', '😮', '😢', '🙏', '👍'];
 
+  // Focus the viewer on mount for keyboard accessibility
+  const viewerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (isOpen && viewerRef.current) {
+      viewerRef.current.focus();
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   return (
     <div
+      ref={viewerRef}
       className={`fixed inset-0 z-[200] bg-black flex flex-col media-viewer-fullscreen ${
         isLandscape && isMobile ? 'landscape-mode' : ''
       } ${isFullscreen ? 'fullscreen-active' : ''} ${!showControls ? 'cursor-none' : ''}`}
       onClick={() => setShowControls(true)}
       onMouseMove={handleContainerMouseMove}
+      onKeyDown={(e) => handleKeyDown(e.nativeEvent)}
+      tabIndex={-1}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Visualiseur de média"
       style={{
         // Ensure the viewer takes full screen on mobile in any orientation
         width: '100%',

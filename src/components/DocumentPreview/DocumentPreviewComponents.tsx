@@ -297,7 +297,7 @@ export const DocumentPreviewContent: React.FC<DocumentPreviewContentProps> = ({
       }
     }}
     tabIndex={0}
-    role="application"
+    role="region"
     aria-label="Zone de prévisualisation du document"
   >
     {/* Loading state */}

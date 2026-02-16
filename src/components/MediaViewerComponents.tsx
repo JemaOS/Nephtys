@@ -238,6 +238,7 @@ export const MediaViewerHeader: React.FC<MediaViewerHeaderProps> = ({
     }`}
     onMouseEnter={() => setIsHoveringControls(true)}
     onMouseLeave={() => setIsHoveringControls(false)}
+    role="banner"
   >
     <div className="flex items-center justify-between p-3 md:p-4 bg-gradient-to-b from-black/80 to-transparent">
       {/* Left side - Sender info */}
@@ -311,6 +312,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
     } ${isDragging ? 'cursor-grabbing' : ''}`}
     onMouseDown={handleMouseDown}
     onMouseMove={handleMouseMove}
+    role="presentation"
     style={{
       transform: zoom <= 1 ? `translateX(${swipeOffset}px)` : 'none',
       transition: isSwipeActive ? 'none' : 'transform 0.15s ease-out',
@@ -532,6 +534,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         onClick={(e) => e.stopPropagation()}
         onMouseEnter={() => setIsHoveringControls(true)}
         onMouseLeave={() => setIsHoveringControls(false)}
+        role="toolbar"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') {
+            // Let parent handle escape
+          }
+        }}
       >
         <div className="flex items-center gap-3">
           {/* Current time */}

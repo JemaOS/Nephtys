@@ -30,14 +30,31 @@ export const EphemeralDurationMenu: React.FC<EphemeralDurationMenuProps> = ({
     </button>
   );
 
+  const modalRef = React.useRef<HTMLDivElement>(null);
+
   return (
     <div 
       className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4"
-      role="presentation"
+      role="button"
+      tabIndex={0}
+      onClick={(e) => {
+        if (modalRef.current && !modalRef.current.contains(e.target as Node)) {
+          onClose();
+        }
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          onClose();
+        }
+        if (e.key === 'Escape') {
+          onClose();
+        }
+      }}
+      aria-label="Fermer le menu"
     >
       <div
+        ref={modalRef}
         className="bg-bg-surface w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
           if (e.key === 'Escape') {
             e.stopPropagation();
