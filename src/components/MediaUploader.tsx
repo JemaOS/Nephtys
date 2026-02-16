@@ -170,7 +170,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
   const [gifSearchQuery, setGifSearchQuery] = useState('');
   const [gifs, setGifs] = useState<any[]>([]);
   const [loadingGifs, setLoadingGifs] = useState(false);
-  const [stickerPack, setStickerPack] = useState<'love' | 'fun' | 'animals' | 'food'>('love');
+  const [stickerPack] = useState<'love' | 'fun' | 'animals' | 'food'>('love');
   // GIF/Sticker preview state
   const [selectedGifSticker, setSelectedGifSticker] = useState<{
     url: string;
@@ -252,20 +252,6 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
     }
   };
 
-  // Helper: Check if video needs compression - extracted to reduce complexity
-  const checkIfVideoNeedsCompression = async (previewUrl: string | null, file: File): Promise<boolean> => {
-    return new Promise<boolean>((resolve) => {
-      const video = document.createElement('video');
-      video.preload = 'metadata';
-      video.onloadedmetadata = () => {
-        const height = video.videoHeight;
-        resolve(height > 720);
-      };
-      video.onerror = () => resolve(false);
-      video.src = previewUrl || URL.createObjectURL(file);
-    });
-  };
-
   // Helper: Get audio duration - extracted to reduce complexity
   const getAudioDuration = async (previewUrl: string): Promise<number | undefined> => {
     try {
@@ -282,24 +268,6 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       console.warn('Could not get audio duration:', err);
       return undefined;
     }
-  };
-
-  // Helper: Compress video if needed - extracted to reduce complexity
-  const compressVideoIfNeeded = async (file: File, previewUrl: string | null): Promise<Blob> => {
-    const shouldCompress = await checkIfVideoNeedsCompression(previewUrl, file);
-    if (shouldCompress) {
-      console.log('Video is larger than 720p, compressing...');
-      setUploadPhase('compressing');
-      setUploadProgress(0);
-      
-      const compressedBlob = await compressVideo(file, (progress) => {
-        setUploadProgress(progress);
-      });
-      console.log('Video compression complete');
-      setUploadProgress(100);
-      return compressedBlob;
-    }
-    return file;
   };
 
   // Helper: Simulate upload progress - extracted to reduce complexity
@@ -473,7 +441,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
     const folder = getFolderForFileType(type);
     const fileName = `${userId}/${folder}/${Date.now()}_${file.name.replaceAll(/[^a-zA-Z0-9.-]/g, "_")}`;
 
-    const { data, error } = await supabase.storage
+    const { error } = await supabase.storage
       .from('media')
       .upload(fileName, fileToUpload, {
         cacheControl: '3600',
@@ -486,9 +454,10 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       return null;
     }
 
-    const { data: { publicUrl } } = supabase.storage
+    const { data: urlData } = supabase.storage
       .from('media')
       .getPublicUrl(fileName);
+    const publicUrl = urlData?.publicUrl ?? '';
 
     const uploadedFile: UploadedFileData = {
       url: publicUrl,
@@ -603,7 +572,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
     const folder = getFolderForFileType(type);
     const fileName = `${userId}/${folder}/${Date.now()}_${file.name.replaceAll(/[^a-zA-Z0-9.-]/g, "_")}`;
 
-    const { data, error } = await supabase.storage
+    const { error } = await supabase.storage
       .from('media')
       .upload(fileName, fileToUpload, {
         cacheControl: '3600',
@@ -616,9 +585,10 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       return null;
     }
 
-    const { data: { publicUrl } } = supabase.storage
+    const { data: urlData } = supabase.storage
       .from('media')
       .getPublicUrl(fileName);
+    const publicUrl = urlData?.publicUrl ?? '';
 
     const uploadedFile: UploadedFileData = {
       url: publicUrl,
@@ -826,10 +796,10 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
             });
 
           if (!thumbError) {
-            const { data: { publicUrl } } = supabase.storage
+            const { data: thumbData } = supabase.storage
               .from('media')
               .getPublicUrl(thumbnailFileName);
-            thumbnailUrl = publicUrl;
+            thumbnailUrl = thumbData?.publicUrl;
           }
           setDocumentUploadProgress(30);
         } catch (err) {
@@ -857,7 +827,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
         });
       }, 200);
 
-      const { data, error } = await supabase.storage
+      const { error } = await supabase.storage
         .from('media')
         .upload(fileName, documentFile, {
           cacheControl: '3600',
@@ -873,9 +843,10 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       }
 
       // Get public URL
-      const { data: { publicUrl } } = supabase.storage
+      const { data: urlData } = supabase.storage
         .from('media')
         .getPublicUrl(fileName);
+      const publicUrl = urlData?.publicUrl ?? '';
 
       setDocumentUploadProgress(100);
 
@@ -964,7 +935,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
         });
       }, 200);
 
-      const { data, error } = await supabase.storage
+      const { error } = await supabase.storage
         .from('media')
         .upload(uploadFileName, fileToUpload, {
           cacheControl: '3600',
@@ -979,9 +950,10 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
         throw new Error(error.message || 'Upload failed');
       }
 
-      const { data: { publicUrl } } = supabase.storage
+      const { data: urlData } = supabase.storage
         .from('media')
         .getPublicUrl(uploadFileName);
+      const publicUrl = urlData?.publicUrl ?? '';
 
       setUploadProgress(100);
       onUploadComplete(
@@ -1030,11 +1002,6 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
     }
   };
 
-  const formatFileSize = (bytes: number): string => {
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-  };
 
 
 

@@ -291,7 +291,8 @@ export const ImageRenderer: React.FC<{
   // Generate srcSet for responsive loading
   const srcSet = generateSrcSet(url);
   const blurPlaceholder = thumbnail || generateBlurPlaceholder(url);
-  const getContainerStyle = (): React.CSSProperties => {
+  
+  const containerStyle: React.CSSProperties = (() => {
     if (imageDimensions) {
       const displayDims = calculateDisplayDimensions(imageDimensions);
       const aspectRatio = imageDimensions.width / imageDimensions.height;
@@ -308,9 +309,7 @@ export const ImageRenderer: React.FC<{
       aspectRatio: '1',
       maxHeight: '400px',
     };
-  };
-
-  const containerStyle = getContainerStyle();
+  })();
   const hasKnownDimensions = !!imageDimensions;
   
   return (

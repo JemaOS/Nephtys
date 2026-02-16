@@ -218,7 +218,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
   const [fontFamily, setFontFamily] = useState('Arial');
   const [selectedShape, setSelectedShape] = useState<Shape>('rectangle');
   const [shapeFilled, setShapeFilled] = useState(true);
-  const [blurIntensity, setBlurIntensity] = useState(10);
+  const [blurIntensity] = useState(10);
   const [rotation, setRotation] = useState(0);
   const [flipH, setFlipH] = useState(false);
   const [flipV, setFlipV] = useState(false);
@@ -226,9 +226,9 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
   const [hdQuality, setHdQuality] = useState(true);
   const [caption, setCaption] = useState('');
   const [showColorPicker, setShowColorPicker] = useState(false);
-  const [showBrushSize, setShowBrushSize] = useState(false);
-  const [showFontSize, setShowFontSize] = useState(false);
-  const [showShapes, setShowShapes] = useState(false);
+  const [showBrushSize] = useState(false);
+  const [showFontSize] = useState(false);
+  const [showShapes] = useState(false);
   const [showQualitySettings, setShowQualitySettings] = useState(false);
   const [editingText, setEditingText] = useState<string | null>(null);
   const [newTextInput, setNewTextInput] = useState('');
@@ -754,19 +754,6 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
     }
   }, [drawPaths.length, textOverlays.length, shapeOverlays.length, emojiOverlays.length, blurRegions.length]);
 
-  // Clear all edits - wrapped in useCallback
-  const clearAll = useCallback(() => {
-    setDrawPaths([]);
-    setTextOverlays([]);
-    setShapeOverlays([]);
-    setEmojiOverlays([]);
-    setBlurRegions([]);
-    setRotation(0);
-    setFlipH(false);
-    setFlipV(false);
-    setZoom(1);
-  }, []);
-
   // Download image - wrapped in useCallback
   const downloadImage = useCallback(() => {
     const canvas = canvasRef.current;
@@ -824,7 +811,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
         setActiveTool={setActiveTool}
         setCropMode={setCropMode}
         rotateLeft={rotateLeft}
-        setShowBrushSize={setShowBrushSize}
+        setShowBrushSize={() => {}}
         toggleFlipH={toggleFlipH}
         flipH={flipH}
         hdQuality={hdQuality}
@@ -840,9 +827,9 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
         showColorPicker={showColorPicker}
         setShowColorPicker={setShowColorPicker}
         brushSize={brushSize}
-        setBrushSize={setBrushSize}
+        setBrushSize={() => {}}
         fontSize={fontSize}
-        setFontSize={setFontSize}
+        setFontSize={() => {}}
         fontFamily={fontFamily}
         setFontFamily={setFontFamily}
         selectedShape={selectedShape}

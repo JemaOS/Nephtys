@@ -205,29 +205,6 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
     }
   }, [url, fileName, isMobile, isPWA]);
 
-  // Helper: Get container style based on dimensions - extracted to reduce complexity
-  // Note: This is intentionally duplicated from ImageRenderer for component independence
-  const getContainerStyle = (): React.CSSProperties => {
-    // If we have dimensions (from props or loaded), calculate display size
-    if (imageDimensions) {
-      const displayDims = calculateDisplayDimensions(imageDimensions);
-      const aspectRatio = imageDimensions.width / imageDimensions.height;
-      return {
-        width: '100%',
-        maxWidth: `${displayDims.width}px`,
-        aspectRatio: `${aspectRatio}`,
-        maxHeight: '400px',
-      };
-    }
-    
-    // Default fallback for unknown dimensions
-    return {
-      width: '100%',
-      maxWidth: '200px',
-      aspectRatio: '1',
-      maxHeight: '400px',
-    };
-  };
 
   // Helper: Determine media type for viewer (handle GIF detection) - extracted
   const getViewerMediaType = (): 'image' | 'video' | 'audio' | 'gif' | 'sticker' => {
