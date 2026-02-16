@@ -44,6 +44,11 @@ export const MessageReactions: React.FC<MessageReactionsProps> = ({
     return acc;
   }, [] as Reaction[]);
 
+  // WHATSAPP-STYLE: Only show the current user's reaction if they have one
+  // Filter to show only the reaction from the current user (single reaction per user)
+  const userReaction = groupedReactions.find(r => r.users?.includes(currentUserId));
+  const displayReactions = userReaction ? [userReaction] : groupedReactions.slice(0, 1);
+
   const handleReactionClick = (emoji: string, users: string[] = []) => {
     // Si l'utilisateur a déjà réagi avec cet emoji, on le retire
     if (users.includes(currentUserId)) {
@@ -56,7 +61,7 @@ export const MessageReactions: React.FC<MessageReactionsProps> = ({
 
   return (
     <div className="flex flex-wrap gap-1 mt-1">
-      {groupedReactions.map((reaction) => {
+      {displayReactions.map((reaction) => {
         const hasReacted = reaction.users?.includes(currentUserId);
         
         return (
@@ -66,8 +71,8 @@ export const MessageReactions: React.FC<MessageReactionsProps> = ({
             className={`
               inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-sm
               transition-all hover:scale-105 active:scale-95
-              ${hasReacted 
-                ? 'bg-accent/30 border border-accent/50' 
+              ${hasReacted
+                ? 'bg-accent/30 border border-accent/50'
                 : 'bg-white/10 border border-white/20 hover:bg-white/20'
               }
             `}
