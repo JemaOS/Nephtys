@@ -367,11 +367,11 @@ export function ChatViewPage() {
           return true
         }
         // Include GIF messages
-        if (m.type === 'text' && m.content && m.content.match(/^(?:\[Transféré\]\s*)?([\s\S]*?)\[GIF\]\(https?:\/\/[^\)]+\)$/)) {
+        if (m.type === 'text' && m.content && m.content.match(/\[GIF\]\(https?:\/\/[^)]+\)$/)) {
           return true
         }
         // Include Sticker messages
-        if (m.type === 'text' && m.content && m.content.match(/^(?:\[Transféré\]\s*)?([\s\S]*?)\[STICKER\]\(https?:\/\/[^\)]+\)$/)) {
+        if (m.type === 'text' && m.content && m.content.match(/\[STICKER\]\(https?:\/\/[^)]+\)$/)) {
           return true
         }
         return false
@@ -385,13 +385,15 @@ export function ChatViewPage() {
           mediaUrl = m.media_url || m.file_url || ''
           mediaType = (m.media_type || m.type) as 'image' | 'video'
         } else if (m.content) {
-          const gifMatch = m.content.match(/^(?:\[Transféré\]\s*)?([\s\S]*?)\[GIF\]\((https?:\/\/[^\)]+)\)$/)
-          const stickerMatch = m.content.match(/^(?:\[Transféré\]\s*)?([\s\S]*?)\[STICKER\]\((https?:\/\/[^\)]+)\)$/)
-          if (gifMatch) {
-            mediaUrl = gifMatch[2]
+          // Avoid catastrophic backtracking by checking suffix first
+          const gifSuffixMatch = m.content.match(/\[GIF\]\((https?:\/\/[^)]+)\)$/);
+          const stickerSuffixMatch = m.content.match(/\[STICKER\]\((https?:\/\/[^)]+)\)$/);
+          
+          if (gifSuffixMatch) {
+            mediaUrl = gifSuffixMatch[1]
             mediaType = 'gif'
-          } else if (stickerMatch) {
-            mediaUrl = stickerMatch[2]
+          } else if (stickerSuffixMatch) {
+            mediaUrl = stickerSuffixMatch[1]
             mediaType = 'sticker'
           }
         }

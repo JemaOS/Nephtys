@@ -623,7 +623,8 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
               isPlaying ? 'animate-pulse' : ''
             }`}
             style={{
-              height: `${Math.random() * 40 + 10}px`,
+              // Use deterministic value for visualizer height instead of Math.random()
+              height: `${((i * 7) % 40) + 10}px`,
               animationDelay: `${i * 50}ms`,
             }}
           />

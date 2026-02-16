@@ -23,11 +23,24 @@ const getMessageTypeInfo = (message: Message) => {
   const emojiCount = emojiCheck.emojiCount
 
   // Check if this is a GIF or Sticker message
+  // Avoid catastrophic backtracking by checking suffix first
+  const parseMediaContent = (content: string, type: 'GIF' | 'STICKER') => {
+    const suffixRegex = new RegExp(`\\[${type}\\]\\((https?:\\/\\/[^)]+)\\)$`);
+    const match = content.match(suffixRegex);
+    if (!match) return null;
+    
+    const url = match[1];
+    const contentBefore = content.substring(0, match.index);
+    const cleanContent = contentBefore.replace(/^(?:\[Transféré\]\s*)?/, '');
+    
+    return [content, cleanContent, url];
+  }
+
   const gifMatch = message.type === 'text' && message.content && !message.media_url
-    ? message.content.match(/^(?:\[Transféré\]\s*)?([\s\S]*?)\[GIF\]\((https?:\/\/[^)]+)\)$/)
+    ? parseMediaContent(message.content, 'GIF')
     : null
   const stickerMatch = message.type === 'text' && message.content && !message.media_url
-    ? message.content.match(/^(?:\[Transféré\]\s*)?([\s\S]*?)\[STICKER\]\((https?:\/\/[^)]+)\)$/)
+    ? parseMediaContent(message.content, 'STICKER')
     : null
   const isGifMessage = !!gifMatch
   const isStickerMessage = !!stickerMatch
@@ -844,7 +857,7 @@ const TextMessageDisplay = ({ message, hoveredMessageId, isOwn, setContextMenu, 
                   : (message as any).link_preview
                 if (previewData.url) {
                   displayContent = message.content.replace(previewData.url, '').trim()
-                  displayContent = displayContent.replace(/^[\s\-–—:]+|[\s\-–—:]+$/g, '').trim()
+                  displayContent = displayContent.replace(/^[\s\-–—:]+/g, '').replace(/[\s\-–—:]+$/g, '').trim()
                 }
               } catch {
               }

@@ -41,8 +41,32 @@ export const MessageReply: React.FC<MessageReplyProps> = ({
   let typeLabel = '';
 
   // Check for GIF/Sticker in content (Markdown format)
-  const gifMatch = replyToMessage.content?.match(/^(?:\[Transféré\]\s*)?([\s\S]*?)\[GIF\]\((https?:\/\/[^\)]+)\)$/);
-  const stickerMatch = replyToMessage.content?.match(/^(?:\[Transféré\]\s*)?([\s\S]*?)\[STICKER\]\((https?:\/\/[^\)]+)\)$/);
+  // Avoid catastrophic backtracking by checking suffix first
+  const gifSuffixRegex = /\[GIF\]\((https?:\/\/[^)]+)\)$/;
+  const stickerSuffixRegex = /\[STICKER\]\((https?:\/\/[^)]+)\)$/;
+  
+  let gifMatch = null;
+  let stickerMatch = null;
+
+  if (replyToMessage.content) {
+    const gifSuffixMatch = replyToMessage.content.match(gifSuffixRegex);
+    if (gifSuffixMatch) {
+      const url = gifSuffixMatch[1];
+      const contentBefore = replyToMessage.content.substring(0, gifSuffixMatch.index);
+      // Remove optional prefix
+      const cleanContent = contentBefore.replace(/^(?:\[Transféré\]\s*)?/, '');
+      gifMatch = [replyToMessage.content, cleanContent, url];
+    }
+
+    const stickerSuffixMatch = replyToMessage.content.match(stickerSuffixRegex);
+    if (stickerSuffixMatch) {
+      const url = stickerSuffixMatch[1];
+      const contentBefore = replyToMessage.content.substring(0, stickerSuffixMatch.index);
+      // Remove optional prefix
+      const cleanContent = contentBefore.replace(/^(?:\[Transféré\]\s*)?/, '');
+      stickerMatch = [replyToMessage.content, cleanContent, url];
+    }
+  }
 
   if (gifMatch) {
     displayContent = gifMatch[1] || ''; // Caption or empty

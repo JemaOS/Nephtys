@@ -8,7 +8,9 @@ let serverPort = 5173;
 const startServer = () => {
   return new Promise((resolve, reject) => {
     console.log('Spawning server...');
-    const server = spawn('npm', ['run', 'preview', '--', '--port', '5173'], { shell: true });
+    // Use npm.cmd on Windows to avoid shell: true (Command Injection risk)
+    const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+    const server = spawn(npmCommand, ['run', 'preview', '--', '--port', '5173'], { shell: false });
     let resolved = false;
 
     server.stdout.on('data', (data) => {

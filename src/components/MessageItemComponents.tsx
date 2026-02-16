@@ -57,7 +57,7 @@ export const MessageContent: React.FC<{ message: Message; isOwn: boolean }> = ({
         : (message as any).link_preview
       if (previewData.url) {
         displayContent = message.content.replace(previewData.url, '').trim()
-        displayContent = displayContent.replace(/(^[\s\-–—:]+)|([\s\-–—:]+$)/g, '').trim()
+        displayContent = displayContent.replace(/^[\s\-–—:]+/g, '').replace(/[\s\-–—:]+$/g, '').trim()
       }
     } catch {
       // Keep original content
