@@ -1048,6 +1048,19 @@ export function ChatViewPage() {
     const hasCachedMessages = messages.length > 0
     if (!hasCachedMessages) {
       setLoading(true)
+      
+      // Try to load from IndexedDB (offlineStorage) if localStorage cache is missing
+      // This provides a secondary cache layer that persists longer than 5 minutes
+      try {
+        const offlineMsgs = await offlineStorage.getMessages(conversationId!)
+        if (offlineMsgs && offlineMsgs.length > 0) {
+          console.log('[ChatViewPage] Loaded messages from offlineStorage')
+          setMessages(offlineMsgs as unknown as Message[])
+          setLoading(false)
+        }
+      } catch (err) {
+        console.warn('[ChatViewPage] Failed to load from offlineStorage:', err)
+      }
     }
     
     const { data, error } = await supabase.from('messages').select('*').eq('conversation_id', conversationId!).is('deleted_at', null).order('created_at', { ascending: true }).limit(100)
@@ -1060,6 +1073,11 @@ export function ChatViewPage() {
     if (!error && data) {
       setMessages(data)
       setCache(`msgs_${conversationId}`, data) // Cache messages
+      
+      // Save to offlineStorage for long-term caching
+      offlineStorage.saveMessages(data as unknown as any[]).catch(err => {
+        console.warn('[ChatViewPage] Failed to save messages to offlineStorage:', err)
+      })
       
       // Cache profiles for offline access
       await cacheMessageProfiles(data)

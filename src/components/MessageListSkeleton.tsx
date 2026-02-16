@@ -12,14 +12,14 @@ const MessageSkeleton: React.FC<MessageSkeletonProps> = ({ isOwn }) => (
   <div className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-3 px-2`}>
     <div className={`max-w-[75%] rounded-2xl p-3 ${isOwn ? 'bg-[#787add]' : 'bg-bg-surface'}`}>
       {!isOwn && (
-        <div className="h-4 w-24 bg-text-secondary/20 rounded mb-2 animate-pulse" />
+        <div className="h-4 w-24 bg-gray-400/30 dark:bg-gray-500/30 rounded mb-2 animate-pulse" />
       )}
       <div className="space-y-2">
-        <div className="h-4 bg-text-secondary/20 rounded animate-pulse w-3/4" />
-        <div className="h-4 bg-text-secondary/20 rounded animate-pulse w-1/2" />
+        <div className="h-4 bg-gray-400/30 dark:bg-gray-500/30 rounded animate-pulse w-3/4" />
+        <div className="h-4 bg-gray-400/30 dark:bg-gray-500/30 rounded animate-pulse w-1/2" />
       </div>
       <div className="flex justify-end mt-2">
-        <div className="h-3 w-12 bg-text-secondary/20 rounded animate-pulse" />
+        <div className="h-3 w-12 bg-gray-400/30 dark:bg-gray-500/30 rounded animate-pulse" />
       </div>
     </div>
   </div>
