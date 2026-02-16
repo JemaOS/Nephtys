@@ -38,11 +38,10 @@ export const PinMessageDialog: React.FC<PinMessageDialogProps> = ({
   return (
     <>
       {/* Backdrop */}
-      <button
-        type="button"
+      <div
         className="fixed inset-0 bg-black/50 z-[250] flex items-center justify-center w-full h-full cursor-default"
         onClick={onClose}
-        aria-label="Fermer"
+        role="presentation"
       >
         {/* Dialog */}
         <div 
@@ -112,7 +111,7 @@ export const PinMessageDialog: React.FC<PinMessageDialogProps> = ({
             </button>
           </div>
         </div>
-      </button>
+      </div>
     </>
   );
 };

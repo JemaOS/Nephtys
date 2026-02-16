@@ -23,6 +23,7 @@ export const EphemeralDurationMenu: React.FC<EphemeralDurationMenuProps> = ({
         onSelectDuration(duration);
       }}
       className="w-full px-4 py-3 text-left hover:bg-bg-hover transition-colors flex items-center justify-between"
+      aria-pressed={currentDuration === duration}
     >
       <span className="text-sm text-text-primary">{label}</span>
       {currentDuration === duration && <Check size={18} className="text-accent" />}
@@ -30,7 +31,10 @@ export const EphemeralDurationMenu: React.FC<EphemeralDurationMenuProps> = ({
   );
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+    <div 
+      className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4"
+      role="presentation"
+    >
       <div
         className="bg-bg-surface w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}

@@ -252,6 +252,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
           <button
             onClick={exitSelectionMode}
             className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1]"
+            aria-label="Quitter le mode sélection"
           >
             <ArrowLeft size={20} />
           </button>
@@ -269,6 +270,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
             disabled={selectedMessages.size !== 1}
             className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1] disabled:opacity-50"
             title="Répondre"
+            aria-label="Répondre"
           >
             <Reply size={20} />
           </button>
@@ -277,6 +279,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
             disabled={selectedMessages.size === 0}
             className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1] disabled:opacity-50"
             title="Supprimer"
+            aria-label="Supprimer"
           >
             <Trash2 size={20} />
           </button>
@@ -293,6 +296,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
             disabled={selectedMessages.size === 0}
             className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1] disabled:opacity-50"
             title="Transférer"
+            aria-label="Transférer"
           >
             <Forward size={20} />
           </button>
@@ -300,6 +304,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
             <button
               onClick={() => setShowSelectionMenu(!showSelectionMenu)}
               className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1]"
+              aria-label="Plus d'options"
             >
               <MoreVertical size={20} />
             </button>
@@ -409,9 +414,9 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   if (isLoading) {
     return (
       <div className="bg-bg-surface px-2 sm:px-4 py-2 sm:py-3 flex items-center gap-2 sm:gap-4 flex-shrink-0 z-50">
-        <button onClick={() => navigate('/chats')} className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1]">
-          <ArrowLeft size={20} />
-        </button>
+      <button onClick={() => navigate('/chats')} className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1]" aria-label="Retour aux discussions">
+        <ArrowLeft size={20} />
+      </button>
         <div className="flex-1 flex items-center gap-3 -mx-2 px-2 py-1">
           <div className="w-10 h-10 rounded-full bg-bg-hover animate-pulse" />
           <div className="flex-1 min-w-0 space-y-2">
@@ -431,7 +436,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
 
   return (
     <div className="bg-bg-surface px-2 sm:px-4 py-2 sm:py-3 flex items-center gap-2 sm:gap-4 flex-shrink-0 z-50">
-      <button onClick={() => navigate('/chats')} className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1]">
+      <button onClick={() => navigate('/chats')} className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1]" aria-label="Retour aux discussions">
         <ArrowLeft size={20} />
       </button>
       <button
@@ -466,15 +471,15 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
         </div>
       </button>
       <div className="flex gap-1 sm:gap-2">
-        <button onClick={() => setIsSearching(!isSearching)} className="w-8 h-8 sm:w-10 sm:h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1]">
+        <button onClick={() => setIsSearching(!isSearching)} className="w-8 h-8 sm:w-10 sm:h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1]" aria-label="Rechercher">
           <Search size={18} className="sm:hidden" />
           <Search size={20} className="hidden sm:block" />
         </button>
-        <button onClick={handleStartAudioCall} className="w-8 h-8 sm:w-10 sm:h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1]">
+        <button onClick={handleStartAudioCall} className="w-8 h-8 sm:w-10 sm:h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1]" aria-label="Appel vocal">
           <Phone size={18} className="sm:hidden" />
           <Phone size={20} className="hidden sm:block" />
         </button>
-        <button onClick={handleStartVideoCall} className="w-8 h-8 sm:w-10 sm:h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1]">
+        <button onClick={handleStartVideoCall} className="w-8 h-8 sm:w-10 sm:h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1]" aria-label="Appel vidéo">
           <Video size={18} className="sm:hidden" />
           <Video size={20} className="hidden sm:block" />
         </button>
@@ -482,6 +487,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
           <button
             onClick={() => setShowConversationMenu(!showConversationMenu)}
             className="w-8 h-8 sm:w-10 sm:h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1]"
+            aria-label="Plus d'options"
           >
             <MoreVertical size={18} className="sm:hidden" />
             <MoreVertical size={20} className="hidden sm:block" />
@@ -674,6 +680,7 @@ const GifStickerMessageDisplay = ({ message, typeInfo, hoveredMessageId, isOwn, 
                   messageId: message.id
                 })
               }}
+              aria-label="Voir le GIF"
             >
               <img
                 src={gifUrl}
@@ -712,6 +719,7 @@ const GifStickerMessageDisplay = ({ message, typeInfo, hoveredMessageId, isOwn, 
                   messageId: message.id
                 })
               }}
+              aria-label="Voir le sticker"
             >
               <img
                 src={stickerUrl}
@@ -829,7 +837,7 @@ const DocumentMessageDisplay = ({ message, typeInfo, hoveredMessageId, isOwn, se
 
 const TextMessageDisplay = ({ message, hoveredMessageId, isOwn, setContextMenu, user, otherUser, messages, scrollToMessage, setReplyToMessage }: any) => {
   return (
-    <div className={`relative px-3 py-2 rounded-2xl ${isOwn ? 'bg-[#787add] text-white rounded-br-none' : 'bg-bg-surface text-text-primary rounded-bl-none'}`}>
+    <div className={`relative px-3 py-2 rounded-2xl ${isOwn ? 'bg-[#787add] text-white rounded-br-none' : 'bg-bg-surface text-text-primary dark:text-[#e9edef] rounded-bl-none'}`}>
       <MessageHoverActions
         isVisible={hoveredMessageId === message.id}
         isOwn={isOwn}
@@ -952,6 +960,7 @@ const MessageSideActions = ({ isOwn, hoveredMessageId, message, isSelectionMode,
           onClick={() => setReplyToMessage(message)}
           className="md:hidden w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] flex items-center justify-center transition-colors shadow-md"
           title="Répondre"
+          aria-label="Répondre"
         >
           <Reply size={16} className="text-[#8696a0]" />
         </button>
@@ -959,6 +968,7 @@ const MessageSideActions = ({ isOwn, hoveredMessageId, message, isSelectionMode,
           onClick={() => handleForwardMessage(message)}
           className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
           title="Transférer"
+          aria-label="Transférer"
         >
           <Forward size={16} className="text-[#8696a0]" />
         </button>
@@ -973,6 +983,7 @@ const MessageSideActions = ({ isOwn, hoveredMessageId, message, isSelectionMode,
           }}
           className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
           title="Réagir"
+          aria-label="Réagir"
         >
           <Smile size={16} className="text-[#8696a0]" />
         </button>
@@ -980,6 +991,7 @@ const MessageSideActions = ({ isOwn, hoveredMessageId, message, isSelectionMode,
           onClick={() => setReplyToMessage(message)}
           className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
           title="Répondre"
+          aria-label="Répondre"
         >
           <Reply size={16} className="text-[#8696a0]" />
         </button>
@@ -994,6 +1006,7 @@ const MessageSideActions = ({ isOwn, hoveredMessageId, message, isSelectionMode,
           onClick={() => setReplyToMessage(message)}
           className="md:hidden w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] flex items-center justify-center transition-colors shadow-md"
           title="Répondre"
+          aria-label="Répondre"
         >
           <Reply size={16} className="text-[#8696a0]" />
         </button>
@@ -1001,6 +1014,7 @@ const MessageSideActions = ({ isOwn, hoveredMessageId, message, isSelectionMode,
           onClick={() => setReplyToMessage(message)}
           className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
           title="Répondre"
+          aria-label="Répondre"
         >
           <Reply size={16} className="text-[#8696a0]" />
         </button>
@@ -1015,6 +1029,7 @@ const MessageSideActions = ({ isOwn, hoveredMessageId, message, isSelectionMode,
           }}
           className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
           title="Réagir"
+          aria-label="Réagir"
         >
           <Smile size={16} className="text-[#8696a0]" />
         </button>
@@ -1022,6 +1037,7 @@ const MessageSideActions = ({ isOwn, hoveredMessageId, message, isSelectionMode,
           onClick={() => handleForwardMessage(message)}
           className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
           title="Transférer"
+          aria-label="Transférer"
         >
           <Forward size={16} className="text-[#8696a0]" />
         </button>

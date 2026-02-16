@@ -81,6 +81,7 @@ export const HeaderActions: React.FC<HeaderActionsProps> = ({
           onClick={(e) => { e.stopPropagation(); handleZoomOut(); }}
           className="w-10 h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
           title="Zoom arrière"
+          aria-label="Zoom arrière"
           disabled={zoom <= MIN_ZOOM}
         >
           <ZoomOut size={20} className="text-white" />
@@ -89,6 +90,7 @@ export const HeaderActions: React.FC<HeaderActionsProps> = ({
           onClick={(e) => { e.stopPropagation(); handleZoomIn(); }}
           className="w-10 h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
           title="Zoom avant"
+          aria-label="Zoom avant"
           disabled={zoom >= MAX_ZOOM}
         >
           <ZoomIn size={20} className="text-white" />
@@ -98,6 +100,7 @@ export const HeaderActions: React.FC<HeaderActionsProps> = ({
             onClick={(e) => { e.stopPropagation(); handleResetZoom(); }}
             className="px-2 h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors text-white text-sm"
             title="Réinitialiser le zoom"
+            aria-label="Réinitialiser le zoom"
           >
             {Math.round(zoom * 100)}%
           </button>
@@ -111,6 +114,7 @@ export const HeaderActions: React.FC<HeaderActionsProps> = ({
         onClick={(e) => { e.stopPropagation(); onForward(); }}
         className="hidden md:flex w-10 h-10 rounded-full hover:bg-white/10 items-center justify-center transition-colors"
         title="Transférer"
+        aria-label="Transférer"
       >
         <Forward size={20} className="text-white" />
       </button>
@@ -120,6 +124,7 @@ export const HeaderActions: React.FC<HeaderActionsProps> = ({
         onClick={(e) => { e.stopPropagation(); onStar(); }}
         className="hidden md:flex w-10 h-10 rounded-full hover:bg-white/10 items-center justify-center transition-colors"
         title={isStarred ? "Retirer des favoris" : "Ajouter aux favoris"}
+        aria-label={isStarred ? "Retirer des favoris" : "Ajouter aux favoris"}
       >
         <Star
           size={20}
@@ -132,17 +137,19 @@ export const HeaderActions: React.FC<HeaderActionsProps> = ({
         onClick={(e) => { e.stopPropagation(); onPin(); }}
         className="hidden md:flex w-10 h-10 rounded-full hover:bg-white/10 items-center justify-center transition-colors"
         title="Épingler"
+        aria-label="Épingler"
       >
         <Pin size={20} className="text-white" />
       </button>
     )}
     {onReaction && (
       <div className="relative hidden md:block">
-        <button
-          onClick={(e) => { e.stopPropagation(); setShowEmojiPicker(!showEmojiPicker); }}
-          className="w-10 h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
-          title="Réagir"
-        >
+          <button
+            onClick={(e) => { e.stopPropagation(); setShowEmojiPicker(!showEmojiPicker); }}
+            className="w-10 h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
+            title="Réagir"
+            aria-label="Réagir"
+          >
           <Smile size={20} className="text-white" />
         </button>
         {showEmojiPicker && (
@@ -170,6 +177,7 @@ export const HeaderActions: React.FC<HeaderActionsProps> = ({
         onClick={(e) => { e.stopPropagation(); onToggleFullscreen(); }}
         className="w-9 h-9 md:w-10 md:h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
         title={isFullscreen ? "Quitter le plein écran" : "Plein écran"}
+        aria-label={isFullscreen ? "Quitter le plein écran" : "Plein écran"}
       >
         <Maximize2 size={18} className={`text-white ${isFullscreen ? 'rotate-45' : ''}`} />
       </button>
@@ -179,6 +187,7 @@ export const HeaderActions: React.FC<HeaderActionsProps> = ({
       onClick={(e) => { e.stopPropagation(); onShare(); }}
       className="w-9 h-9 md:w-10 md:h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
       title="Partager"
+      aria-label="Partager"
     >
       <Share2 size={18} className="md:hidden text-white" />
       <Share2 size={20} className="hidden md:block text-white" />
@@ -188,6 +197,7 @@ export const HeaderActions: React.FC<HeaderActionsProps> = ({
       onClick={(e) => { e.stopPropagation(); onDownload(); }}
       className="w-9 h-9 md:w-10 md:h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
       title="Télécharger"
+      aria-label="Télécharger"
     >
       <Download size={18} className="md:hidden text-white" />
       <Download size={20} className="hidden md:block text-white" />
@@ -197,6 +207,7 @@ export const HeaderActions: React.FC<HeaderActionsProps> = ({
       onClick={(e) => { e.stopPropagation(); onClose(); }}
       className="w-9 h-9 md:w-10 md:h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
       title="Fermer"
+      aria-label="Fermer"
     >
       <X size={22} className="md:hidden text-white" />
       <X size={24} className="hidden md:block text-white" />
@@ -484,6 +495,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             className={`w-16 h-16 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center transition-colors ${
               showControls || !isPlaying ? 'pointer-events-auto' : 'pointer-events-none'
             }`}
+            aria-label={isPlaying ? "Pause" : "Lecture"}
           >
             {isPlaying ? (
               <Pause size={32} className="text-white" />
@@ -502,6 +514,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           className={`absolute top-4 right-4 z-50 w-10 h-10 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center transition-all ${
             showControls ? 'opacity-100' : 'opacity-0'
           }`}
+          aria-label={isMuted ? "Activer le son" : "Couper le son"}
         >
           {isMuted ? (
             <VolumeX size={20} className="text-white" />
@@ -558,6 +571,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               cyclePlaybackRate();
             }}
             className="text-white text-sm font-medium min-w-[45px] hover:bg-white/10 px-2 py-1 rounded transition-colors"
+            aria-label="Vitesse de lecture"
           >
             x {playbackRate.toFixed(1).replaceAll('.0', ',0')}
           </button>
@@ -570,6 +584,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             }}
             className="text-white hover:bg-white/10 p-1.5 rounded transition-colors ml-1"
             title={isFullscreen ? "Quitter le plein écran" : "Plein écran"}
+            aria-label={isFullscreen ? "Quitter le plein écran" : "Plein écran"}
           >
             <Maximize2 size={20} className={isFullscreen ? 'rotate-45' : ''} />
           </button>
@@ -633,6 +648,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
           togglePlayPause();
         }}
         className="w-16 h-16 rounded-full bg-accent hover:bg-[#5a5ec9] flex items-center justify-center transition-colors"
+        aria-label={isPlaying ? "Pause" : "Lecture"}
       >
         {isPlaying ? (
           <Pause size={28} className="text-white" />

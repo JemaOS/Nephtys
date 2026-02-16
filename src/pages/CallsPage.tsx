@@ -1269,6 +1269,7 @@ export function CallsPage() {
               onClick={handleAddContact}
               className="w-10 h-10 rounded-full bg-accent hover:bg-[#5a5ec9] flex items-center justify-center transition-colors"
               title="Ajouter un contact"
+              aria-label="Ajouter un contact"
             >
               <UserPlus size={20} className="text-white" />
             </button>
@@ -1282,6 +1283,7 @@ export function CallsPage() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full h-9 pl-10 pr-3 bg-bg-surface text-text-primary text-sm rounded-xl border-none outline-none placeholder:text-text-secondary focus:bg-bg-hover"
+              aria-label="Rechercher ou démarrer un appel"
             />
           </div>
         </div>

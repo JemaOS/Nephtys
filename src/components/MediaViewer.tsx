@@ -1127,6 +1127,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
             className={`absolute left-4 top-1/2 -translate-y-1/2 z-10 w-12 h-12 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center transition-all duration-200 ${
               currentIndex === 0 ? 'opacity-30 cursor-not-allowed' : 'opacity-100 hover:scale-110'
             } ${showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+            aria-label="Média précédent"
           >
             <ChevronLeft size={28} className="text-white" />
           </button>
@@ -1138,6 +1139,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
             className={`absolute right-4 top-1/2 -translate-y-1/2 z-10 w-12 h-12 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center transition-all duration-200 ${
               currentIndex === allMedia.length - 1 ? 'opacity-30 cursor-not-allowed' : 'opacity-100 hover:scale-110'
             } ${showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+            aria-label="Média suivant"
           >
             <ChevronRight size={28} className="text-white" />
           </button>

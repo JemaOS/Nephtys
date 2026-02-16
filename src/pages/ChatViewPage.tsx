@@ -531,15 +531,22 @@ export function ChatViewPage() {
     return currentMessages.filter(m => m.id !== deletedId)
   }
 
+  const otherUserRef = useRef<Profile | null>(null)
+  
+  useEffect(() => {
+    otherUserRef.current = otherUser
+  }, [otherUser])
+
   // Helper to handle notifications for new messages (extracted to reduce complexity)
-  const handleNewMessageNotification = async (newMsg: Message, senderId: string) => {
+  const handleNewMessageNotification = useCallback(async (newMsg: Message, senderId: string) => {
     await updateMessageStatus(newMsg.id, 'delivered')
     if (document.hidden && permission === 'granted') {
-      const senderName = otherUser?.display_name || otherUser?.username || 'Quelqu\'un'
+      const currentOtherUser = otherUserRef.current
+      const senderName = currentOtherUser?.display_name || currentOtherUser?.username || 'Quelqu\'un'
       const preview = newMsg.type === 'text' ? newMsg.content : '📎 Fichier'
       sendNotification(senderName, preview, { conversationId, messageId: newMsg.id, url: `/chat/${conversationId}` })
     }
-  }
+  }, [permission, conversationId, sendNotification])
 
   // Helper to handle new message insertion with deduplication and optimistic update replacement
   const handleNewMessage = useCallback((payload: any) => {
@@ -712,7 +719,7 @@ export function ChatViewPage() {
       window.removeEventListener('supabase-reconnected', handleSupabaseReconnect)
       window.removeEventListener('call-log-created', handleCallLogCreated as EventListener)
     }
-  }, [conversationId, user?.id, permission, otherUser?.id, handleNewMessage])
+  }, [conversationId, user?.id, permission, handleNewMessage])
 
   // Track previous message count to detect new messages
   const prevMessageCountRef = useRef(0)
@@ -728,43 +735,31 @@ export function ChatViewPage() {
     setIsInitialScrollDone(false)
   }, [conversationId])
 
-  // Scroll to bottom INSTANTLY when conversation loads (initial load)
-  // Like WhatsApp/Telegram: scroll instantly, no animation, no delay
-  useLayoutEffect(() => {
-    // Only run when messages are loaded and we haven't scrolled yet for this conversation
-    if (loading || !conversationId) return
-    
-    // If no messages, we are done
-    if (messages.length === 0) {
-      setIsInitialScrollDone(true)
-      return
-    }
-    
-    if (hasScrolledInitially.current) return
-    
-    const scrollContainer = messagesContainerRef.current
-    if (scrollContainer) {
-      // Force scroll to bottom immediately
-      scrollContainer.scrollTop = scrollContainer.scrollHeight
+    // Scroll to bottom INSTANTLY when conversation loads (initial load)
+    // Like WhatsApp/Telegram: scroll instantly, no animation, no delay
+    useLayoutEffect(() => {
+      // Only run when messages are loaded and we haven't scrolled yet for this conversation
+      if (loading || !conversationId) return
       
-      // Use requestAnimationFrame to ensure layout is stable
-      requestAnimationFrame(() => {
-        if (scrollContainer) {
-          scrollContainer.scrollTop = scrollContainer.scrollHeight
-          
-          // Double RAF for safety
-          requestAnimationFrame(() => {
-            if (scrollContainer) {
-              scrollContainer.scrollTop = scrollContainer.scrollHeight
-              setIsInitialScrollDone(true)
-              hasScrolledInitially.current = true
-              prevMessageCountRef.current = messages.length
-            }
-          })
-        }
-      })
-    }
-  }, [loading, messages.length, conversationId])
+      // If no messages, we are done
+      if (messages.length === 0) {
+        setIsInitialScrollDone(true)
+        return
+      }
+      
+      if (hasScrolledInitially.current) return
+      
+      const scrollContainer = messagesContainerRef.current
+      if (scrollContainer) {
+        // Force scroll to bottom immediately
+        scrollContainer.scrollTop = scrollContainer.scrollHeight
+        
+        // Mark as done immediately to prevent flickering
+        setIsInitialScrollDone(true)
+        hasScrolledInitially.current = true
+        prevMessageCountRef.current = messages.length
+      }
+    }, [loading, messages.length, conversationId])
 
   // ResizeObserver to handle dynamic content changes (images loading, etc.)
   useEffect(() => {
@@ -1016,6 +1011,13 @@ export function ChatViewPage() {
           setCache(`user_${conversationId}`, otherUserData)
         }
       }
+    } else if (!data && !error) {
+      // Conversation not found or no access
+      console.error('Conversation not found or access denied')
+      // Redirect to chats list after a short delay
+      setTimeout(() => navigate('/chats'), 1000)
+    } else if (error) {
+      console.error('Error loading conversation:', error)
     }
   }
 
@@ -1049,6 +1051,12 @@ export function ChatViewPage() {
     }
     
     const { data, error } = await supabase.from('messages').select('*').eq('conversation_id', conversationId!).is('deleted_at', null).order('created_at', { ascending: true }).limit(100)
+    
+    if (error) {
+      console.error('Error loading messages:', error)
+      // Don't alert immediately to avoid spamming the user, but log it
+    }
+    
     if (!error && data) {
       setMessages(data)
       setCache(`msgs_${conversationId}`, data) // Cache messages

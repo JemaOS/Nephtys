@@ -55,6 +55,7 @@ export const DocumentPreviewHeader: React.FC<DocumentPreviewHeaderProps> = ({
         onClick={onClose}
         className="p-1.5 sm:p-2 rounded-full hover:bg-white/10 transition-colors text-white flex-shrink-0"
         disabled={uploading}
+        aria-label="Fermer l'aperçu"
       >
         <X size={isMobile ? 20 : 24} />
       </button>
@@ -190,6 +191,7 @@ export const DocumentPreviewFooter: React.FC<DocumentPreviewFooterProps> = ({
         onClick={onClose}
         disabled={uploading}
         className="hidden xs:flex w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 rounded-lg border-2 border-dashed border-white/30 items-center justify-center text-white/50 hover:bg-white/10 transition-colors flex-shrink-0 disabled:opacity-50"
+        aria-label="Ajouter un autre fichier"
       >
         <Plus size={isMobile ? 16 : 20} />
       </button>
@@ -204,6 +206,7 @@ export const DocumentPreviewFooter: React.FC<DocumentPreviewFooterProps> = ({
           placeholder={isMobile ? "Légende..." : "Ajouter une légende..."}
           disabled={uploading}
           className="w-full px-3 sm:px-4 py-2 sm:py-2.5 md:py-3 rounded-full bg-[#2a3942] text-white placeholder:text-white/50 outline-none text-sm disabled:opacity-50"
+          aria-label="Légende du fichier"
         />
       </div>
 
@@ -212,6 +215,7 @@ export const DocumentPreviewFooter: React.FC<DocumentPreviewFooterProps> = ({
         onClick={handleSend}
         disabled={uploading}
         className="w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 rounded-full bg-accent hover:bg-[#5a5ec9] flex items-center justify-center transition-colors flex-shrink-0 disabled:opacity-50"
+        aria-label="Envoyer le fichier"
       >
         {uploading ? (
           <Loader2 size={isMobile ? 18 : 20} className="text-white animate-spin" />

@@ -896,6 +896,8 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
               touchAction: 'none',
               userSelect: 'none',
             }}
+            aria-label="Éditeur d'image"
+            role="img"
           />
           <canvas
             ref={overlayCanvasRef}
@@ -937,6 +939,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
               onChange={(e) => setNewTextInput(e.target.value)}
               className="w-full px-4 py-3 rounded-xl bg-bg-hover text-text-primary outline-none mb-4"
               autoFocus
+              aria-label="Texte à modifier"
             />
             <div className="flex gap-2">
               <button

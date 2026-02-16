@@ -855,6 +855,7 @@ const getContactsToDelete = (
                     onClick={selectAllContacts}
                     className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-text-secondary"
                     title={selectedContacts.size === filteredContacts.length ? 'Tout désélectionner' : 'Tout sélectionner'}
+                    aria-label={selectedContacts.size === filteredContacts.length ? 'Tout désélectionner' : 'Tout sélectionner'}
                   >
                     {selectedContacts.size === filteredContacts.length ? (
                       <CheckSquare size={20} className="text-accent" />
@@ -870,6 +871,7 @@ const getContactsToDelete = (
                     disabled={selectedContacts.size === 0}
                     className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#ea4335] disabled:opacity-50 disabled:cursor-not-allowed"
                     title="Supprimer"
+                    aria-label="Supprimer les contacts sélectionnés"
                   >
                     <Trash2 size={20} />
                   </button>
@@ -880,17 +882,19 @@ const getContactsToDelete = (
                 <h1 className="text-xl font-semibold text-text-primary">Contacts</h1>
                 <div className="flex items-center gap-2">
                   {contacts.length > 0 && (
-                    <button
-                      onClick={toggleSelectionMode}
-                      className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-text-secondary"
-                      title="Sélectionner"
-                    >
+                      <button
+                        onClick={toggleSelectionMode}
+                        className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-text-secondary"
+                        title="Sélectionner"
+                        aria-label="Activer le mode sélection"
+                      >
                       <CheckSquare size={20} />
                     </button>
                   )}
                   <button
                     onClick={() => setShowAddModal(true)}
                     className="w-10 h-10 rounded-full bg-accent hover:bg-[#5a5ec9] flex items-center justify-center transition-colors"
+                    aria-label="Ajouter un contact"
                   >
                     <UserPlus size={20} className="text-white" />
                   </button>
@@ -907,6 +911,7 @@ const getContactsToDelete = (
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full h-9 pl-10 pr-3 bg-bg-surface text-text-primary text-sm rounded-xl border-none outline-none placeholder:text-text-secondary focus:bg-bg-hover"
+              aria-label="Rechercher un contact"
             />
           </div>
         </div>
@@ -1026,16 +1031,18 @@ const getContactsToDelete = (
                   setError('')
                 }}
                 className="w-8 h-8 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-text-secondary"
+                aria-label="Fermer"
               >
                 <X size={18} />
               </button>
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm text-[#787add]">Nom d'utilisateur</label>
+              <label htmlFor="username-input" className="text-sm text-[#787add]">Nom d'utilisateur</label>
               <div className="relative">
                 <UserPlus size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" />
                 <input
+                  id="username-input"
                   type="text"
                   placeholder="pseudo_utilisateur"
                   value={usernameToAdd}

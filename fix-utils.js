@@ -12,7 +12,7 @@ function processFile(filePath, replacements) {
     const regex = new RegExp(escapedFrom, 'g');
     const matches = content.match(regex);
     if (matches) {
-      content = content.replaceAll(regex, to);
+      content = content.replace(regex, to);
       modified = true;
       changes.push(`  ${from} -> ${to} (${matches.length} occurrences)`);
     }
