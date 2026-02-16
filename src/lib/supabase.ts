@@ -1,27 +1,24 @@
 // Copyright (c) 2025 Jema Technology.
 // Distributed under the license specified in the root directory of this project.
 
-import { createClient, RealtimeChannel } from '@supabase/supabase-js'
+import { createClient } from '@supabase/supabase-js'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://imkfbalgviqeotpjogff.supabase.co'
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlta2ZiYWxndmlxZW90cGpvZ2ZmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ0NjE2NjYsImV4cCI6MjA4MDAzNzY2Nn0.POv8NbJu6TefE1e-J-9L8m5QTSp41XXwsO2ck69GnYc'
 
-// Create Supabase client with OPTIMIZED settings for PWA/mobile
-// Using 5s heartbeat for WhatsApp-level real-time responsiveness
+// WHATSAPP-LEVEL STABILITY: Minimal configuration
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: true,
-    // Storage key for session persistence
     storageKey: 'nephtys-auth',
   },
   realtime: {
     params: {
-      // Heartbeat every 5 seconds for WhatsApp-level real-time responsiveness
-      heartbeat_interval: 5,
-      // Increase timeout to reduce reconnection attempts
-      timeout: 60000, // 60 seconds
+      // WhatsApp uses ~30s heartbeat - reduces server load significantly
+      heartbeat_interval: 30,
+      timeout: 60000,
     },
   },
   global: {
@@ -30,193 +27,6 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     },
   },
 })
-
-// Connection state tracking
-let isRealtimeConnected = false
-let connectionCheckInterval: NodeJS.Timeout | null = null
-let pingInterval: NodeJS.Timeout | null = null
-let lastSuccessfulQuery = Date.now()
-let consecutiveFailures = 0
-const MAX_CONSECUTIVE_FAILURES = 2
-
-// Track connection state
-export function getRealtimeConnectionState(): boolean {
-  return isRealtimeConnected
-}
-
-// Update last successful query time
-export function updateLastSuccessfulQuery(): void {
-  lastSuccessfulQuery = Date.now()
-  consecutiveFailures = 0 // Reset failures on success
-  
-  // Dispatch event to notify keep-alive system that connection is healthy
-  // This prevents unnecessary force reloads
-  window.dispatchEvent(new CustomEvent('supabase-connection-success'))
-}
-
-// Get time since last successful query
-export function getTimeSinceLastQuery(): number {
-  return Date.now() - lastSuccessfulQuery
-}
-
-// Check if connection seems stale (no successful query in last 60 seconds)
-// Increased from 30s to reduce unnecessary health checks
-export function isConnectionStale(): boolean {
-  return getTimeSinceLastQuery() > 60000
-}
-
-// Force reconnect all realtime channels
-export async function forceReconnectRealtime(): Promise<void> {
-  console.log('[Supabase] Force reconnecting realtime channels...')
-  
-  try {
-    const channels = supabase.getChannels()
-    
-    // Reconnect each channel
-    for (const channel of channels) {
-      try {
-        await channel.unsubscribe()
-        channel.subscribe((status) => {
-          if (status === 'SUBSCRIBED') {
-            console.log(`[Supabase] Channel ${channel.topic} reconnected`)
-            isRealtimeConnected = true
-          } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-            console.warn(`[Supabase] Channel ${channel.topic} error: ${status}`)
-            isRealtimeConnected = false
-          }
-        })
-      } catch (e) {
-        console.error(`[Supabase] Error reconnecting channel ${channel.topic}:`, e)
-      }
-    }
-  } catch (error) {
-    console.error('[Supabase] Error in forceReconnectRealtime:', error)
-  }
-}
-
-// Simple health check - try a lightweight query with SHORT timeout
-export async function checkConnection(): Promise<boolean> {
-  try {
-    const start = Date.now()
-    
-    // Use Promise.race for timeout
-    const queryPromise = supabase
-      .from('profiles')
-      .select('id')
-      .limit(1)
-      .maybeSingle()
-    
-    const timeoutPromise = new Promise<{ error: { message: string } }>((_, reject) =>
-      setTimeout(() => reject(new Error('Health check timeout')), 5000)
-    )
-    
-    const { error } = await Promise.race([queryPromise, timeoutPromise])
-    
-    const duration = Date.now() - start
-    
-    if (error) {
-      console.warn('[Supabase] Health check failed:', error.message)
-      consecutiveFailures++
-      return false
-    }
-    
-    console.log(`[Supabase] Health check OK (${duration}ms)`)
-    updateLastSuccessfulQuery()
-    return true
-  } catch (error: any) {
-    console.error('[Supabase] Health check error:', error.message || error)
-    consecutiveFailures++
-    return false
-  }
-}
-
-// Lightweight ping to keep connection alive
-// The Realtime heartbeat (5s) keeps the connection alive
-async function pingConnection(): Promise<void> {
-  // This function is kept for compatibility but no longer called automatically
-  if (document.hidden) return
-  
-  try {
-    // Just do a simple count query - very lightweight
-    const { count, error } = await supabase
-      .from('profiles')
-      .select('*', { count: 'exact', head: true })
-      .limit(0)
-    
-    if (!error) {
-      updateLastSuccessfulQuery()
-    }
-  } catch (e) {
-    // Ignore ping errors - the health check will catch real issues
-  }
-}
-
-// Start connection monitoring (call this once when app starts)
-// OPTIMIZED: Removed aggressive pings - use only stale connection detection
-export function startConnectionMonitoring(): void {
-  if (connectionCheckInterval) {
-    return // Already monitoring
-  }
-  
-  console.log('[Supabase] Starting OPTIMIZED connection monitoring...')
-  
-  // REMOVED: Aggressive ping every 10 seconds was causing too many requests
-  // The Realtime heartbeat (5s) already keeps the WebSocket alive
-  
-  // Check connection every 60 seconds instead of 10s
-  // Only do health check when there's a suspected issue
-  connectionCheckInterval = setInterval(async () => {
-    // Only check if document is visible
-    if (document.hidden) {
-      return
-    }
-    
-    // If connection seems stale OR we have consecutive failures, do a health check
-    if (isConnectionStale() || consecutiveFailures > 0) {
-      console.log(`[Supabase] Connection check (stale: ${isConnectionStale()}, failures: ${consecutiveFailures})`)
-      const isOk = await checkConnection()
-      
-      if (!isOk && consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-        console.log('[Supabase] Connection lost after multiple failures, triggering reconnect...')
-        consecutiveFailures = 0 // Reset to avoid spam
-        // Dispatch event for components to refresh
-        window.dispatchEvent(new CustomEvent('supabase-connection-lost'))
-        // Try to reconnect realtime
-        await forceReconnectRealtime()
-      }
-    }
-  }, 60000)
-}
-
-// Stop connection monitoring
-export function stopConnectionMonitoring(): void {
-  if (connectionCheckInterval) {
-    clearInterval(connectionCheckInterval)
-    connectionCheckInterval = null
-  }
-  if (pingInterval) {
-    clearInterval(pingInterval)
-    pingInterval = null
-  }
-}
-
-// Wrapper for queries that updates the last successful query time
-export async function queryWithTracking<T>(
-  queryFn: () => Promise<{ data: T | null; error: any }>
-): Promise<{ data: T | null; error: any }> {
-  const result = await queryFn()
-  if (!result.error) {
-    updateLastSuccessfulQuery()
-  } else {
-    consecutiveFailures++
-    // If we have too many failures, trigger reconnect
-    if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-      console.log('[Supabase] Query failed, triggering reconnect...')
-      window.dispatchEvent(new CustomEvent('supabase-connection-lost'))
-    }
-  }
-  return result
-}
 
 // Database types
 export interface Profile {
@@ -229,7 +39,6 @@ export interface Profile {
   public_key: string | null
   created_at: string
   updated_at: string
-  // Online presence fields
   is_online?: boolean
   last_seen?: string | null
 }
@@ -263,9 +72,9 @@ export interface Message {
   file_size: number | null
   media_url: string | null
   media_type: 'image' | 'video' | 'file' | null
-  media_width?: number | null // Image/video width in pixels
-  media_height?: number | null // Image/video height in pixels
-  media_thumbnail?: string | null // Base64 blur placeholder for images
+  media_width?: number | null
+  media_height?: number | null
+  media_thumbnail?: string | null
   is_ephemeral: boolean
   ephemeral_duration: number | null
   ephemeral_expires_at: string | null
@@ -279,7 +88,7 @@ export interface Message {
   is_starred: boolean
   edited_at: string | null
   is_edited: boolean
-  link_preview: string | null // JSON string containing LinkPreviewData
+  link_preview: string | null
 }
 
 export interface Contact {
@@ -324,28 +133,16 @@ export interface DeletedMessage {
   deleted_at: string
 }
 
-// ============================================================================
-// BROADCAST CHANNEL HELPERS - For ultra-low-latency real-time messaging
-// ============================================================================
-
-/**
- * Create a broadcast channel for instant message delivery (WhatsApp-level speed)
- * Broadcast is ephemeral and doesn't persist to DB - used for instant delivery
- * while postgres_changes handles persistence
- */
+// Broadcast channel for instant message delivery
 export function createBroadcastChannel(conversationId: string, userId: string) {
   return supabase.channel(`broadcast:${conversationId}`, {
     config: {
-      broadcast: { self: false }, // Don't send to self via broadcast
+      broadcast: { self: false },
       presence: { key: userId }
     }
   })
 }
 
-/**
- * Send a message via broadcast for instant delivery to other clients
- * This provides 20-50ms latency vs 200-2000ms with postgres_changes alone
- */
 export async function sendBroadcastMessage(
   conversationId: string,
   message: Message
@@ -359,16 +156,11 @@ export async function sendBroadcastMessage(
         event: 'message',
         payload: { message }
       })
-      // Unsubscribe after sending to avoid keeping the channel open
       channel.unsubscribe()
     }
   })
 }
 
-/**
- * Listen for broadcast messages from other clients
- * This provides instant message delivery without waiting for database replication
- */
 export function onBroadcastMessage(
   conversationId: string,
   callback: (message: Message) => void

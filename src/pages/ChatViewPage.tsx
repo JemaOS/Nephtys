@@ -487,16 +487,11 @@ export function ChatViewPage() {
   const loadCallLogs = async () => {
     if (!conversationId) return
     
-    console.log('[ChatViewPage] Loading call logs for conversation:', conversationId)
-    
     const { data, error } = await supabase
       .from('call_logs')
       .select('*')
       .eq('conversation_id', conversationId)
       .order('started_at', { ascending: true })
-    
-    console.log('[ChatViewPage] Call logs query result:', { data, error, count: data?.length })
-    console.log('[ChatViewPage] Call logs raw data:', JSON.stringify(data, null, 2))
     
     if (error) {
       console.error('[ChatViewPage] Error loading call logs:', error)
@@ -504,19 +499,6 @@ export function ChatViewPage() {
     
     if (!error && data) {
       setCallLogs(data)
-      console.log('[ChatViewPage] Call logs set:', data.length, 'logs')
-      
-      // Debug: Log each call log
-      data.forEach((log, index) => {
-        console.log(`[ChatViewPage] Call log ${index}:`, {
-          id: log.id,
-          caller_id: log.caller_id,
-          callee_id: log.callee_id,
-          status: log.status,
-          type: log.type,
-          isGroupCall: log.caller_id === log.callee_id
-        })
-      })
     }
   }
 
@@ -585,7 +567,6 @@ export function ChatViewPage() {
 
   // Helper to handle new message insertion with deduplication and optimistic update replacement
   const handleNewMessage = useCallback((payload: any) => {
-    console.log('[ChatViewPage] Realtime INSERT received:', payload.new?.id)
     const newMsg = payload.new as Message
     
     setMessages(prev => {
@@ -595,8 +576,8 @@ export function ChatViewPage() {
       }
 
       // 2. Check for temp message to replace
-      const tempIndex = prev.findIndex(m => 
-        m.id.startsWith('temp-') && 
+      const tempIndex = prev.findIndex(m =>
+        m.id.startsWith('temp-') &&
         m.sender_id === newMsg.sender_id &&
         (
           // Match by media_url if present (for images/videos/files)
@@ -609,13 +590,11 @@ export function ChatViewPage() {
       )
 
       if (tempIndex !== -1) {
-        console.log('[ChatViewPage] Replacing temp message with real one:', newMsg.id)
         const newMessages = [...prev]
         newMessages[tempIndex] = newMsg
         return newMessages
       }
 
-      console.log('[ChatViewPage] Adding new message:', newMsg.id)
       return [...prev, newMsg]
     })
     
@@ -639,12 +618,12 @@ export function ChatViewPage() {
       setLoading(false)
     }, 10000)
     
-    // OPTIMIZED: Consolidated realtime channels - reduced from 5 to 3
-    // Main channel for messages (INSERT, UPDATE, DELETE) + profiles + member left
+    // WHATSAPP-LEVEL STABILITY: Single consolidated channel
+    // Reduces WebSocket connections and prevents connection thrashing
     const mainChannel = supabase
       .channel(`main:${conversationId}`, {
         config: {
-          broadcast: { self: true },
+          broadcast: { self: false },
           presence: { key: user?.id || 'anonymous' }
         }
       })
@@ -658,12 +637,10 @@ export function ChatViewPage() {
         event: 'UPDATE', schema: 'public', table: 'messages',
         filter: `conversation_id=eq.${conversationId}`
       }, (payload) => {
-        console.log('[ChatViewPage] Realtime UPDATE received:', payload.new?.id)
         const updatedMsg = payload.new as Message
         
         // Check if message was soft-deleted (has deleted_at)
         if (updatedMsg.deleted_at) {
-          console.log('[ChatViewPage] Message soft-deleted, removing from list:', updatedMsg.id)
           setMessages(prev => removeMessageFromList(prev, updatedMsg.id))
         } else {
           setMessages(prev => updateMessageInList(prev, updatedMsg))
@@ -674,117 +651,85 @@ export function ChatViewPage() {
         event: 'DELETE', schema: 'public', table: 'messages',
         filter: `conversation_id=eq.${conversationId}`
       }, (payload) => {
-        console.log('[ChatViewPage] Realtime DELETE received:', payload.old?.id)
         const deletedId = (payload.old as any)?.id
         if (deletedId) {
           setMessages(prev => removeMessageFromList(prev, deletedId))
         }
       })
-      // Profile updates (consolidated from separate channel)
+      // Call logs changes
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'call_logs',
+        filter: `conversation_id=eq.${conversationId}`
+      }, () => {
+        loadCallLogs()
+      })
+      // Profile updates
       .on('postgres_changes', {
         event: 'UPDATE',
         schema: 'public',
         table: 'profiles'
       }, (payload) => {
-        console.log('Profile updated in ChatViewPage:', payload)
         if (otherUser && payload.new.id === otherUser.id) {
           setOtherUser(payload.new as Profile)
         }
         loadConversation()
       })
-      // Member left (consolidated from separate channel)
+      // Member left
       .on('postgres_changes', {
         event: 'DELETE',
         schema: 'public',
         table: 'conversation_members',
         filter: `conversation_id=eq.${conversationId}`
       }, (payload) => {
-        console.log('[ChatViewPage] Member left conversation:', payload.old)
         if (payload.old && payload.old.user_id === user?.id) {
-          console.log('[ChatViewPage] Current user was removed from conversation, redirecting...')
           navigate('/chats')
         }
       })
-      .subscribe((status) => {
-        console.log('[ChatViewPage] Main channel subscription status:', status)
+      // Broadcast for instant message delivery
+      .on('broadcast', { event: 'message' }, ({ payload }) => {
+        if (payload?.message) {
+          handleNewMessage({ new: payload.message })
+        }
       })
-    
-    // Dedicated call logs channel (needs separate subscription for different table)
-    const callLogsChannel = supabase
-      .channel(`call_logs:${conversationId}`)
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'call_logs',
-        filter: `conversation_id=eq.${conversationId}`
-      }, (payload) => {
-        console.log('[ChatViewPage] Call log change detected:', payload.eventType, payload)
-        loadCallLogs()
-      })
-      .subscribe((status) => {
-        console.log('[ChatViewPage] Call logs channel subscription status:', status)
-      })
-    
-    // Broadcast channel for instant message delivery (separate for performance)
-    const broadcastChannel = supabase.channel(`chat-broadcast:${conversationId}`, {
-      config: {
-        broadcast: { self: false }
-      }
-    })
-    
-    broadcastChannel.on('broadcast', { event: 'message' }, ({ payload }) => {
-      console.log('[ChatViewPage] Broadcast message received:', payload?.message?.id)
-      if (payload?.message) {
-        handleNewMessage({ new: payload.message })
-      }
-    })
-    
-    broadcastChannel.subscribe((status) => {
-      console.log('[ChatViewPage] Broadcast channel status:', status)
-    })
+      .subscribe()
 
-    // Handle visibility change - refresh data when app comes back to foreground
-    // This is critical for PWA on mobile where the app may be suspended
-    // Added debounce to prevent too many requests
+    // Handle visibility change - WHATSAPP STYLE: minimal refresh
     let visibilityTimeout: NodeJS.Timeout | null = null
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        console.log('[ChatViewPage] App became visible, refreshing data...')
-        // Debounce: only reload if it's been at least 5 seconds since last load
+        // Debounce: only reload if it's been at least 10 seconds since last load
         if (visibilityTimeout) {
           clearTimeout(visibilityTimeout)
         }
         visibilityTimeout = setTimeout(() => {
           loadMessages()
           loadConversation()
-        }, 5000)
+        }, 10000)
       }
     }
     
     document.addEventListener('visibilitychange', handleVisibilityChange)
     
-    // Handle Supabase reconnection event (triggered by useSupabaseReconnect hook)
-    // Added debounce to prevent too many reloads
+    // Handle Supabase reconnection event
     let reconnectTimeout: NodeJS.Timeout | null = null
     const handleSupabaseReconnect = () => {
-      console.log('[ChatViewPage] Supabase reconnected, reloading messages...')
-      // Debounce: only reload if it's been at least 5 seconds since last reload
+      // Debounce: only reload if it's been at least 10 seconds since last reload
       if (reconnectTimeout) {
         clearTimeout(reconnectTimeout)
       }
       reconnectTimeout = setTimeout(() => {
         loadMessages()
         loadConversation()
-      }, 5000)
+      }, 10000)
     }
     
     window.addEventListener('supabase-reconnected', handleSupabaseReconnect)
     
-    // Handle call log created event (triggered by CallContext when a call log is created)
+    // Handle call log created event
     const handleCallLogCreated = (event: CustomEvent) => {
-      console.log('[ChatViewPage] Call log created event received:', event.detail)
       if (event.detail.conversationId === conversationId) {
-        console.log('[ChatViewPage] Reloading call logs for this conversation')
         loadCallLogs()
       }
     }
@@ -794,8 +739,6 @@ export function ChatViewPage() {
     return () => {
       clearTimeout(loadingTimeout)
       supabase.removeChannel(mainChannel)
-      supabase.removeChannel(callLogsChannel)
-      supabase.removeChannel(broadcastChannel)
       unsubscribeFromConversation(conversationId)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       window.removeEventListener('supabase-reconnected', handleSupabaseReconnect)
@@ -1142,12 +1085,11 @@ export function ChatViewPage() {
       try {
         const offlineMsgs = await offlineStorage.getMessages(conversationId!)
         if (offlineMsgs && offlineMsgs.length > 0) {
-          console.log('[ChatViewPage] Loaded messages from offlineStorage')
           setMessages(offlineMsgs as unknown as Message[])
           setLoading(false)
         }
       } catch (err) {
-        console.warn('[ChatViewPage] Failed to load from offlineStorage:', err)
+        // Silent fail - will load from network
       }
     }
     
@@ -1155,7 +1097,6 @@ export function ChatViewPage() {
     
     if (error) {
       console.error('Error loading messages:', error)
-      // Don't alert immediately to avoid spamming the user, but log it
     }
     
     if (!error && data) {
@@ -1163,8 +1104,8 @@ export function ChatViewPage() {
       setCache(`msgs_${conversationId}`, data) // Cache messages
       
       // Save to offlineStorage for long-term caching
-      offlineStorage.saveMessages(data as unknown as any[]).catch(err => {
-        console.warn('[ChatViewPage] Failed to save messages to offlineStorage:', err)
+      offlineStorage.saveMessages(data as unknown as any[]).catch(() => {
+        // Silent fail
       })
       
       // Cache profiles for offline access
