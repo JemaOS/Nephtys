@@ -34,9 +34,15 @@ export const EphemeralDurationMenu: React.FC<EphemeralDurationMenuProps> = ({
       <div
         className="bg-bg-surface w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') {
+            e.stopPropagation();
+            onClose();
+          }
+        }}
         role="dialog"
         aria-modal="true"
+        tabIndex={-1}
       >
         <div className="p-4 border-b border-bg-hover">
           <h4 className="text-base font-medium text-text-primary">Durée des messages</h4>

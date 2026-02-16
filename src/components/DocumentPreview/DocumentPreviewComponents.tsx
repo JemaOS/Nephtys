@@ -286,6 +286,13 @@ export const DocumentPreviewContent: React.FC<DocumentPreviewContentProps> = ({
     onTouchStart={handleTouchStart}
     onTouchMove={handleTouchMove}
     onTouchEnd={handleTouchEnd}
+    onKeyDown={(e) => {
+      // Handle keyboard navigation for accessibility
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    }}
+    tabIndex={0}
     role="application"
     aria-label="Zone de prévisualisation du document"
   >
