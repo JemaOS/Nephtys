@@ -771,6 +771,13 @@ export function ChatsPage() {
         }
       }
       
+      // Handle focus event - refresh when user returns to the page
+      // This ensures conversation order is correct when navigating back from ChatViewPage
+      const handleFocus = () => {
+        console.log('[ChatsPage] Window focused, refreshing conversations...')
+        loadConversationsFromServer(false) // Background sync, no loading state
+      }
+      
       document.addEventListener('visibilitychange', handleVisibilityChange)
       
       // Handle Supabase reconnection event (triggered by useSupabaseReconnect hook)
@@ -789,6 +796,7 @@ export function ChatsPage() {
       window.addEventListener('supabase-reconnected', handleSupabaseReconnect)
       window.addEventListener('supabase-connection-lost', handleConnectionLost)
       window.addEventListener('message-sent-in-chat', handleMessageSentFromChat as EventListener)
+      window.addEventListener('focus', handleFocus)
 
       return () => {
         clearTimeout(loadingTimeout)
@@ -800,6 +808,7 @@ export function ChatsPage() {
         window.removeEventListener('supabase-reconnected', handleSupabaseReconnect)
         window.removeEventListener('supabase-connection-lost', handleConnectionLost)
         window.removeEventListener('message-sent-in-chat', handleMessageSentFromChat as EventListener)
+        window.removeEventListener('focus', handleFocus)
       }
     }
   }, [user, debouncedReload, loadConversationsFromServer])
