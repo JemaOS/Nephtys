@@ -36,7 +36,7 @@ const getPlatformDisplayName = (hostname: string): string | null => {
 const processUrlDisplay = (url: string): string => {
   try {
     const urlObj = new URL(url)
-    const hostname = urlObj.hostname.replace('www.', '')
+    const hostname = urlObj.hostname.replaceAll('www.', '')
     const platformDisplay = getPlatformDisplayName(hostname)
     if (platformDisplay) return platformDisplay
     return `🔗 ${hostname}`

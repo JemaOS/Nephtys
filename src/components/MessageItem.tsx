@@ -250,7 +250,7 @@ export const MessageItem: React.FC<MessageItemProps> = React.memo(({
   // Extract all message type properties at once - reduces cognitive complexity
   const msgType = getMessageType(message)
   const messageReactions = reactions.filter(r => r.message_id === message.id)
-  const systemMessageContent = msgType.isSystemMessage ? message.content.replace('[SYSTEM]', '') : ''
+  const systemMessageContent = msgType.isSystemMessage ? message.content.replaceAll('[SYSTEM]', '') : ''
   
   const senderInfo = getSenderInfoForMessage(
     message.sender_id,

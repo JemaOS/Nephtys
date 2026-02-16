@@ -245,6 +245,7 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
         <iframe
           ref={iframeRef}
           src={embedUrl}
+          title="YouTube video player"
           className="w-full h-full pointer-events-auto"
           style={{ pointerEvents: isDragging ? 'none' : 'auto' }}
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
@@ -284,6 +285,7 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
           <iframe
             ref={iframeRef}
             src={embedUrl}
+            title="YouTube video player"
             className="w-full h-full"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
             allowFullScreen

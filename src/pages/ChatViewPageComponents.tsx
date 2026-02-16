@@ -1069,7 +1069,7 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = ({
   const isSelected = selectedMessages.has(message.id)
   
   const isSystemMessage = message.type === 'text' && message.content?.startsWith('[SYSTEM]')
-  const systemMessageContent = isSystemMessage ? message.content.replace('[SYSTEM]', '') : ''
+  const systemMessageContent = isSystemMessage ? message.content.replaceAll('[SYSTEM]', '') : ''
   
   if (isSystemMessage) {
     return (

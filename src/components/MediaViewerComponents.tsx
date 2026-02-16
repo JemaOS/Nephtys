@@ -446,14 +446,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               : 'max-w-full max-h-[70vh]'
           }`}
           playsInline
-          // Android-specific attributes for better video handling
-          // @ts-ignore - x5 attributes for Android WebView/browsers
-          x5-video-player-type="h5-page"
-          x5-video-player-fullscreen="true"
-          x5-video-orientation="landscape"
-          // Allow fullscreen on iOS
-          // @ts-ignore
-          allowsInlineMediaPlayback={true}
           onClick={(e) => {
             e.stopPropagation();
             // Smart click handling
@@ -475,7 +467,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           onTimeUpdate={handleTimeUpdate}
           onLoadedMetadata={handleLoadedMetadata}
         >
-          <track kind="captions" src="" label="English" />
+          <track kind="captions" />
         </video>
         
         {/* Video controls overlay - Play/Pause button in center */}
@@ -567,7 +559,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             }}
             className="text-white text-sm font-medium min-w-[45px] hover:bg-white/10 px-2 py-1 rounded transition-colors"
           >
-            x {playbackRate.toFixed(1).replace('.0', ',0')}
+            x {playbackRate.toFixed(1).replaceAll('.0', ',0')}
           </button>
 
           {/* Fullscreen toggle */}
@@ -613,7 +605,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
       onPause={() => setIsPlaying(false)}
       onEnded={() => setIsPlaying(false)}
     >
-      <track kind="captions" src="" label="English" />
+      <track kind="captions" />
     </audio>
     
     <div className="flex flex-col items-center gap-4">
