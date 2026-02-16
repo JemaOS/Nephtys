@@ -334,6 +334,14 @@ export function ChatViewPage() {
   const messageQueueRef = useRef<Message[]>([])
   const isProcessingQueue = useRef(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  
+  // Ref to track sending state to prevent race conditions
+  const sendingRef = useRef(false)
+  
+  // Sync ref with state for immediate access
+  useEffect(() => {
+    sendingRef.current = sending
+  }, [sending])
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null)
   const longPressMessageRef = useRef<Message | null>(null)
   
@@ -1201,7 +1209,11 @@ export function ChatViewPage() {
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!newMessage.trim() || !user || sending) return
+    // Use ref for immediate check to prevent race conditions
+    if (!newMessage.trim() || !user || sendingRef.current) return
+    
+    // Set both ref and state immediately
+    sendingRef.current = true
     setSending(true)
     
     // OPTIMISTIC UI: Add message to local state immediately for instant display
@@ -1281,8 +1293,9 @@ export function ChatViewPage() {
     } catch (err) {
       console.error('[ChatViewPage] Error sending message:', err)
       setMessages(prev => prev.filter(m => m.id !== tempId))
-    } finally { 
-      setSending(false) 
+    } finally {
+      sendingRef.current = false
+      setSending(false)
     }
   }
 
