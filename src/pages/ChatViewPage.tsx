@@ -612,11 +612,47 @@ export function ChatViewPage() {
     }
   }, [user, handleNewMessageNotification])
 
+  // CRITICAL STABILITY FIX: Prevent multiple simultaneous data loads
+  const isLoadingDataRef = useRef(false)
+  const lastLoadTimeRef = useRef(0)
+  
+  // Debounced load function to prevent request spam
+  const debouncedLoadData = useCallback(() => {
+    const now = Date.now()
+    // Only allow reload every 5 seconds minimum
+    if (now - lastLoadTimeRef.current < 5000) {
+      return
+    }
+    if (isLoadingDataRef.current) {
+      return
+    }
+    
+    isLoadingDataRef.current = true
+    lastLoadTimeRef.current = now
+    
+    Promise.all([
+      loadConversation(),
+      loadMessages(),
+      loadCallLogs()
+    ]).finally(() => {
+      isLoadingDataRef.current = false
+    })
+  }, [])
+
   useEffect(() => {
     if (!conversationId || !user) return
-    loadConversation()
-    loadMessages()
-    loadCallLogs()
+    
+    // Initial load
+    isLoadingDataRef.current = true
+    lastLoadTimeRef.current = Date.now()
+    Promise.all([
+      loadConversation(),
+      loadMessages(),
+      loadCallLogs()
+    ]).finally(() => {
+      isLoadingDataRef.current = false
+    })
+    
     loadEphemeralSetting()
     if (permission === 'default') requestPermission()
     subscribeToConversation(conversationId)
@@ -703,34 +739,34 @@ export function ChatViewPage() {
       })
       .subscribe()
 
-    // Handle visibility change - WHATSAPP STYLE: minimal refresh
+    // Handle visibility change - WHATSAPP STYLE: debounced refresh
     let visibilityTimeout: NodeJS.Timeout | null = null
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        // Debounce: only reload if it's been at least 10 seconds since last load
+        // Clear any pending timeout
         if (visibilityTimeout) {
           clearTimeout(visibilityTimeout)
         }
+        // Debounce: wait 2 seconds then reload (max once every 5 seconds)
         visibilityTimeout = setTimeout(() => {
-          loadMessages()
-          loadConversation()
-        }, 10000)
+          debouncedLoadData()
+        }, 2000)
       }
     }
     
     document.addEventListener('visibilitychange', handleVisibilityChange)
     
-    // Handle Supabase reconnection event
+    // Handle Supabase reconnection event - debounced
     let reconnectTimeout: NodeJS.Timeout | null = null
     const handleSupabaseReconnect = () => {
-      // Debounce: only reload if it's been at least 10 seconds since last reload
+      // Clear any pending timeout
       if (reconnectTimeout) {
         clearTimeout(reconnectTimeout)
       }
+      // Debounce: wait 2 seconds then reload (max once every 5 seconds)
       reconnectTimeout = setTimeout(() => {
-        loadMessages()
-        loadConversation()
-      }, 10000)
+        debouncedLoadData()
+      }, 2000)
     }
     
     window.addEventListener('supabase-reconnected', handleSupabaseReconnect)
@@ -746,13 +782,15 @@ export function ChatViewPage() {
 
     return () => {
       clearTimeout(loadingTimeout)
+      if (visibilityTimeout) clearTimeout(visibilityTimeout)
+      if (reconnectTimeout) clearTimeout(reconnectTimeout)
       supabase.removeChannel(mainChannel)
       unsubscribeFromConversation(conversationId)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       window.removeEventListener('supabase-reconnected', handleSupabaseReconnect)
       window.removeEventListener('call-log-created', handleCallLogCreated as EventListener)
     }
-  }, [conversationId, user?.id, permission, handleNewMessage])
+  }, [conversationId, user?.id, permission, handleNewMessage, debouncedLoadData])
 
   // Track previous message count to detect new messages
   const prevMessageCountRef = useRef(0)
