@@ -1352,9 +1352,7 @@ export const MessageList: React.FC<MessageListProps> = ({
         </div>
       )}
       {loading ? (
-        <div className="flex justify-center items-center h-full">
-          <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-        </div>
+        null
       ) : messages.length === 0 ? (
         <div className="flex flex-col items-center justify-center flex-1 text-center space-y-3 px-8 my-auto">
           <div className="w-16 h-16 rounded-full bg-bg-surface flex items-center justify-center">

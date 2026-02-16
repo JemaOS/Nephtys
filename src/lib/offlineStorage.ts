@@ -319,6 +319,23 @@ class OfflineStorage {
   }
 
   async saveMessages(messages: OfflineMessage[]): Promise<void> {
+    // Update memory cache immediately
+    if (messages.length > 0) {
+      const conversationId = messages[0].conversation_id;
+      const current = this.memoryCache.messages.get(conversationId) || [];
+      
+      // Merge new messages with existing ones, avoiding duplicates
+      const existingIds = new Set(current.map(m => m.id));
+      const newMessages = messages.filter(m => !existingIds.has(m.id));
+      
+      if (newMessages.length > 0) {
+        const updated = [...current, ...newMessages].sort((a, b) => 
+          new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        );
+        this.memoryCache.messages.set(conversationId, updated);
+      }
+    }
+
     const ready = await this.ensureReady();
     if (!ready) {
       console.warn('[OfflineStorage] Cannot save messages - DB not ready');
@@ -345,6 +362,12 @@ class OfflineStorage {
   }
 
   async getMessages(conversationId: string): Promise<OfflineMessage[]> {
+    // Check memory cache first (instant)
+    if (this.memoryCache.messages.has(conversationId)) {
+      console.log('[OfflineStorage] Returning messages from memory cache');
+      return this.memoryCache.messages.get(conversationId)!;
+    }
+
     const ready = await this.ensureReady();
     if (!ready) {
       console.warn('[OfflineStorage] Cannot get messages - DB not ready');
