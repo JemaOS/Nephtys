@@ -317,7 +317,7 @@ export const ImageRenderer: React.FC<{
     <>
       <button
         type="button"
-        className="relative cursor-pointer overflow-hidden rounded-xl border-[3px] border-[#787add] group message-media-container text-left w-full border-none bg-transparent p-0"
+        className="relative cursor-pointer overflow-hidden rounded-xl border-[3px] border-[#787add] group message-media-container text-left w-full bg-transparent p-0"
         onClick={onImageClick}
         aria-label="Afficher l'image en plein écran"
       >
@@ -414,7 +414,7 @@ export const VideoRenderer: React.FC<{
     <>
       <button
         type="button"
-        className="relative cursor-pointer overflow-hidden rounded-xl border-[3px] border-[#787add] max-w-[280px] group message-media-container text-left w-full border-none bg-transparent p-0"
+        className="relative cursor-pointer overflow-hidden rounded-xl border-[3px] border-[#787add] max-w-[280px] group message-media-container text-left w-full bg-transparent p-0"
         onClick={onVideoClick}
         aria-label="Lire la vidéo"
       >
