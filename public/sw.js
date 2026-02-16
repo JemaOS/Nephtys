@@ -149,7 +149,7 @@ async function staleWhileRevalidate(request, cacheName = DYNAMIC_CACHE, timeout 
   if (cachedResponse) {
     console.log('[SW] Returning cached response for:', request.url);
     // Also update cache in background - don't await, fire and forget
-    void networkFetch;
+    networkFetch.catch(() => {});
     return cachedResponse;
   }
 
@@ -440,102 +440,122 @@ async function syncMessages() {
   }
 }
 
-// Message event - for communication with the app
-globalThis.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'SKIP_WAITING') {
-    globalThis.skipWaiting();
-  }
-  
-  if (event.data && event.data.type === 'CLEAR_CACHE') {
-    console.log('[SW] Clearing ALL caches (force reload requested)');
-    event.waitUntil(
-      caches.keys().then((cacheNames) => {
-        return Promise.all(
-          cacheNames.map((cacheName) => {
-            console.log('[SW] Deleting cache:', cacheName);
-            return caches.delete(cacheName);
-          })
-        );
-      }).then(() => {
-        console.log('[SW] All caches cleared');
-      })
-    );
-  }
-  
-  // Handle app visibility change - when app returns from background
-  if (event.data && event.data.type === 'APP_RESUMED') {
-    console.log('[SW] App resumed from background, clearing dynamic cache');
-    // Clear dynamic cache to force fresh data
-    caches.open(DYNAMIC_CACHE).then((cache) => {
-      cache.keys().then((keys) => {
-        keys.forEach((key) => cache.delete(key));
-      });
-    });
-    // Also clear Supabase cache to get fresh data
-    caches.open(SUPABASE_CACHE).then((cache) => {
-      cache.keys().then((keys) => {
-        keys.forEach((key) => cache.delete(key));
-      });
-    });
-    bypassCache = true;
-    // Reset bypass flag after 5 seconds
-    setTimeout(() => {
-      bypassCache = false;
-    }, 5000);
-  }
-  
-  // Handle keepalive ping from app
-  if (event.data && event.data.type === 'KEEPALIVE') {
-    lastActiveTime = Date.now();
-  }
-  
-  // Handle force reload request - clear everything and unregister
-  if (event.data && event.data.type === 'FORCE_RELOAD') {
-    console.log('[SW] Force reload requested - clearing all caches');
-    event.waitUntil(
-      caches.keys().then((cacheNames) => {
-        return Promise.all(
-          cacheNames.map((cacheName) => caches.delete(cacheName))
-        );
-      }).then(() => {
-        console.log('[SW] All caches cleared for force reload');
-        // Notify all clients to reload
-        return globalThis.clients.matchAll();
-      }).then((clients) => {
-        clients.forEach((client) => {
-          client.postMessage({ type: 'RELOAD_NOW' });
-        });
-      })
-    );
-  }
-  
-  // Health check - respond to ping from app
-  if (event.data && event.data.type === 'HEALTH_CHECK') {
-    // Respond immediately to confirm SW is alive
-    if (event.ports && event.ports[0]) {
-      event.ports[0].postMessage({ status: 'alive', timestamp: Date.now() });
-    }
-  }
-  
-  // Cache specific resource on demand
-  if (event.data && event.data.type === 'CACHE_URL') {
-    const url = event.data.url;
-    if (url) {
-      console.log('[SW] Caching URL on demand:', url);
-      event.waitUntil(
-        fetch(url).then((response) => {
-          if (response.ok) {
-            const cacheName = isSupabaseRequest(new URL(url)) ? SUPABASE_CACHE : 
-                              isMediaRequest(new Request(url)) ? MEDIA_CACHE : DYNAMIC_CACHE;
-            return caches.open(cacheName).then((cache) => {
-              return cache.put(url, response);
-            });
-          }
-        }).catch((err) => {
-          console.error('[SW] Failed to cache URL:', err);
+// Message handlers
+const handleSkipWaiting = () => globalThis.skipWaiting();
+
+const handleClearCache = (event) => {
+  console.log('[SW] Clearing ALL caches (force reload requested)');
+  event.waitUntil(
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames.map((cacheName) => {
+          console.log('[SW] Deleting cache:', cacheName);
+          return caches.delete(cacheName);
         })
       );
-    }
+    }).then(() => {
+      console.log('[SW] All caches cleared');
+    })
+  );
+};
+
+const handleAppResumed = () => {
+  console.log('[SW] App resumed from background, clearing dynamic cache');
+  // Clear dynamic cache to force fresh data
+  caches.open(DYNAMIC_CACHE).then((cache) => {
+    cache.keys().then((keys) => {
+      keys.forEach((key) => cache.delete(key));
+    });
+  });
+  // Also clear Supabase cache to get fresh data
+  caches.open(SUPABASE_CACHE).then((cache) => {
+    cache.keys().then((keys) => {
+      keys.forEach((key) => cache.delete(key));
+    });
+  });
+  bypassCache = true;
+  // Reset bypass flag after 5 seconds
+  setTimeout(() => {
+    bypassCache = false;
+  }, 5000);
+};
+
+const handleKeepAlive = () => {
+  lastActiveTime = Date.now();
+};
+
+const handleForceReload = (event) => {
+  console.log('[SW] Force reload requested - clearing all caches');
+  event.waitUntil(
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames.map((cacheName) => caches.delete(cacheName))
+      );
+    }).then(() => {
+      console.log('[SW] All caches cleared for force reload');
+      // Notify all clients to reload
+      return globalThis.clients.matchAll();
+    }).then((clients) => {
+      clients.forEach((client) => {
+        client.postMessage({ type: 'RELOAD_NOW' });
+      });
+    })
+  );
+};
+
+const handleHealthCheck = (event) => {
+  // Respond immediately to confirm SW is alive
+  if (event.ports && event.ports[0]) {
+    event.ports[0].postMessage({ status: 'alive', timestamp: Date.now() });
+  }
+};
+
+const handleCacheUrl = (event) => {
+  const url = event.data.url;
+  if (url) {
+    console.log('[SW] Caching URL on demand:', url);
+    event.waitUntil(
+      fetch(url).then((response) => {
+        if (response.ok) {
+          const cacheName = isSupabaseRequest(new URL(url)) ? SUPABASE_CACHE : 
+                            isMediaRequest(new Request(url)) ? MEDIA_CACHE : DYNAMIC_CACHE;
+          return caches.open(cacheName).then((cache) => {
+            return cache.put(url, response);
+          });
+        }
+      }).catch((err) => {
+        console.error('[SW] Failed to cache URL:', err);
+      })
+    );
+  }
+};
+
+// Message event - for communication with the app
+globalThis.addEventListener('message', (event) => {
+  if (!event.data || !event.data.type) return;
+
+  switch (event.data.type) {
+    case 'SKIP_WAITING':
+      handleSkipWaiting();
+      break;
+    case 'CLEAR_CACHE':
+      handleClearCache(event);
+      break;
+    case 'APP_RESUMED':
+      handleAppResumed();
+      break;
+    case 'KEEPALIVE':
+      handleKeepAlive();
+      break;
+    case 'FORCE_RELOAD':
+      handleForceReload(event);
+      break;
+    case 'HEALTH_CHECK':
+      handleHealthCheck(event);
+      break;
+    case 'CACHE_URL':
+      handleCacheUrl(event);
+      break;
   }
 });
 

@@ -22,30 +22,28 @@ interface Position {
 export const extractYouTubeVideoId = (url: string): string | null => {
   try {
     const urlObj = new URL(url);
-    const hostname = urlObj.hostname;
+    const { hostname, pathname, searchParams } = urlObj;
     
-    // Handle youtube.com/watch?v=VIDEO_ID
-    if (hostname === 'youtube.com' || hostname === 'www.youtube.com' || hostname.includes('youtube.com')) {
-      if (urlObj.pathname === '/watch') {
-        const videoId = urlObj.searchParams.get('v');
-        if (videoId && videoId.length === 11) {
-          return videoId;
-        }
-      }
-      // Handle youtube.com/embed/VIDEO_ID, youtube.com/v/VIDEO_ID, youtube.com/shorts/VIDEO_ID
-      if (urlObj.pathname.startsWith('/embed/') || urlObj.pathname.startsWith('/v/') || urlObj.pathname.startsWith('/shorts/')) {
-        const parts = urlObj.pathname.split('/');
-        if (parts.length >= 3 && parts[2].length === 11) {
-          return parts[2];
-        }
-      }
+    // Handle youtu.be/VIDEO_ID
+    if (hostname.includes('youtu.be')) {
+      const videoId = pathname.slice(1);
+      return videoId.length === 11 ? videoId : null;
     }
     
-    // Handle youtu.be/VIDEO_ID (short URL)
-    if (hostname === 'youtu.be' || hostname.includes('youtu.be')) {
-      const videoId = urlObj.pathname.slice(1);
-      if (videoId && videoId.length === 11) {
-        return videoId;
+    // Handle youtube.com domains
+    if (hostname.includes('youtube.com')) {
+      // Handle /watch?v=VIDEO_ID
+      if (pathname === '/watch') {
+        const videoId = searchParams.get('v');
+        return (videoId && videoId.length === 11) ? videoId : null;
+      }
+      
+      // Handle /embed/, /v/, /shorts/
+      const pathParts = pathname.split('/');
+      const validPrefixes = ['embed', 'v', 'shorts'];
+      // pathParts[0] is empty string because pathname starts with /
+      if (validPrefixes.includes(pathParts[1]) && pathParts[2]?.length === 11) {
+        return pathParts[2];
       }
     }
   } catch {

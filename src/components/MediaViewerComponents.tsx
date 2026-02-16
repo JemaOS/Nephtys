@@ -398,131 +398,84 @@ interface VideoPlayerProps {
   lastClickTimeRef: React.MutableRefObject<number>;
 }
 
-export const VideoPlayer: React.FC<VideoPlayerProps> = ({
-  mediaUrl,
-  isMuted,
+interface VideoControlsProps {
+  showControls: boolean;
+  isPlaying: boolean;
+  isMuted: boolean;
+  currentTime: number;
+  duration: number;
+  playbackRate: number;
+  isFullscreen: boolean;
+  togglePlayPause: () => void;
+  toggleMute: () => void;
+  toggleFullscreen: () => void;
+  cyclePlaybackRate: () => void;
+  setIsHoveringControls: (hovering: boolean) => void;
+  setCurrentTime: (time: number) => void;
+  videoRef: React.RefObject<HTMLVideoElement>;
+}
+
+const VideoControls: React.FC<VideoControlsProps> = ({
+  showControls,
   isPlaying,
+  isMuted,
   currentTime,
   duration,
   playbackRate,
   isFullscreen,
-  showControls,
-  videoRef,
-  videoContainerRef,
-  progressBarRef,
   togglePlayPause,
   toggleMute,
   toggleFullscreen,
-  handleTimeUpdate,
-  handleLoadedMetadata,
-  handleProgressBarClick,
-  handleProgressBarTouchStart,
-  handleProgressBarTouchMove,
-  handleProgressBarTouchEnd,
   cyclePlaybackRate,
   setIsHoveringControls,
-  isLandscape,
-  isMobile,
-  setIsPlaying,
   setCurrentTime,
-  lastClickTimeRef,
+  videoRef,
 }) => {
   const progressPercentage = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
-    <button
-      type="button"
-      className={`relative flex flex-col w-full h-full border-none bg-transparent p-0 ${isLandscape && isMobile ? 'w-full h-full' : 'max-w-full max-h-full w-full'} ${isFullscreen ? 'bg-black' : ''}`}
-      onClick={(e) => {
-        // Smart click handling: Single click toggles play/pause immediately, double click toggles fullscreen
-        const now = Date.now();
-        if (now - lastClickTimeRef.current < 300) {
-          toggleFullscreen();
-          lastClickTimeRef.current = 0;
-        } else {
-          togglePlayPause();
-          lastClickTimeRef.current = now;
-        }
-      }}
-      aria-label="Lecteur vidéo"
-    >
-      <div className="flex-1 flex items-center justify-center relative">
-        <video
-          ref={videoRef}
-          src={mediaUrl}
-          muted={isMuted}
-          className={`object-contain ${
-            isLandscape && isMobile
-              ? 'w-full h-full max-w-none max-h-none'
-              : 'max-w-full max-h-[70vh]'
-          }`}
-          playsInline
-          onClick={(e) => {
-            e.stopPropagation();
-            // Smart click handling
-            const now = Date.now();
-            if (now - lastClickTimeRef.current < 300) {
-              toggleFullscreen();
-              lastClickTimeRef.current = 0;
-            } else {
-              togglePlayPause();
-              lastClickTimeRef.current = now;
-            }
-          }}
-          onPlay={() => setIsPlaying(true)}
-          onPause={() => setIsPlaying(false)}
-          onEnded={() => {
-            setIsPlaying(false);
-            setCurrentTime(0);
-          }}
-          onTimeUpdate={handleTimeUpdate}
-          onLoadedMetadata={handleLoadedMetadata}
-        >
-          <track kind="captions" />
-        </video>
-        
-        {/* Video controls overlay - Play/Pause button in center */}
-        <div
-          className={`absolute inset-0 z-40 flex items-center justify-center transition-opacity pointer-events-none ${
-            showControls || !isPlaying ? 'opacity-100' : 'opacity-0'
-          }`}
-        >
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              togglePlayPause();
-            }}
-            className={`w-16 h-16 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center transition-colors ${
-              showControls || !isPlaying ? 'pointer-events-auto' : 'pointer-events-none'
-            }`}
-            aria-label={isPlaying ? "Pause" : "Lecture"}
-          >
-            {isPlaying ? (
-              <Pause size={32} className="text-white" />
-            ) : (
-              <Play size={32} className="text-white ml-1" />
-            )}
-          </button>
-        </div>
-
-        {/* Volume control - top right */}
+    <>
+      {/* Video controls overlay - Play/Pause button in center */}
+      <div
+        className={`absolute inset-0 z-40 flex items-center justify-center transition-opacity pointer-events-none ${
+          showControls || !isPlaying ? 'opacity-100' : 'opacity-0'
+        }`}
+      >
         <button
           onClick={(e) => {
             e.stopPropagation();
-            toggleMute();
+            togglePlayPause();
           }}
-          className={`absolute top-4 right-4 z-50 w-10 h-10 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center transition-all ${
-            showControls ? 'opacity-100' : 'opacity-0'
+          className={`w-16 h-16 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center transition-colors ${
+            showControls || !isPlaying ? 'pointer-events-auto' : 'pointer-events-none'
           }`}
-          aria-label={isMuted ? "Activer le son" : "Couper le son"}
+          aria-label={isPlaying ? "Pause" : "Lecture"}
         >
-          {isMuted ? (
-            <VolumeX size={20} className="text-white" />
+          {isPlaying ? (
+            <Pause size={32} className="text-white" />
           ) : (
-            <Volume2 size={20} className="text-white" />
+            <Play size={32} className="text-white ml-1" />
           )}
         </button>
       </div>
+
+      {/* Volume control - top right */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          toggleMute();
+        }}
+        className={`absolute top-4 right-4 z-50 w-10 h-10 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center transition-all ${
+          showControls ? 'opacity-100' : 'opacity-0'
+        }`}
+        aria-label={isMuted ? "Activer le son" : "Couper le son"}
+      >
+        {isMuted ? (
+          <VolumeX size={20} className="text-white" />
+        ) : (
+          <Volume2 size={20} className="text-white" />
+        )}
+      </button>
 
       {/* Video progress bar - WhatsApp style at bottom */}
       <div
@@ -599,6 +552,108 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             <Maximize2 size={20} className={isFullscreen ? 'rotate-45' : ''} />
           </button>
         </div>
+      </div>
+    </>
+  );
+};
+
+export const VideoPlayer: React.FC<VideoPlayerProps> = ({
+  mediaUrl,
+  isMuted,
+  isPlaying,
+  currentTime,
+  duration,
+  playbackRate,
+  isFullscreen,
+  showControls,
+  videoRef,
+  videoContainerRef,
+  progressBarRef,
+  togglePlayPause,
+  toggleMute,
+  toggleFullscreen,
+  handleTimeUpdate,
+  handleLoadedMetadata,
+  handleProgressBarClick,
+  handleProgressBarTouchStart,
+  handleProgressBarTouchMove,
+  handleProgressBarTouchEnd,
+  cyclePlaybackRate,
+  setIsHoveringControls,
+  isLandscape,
+  isMobile,
+  setIsPlaying,
+  setCurrentTime,
+  lastClickTimeRef,
+}) => {
+  return (
+    <button
+      type="button"
+      className={`relative flex flex-col w-full h-full border-none bg-transparent p-0 ${isLandscape && isMobile ? 'w-full h-full' : 'max-w-full max-h-full w-full'} ${isFullscreen ? 'bg-black' : ''}`}
+      onClick={(e) => {
+        // Smart click handling: Single click toggles play/pause immediately, double click toggles fullscreen
+        const now = Date.now();
+        if (now - lastClickTimeRef.current < 300) {
+          toggleFullscreen();
+          lastClickTimeRef.current = 0;
+        } else {
+          togglePlayPause();
+          lastClickTimeRef.current = now;
+        }
+      }}
+      aria-label="Lecteur vidéo"
+    >
+      <div className="flex-1 flex items-center justify-center relative">
+        <video
+          ref={videoRef}
+          src={mediaUrl}
+          muted={isMuted}
+          className={`object-contain ${
+            isLandscape && isMobile
+              ? 'w-full h-full max-w-none max-h-none'
+              : 'max-w-full max-h-[70vh]'
+          }`}
+          playsInline
+          onClick={(e) => {
+            e.stopPropagation();
+            // Smart click handling
+            const now = Date.now();
+            if (now - lastClickTimeRef.current < 300) {
+              toggleFullscreen();
+              lastClickTimeRef.current = 0;
+            } else {
+              togglePlayPause();
+              lastClickTimeRef.current = now;
+            }
+          }}
+          onPlay={() => setIsPlaying(true)}
+          onPause={() => setIsPlaying(false)}
+          onEnded={() => {
+            setIsPlaying(false);
+            setCurrentTime(0);
+          }}
+          onTimeUpdate={handleTimeUpdate}
+          onLoadedMetadata={handleLoadedMetadata}
+        >
+          <track kind="captions" />
+        </video>
+        
+        <VideoControls
+          showControls={showControls}
+          isPlaying={isPlaying}
+          isMuted={isMuted}
+          currentTime={currentTime}
+          duration={duration}
+          playbackRate={playbackRate}
+          isFullscreen={isFullscreen}
+          togglePlayPause={togglePlayPause}
+          toggleMute={toggleMute}
+          toggleFullscreen={toggleFullscreen}
+          cyclePlaybackRate={cyclePlaybackRate}
+          setIsHoveringControls={setIsHoveringControls}
+          setCurrentTime={setCurrentTime}
+          videoRef={videoRef}
+        />
       </div>
     </button>
   );

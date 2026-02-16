@@ -1,7 +1,7 @@
 // Copyright (c) 2025 Jema Technology.
 // Distributed under the license specified in the root directory of this project.
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 
 // Helper function to check if a reaction already exists
@@ -86,6 +86,36 @@ export const useMessageReactions = (conversationId: string): UseMessageReactions
     fetchReactions();
   }, [conversationId]);
 
+  const handleRealtimeEvent = useCallback(async (payload: any) => {
+    console.log('[useMessageReactions] Realtime reaction event:', payload.eventType, payload);
+    
+    // For INSERT: add the new reaction if it's for a message in this conversation
+    if (payload.eventType === 'INSERT') {
+      const newReaction = payload.new as Reaction;
+      // Check if this reaction belongs to a message in this conversation
+      const { data: messageData } = await supabase
+        .from('messages')
+        .select('conversation_id')
+        .eq('id', newReaction.message_id)
+        .maybeSingle();
+      
+      if (messageData && messageData.conversation_id === conversationId) {
+        setReactions(prev => addReactionIfNotExists(prev, newReaction));
+      }
+    } else if (payload.eventType === 'DELETE') {
+      // Handle DELETE - remove the reaction
+      setReactions(prev => removeReactionById(prev, payload.old.id));
+    } else if (payload.eventType === 'UPDATE') {
+      // Handle UPDATE - when user changes their reaction emoji
+      const updatedReaction = payload.new as Reaction;
+      // Remove old reaction and add new one
+      setReactions(prev => {
+        const filtered = prev.filter(r => r.id !== payload.old.id);
+        return addReactionIfNotExists(filtered, updatedReaction);
+      });
+    }
+  }, [conversationId]);
+
   // S'abonner aux changements en temps réel
   useEffect(() => {
     if (!conversationId) return;
@@ -99,35 +129,7 @@ export const useMessageReactions = (conversationId: string): UseMessageReactions
           schema: 'public',
           table: 'message_reactions',
         },
-        async (payload) => {
-          console.log('[useMessageReactions] Realtime reaction event:', payload.eventType, payload);
-          
-          // For INSERT: add the new reaction if it's for a message in this conversation
-          if (payload.eventType === 'INSERT') {
-            const newReaction = payload.new as Reaction;
-            // Check if this reaction belongs to a message in this conversation
-            const { data: messageData } = await supabase
-              .from('messages')
-              .select('conversation_id')
-              .eq('id', newReaction.message_id)
-              .maybeSingle();
-            
-            if (messageData && messageData.conversation_id === conversationId) {
-              setReactions(prev => addReactionIfNotExists(prev, newReaction));
-            }
-          } else if (payload.eventType === 'DELETE') {
-            // Handle DELETE - remove the reaction
-            setReactions(prev => removeReactionById(prev, payload.old.id));
-          } else if (payload.eventType === 'UPDATE') {
-            // Handle UPDATE - when user changes their reaction emoji
-            const updatedReaction = payload.new as Reaction;
-            // Remove old reaction and add new one
-            setReactions(prev => {
-              const filtered = prev.filter(r => r.id !== payload.old.id);
-              return addReactionIfNotExists(filtered, updatedReaction);
-            });
-          }
-        }
+        handleRealtimeEvent
       )
       .subscribe((status) => {
         console.log('[useMessageReactions] Subscription status:', status);
@@ -136,7 +138,7 @@ export const useMessageReactions = (conversationId: string): UseMessageReactions
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [conversationId]);
+  }, [conversationId, handleRealtimeEvent]);
 
   // Ajouter une réaction (une seule réaction par utilisateur par message)
   const addReaction = async (messageId: string, emoji: string) => {
