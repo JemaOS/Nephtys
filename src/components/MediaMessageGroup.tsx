@@ -77,7 +77,9 @@ export const MediaMessageGroup: React.FC<MediaMessageGroupProps> = ({
               src={item.url}
               className="w-full h-auto max-h-[200px] sm:max-h-[240px]"
               controls
-            />
+            >
+              <track kind="captions" />
+            </video>
           )}
           {item.caption && (
             <p className="mt-1.5 text-sm">{item.caption}</p>
@@ -116,7 +118,9 @@ export const MediaMessageGroup: React.FC<MediaMessageGroupProps> = ({
                 />
               ) : (
                 <div className="w-full h-[140px] sm:h-[160px] bg-black flex items-center justify-center">
-                  <video src={item.url} className="w-full h-full object-cover" />
+                  <video src={item.url} className="w-full h-full object-cover">
+                    <track kind="captions" />
+                  </video>
                 </div>
               )}
             </div>
@@ -155,7 +159,9 @@ export const MediaMessageGroup: React.FC<MediaMessageGroupProps> = ({
                 />
               ) : (
                 <div className="w-full h-full bg-black flex items-center justify-center">
-                  <video src={item.url} className="w-full h-full object-cover" />
+                  <video src={item.url} className="w-full h-full object-cover">
+                    <track kind="captions" />
+                  </video>
                 </div>
               )}
             </div>
@@ -275,7 +281,9 @@ export const MediaMessageGroup: React.FC<MediaMessageGroupProps> = ({
                 controls
                 autoPlay
                 className="max-w-full max-h-[70vh]"
-              />
+              >
+                <track kind="captions" />
+              </video>
             )}
           </div>
 
