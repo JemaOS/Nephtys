@@ -400,6 +400,35 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
     )
   }
 
+  // Loading state - Skeleton UI
+  // Show skeleton if:
+  // 1. Conversation is not loaded yet
+  // 2. OR it's a direct conversation and otherUser is not loaded yet
+  const isLoading = !conversation || (conversation.type === 'direct' && !otherUser);
+
+  if (isLoading) {
+    return (
+      <div className="bg-bg-surface px-2 sm:px-4 py-2 sm:py-3 flex items-center gap-2 sm:gap-4 flex-shrink-0 z-50">
+        <button onClick={() => navigate('/chats')} className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1]">
+          <ArrowLeft size={20} />
+        </button>
+        <div className="flex-1 flex items-center gap-3 -mx-2 px-2 py-1">
+          <div className="w-10 h-10 rounded-full bg-bg-hover animate-pulse" />
+          <div className="flex-1 min-w-0 space-y-2">
+            <div className="h-4 w-32 bg-bg-hover rounded animate-pulse" />
+            <div className="h-3 w-20 bg-bg-hover rounded animate-pulse" />
+          </div>
+        </div>
+        <div className="flex gap-1 sm:gap-2">
+          <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-bg-hover animate-pulse" />
+          <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-bg-hover animate-pulse" />
+          <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-bg-hover animate-pulse" />
+          <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-bg-hover animate-pulse" />
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="bg-bg-surface px-2 sm:px-4 py-2 sm:py-3 flex items-center gap-2 sm:gap-4 flex-shrink-0 z-50">
       <button onClick={() => navigate('/chats')} className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1]">
