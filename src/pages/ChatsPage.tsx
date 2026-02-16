@@ -689,14 +689,19 @@ export function ChatsPage() {
     }
   }, [user])
   
-  // CRITICAL FIX: Reload when the page becomes visible (navigation back from ChatViewPage)
-  // This handles the case where the component was already mounted but hidden
+  // AGGRESSIVE FIX: Force reload on EVERY mount and when page becomes visible
+  // This ensures the conversation list is ALWAYS fresh when returning from ChatViewPage
   useEffect(() => {
     if (!user) return
     
+    // Immediate reload on mount - no delay
+    console.log('[ChatsPage] MOUNT: Force reloading conversations immediately...')
+    loadConversationsFromServer(false)
+    
+    // Also listen for visibility changes
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        console.log('[ChatsPage] Page became visible, reloading conversations...')
+        console.log('[ChatsPage] VISIBLE: Force reloading conversations...')
         loadConversationsFromServer(false)
       }
     }
