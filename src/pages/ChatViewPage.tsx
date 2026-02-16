@@ -745,22 +745,37 @@ export function ChatViewPage() {
 
     // Handle visibility change - refresh data when app comes back to foreground
     // This is critical for PWA on mobile where the app may be suspended
+    // Added debounce to prevent too many requests
+    let visibilityTimeout: NodeJS.Timeout | null = null
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         console.log('[ChatViewPage] App became visible, refreshing data...')
-        // Reload messages when app becomes visible again
-        loadMessages()
-        loadConversation()
+        // Debounce: only reload if it's been at least 5 seconds since last load
+        if (visibilityTimeout) {
+          clearTimeout(visibilityTimeout)
+        }
+        visibilityTimeout = setTimeout(() => {
+          loadMessages()
+          loadConversation()
+        }, 5000)
       }
     }
     
     document.addEventListener('visibilitychange', handleVisibilityChange)
     
     // Handle Supabase reconnection event (triggered by useSupabaseReconnect hook)
+    // Added debounce to prevent too many reloads
+    let reconnectTimeout: NodeJS.Timeout | null = null
     const handleSupabaseReconnect = () => {
       console.log('[ChatViewPage] Supabase reconnected, reloading messages...')
-      loadMessages()
-      loadConversation()
+      // Debounce: only reload if it's been at least 5 seconds since last reload
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout)
+      }
+      reconnectTimeout = setTimeout(() => {
+        loadMessages()
+        loadConversation()
+      }, 5000)
     }
     
     window.addEventListener('supabase-reconnected', handleSupabaseReconnect)
