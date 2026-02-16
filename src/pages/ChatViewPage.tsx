@@ -389,7 +389,9 @@ export function ChatViewPage() {
 
   // Collect all media from messages for navigation in MediaViewer
   const allMediaItems = useMemo(() => {
-    return messages
+    // Ensure messages is always an array
+    const msgs = Array.isArray(messages) ? messages : []
+    return msgs
       .filter(m => {
         // Include image and video messages
         if (m.media_url && m.media_type && (m.media_type === 'image' || m.media_type === 'video') && m.type !== 'audio') {
@@ -522,8 +524,12 @@ export function ChatViewPage() {
   const timelineItems = useMemo((): TimelineItem[] => {
     const items: TimelineItem[] = []
     
+    // Ensure displayedMessages and callLogs are always arrays
+    const msgs = Array.isArray(displayedMessages) ? displayedMessages : []
+    const logs = Array.isArray(callLogs) ? callLogs : []
+    
     // Add messages to timeline
-    for (const message of displayedMessages) {
+    for (const message of msgs) {
       items.push({
         type: 'message',
         timestamp: message.created_at,
@@ -532,7 +538,7 @@ export function ChatViewPage() {
     }
     
     // Add call logs to timeline
-    for (const call of callLogs) {
+    for (const call of logs) {
       items.push({
         type: 'call',
         timestamp: call.started_at,
