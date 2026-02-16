@@ -62,7 +62,6 @@ export const AudioFilePlayer: React.FC<AudioFilePlayerProps> = ({
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(initialDuration || 0);
   const [isDragging, setIsDragging] = useState(false);
-  const [isLoaded, setIsLoaded] = useState(false);
 
   // Extract file name without extension and clean it up
   const displayName = fileName 
@@ -89,7 +88,6 @@ export const AudioFilePlayer: React.FC<AudioFilePlayerProps> = ({
   const handleLoadedMetadata = () => {
     if (audioRef.current) {
       setDuration(audioRef.current.duration);
-      setIsLoaded(true);
     }
   };
 

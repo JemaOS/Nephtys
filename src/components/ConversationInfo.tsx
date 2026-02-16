@@ -669,11 +669,16 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
                       : 'text-text-secondary hover:bg-bg-hover'
                   }`}
                 >
-                  {tab === 'overview' ? 'Vue d\'ensemble' :
-                   tab === 'members' ? 'Membres' :
-                   tab === 'media' ? 'Médias' :
-                   tab === 'files' ? 'Fichiers' :
-                   'Liens'}
+                  {(() => {
+                    switch (tab) {
+                      case 'overview': return 'Vue d\'ensemble';
+                      case 'members': return 'Membres';
+                      case 'media': return 'Médias';
+                      case 'files': return 'Fichiers';
+                      case 'links': return 'Liens';
+                      default: return '';
+                    }
+                  })()}
                 </button>
               ))}
             </div>
@@ -690,11 +695,16 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
           {/* Header - Desktop only */}
           <div className="bg-bg-surface px-4 py-3 flex items-center justify-between border-b border-bg-hover">
             <h2 className="text-lg font-medium text-text-primary">
-              {activeTab === 'overview' ? 'Vue d\'ensemble' :
-               activeTab === 'members' ? 'Membres' :
-               activeTab === 'media' ? 'Médias' :
-               activeTab === 'files' ? 'Fichiers' :
-               'Liens'}
+              {(() => {
+                switch (activeTab) {
+                  case 'overview': return 'Vue d\'ensemble';
+                  case 'members': return 'Membres';
+                  case 'media': return 'Médias';
+                  case 'files': return 'Fichiers';
+                  case 'links': return 'Liens';
+                  default: return '';
+                }
+              })()}
             </h2>
             <button
               onClick={onClose}
