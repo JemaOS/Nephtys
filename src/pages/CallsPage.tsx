@@ -1312,9 +1312,10 @@ export function CallsPage() {
                 if (contact) {
                   // Render contact favorite
                   return (
-                    <div
+                    <button
+                      type="button"
                       key={favId}
-                      className="px-4 py-3 flex items-center gap-3 hover:bg-bg-surface transition-colors rounded-lg cursor-pointer"
+                      className="w-full px-4 py-3 flex items-center gap-3 hover:bg-bg-surface transition-colors rounded-lg cursor-pointer text-left"
                       onClick={() => handleCallContact(favId)}
                     >
                       {contact.profile.avatar_url ? (
@@ -1340,14 +1341,15 @@ export function CallsPage() {
                       >
                         <Star size={16} className="text-accent fill-[#6b6fdb]" />
                       </button>
-                    </div>
+                    </button>
                   )
                 } else if (groupInfo) {
                   // Render group conversation favorite
                   return (
-                    <div
+                    <button
+                      type="button"
                       key={favId}
-                      className="px-4 py-3 flex items-center gap-3 hover:bg-bg-surface transition-colors rounded-lg cursor-pointer"
+                      className="w-full px-4 py-3 flex items-center gap-3 hover:bg-bg-surface transition-colors rounded-lg cursor-pointer text-left"
                       onClick={async () => {
                         // Start group call
                         try {
@@ -1384,7 +1386,7 @@ export function CallsPage() {
                       >
                         <Star size={16} className="text-accent fill-[#6b6fdb]" />
                       </button>
-                    </div>
+                    </button>
                   )
                 }
                 
@@ -1549,9 +1551,10 @@ export function CallsPage() {
                 </div>
               ) : (
                 contacts.map((contact) => (
-                  <div
+                  <button
+                    type="button"
                     key={contact.id}
-                    className="px-6 py-3 cursor-pointer hover:bg-bg-hover transition-colors"
+                    className="w-full px-6 py-3 cursor-pointer hover:bg-bg-hover transition-colors text-left"
                     onClick={() => handleCallContact(contact.contact_user_id)}
                   >
                     <div className="flex items-center gap-3">
@@ -1597,7 +1600,7 @@ export function CallsPage() {
                         </button>
                       </div>
                     </div>
-                  </div>
+                  </button>
                 ))
               )}
             </div>
@@ -1638,9 +1641,10 @@ export function CallsPage() {
                 contacts.map((contact) => {
                   const isFavorite = favorites.includes(contact.contact_user_id)
                   return (
-                    <div
+                    <button
+                      type="button"
                       key={contact.id}
-                      className="px-6 py-3 cursor-pointer hover:bg-bg-hover transition-colors"
+                      className="w-full px-6 py-3 cursor-pointer hover:bg-bg-hover transition-colors text-left"
                       onClick={() => {
                         toggleFavorite(contact.contact_user_id, false)
                       }}
@@ -1674,7 +1678,7 @@ export function CallsPage() {
                           />
                         </div>
                       </div>
-                    </div>
+                    </button>
                   )
                 })
               )}

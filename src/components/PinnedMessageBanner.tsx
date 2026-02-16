@@ -29,8 +29,9 @@ export const PinnedMessageBanner: React.FC<PinnedMessageBannerProps> = ({
     : pinnedMessage.content;
 
   return (
-    <div 
-      className="bg-bg-surface border-b border-bg-hover px-4 py-2 flex items-center gap-3 cursor-pointer hover:bg-bg-hover transition-colors"
+    <button
+      type="button"
+      className="bg-bg-surface border-b border-bg-hover px-4 py-2 flex items-center gap-3 cursor-pointer hover:bg-bg-hover transition-colors w-full text-left"
       onClick={onClick}
     >
       {/* Pin Icon */}
@@ -56,6 +57,6 @@ export const PinnedMessageBanner: React.FC<PinnedMessageBannerProps> = ({
       >
         <X size={16} className="text-text-secondary" />
       </button>
-    </div>
+    </button>
   );
 };

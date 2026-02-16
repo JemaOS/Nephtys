@@ -943,9 +943,10 @@ const getContactsToDelete = (
             </div>
           ) : (
             filteredContacts.map((contact) => (
-              <div
+              <button
+                type="button"
                 key={contact.id}
-                className={`px-4 py-3 hover:bg-bg-surface transition-colors cursor-pointer ${
+                className={`w-full px-4 py-3 hover:bg-bg-surface transition-colors cursor-pointer text-left ${
                   selectedContacts.has(contact.id) ? 'bg-accent/10' : ''
                 }`}
                 onClick={() => {
@@ -1006,7 +1007,7 @@ const getContactsToDelete = (
                     </button>
                   )}
                 </div>
-              </div>
+              </button>
             ))
           )}
         </div>

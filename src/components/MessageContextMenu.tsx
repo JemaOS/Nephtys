@@ -243,7 +243,12 @@ export const MessageContextMenu: React.FC<MessageContextMenuProps> = ({
   return (
     <>
       {/* Backdrop */}
-      <div className="fixed inset-0 z-50" onClick={onClose} />
+      <button
+        type="button"
+        className="fixed inset-0 z-50 w-full h-full cursor-default"
+        onClick={onClose}
+        aria-label="Fermer le menu"
+      />
       
       {/* Context Menu */}
       <div

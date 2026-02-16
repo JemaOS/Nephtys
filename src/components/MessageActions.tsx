@@ -92,9 +92,11 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
       {isOpen && (
         <>
           {/* Backdrop */}
-          <div
-            className="fixed inset-0 z-40"
+          <button
+            type="button"
+            className="fixed inset-0 z-40 w-full h-full cursor-default"
             onClick={() => setIsOpen(false)}
+            aria-label="Fermer le menu"
           />
 
           {/* Menu */}

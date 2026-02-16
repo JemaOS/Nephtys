@@ -446,7 +446,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               : 'max-w-full max-h-[70vh]'
           }`}
           playsInline
-          webkit-playsinline="true"
           // Android-specific attributes for better video handling
           // @ts-ignore - x5 attributes for Android WebView/browsers
           x5-video-player-type="h5-page"
@@ -475,7 +474,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           }}
           onTimeUpdate={handleTimeUpdate}
           onLoadedMetadata={handleLoadedMetadata}
-        />
+        >
+          <track kind="captions" src="" label="English" />
+        </video>
         
         {/* Video controls overlay - Play/Pause button in center */}
         <div
@@ -541,7 +542,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             step={0.1}
             value={currentTime}
             onChange={(e) => {
-               const newTime = parseFloat(e.target.value);
+               const newTime = Number.parseFloat(e.target.value);
                setCurrentTime(newTime);
                if (videoRef.current) videoRef.current.currentTime = newTime;
             }}
@@ -611,7 +612,9 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
       onPlay={() => setIsPlaying(true)}
       onPause={() => setIsPlaying(false)}
       onEnded={() => setIsPlaying(false)}
-    />
+    >
+      <track kind="captions" src="" label="English" />
+    </audio>
     
     <div className="flex flex-col items-center gap-4">
       {/* Waveform visualization placeholder */}

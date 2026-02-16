@@ -185,10 +185,14 @@ export function ArchivedPage() {
                     )}
                   </div>
                     
-                    <div className="flex-1 min-w-0 border-b border-bg-hover pb-3" onClick={() => navigate(`/chat/${conversation.id}`)}>
+                    <button
+                      type="button"
+                      className="flex-1 min-w-0 border-b border-bg-hover pb-3 text-left bg-transparent p-0"
+                      onClick={() => navigate(`/chat/${conversation.id}`)}
+                    >
                       <h3 className="text-text-primary font-normal truncate">{displayName}</h3>
                       <p className="text-sm text-text-secondary">Archivée</p>
-                    </div>
+                    </button>
 
                     <button
                       onClick={(e) => handleUnarchive(conversation.id, e)}

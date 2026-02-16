@@ -116,10 +116,11 @@ export function AuthPage() {
 
           <form onSubmit={handleSubmit} className="space-y-1.5 sm:space-y-2">
             <div className="space-y-0.5 sm:space-y-1">
-              <label className="text-[9px] sm:text-[10px] text-text-secondary font-medium">Pseudo</label>
+              <label htmlFor="username" className="text-[9px] sm:text-[10px] text-text-secondary font-medium">Pseudo</label>
               <div className="relative">
                 <User size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" />
                 <input
+                  id="username"
                   type="text"
                   placeholder="votre_pseudo"
                   value={username}
@@ -132,10 +133,11 @@ export function AuthPage() {
 
             {mode !== 'guest' && (
               <div className="space-y-0.5 sm:space-y-1">
-                <label className="text-[9px] sm:text-[10px] text-text-secondary font-medium">Mot de passe</label>
+                <label htmlFor="password" className="text-[9px] sm:text-[10px] text-text-secondary font-medium">Mot de passe</label>
                 <div className="relative">
                   <Lock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" />
                   <input
+                    id="password"
                     type="password"
                     placeholder="••••••••"
                     value={password}

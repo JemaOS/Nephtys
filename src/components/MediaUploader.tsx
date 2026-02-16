@@ -1322,11 +1322,13 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
                 />
               )}
               {selectedFiles[0]?.type === 'video' && selectedFiles[0]?.preview && (
-                <video
-                  src={selectedFiles[0].preview}
-                  controls
-                  className="max-w-[90%] max-h-[50vh] md:max-h-[60vh] object-contain rounded-lg"
-                />
+                  <video
+                    src={selectedFiles[0].preview}
+                    controls
+                    className="max-w-[90%] max-h-[50vh] md:max-h-[60vh] object-contain rounded-lg"
+                  >
+                    <track kind="captions" src="" label="English" />
+                  </video>
               )}
             </div>
           </div>
@@ -1456,7 +1458,9 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
                 playsInline
                 muted
                 className="w-full h-full object-cover"
-              />
+              >
+                <track kind="captions" src="" label="English" />
+              </video>
               <canvas ref={canvasRef} className="hidden" />
             </div>
             <div className="p-4 flex justify-center">
@@ -1743,19 +1747,22 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
                 <>
                   <img src={preview} alt="Preview" className="w-full h-auto max-h-96 object-contain" />
                   {/* Edit overlay on hover */}
-                  <div
+                  <button
+                    type="button"
                     onClick={openImageEditor}
-                    className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer"
+                    className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer w-full h-full border-none p-0"
                   >
                     <div className="flex flex-col items-center gap-2 text-white">
                       <Edit3 size={32} />
                       <span className="text-sm font-medium">Modifier</span>
                     </div>
-                  </div>
+                  </button>
                 </>
               )}
               {preview && (selectedFileType || getFileType(selectedFile)) === 'video' && (
-                <video src={preview} controls className="w-full h-auto max-h-96" />
+                <video src={preview} controls className="w-full h-auto max-h-96">
+                  <track kind="captions" src="" label="English" />
+                </video>
               )}
               {(selectedFileType || getFileType(selectedFile)) === 'audio' && (
                 <AudioPreviewPlayer

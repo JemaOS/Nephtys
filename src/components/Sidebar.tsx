@@ -57,9 +57,11 @@ export function Sidebar() {
   return (
     <div className="w-16 h-screen bg-bg-surface flex flex-col items-center py-4 gap-6">
       {/* Logo / Avatar */}
-      <div
-        className="w-10 h-10 rounded-full cursor-pointer hover:opacity-80 transition-opacity overflow-hidden"
+      <button
+        type="button"
+        className="w-10 h-10 rounded-full cursor-pointer hover:opacity-80 transition-opacity overflow-hidden p-0 border-none"
         onClick={() => navigate('/settings')}
+        title="Paramètres"
       >
         {avatarUrl ? (
           <img
@@ -73,7 +75,7 @@ export function Sidebar() {
             {profile?.username?.[0]?.toUpperCase() || 'N'}
           </div>
         )}
-      </div>
+      </button>
 
       {/* Separator */}
       <div className="w-8 h-px bg-white/10" />

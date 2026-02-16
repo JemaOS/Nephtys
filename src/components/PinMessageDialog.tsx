@@ -38,13 +38,15 @@ export const PinMessageDialog: React.FC<PinMessageDialogProps> = ({
   return (
     <>
       {/* Backdrop */}
-      <div
-        className="fixed inset-0 bg-black/50 z-[250] flex items-center justify-center"
+      <button
+        type="button"
+        className="fixed inset-0 bg-black/50 z-[250] flex items-center justify-center w-full h-full cursor-default"
         onClick={onClose}
+        aria-label="Fermer"
       >
         {/* Dialog */}
         <div 
-          className="bg-bg-surface rounded-lg shadow-2xl w-full max-w-md mx-4 overflow-hidden"
+          className="bg-bg-surface rounded-lg shadow-2xl w-full max-w-md mx-4 overflow-hidden cursor-auto text-left"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
@@ -62,11 +64,13 @@ export const PinMessageDialog: React.FC<PinMessageDialogProps> = ({
             {PIN_DURATIONS.map((duration) => (
               <label
                 key={duration.value}
+                htmlFor={`pin-duration-${duration.value}`}
                 className="flex items-center gap-3 cursor-pointer group"
               >
                 <div className="relative">
                   <input
                     type="radio"
+                    id={`pin-duration-${duration.value}`}
                     name="pin-duration"
                     value={duration.value}
                     checked={selectedDuration === duration.value}
@@ -108,7 +112,7 @@ export const PinMessageDialog: React.FC<PinMessageDialogProps> = ({
             </button>
           </div>
         </div>
-      </div>
+      </button>
     </>
   );
 };

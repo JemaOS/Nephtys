@@ -405,8 +405,9 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
       <button onClick={() => navigate('/chats')} className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1]">
         <ArrowLeft size={20} />
       </button>
-      <div
-        className="flex-1 flex items-center gap-3 cursor-pointer hover:bg-bg-hover -mx-2 px-2 py-1 rounded transition-colors"
+      <button
+        type="button"
+        className="flex-1 flex items-center gap-3 cursor-pointer hover:bg-bg-hover -mx-2 px-2 py-1 rounded transition-colors text-left border-none bg-transparent"
         onClick={() => setShowConversationInfo(true)}
       >
         {(conversation?.type === 'direct' && otherUser?.avatar_url) || conversation?.avatar_url ? (
@@ -434,7 +435,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
             </span>
           )}
         </div>
-      </div>
+      </button>
       <div className="flex gap-1 sm:gap-2">
         <button onClick={() => setIsSearching(!isSearching)} className="w-8 h-8 sm:w-10 sm:h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1]">
           <Search size={18} className="sm:hidden" />
@@ -628,8 +629,9 @@ const GifStickerMessageDisplay = ({ message, typeInfo, hoveredMessageId, isOwn, 
         const senderInfo = getSenderInfo(message.sender_id)
         return (
           <div className="space-y-1">
-            <div
-                className="overflow-hidden cursor-pointer max-w-[240px] sm:max-w-[280px] rounded-xl border-[3px] border-[#787add]"
+            <button
+                type="button"
+                className="overflow-hidden cursor-pointer max-w-[240px] sm:max-w-[280px] rounded-xl border-[3px] border-[#787add] p-0 bg-transparent"
                 onClick={(e) => {
                 e.stopPropagation()
                 setGifStickerViewer({
@@ -650,7 +652,7 @@ const GifStickerMessageDisplay = ({ message, typeInfo, hoveredMessageId, isOwn, 
                 className="w-full h-auto max-h-[200px] sm:max-h-[240px] object-contain"
                 loading="lazy"
               />
-            </div>
+            </button>
             {caption && (
               <div className={`px-3 py-2 rounded-2xl ${isOwn ? 'bg-[#787add] text-white' : 'bg-bg-surface text-text-primary'}`}>
                 <p className="text-sm whitespace-pre-wrap break-words">{caption}</p>
@@ -665,8 +667,9 @@ const GifStickerMessageDisplay = ({ message, typeInfo, hoveredMessageId, isOwn, 
         const senderInfo = getSenderInfo(message.sender_id)
         return (
           <div className="space-y-1">
-            <div
-              className="cursor-pointer max-w-[160px] sm:max-w-[200px] overflow-hidden rounded-xl border-[3px] border-[#787add]"
+            <button
+              type="button"
+              className="cursor-pointer max-w-[160px] sm:max-w-[200px] overflow-hidden rounded-xl border-[3px] border-[#787add] p-0 bg-transparent"
               onClick={(e) => {
                 e.stopPropagation()
                 setGifStickerViewer({
@@ -687,7 +690,7 @@ const GifStickerMessageDisplay = ({ message, typeInfo, hoveredMessageId, isOwn, 
                 className="w-full h-auto max-h-[160px] sm:max-h-[200px] object-contain"
                 loading="lazy"
               />
-            </div>
+            </button>
             {caption && (
               <div className={`px-3 py-2 rounded-2xl ${isOwn ? 'bg-[#787add] text-white' : 'bg-bg-surface text-text-primary'}`}>
                 <p className="text-sm whitespace-pre-wrap break-words">{caption}</p>
@@ -817,7 +820,11 @@ const TextMessageDisplay = ({ message, hoveredMessageId, isOwn, setContextMenu, 
             ? 'Vous'
             : otherUser?.display_name || otherUser?.username || 'Utilisateur'
           return (
-            <div onClick={(e) => { e.stopPropagation(); scrollToMessage(replyMessage.id); }}>
+            <button
+              type="button"
+              className="w-full text-left p-0 border-none bg-transparent"
+              onClick={(e) => { e.stopPropagation(); scrollToMessage(replyMessage.id); }}
+            >
               <MessageReply
                 replyToMessage={{
                   id: replyMessage.id,
@@ -830,7 +837,7 @@ const TextMessageDisplay = ({ message, hoveredMessageId, isOwn, setContextMenu, 
                 }}
                 isPreview={false}
               />
-            </div>
+            </button>
           )
         }
         return null
@@ -1087,6 +1094,15 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = ({
       onClick={() => {
         if (isSelectionMode) {
           handleSelectMessage(message.id)
+        }
+      }}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          if (isSelectionMode) {
+            handleSelectMessage(message.id)
+          }
         }
       }}
     >

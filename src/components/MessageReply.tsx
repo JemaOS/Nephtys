@@ -161,11 +161,12 @@ export const MessageReply: React.FC<MessageReplyProps> = ({
 
   // Affichage dans le message (citation) - Style JemaOS
   return (
-    <div
-      className="mb-2 rounded-lg overflow-hidden bg-black/20 border-l-0 cursor-pointer hover:opacity-80 transition-opacity"
+    <button
+      type="button"
+      className="mb-2 rounded-lg overflow-hidden bg-black/20 border-l-0 cursor-pointer hover:opacity-80 transition-opacity w-full text-left"
       onClick={onClick}
     >
       {renderContent()}
-    </div>
+    </button>
   );
 };

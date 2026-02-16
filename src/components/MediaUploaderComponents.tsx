@@ -51,7 +51,7 @@ export const AudioPreviewPlayer: React.FC<{ file: File; preview: string | null }
   };
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newTime = parseFloat(e.target.value);
+    const newTime = Number.parseFloat(e.target.value);
     setCurrentTime(newTime);
     if (audioRef.current) {
       audioRef.current.currentTime = newTime;
@@ -129,7 +129,9 @@ export const AudioPreviewPlayer: React.FC<{ file: File; preview: string | null }
           onLoadedMetadata={handleLoadedMetadata}
           onEnded={handleEnded}
           className="hidden"
-        />
+        >
+          <track kind="captions" src="" label="English" />
+        </audio>
       </div>
     </div>
   );

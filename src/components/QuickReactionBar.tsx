@@ -41,9 +41,11 @@ export function QuickReactionBar({
   return (
     <>
       {/* Backdrop */}
-      <div
-        className="fixed inset-0 z-50"
+      <button
+        type="button"
+        className="fixed inset-0 z-50 w-full h-full cursor-default"
         onClick={onClose}
+        aria-label="Fermer"
       />
       
       {/* Reaction Bar */}

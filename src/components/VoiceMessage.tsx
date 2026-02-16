@@ -344,7 +344,7 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
     };
   }, [cleanupWebAudio]);
 
-  const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleSeek = (e: React.MouseEvent<HTMLButtonElement>) => {
     const audio = audioRef.current;
     if (!audio) return;
 
@@ -408,7 +408,9 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
         src={url}
         preload="auto"
         playsInline
-      />
+      >
+        <track kind="captions" src="" label="English" />
+      </audio>
       
       {/* Play/Pause Button - Apple Vision Pro style */}
       <button
@@ -429,9 +431,11 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
 
       {/* Waveform / Progress Bar - Vision Pro + ColorOS style */}
       <div className="flex-1 flex flex-col gap-1.5">
-        <div
+        <button
+          type="button"
           onClick={handleSeek}
-          className="h-7 flex items-center cursor-pointer"
+          className="h-7 flex items-center cursor-pointer w-full border-none p-0 bg-transparent"
+          aria-label="Seek"
         >
           {/* Visual waveform with consistent heights */}
           <div className="flex items-center gap-[2px] h-full w-full">
@@ -453,7 +457,7 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
               );
             })}
           </div>
-        </div>
+        </button>
         
         {/* Time */}
         <div className={`text-xs font-medium ${isOwn ? 'text-white/80' : 'text-text-secondary'}`}>
