@@ -82,7 +82,7 @@ const getEmojiSizeClass = (count: number): string => {
 
 // Cache helpers for instant display
 const CACHE_PREFIX = 'anu_cache_'
-const CACHE_EXPIRY = 5 * 60 * 1000 // 5 minutes
+const CACHE_EXPIRY = 24 * 60 * 60 * 1000 // 24 hours
 
 const getCache = <T,>(key: string): T | null => {
   try {
