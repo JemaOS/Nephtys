@@ -227,9 +227,11 @@ async function networkFirstSupabase(request) {
   } catch (error) {
     console.log('[SW] Supabase network failed, no cache available:', request.url);
     
-    // Return empty valid response instead of 503 error to prevent retry storms
+    // Return empty array response that Supabase expects
+    // Supabase client expects either [] for select or null for other queries
+    // We return [] which will result in data=[] and no error
     return new Response(
-      JSON.stringify({ data: [], error: null, source: 'offline-cache' }),
+      JSON.stringify([]),
       { 
         status: 200, 
         statusText: 'OK', 
