@@ -52,7 +52,7 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
   
   // Generate waveform heights once based on URL hash
   const waveformHeights = useMemo(() => {
-    const seed = url.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    const seed = url.split('').reduce((acc, char) => acc + (char.codePointAt(0) || 0), 0);
     return generateWaveformHeights(35, seed);
   }, [url]);
 

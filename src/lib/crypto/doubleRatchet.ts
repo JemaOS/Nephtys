@@ -699,7 +699,7 @@ export function serializeEncryptedMessage(message: EncryptedMessage): string {
   
   bytes.set(message.headerNonce, offset);
   
-  return btoa(String.fromCharCode(...bytes));
+  return btoa(String.fromCodePoint(...bytes));
 }
 
 /**
@@ -710,7 +710,7 @@ export function serializeEncryptedMessage(message: EncryptedMessage): string {
  */
 export function deserializeEncryptedMessage(encoded: string): EncryptedMessage {
   const bytes = new Uint8Array(
-    atob(encoded).split('').map(c => c.charCodeAt(0))
+    atob(encoded).split('').map(c => c.codePointAt(0) || 0)
   );
   const view = new DataView(bytes.buffer, bytes.byteOffset);
   

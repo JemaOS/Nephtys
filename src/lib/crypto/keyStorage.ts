@@ -934,7 +934,7 @@ export class SecureKeyStorage {
  * Convert bytes to Base64 string
  */
 function bytesToBase64(bytes: Uint8Array): string {
-  return btoa(String.fromCharCode(...bytes));
+  return btoa(String.fromCodePoint(...bytes));
 }
 
 /**
@@ -942,7 +942,7 @@ function bytesToBase64(bytes: Uint8Array): string {
  */
 function base64ToBytes(base64: string): Uint8Array {
   return new Uint8Array(
-    atob(base64).split('').map(c => c.charCodeAt(0))
+    atob(base64).split('').map(c => c.codePointAt(0) || 0)
   );
 }
 

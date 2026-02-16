@@ -79,7 +79,7 @@ function uint8ArrayToBase64(bytes: Uint8Array): string {
   let result = ''
   for (let i = 0; i < bytes.length; i += CHUNK_SIZE) {
     const chunk = bytes.subarray(i, Math.min(i + CHUNK_SIZE, bytes.length))
-    result += String.fromCharCode.apply(null, Array.from(chunk))
+    result += String.fromCodePoint.apply(null, Array.from(chunk))
   }
   return btoa(result)
 }
@@ -105,7 +105,7 @@ function base64ToUint8Array(base64: string): Uint8Array {
   for (let i = 0; i < binaryString.length; i += CHUNK_SIZE) {
     const end = Math.min(i + CHUNK_SIZE, binaryString.length)
     for (let j = i; j < end; j++) {
-      bytes[j] = binaryString.charCodeAt(j)
+      bytes[j] = binaryString.codePointAt(j) || 0
     }
   }
   
@@ -533,7 +533,7 @@ async function uploadBase64File(
     const byteCharacters = atob(base64Data)
     const byteNumbers = new Array(byteCharacters.length)
     for (let i = 0; i < byteCharacters.length; i++) {
-      byteNumbers[i] = byteCharacters.charCodeAt(i)
+      byteNumbers[i] = byteCharacters.codePointAt(i) || 0
     }
     const byteArray = new Uint8Array(byteNumbers)
     const blob = new Blob([byteArray], { type: mimeType })

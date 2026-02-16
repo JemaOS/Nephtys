@@ -90,7 +90,7 @@ class OfflineStorage {
 
   // Lazy initialization - called on first async operation
   private async ensureInitialized(): Promise<boolean> {
-    if (this.initPromise) {
+    if (this.initPromise !== null) {
       const isReady = await this.initPromise;
       return this.isInitialized && this.db !== null;
     }
