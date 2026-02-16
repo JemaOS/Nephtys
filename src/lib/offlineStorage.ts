@@ -96,7 +96,6 @@ class OfflineStorage {
     }
     
     this.initPromise = this.init().catch((error) => {
-      console.warn('[OfflineStorage] Initialization failed:', error);
       this.initFailed = true;
     });
     
@@ -109,7 +108,6 @@ class OfflineStorage {
     try {
       const timestampStr = localStorage.getItem(LS_CONVERSATIONS_TIMESTAMP_KEY);
       if (!timestampStr) {
-        console.log('[OfflineStorage] No localStorage cache found');
         return;
       }
       
@@ -118,7 +116,6 @@ class OfflineStorage {
       
       // Check if cache is too old
       if (age > LS_CACHE_MAX_AGE) {
-        console.log('[OfflineStorage] localStorage cache expired, clearing');
         localStorage.removeItem(LS_CONVERSATIONS_KEY);
         localStorage.removeItem(LS_CONVERSATIONS_TIMESTAMP_KEY);
         return;
@@ -129,11 +126,9 @@ class OfflineStorage {
         const conversations = JSON.parse(cached);
         if (Array.isArray(conversations) && conversations.length > 0) {
           this.memoryCache.conversations = conversations;
-          console.log(`[OfflineStorage] Loaded ${conversations.length} conversations from localStorage (age: ${Math.round(age / 1000)}s)`);
         }
       }
     } catch (error) {
-      console.warn('[OfflineStorage] Error loading from localStorage:', error);
       // Clear corrupted cache
       try {
         localStorage.removeItem(LS_CONVERSATIONS_KEY);
@@ -179,15 +174,12 @@ class OfflineStorage {
       
       // Check size (localStorage has ~5MB limit)
       if (json.length > 2 * 1024 * 1024) { // 2MB limit for safety
-        console.warn('[OfflineStorage] Conversations too large for localStorage, skipping');
         return;
       }
       
       localStorage.setItem(LS_CONVERSATIONS_KEY, json);
       localStorage.setItem(LS_CONVERSATIONS_TIMESTAMP_KEY, Date.now().toString());
-      console.log(`[OfflineStorage] Saved ${conversations.length} conversations to localStorage (${Math.round(json.length / 1024)}KB)`);
     } catch (error) {
-      console.warn('[OfflineStorage] Error saving to localStorage:', error);
       // If quota exceeded, clear old cache
       if (error instanceof DOMException && error.name === 'QuotaExceededError') {
         try {
@@ -208,7 +200,6 @@ class OfflineStorage {
 
     // Check if IndexedDB is available
     if (!('indexedDB' in window)) {
-      console.warn('[OfflineStorage] IndexedDB not available');
       this.initFailed = true;
       return;
     }
@@ -216,7 +207,6 @@ class OfflineStorage {
     return new Promise((resolve, reject) => {
       // Add timeout to prevent hanging
       const timeoutId = setTimeout(() => {
-        console.warn('[OfflineStorage] Init timed out');
         this.initFailed = true;
         resolve(); // Don't reject, just mark as failed
       }, DB_TIMEOUT);
@@ -226,7 +216,6 @@ class OfflineStorage {
 
         request.onerror = () => {
           clearTimeout(timeoutId);
-          console.error('[OfflineStorage] Failed to open database:', request.error);
           this.initFailed = true;
           resolve(); // Don't reject, just mark as failed
         };
@@ -235,7 +224,6 @@ class OfflineStorage {
           clearTimeout(timeoutId);
           this.db = request.result;
           this.isInitialized = true;
-          console.log('[OfflineStorage] Database initialized successfully');
           resolve();
         };
 
@@ -270,13 +258,11 @@ class OfflineStorage {
         // Handle blocked event (when another tab has the DB open with older version)
         request.onblocked = () => {
           clearTimeout(timeoutId);
-          console.warn('[OfflineStorage] Database blocked by another tab');
           this.initFailed = true;
           resolve();
         };
       } catch (error) {
         clearTimeout(timeoutId);
-        console.error('[OfflineStorage] Exception during init:', error);
         this.initFailed = true;
         resolve();
       }
@@ -296,7 +282,6 @@ class OfflineStorage {
   async saveMessage(message: OfflineMessage): Promise<void> {
     const ready = await this.ensureReady();
     if (!ready) {
-      console.warn('[OfflineStorage] Cannot save message - DB not ready');
       return;
     }
     
@@ -308,11 +293,9 @@ class OfflineStorage {
 
         request.onsuccess = () => resolve();
         request.onerror = () => {
-          console.error('[OfflineStorage] Failed to save message:', request.error);
           resolve(); // Don't reject, just log
         };
       } catch (error) {
-        console.error('[OfflineStorage] Exception saving message:', error);
         resolve();
       }
     });
@@ -338,7 +321,6 @@ class OfflineStorage {
 
     const ready = await this.ensureReady();
     if (!ready) {
-      console.warn('[OfflineStorage] Cannot save messages - DB not ready');
       return;
     }
     
@@ -351,11 +333,9 @@ class OfflineStorage {
 
         transaction.oncomplete = () => resolve();
         transaction.onerror = () => {
-          console.error('[OfflineStorage] Failed to save messages:', transaction.error);
           resolve();
         };
       } catch (error) {
-        console.error('[OfflineStorage] Exception saving messages:', error);
         resolve();
       }
     });
@@ -364,13 +344,11 @@ class OfflineStorage {
   async getMessages(conversationId: string): Promise<OfflineMessage[]> {
     // Check memory cache first (instant)
     if (this.memoryCache.messages.has(conversationId)) {
-      console.log('[OfflineStorage] Returning messages from memory cache');
       return this.memoryCache.messages.get(conversationId)!;
     }
 
     const ready = await this.ensureReady();
     if (!ready) {
-      console.warn('[OfflineStorage] Cannot get messages - DB not ready');
       return [];
     }
     
@@ -383,11 +361,9 @@ class OfflineStorage {
 
         request.onsuccess = () => resolve(request.result || []);
         request.onerror = () => {
-          console.error('[OfflineStorage] Failed to get messages:', request.error);
           resolve([]);
         };
       } catch (error) {
-        console.error('[OfflineStorage] Exception getting messages:', error);
         resolve([]);
       }
     });
@@ -407,11 +383,9 @@ class OfflineStorage {
 
         request.onsuccess = () => resolve();
         request.onerror = () => {
-          console.error('[OfflineStorage] Failed to delete message:', request.error);
           resolve();
         };
       } catch (error) {
-        console.error('[OfflineStorage] Exception deleting message:', error);
         resolve();
       }
     });
@@ -421,7 +395,6 @@ class OfflineStorage {
   async savePendingMessage(message: PendingMessage): Promise<void> {
     const ready = await this.ensureReady();
     if (!ready) {
-      console.warn('[OfflineStorage] Cannot save pending message - DB not ready');
       return;
     }
     
@@ -433,11 +406,9 @@ class OfflineStorage {
 
         request.onsuccess = () => resolve();
         request.onerror = () => {
-          console.error('[OfflineStorage] Failed to save pending message:', request.error);
           resolve();
         };
       } catch (error) {
-        console.error('[OfflineStorage] Exception saving pending message:', error);
         resolve();
       }
     });
@@ -457,11 +428,9 @@ class OfflineStorage {
 
         request.onsuccess = () => resolve(request.result || []);
         request.onerror = () => {
-          console.error('[OfflineStorage] Failed to get pending messages:', request.error);
           resolve([]);
         };
       } catch (error) {
-        console.error('[OfflineStorage] Exception getting pending messages:', error);
         resolve([]);
       }
     });
@@ -481,11 +450,9 @@ class OfflineStorage {
 
         request.onsuccess = () => resolve();
         request.onerror = () => {
-          console.error('[OfflineStorage] Failed to delete pending message:', request.error);
           resolve();
         };
       } catch (error) {
-        console.error('[OfflineStorage] Exception deleting pending message:', error);
         resolve();
       }
     });
@@ -506,11 +473,9 @@ class OfflineStorage {
 
         request.onsuccess = () => resolve();
         request.onerror = () => {
-          console.error('[OfflineStorage] Failed to save conversation:', request.error);
           resolve();
         };
       } catch (error) {
-        console.error('[OfflineStorage] Exception saving conversation:', error);
         resolve();
       }
     });
@@ -526,7 +491,6 @@ class OfflineStorage {
     
     const ready = await this.ensureReady();
     if (!ready) {
-      console.warn('[OfflineStorage] Cannot save conversations to IndexedDB - DB not ready');
       return;
     }
     
@@ -542,15 +506,12 @@ class OfflineStorage {
         conversations.forEach(conversation => store.put(conversation));
 
         transaction.oncomplete = () => {
-          console.log(`[OfflineStorage] Saved ${conversations.length} conversations to IndexedDB`);
           resolve();
         };
         transaction.onerror = () => {
-          console.error('[OfflineStorage] Failed to save conversations:', transaction.error);
           resolve();
         };
       } catch (error) {
-        console.error('[OfflineStorage] Exception saving conversations:', error);
         resolve();
       }
     });
@@ -564,7 +525,6 @@ class OfflineStorage {
   async getConversations(): Promise<any[]> {
     // First, check memory cache (instant)
     if (this.memoryCache.conversations !== null) {
-      console.log('[OfflineStorage] Returning conversations from memory cache');
       return this.memoryCache.conversations;
     }
     
@@ -586,11 +546,9 @@ class OfflineStorage {
           resolve(result);
         };
         request.onerror = () => {
-          console.error('[OfflineStorage] Failed to get conversations:', request.error);
           resolve([]);
         };
       } catch (error) {
-        console.error('[OfflineStorage] Exception getting conversations:', error);
         resolve([]);
       }
     });
@@ -628,11 +586,9 @@ class OfflineStorage {
 
         transaction.oncomplete = () => resolve();
         transaction.onerror = () => {
-          console.error('[OfflineStorage] Failed to clear all:', transaction.error);
           resolve();
         };
       } catch (error) {
-        console.error('[OfflineStorage] Exception clearing all:', error);
         resolve();
       }
     });
@@ -660,7 +616,6 @@ class OfflineStorage {
     
     const ready = await this.ensureReady();
     if (!ready) {
-      console.warn('[OfflineStorage] Cannot cache profiles - DB not ready');
       return;
     }
     
@@ -672,15 +627,12 @@ class OfflineStorage {
         profiles.forEach(profile => store.put(profile));
 
         transaction.oncomplete = () => {
-          console.log(`[OfflineStorage] Cached ${profiles.length} profiles`);
           resolve();
         };
         transaction.onerror = () => {
-          console.error('[OfflineStorage] Failed to cache profiles:', transaction.error);
           resolve();
         };
       } catch (error) {
-        console.error('[OfflineStorage] Exception caching profiles:', error);
         resolve();
       }
     });
