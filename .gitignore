@@ -30,3 +30,7 @@ dist-ssr
 lhreport.html
 playwright-report/
 test-results/
+
+# Supabase
+supabase/.env
+
