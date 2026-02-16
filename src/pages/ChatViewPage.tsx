@@ -633,38 +633,21 @@ export function ChatViewPage() {
       setLoading(false)
     }, 10000)
     
-    // Subscribe to call logs changes in real-time
-    const callLogsChannel = supabase
-      .channel(`call_logs:${conversationId}`)
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'call_logs',
-        filter: `conversation_id=eq.${conversationId}`
-      }, (payload) => {
-        console.log('[ChatViewPage] Call log change detected:', payload.eventType, payload)
-        console.log('[ChatViewPage] Call log payload.new:', payload.new)
-        // Reload call logs when any change occurs
-        loadCallLogs()
-      })
-      .subscribe((status) => {
-        console.log('[ChatViewPage] Call logs channel subscription status:', status)
-        if (status === 'SUBSCRIBED') {
-          console.log('[ChatViewPage] Successfully subscribed to call_logs changes for conversation:', conversationId)
-        }
-      })
-    
-    const messagesChannel = supabase
-      .channel(`messages:${conversationId}`, {
+    // OPTIMIZED: Consolidated realtime channels - reduced from 5 to 3
+    // Main channel for messages (INSERT, UPDATE, DELETE) + profiles + member left
+    const mainChannel = supabase
+      .channel(`main:${conversationId}`, {
         config: {
           broadcast: { self: true },
           presence: { key: user?.id || 'anonymous' }
         }
       })
+      // Messages INSERT
       .on('postgres_changes', {
         event: 'INSERT', schema: 'public', table: 'messages',
         filter: `conversation_id=eq.${conversationId}`
       }, handleNewMessage)
+      // Messages UPDATE
       .on('postgres_changes', {
         event: 'UPDATE', schema: 'public', table: 'messages',
         filter: `conversation_id=eq.${conversationId}`
@@ -680,6 +663,7 @@ export function ChatViewPage() {
           setMessages(prev => updateMessageInList(prev, updatedMsg))
         }
       })
+      // Messages DELETE
       .on('postgres_changes', {
         event: 'DELETE', schema: 'public', table: 'messages',
         filter: `conversation_id=eq.${conversationId}`
@@ -690,11 +674,52 @@ export function ChatViewPage() {
           setMessages(prev => removeMessageFromList(prev, deletedId))
         }
       })
-      .subscribe((status) => {
-        console.log('[ChatViewPage] Messages channel subscription status:', status)
+      // Profile updates (consolidated from separate channel)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'profiles'
+      }, (payload) => {
+        console.log('Profile updated in ChatViewPage:', payload)
+        if (otherUser && payload.new.id === otherUser.id) {
+          setOtherUser(payload.new as Profile)
+        }
+        loadConversation()
       })
-
-    // OPTIMIZATION: Add broadcast channel for instant message delivery (WhatsApp-level latency)
+      // Member left (consolidated from separate channel)
+      .on('postgres_changes', {
+        event: 'DELETE',
+        schema: 'public',
+        table: 'conversation_members',
+        filter: `conversation_id=eq.${conversationId}`
+      }, (payload) => {
+        console.log('[ChatViewPage] Member left conversation:', payload.old)
+        if (payload.old && payload.old.user_id === user?.id) {
+          console.log('[ChatViewPage] Current user was removed from conversation, redirecting...')
+          navigate('/chats')
+        }
+      })
+      .subscribe((status) => {
+        console.log('[ChatViewPage] Main channel subscription status:', status)
+      })
+    
+    // Dedicated call logs channel (needs separate subscription for different table)
+    const callLogsChannel = supabase
+      .channel(`call_logs:${conversationId}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'call_logs',
+        filter: `conversation_id=eq.${conversationId}`
+      }, (payload) => {
+        console.log('[ChatViewPage] Call log change detected:', payload.eventType, payload)
+        loadCallLogs()
+      })
+      .subscribe((status) => {
+        console.log('[ChatViewPage] Call logs channel subscription status:', status)
+      })
+    
+    // Broadcast channel for instant message delivery (separate for performance)
     const broadcastChannel = supabase.channel(`chat-broadcast:${conversationId}`, {
       config: {
         broadcast: { self: false }
@@ -704,53 +729,13 @@ export function ChatViewPage() {
     broadcastChannel.on('broadcast', { event: 'message' }, ({ payload }) => {
       console.log('[ChatViewPage] Broadcast message received:', payload?.message?.id)
       if (payload?.message) {
-        const broadcastMsg = payload.message as Message
-        // Handle broadcast message - same as postgres_changes
-        handleNewMessage({ new: broadcastMsg })
+        handleNewMessage({ new: payload.message })
       }
     })
     
     broadcastChannel.subscribe((status) => {
       console.log('[ChatViewPage] Broadcast channel status:', status)
     })
-
-    // Subscribe to profile changes for real-time avatar updates
-    const profilesChannel = supabase
-      .channel(`profiles-chat:${conversationId}`)
-      .on('postgres_changes', {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'profiles'
-      }, (payload) => {
-        console.log('Profile updated in ChatViewPage:', payload)
-        // Si c'est le profil de l'autre utilisateur, le mettre à jour
-        if (otherUser && payload.new.id === otherUser.id) {
-          setOtherUser(payload.new as Profile)
-        }
-        // Recharger aussi la conversation pour les groupes
-        loadConversation()
-      })
-      .subscribe()
-
-    // Subscribe to conversation_members changes to detect when user is removed from conversation
-    const memberLeftChannel = supabase
-      .channel(`member-left:${conversationId}`)
-      .on('postgres_changes', {
-        event: 'DELETE',
-        schema: 'public',
-        table: 'conversation_members',
-        filter: `conversation_id=eq.${conversationId}`
-      }, (payload) => {
-        console.log('[ChatViewPage] Member left conversation:', payload.old)
-        // Check if the current user was removed
-        if (payload.old && payload.old.user_id === user?.id) {
-          console.log('[ChatViewPage] Current user was removed from conversation, redirecting...')
-          navigate('/chats')
-        }
-      })
-      .subscribe((status) => {
-        console.log('[ChatViewPage] Member left channel subscription status:', status)
-      })
 
     // Handle visibility change - refresh data when app comes back to foreground
     // This is critical for PWA on mobile where the app may be suspended
@@ -787,10 +772,8 @@ export function ChatViewPage() {
 
     return () => {
       clearTimeout(loadingTimeout)
+      supabase.removeChannel(mainChannel)
       supabase.removeChannel(callLogsChannel)
-      supabase.removeChannel(messagesChannel)
-      supabase.removeChannel(profilesChannel)
-      supabase.removeChannel(memberLeftChannel)
       supabase.removeChannel(broadcastChannel)
       unsubscribeFromConversation(conversationId)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
