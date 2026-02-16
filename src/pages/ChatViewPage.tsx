@@ -837,37 +837,67 @@ export function ChatViewPage() {
     const scrollToBottom = () => {
       scrollAttemptsRef.current++
       
-      // Force scroll to bottom
-      scrollContainer.scrollTop = scrollContainer.scrollHeight
+      // Force scroll to bottom - use scrollTo for better compatibility
+      scrollContainer.scrollTo({
+        top: scrollContainer.scrollHeight,
+        behavior: 'instant'
+      })
       
-      // Verify scroll worked
-      const isAtBottom = scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight < 50
+      // Verify scroll worked with a larger threshold for mobile
+      const scrollBottom = scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight
+      const isAtBottom = scrollBottom < 100
       
-      if (isAtBottom || scrollAttemptsRef.current >= 5) {
+      if (isAtBottom || scrollAttemptsRef.current >= 10) {
         // Success or max attempts reached
         setIsInitialScrollDone(true)
         hasScrolledInitially.current = true
         prevMessageCountRef.current = messages.length
       } else {
-        // Retry with exponential backoff
-        setTimeout(scrollToBottom, scrollAttemptsRef.current * 50)
+        // Retry with exponential backoff - longer delays for images to load
+        setTimeout(scrollToBottom, scrollAttemptsRef.current * 100)
       }
     }
     
-    // Start scrolling immediately
-    scrollToBottom()
+    // Initial attempt after a short delay to let React render
+    const initialTimeout = setTimeout(() => {
+      scrollToBottom()
+    }, 100)
     
-    // Additional safety: force scroll after a short delay
-    const safetyTimeout = setTimeout(() => {
+    // Additional safety: force scroll after progressively longer delays
+    const safetyTimeouts: NodeJS.Timeout[] = []
+    
+    // Progressive safety timeouts (100ms, 300ms, 600ms, 1000ms, 1500ms)
+    const delays = [100, 300, 600, 1000, 1500]
+    delays.forEach(delay => {
+      const timeout = setTimeout(() => {
+        if (!hasScrolledInitially.current) {
+          scrollContainer.scrollTo({
+            top: scrollContainer.scrollHeight,
+            behavior: 'instant'
+          })
+        }
+      }, delay)
+      safetyTimeouts.push(timeout)
+    })
+    
+    // Final attempt - mark as done regardless
+    const finalTimeout = setTimeout(() => {
       if (!hasScrolledInitially.current) {
-        scrollContainer.scrollTop = scrollContainer.scrollHeight
+        scrollContainer.scrollTo({
+          top: scrollContainer.scrollHeight,
+          behavior: 'instant'
+        })
         setIsInitialScrollDone(true)
         hasScrolledInitially.current = true
         prevMessageCountRef.current = messages.length
       }
-    }, 200)
+    }, 2000)
     
-    return () => clearTimeout(safetyTimeout)
+    return () => {
+      clearTimeout(initialTimeout)
+      safetyTimeouts.forEach(t => clearTimeout(t))
+      clearTimeout(finalTimeout)
+    }
   }, [loading, messages.length, conversationId])
 
   // ResizeObserver to handle dynamic content changes (images loading, etc.)
