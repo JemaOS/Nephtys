@@ -688,6 +688,22 @@ export function ChatsPage() {
       return () => clearTimeout(timeout)
     }
   }, [user])
+  
+  // CRITICAL FIX: Reload when the page becomes visible (navigation back from ChatViewPage)
+  // This handles the case where the component was already mounted but hidden
+  useEffect(() => {
+    if (!user) return
+    
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        console.log('[ChatsPage] Page became visible, reloading conversations...')
+        loadConversationsFromServer(false)
+      }
+    }
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }, [user, loadConversationsFromServer])
 
   // Set up real-time subscriptions
   useEffect(() => {
