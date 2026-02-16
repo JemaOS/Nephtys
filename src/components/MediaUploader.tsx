@@ -464,7 +464,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
     }
     
     const folder = type === 'image' ? 'images' : type === 'video' ? 'videos' : 'documents';
-    const fileName = `${userId}/${folder}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+    const fileName = `${userId}/${folder}/${Date.now()}_${file.name.replaceAll(/[^a-zA-Z0-9.-]/g, "_")}`;
 
     const { data, error } = await supabase.storage
       .from('media')
@@ -535,7 +535,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
     }
     
     const folder = type === 'image' ? 'images' : type === 'video' ? 'videos' : 'documents';
-    const fileName = `${userId}/${folder}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+    const fileName = `${userId}/${folder}/${Date.now()}_${file.name.replaceAll(/[^a-zA-Z0-9.-]/g, "_")}`;
 
     const { data, error } = await supabase.storage
       .from('media')
