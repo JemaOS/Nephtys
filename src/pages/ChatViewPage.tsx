@@ -517,6 +517,72 @@ export function ChatViewPage() {
     return items
   }, [displayedMessages, callLogs])
 
+  const updateMessageStatus = async (messageId: string, status: 'delivered' | 'read') => {
+    await supabase.from('messages').update({ status }).eq('id', messageId)
+  }
+
+  // Helper to update a message in the list
+  const updateMessageInList = (currentMessages: Message[], updatedMsg: Message): Message[] => {
+    return currentMessages.map(m => m.id === updatedMsg.id ? updatedMsg : m)
+  }
+
+  // Helper to remove a message from the list
+  const removeMessageFromList = (currentMessages: Message[], deletedId: string): Message[] => {
+    return currentMessages.filter(m => m.id !== deletedId)
+  }
+
+  // Helper to handle notifications for new messages (extracted to reduce complexity)
+  const handleNewMessageNotification = async (newMsg: Message, senderId: string) => {
+    await updateMessageStatus(newMsg.id, 'delivered')
+    if (document.hidden && permission === 'granted') {
+      const senderName = otherUser?.display_name || otherUser?.username || 'Quelqu\'un'
+      const preview = newMsg.type === 'text' ? newMsg.content : '📎 Fichier'
+      sendNotification(senderName, preview, { conversationId, messageId: newMsg.id, url: `/chat/${conversationId}` })
+    }
+  }
+
+  // Helper to handle new message insertion with deduplication and optimistic update replacement
+  const handleNewMessage = useCallback((payload: any) => {
+    console.log('[ChatViewPage] Realtime INSERT received:', payload.new?.id)
+    const newMsg = payload.new as Message
+    
+    setMessages(prev => {
+      // 1. Check if message already exists (by ID) to prevent duplicates
+      if (prev.some(m => m.id === newMsg.id)) {
+        return prev
+      }
+
+      // 2. Check for temp message to replace
+      const tempIndex = prev.findIndex(m => 
+        m.id.startsWith('temp-') && 
+        m.sender_id === newMsg.sender_id &&
+        (
+          // Match by media_url if present (for images/videos/files)
+          (m.media_url && newMsg.media_url && m.media_url === newMsg.media_url) ||
+          // OR match by content if it's a text message (for stickers/GIFs)
+          (m.type === 'text' && m.content === newMsg.content) ||
+          // Fallback for audio/files where media_url might be used
+          (m.type !== 'text' && m.media_url === newMsg.media_url)
+        )
+      )
+
+      if (tempIndex !== -1) {
+        console.log('[ChatViewPage] Replacing temp message with real one:', newMsg.id)
+        const newMessages = [...prev]
+        newMessages[tempIndex] = newMsg
+        return newMessages
+      }
+
+      console.log('[ChatViewPage] Adding new message:', newMsg.id)
+      return [...prev, newMsg]
+    })
+    
+    // Handle notification if not own message
+    if (user && newMsg.sender_id !== user.id) {
+      handleNewMessageNotification(newMsg, newMsg.sender_id)
+    }
+  }, [user, handleNewMessageNotification])
+
   useEffect(() => {
     if (!conversationId || !user) return
     loadConversation()
@@ -562,49 +628,7 @@ export function ChatViewPage() {
       .on('postgres_changes', {
         event: 'INSERT', schema: 'public', table: 'messages',
         filter: `conversation_id=eq.${conversationId}`
-      }, (payload) => {
-        console.log('[ChatViewPage] Realtime INSERT received:', payload.new?.id)
-        const newMsg = payload.new as Message
-        
-        setMessages(prev => {
-          // 1. Check if message already exists (by ID) to prevent duplicates
-          // This handles the case where the optimistic message was already replaced by the real one
-          if (prev.some(m => m.id === newMsg.id)) {
-            return prev
-          }
-
-          // 2. Check for temp message to replace
-          // We must do this inside the callback to access the current 'prev' state
-          // instead of the stale 'messages' closure
-          const tempIndex = prev.findIndex(m => 
-            m.id.startsWith('temp-') && 
-            m.sender_id === newMsg.sender_id &&
-            (
-              // Match by media_url if present (for images/videos/files)
-              (m.media_url && newMsg.media_url && m.media_url === newMsg.media_url) ||
-              // OR match by content if it's a text message (for stickers/GIFs)
-              (m.type === 'text' && m.content === newMsg.content) ||
-              // Fallback for audio/files where media_url might be used
-              (m.type !== 'text' && m.media_url === newMsg.media_url)
-            )
-          )
-
-          if (tempIndex !== -1) {
-            console.log('[ChatViewPage] Replacing temp message with real one:', newMsg.id)
-            const newMessages = [...prev]
-            newMessages[tempIndex] = newMsg
-            return newMessages
-          }
-
-          console.log('[ChatViewPage] Adding new message:', newMsg.id)
-          return [...prev, newMsg]
-        })
-        
-        // Handle notification if not own message
-        if (newMsg.sender_id !== user.id) {
-          handleNewMessageNotification(newMsg, newMsg.sender_id)
-        }
-      })
+      }, handleNewMessage)
       .on('postgres_changes', {
         event: 'UPDATE', schema: 'public', table: 'messages',
         filter: `conversation_id=eq.${conversationId}`
@@ -688,7 +712,7 @@ export function ChatViewPage() {
       window.removeEventListener('supabase-reconnected', handleSupabaseReconnect)
       window.removeEventListener('call-log-created', handleCallLogCreated as EventListener)
     }
-  }, [conversationId, user?.id, permission, otherUser?.id])
+  }, [conversationId, user?.id, permission, otherUser?.id, handleNewMessage])
 
   // Track previous message count to detect new messages
   const prevMessageCountRef = useRef(0)
@@ -1106,31 +1130,7 @@ export function ChatViewPage() {
     }
   }, [hasMoreMessages, isLoadingMore])
 
-  const updateMessageStatus = async (messageId: string, status: 'delivered' | 'read') => {
-    await supabase.from('messages').update({ status }).eq('id', messageId)
-  }
 
-
-
-  // Helper to update a message in the list
-  const updateMessageInList = (currentMessages: Message[], updatedMsg: Message): Message[] => {
-    return currentMessages.map(m => m.id === updatedMsg.id ? updatedMsg : m)
-  }
-
-  // Helper to remove a message from the list
-  const removeMessageFromList = (currentMessages: Message[], deletedId: string): Message[] => {
-    return currentMessages.filter(m => m.id !== deletedId)
-  }
-
-  // Helper to handle notifications for new messages (extracted to reduce complexity)
-  const handleNewMessageNotification = async (newMsg: Message, senderId: string) => {
-    await updateMessageStatus(newMsg.id, 'delivered')
-    if (document.hidden && permission === 'granted') {
-      const senderName = otherUser?.display_name || otherUser?.username || 'Quelqu\'un'
-      const preview = newMsg.type === 'text' ? newMsg.content : '📎 Fichier'
-      sendNotification(senderName, preview, { conversationId, messageId: newMsg.id, url: `/chat/${conversationId}` })
-    }
-  }
 
   // Load ephemeral setting from localStorage (since DB doesn't have this column)
   const loadEphemeralSetting = () => {
