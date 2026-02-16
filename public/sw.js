@@ -68,6 +68,7 @@ globalThis.addEventListener('activate', (event) => {
               console.log('[SW] Deleting old cache:', cacheName);
               return caches.delete(cacheName);
             }
+            return Promise.resolve();
           })
         );
       }),
@@ -147,8 +148,8 @@ async function staleWhileRevalidate(request, cacheName = DYNAMIC_CACHE, timeout 
   // Return cached response immediately if available, otherwise wait for network
   if (cachedResponse) {
     console.log('[SW] Returning cached response for:', request.url);
-    // Also update cache in background
-    networkFetch;
+    // Also update cache in background - don't await, fire and forget
+    void networkFetch;
     return cachedResponse;
   }
 

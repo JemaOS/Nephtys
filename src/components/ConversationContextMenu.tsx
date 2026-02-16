@@ -138,14 +138,13 @@ export function ConversationContextMenu({
   // Desktop: Traditional context menu
   return (
     <>
-      {/* Overlay */}
-      <div 
-        className="fixed inset-0 z-40" 
+      {/* Overlay - use button for accessibility */}
+      <button
+        type="button"
+        className="fixed inset-0 z-40 bg-transparent border-none cursor-default w-full h-full"
         onClick={onClose}
         onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            onClose();
-          }
+          if (e.key === 'Escape') onClose()
         }}
         aria-label="Fermer le menu"
       />

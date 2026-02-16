@@ -1085,8 +1085,14 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
         isLandscape && isMobile ? 'landscape-mode' : ''
       } ${isFullscreen ? 'fullscreen-active' : ''} ${!showControls ? 'cursor-none' : ''}`}
       onClick={() => setShowControls(true)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          setShowControls(true);
+        }
+      }}
       onMouseMove={handleContainerMouseMove}
-      onKeyDown={(e) => handleKeyDown(e.nativeEvent)}
+      // tabIndex is appropriate here because this is a dialog with keyboard handlers
+      // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
       tabIndex={0}
       role="dialog"
       aria-modal="true"

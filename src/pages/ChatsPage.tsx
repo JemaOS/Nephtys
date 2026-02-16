@@ -1071,40 +1071,46 @@ export function ChatsPage() {
             Vos conversations sont chiffrées de bout en bout. Une architecture hybride conçue pour garantir votre confidentialité absolue.
           </p>
           
-          <div className="space-y-3 max-w-md mx-auto">
-            <div className="flex items-start gap-3 text-left">
-              <svg width="20" height="20" viewBox="0 0 16 20" fill="#6b6fdb" className="flex-shrink-0 mt-0.5">
-                <path d="M13 7h-1V5c0-2.21-1.79-4-4-4S4 2.79 4 5v2H3c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2zm-5 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H4.9V5c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/>
-              </svg>
+          <div className="space-y-6 max-w-md mx-auto mt-8">
+            <div className="flex items-start gap-4 text-left">
+              <div className="w-10 h-10 rounded-full bg-[#6b6fdb]/10 flex items-center justify-center flex-shrink-0">
+                <svg width="20" height="20" viewBox="0 0 16 20" fill="#6b6fdb">
+                  <path d="M13 7h-1V5c0-2.21-1.79-4-4-4S4 2.79 4 5v2H3c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2zm-5 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H4.9V5c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/>
+                </svg>
+              </div>
               <div>
-                <p className="text-sm text-text-secondary font-medium">Chiffrement de bout en bout</p>
-                <p className="text-xs text-text-secondary">Personne ne peut lire vos messages, même pas nous</p>
+                <p className="text-base text-text-primary font-medium mb-1">Chiffrement de bout en bout</p>
+                <p className="text-sm text-text-secondary leading-relaxed">Personne ne peut lire vos messages, même pas nous</p>
               </div>
             </div>
             
-            <div className="flex items-start gap-3 text-left">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6b6fdb" strokeWidth="2" className="flex-shrink-0 mt-0.5">
-                <circle cx="12" cy="12" r="3"/>
-                <circle cx="19" cy="5" r="2"/>
-                <circle cx="5" cy="19" r="2"/>
-                <path d="M10.4 15.6L6.6 17.4"/>
-                <path d="M13.6 8.4L17.4 6.6"/>
-              </svg>
+            <div className="flex items-start gap-4 text-left">
+              <div className="w-10 h-10 rounded-full bg-[#6b6fdb]/10 flex items-center justify-center flex-shrink-0">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6b6fdb" strokeWidth="2">
+                  <circle cx="12" cy="12" r="3"/>
+                  <circle cx="19" cy="5" r="2"/>
+                  <circle cx="5" cy="19" r="2"/>
+                  <path d="M10.4 15.6L6.6 17.4"/>
+                  <path d="M13.6 8.4L17.4 6.6"/>
+                </svg>
+              </div>
               <div>
-                <p className="text-sm text-text-secondary font-medium">Architecture Hybride & Appels P2P</p>
-                <p className="text-xs text-text-secondary">Messagerie sécurisée via le cloud, et appels audio/vidéo en Peer-to-Peer direct sans intermédiaire.</p>
+                <p className="text-base text-text-primary font-medium mb-1">Architecture Hybride & Appels P2P</p>
+                <p className="text-sm text-text-secondary leading-relaxed">Messagerie sécurisée via le cloud, et appels audio/vidéo en Peer-to-Peer direct sans intermédiaire.</p>
               </div>
             </div>
             
-            <div className="flex items-start gap-3 text-left">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6b6fdb" strokeWidth="2" className="flex-shrink-0 mt-0.5">
-                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                <circle cx="12" cy="12" r="3"/>
-                <line x1="3" y1="3" x2="21" y2="21"/>
-              </svg>
+            <div className="flex items-start gap-4 text-left">
+              <div className="w-10 h-10 rounded-full bg-[#6b6fdb]/10 flex items-center justify-center flex-shrink-0">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6b6fdb" strokeWidth="2">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                  <circle cx="12" cy="12" r="3"/>
+                  <line x1="3" y1="3" x2="21" y2="21"/>
+                </svg>
+              </div>
               <div>
-                <p className="text-sm text-text-secondary font-medium">Zéro collecte de données</p>
-                <p className="text-xs text-text-secondary">Aucun tracking, aucune publicité, aucun log</p>
+                <p className="text-base text-text-primary font-medium mb-1">Zéro collecte de données</p>
+                <p className="text-sm text-text-secondary leading-relaxed">Aucun tracking, aucune publicité, aucun log</p>
               </div>
             </div>
           </div>

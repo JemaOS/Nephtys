@@ -41,42 +41,6 @@ import { CallMessage } from '@/components/CallMessage'
 import { MessageItem } from '@/components/MessageItem'
 import { ChatHeader, CallLog, TimelineItem, MessageList } from './ChatViewPageComponents'
 
-// Complete emoji list for chat input
-const CHAT_EMOJIS: string[] = [
-  // Smiles et émotions
-  '😊', '😂', '😍', '🤔', '😢', '😭', '😡', '😎', '🥳', '😮', '🤩', '😌', '🤗', '🤭', '🤫', '🤥', '😶', '😏', '😬', '😱',
-  // Gestes et mains
-  '👍', '👎', '👋', '✌️', '🤞', '🤟', '🤘', '👌', '🤌', '🤏', '👊', '✊', '🤛', '🤜', '👏', '🙌', '👐', '🤲', '🙏', '💪',
-  // Cœurs
-  '❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝', '💟', '♥️',
-  // Symbols
-  '⭐', '✅', '❌', '💯', '🔴', '⚫', '🟢', '🟡', '🟠', '🔵', '⚪', '🟤', '▪️', '▫️', '🔶', '🔷', '🔸', '🔹', '💠', '🔘',
-  // Numbers keycaps
-  '#️⃣', '0️⃣', '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '*️⃣',
-  // Lettres
-  '🅰️', '🅱️', '🆎', '🅾️', '🆘', '❓', '❔', '⁉️', '❗', '❕',
-  // Météo
-  '☀️', '🌙', '⛈️', '❄️', '🔥', '💨', '🌈', '☁️', '🌤️', '⛅', '🌦️', '🌧️', '🌩️', '🌨️', '💧', '💦', '🌊', '☔', '⚡',
-  // Animaux
-  '🐶', '🐱', '🐭', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐸', '🐵', '🐔', '🐧', '🐦', '🐤', '🦆', '🦅',
-  // Nourriture
-  '🍕', '🍔', '🍟', '🌭', '🍿', '🥓', '🍳', '🥞', '🍞', '🥐', '🧀', '🥗', '🥙', '🌮', '🌯', '🍝', '🍜', '🍲', '🍣', '🍱',
-  '🍦', '🍰', '🎂', '🍩', '🍪', '☕', '🍵', '🧃', '🥤', '🧋', '🍶', '🍷', '🍸', '🍹', '🍺', '🥂',
-  // Sports
-  '⚽', '🏀', '🏈', '⚾', '🎾', '🏐', '🏉', '🎱', '🏓', '🏸', '🏒', '🏑', '🥍', '🏏', '🥅', '⛳', '🏹', '🎣', '🥊', '🥋',
-  // Musique
-  '🎵', '🎶', '🎸', '🎹', '🎺', '🎷', '🎻', '🥁', '🥇', '🏅', '🎖️', '🏆',
-  // Travel
-  '🚗', '✈️', '🚀', '🛸', '🚢', '🚂', '🚃', '🚄', '🚅', '🚆', '🚇', '🚈', '🚉', '🚊', '🚋', '🚌', '🚍', '🚎', '🚐', '🚑',
-  // Zodiac
-  '♈', '♉', '♊', '♋', '♌', '♍', '♎', '♏', '♐', '♑', '♒', '♓', '⛎',
-  // Flags
-  '🇫🇷', '🇺🇸', '🇬🇧', '🇪🇸', '🇮🇹', '🇩🇪', '🇯🇵', '🇨🇳', '🇰🇷', '🇧🇷', '🇷🇺', '🇮🇳', '🇦🇺', '🇨🇦', '🇲🇽', '🇪🇺',
-  // Divers
-  '✨', '🎉', '🎊', '🎁', '🎈', '🎀', '🎗️', '💰', '💳', '💵', '🔮', '🧸', '💿', '📷', '📸', '🎥', '📞', '☎️', '📺', '📻',
-  // Temps
-  '⌛', '⏳', '⏰', '⏱️', '⏲️', '🕐', '🕑', '🕒', '🕓', '🕔', '🕕', '🕖', '🕗', '🕘', '🕙', '🕚', '🕛'
-];
 const isEmojiOnly = (text: string): { isEmoji: boolean; emojiCount: number } => {
   if (!text || text.trim() === '') return { isEmoji: false, emojiCount: 0 }
   
@@ -315,7 +279,6 @@ export function ChatViewPage() {
   const [showConversationMenu, setShowConversationMenu] = useState(false)
   const [showConversationInfo, setShowConversationInfo] = useState(false)
   const [showAddMemberModal, setShowAddMemberModal] = useState(false)
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false)
   const [contextMenu, setContextMenu] = useState<{
     isOpen: boolean;
     position: { x: number; y: number };
@@ -371,7 +334,6 @@ export function ChatViewPage() {
   const messageQueueRef = useRef<Message[]>([])
   const isProcessingQueue = useRef(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const emojiPickerRef = useRef<HTMLDivElement>(null)
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null)
   const longPressMessageRef = useRef<Message | null>(null)
   
@@ -922,23 +884,6 @@ export function ChatViewPage() {
     messagesEndRef.current?.scrollIntoView({ behavior })
   }
 
-  // Fermer l'emoji picker si on clique en dehors
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (emojiPickerRef.current && !emojiPickerRef.current.contains(event.target as Node)) {
-        setShowEmojiPicker(false)
-      }
-    }
-
-    if (showEmojiPicker) {
-      document.addEventListener('mousedown', handleClickOutside)
-    }
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
-    }
-  }, [showEmojiPicker])
-
   // Debounced function to fetch link preview
   const debouncedFetchPreview = useCallback(
     debounce(async (url: string) => {
@@ -1002,7 +947,6 @@ export function ChatViewPage() {
 
   const handleEmojiSelect = (emoji: string) => {
     setNewMessage(prev => prev + emoji)
-    setShowEmojiPicker(false)
   }
 
   // Extract group member loading to helper function
@@ -2450,32 +2394,9 @@ export function ChatViewPage() {
                 />
               )}
               <form onSubmit={handleSendMessage} className="flex items-center gap-1 md:gap-2">
-                <div className="relative hidden md:block" ref={emojiPickerRef}>
-                  <button
-                    type="button"
-                    onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                    className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-text-secondary"
-                  >
-                    <Smile size={24} />
-                  </button>
-                  {showEmojiPicker && (
-                    <div className="absolute bottom-full left-0 mb-2 bg-bg-surface backdrop-blur-xl rounded-2xl p-3 shadow-2xl border border-bg-hover z-50 min-w-[280px]">
-                      <div className="text-xs text-text-secondary mb-2 px-1">Emojis</div>
-                      <div className="grid grid-cols-6 gap-1">
-                        {CHAT_EMOJIS.map((emoji) => (
-                          <button
-                            key={emoji}
-                            onClick={() => handleEmojiSelect(emoji)}
-                            className="w-10 h-10 flex items-center justify-center text-2xl hover:bg-bg-hover rounded-lg transition-all hover:scale-110 active:scale-95"
-                            type="button"
-                          >
-                            {emoji}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
+                <EmojiPicker
+                  onEmojiSelect={handleEmojiSelect}
+                />
                 <button type="button" onClick={() => setShowMediaUploader(true)} className="w-9 h-9 md:w-10 md:h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-text-secondary">
                   <Plus size={20} className="md:hidden" />
                   <Plus size={24} className="hidden md:block" />

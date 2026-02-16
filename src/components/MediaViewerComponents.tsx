@@ -232,7 +232,8 @@ export const MediaViewerHeader: React.FC<MediaViewerHeaderProps> = ({
   timestamp,
   headerActionsProps,
 }) => (
-  <header
+  <div
+    role="banner"
     className={`absolute top-0 left-0 right-0 z-10 transition-opacity duration-300 ${
       showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
     }`}
@@ -262,7 +263,7 @@ export const MediaViewerHeader: React.FC<MediaViewerHeaderProps> = ({
       {/* Right side - Action buttons */}
       <HeaderActions {...headerActionsProps} />
     </div>
-  </header>
+  </div>
 );
 
 interface ImageViewerProps {
@@ -531,8 +532,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         onClick={(e) => e.stopPropagation()}
         onMouseEnter={() => setIsHoveringControls(true)}
         onMouseLeave={() => setIsHoveringControls(false)}
-        role="toolbar"
+        // tabIndex is appropriate here because this is a toolbar with keyboard handlers
+        // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
         tabIndex={0}
+        role="toolbar"
+        aria-label="Contrôles vidéo"
         onKeyDown={(e) => {
           if (e.key === 'Escape') {
             // Let parent handle escape

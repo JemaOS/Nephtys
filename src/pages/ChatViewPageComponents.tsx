@@ -217,7 +217,7 @@ interface ChatHeaderProps {
   supabase: any
 }
 
-export const ChatHeader: React.FC<ChatHeaderProps> = ({
+export const ChatHeader: React.FC<ChatHeaderProps> = React.memo(({
   isSelectionMode,
   isMobile,
   selectedMessages,
@@ -607,7 +607,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
       </div>
     </div>
   )
-}
+});
 
 interface TimelineItemComponentProps {
   item: TimelineItem
@@ -1074,7 +1074,7 @@ const MessageSideActions = ({ isOwn, hoveredMessageId, message, isSelectionMode,
   return null
 }
 
-const TimelineItemComponent: React.FC<TimelineItemComponentProps> = ({
+const TimelineItemComponent: React.FC<TimelineItemComponentProps> = React.memo(({
   item,
   user,
   reactions,
@@ -1167,8 +1167,10 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = ({
           handleSelectMessage(message.id)
         }
       }}
-      role="article"
+      role="button"
       aria-label={`Message de ${isOwn ? 'vous' : 'autre utilisateur'}`}
+      // tabIndex is appropriate here - message items need keyboard navigation for accessibility
+      // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
       tabIndex={0}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -1198,6 +1200,8 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = ({
           }
           handleContextMenu(e, message)
         }}
+        role="group"
+        aria-label="Contenu du message"
       >
         <MessageContent
           message={message}
@@ -1259,7 +1263,7 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = ({
       )}
     </div>
   )
-}
+});
 
 interface MessageListProps {
   loading: boolean
@@ -1308,7 +1312,7 @@ interface MessageListProps {
   messagesContentRef?: React.RefObject<HTMLDivElement>
 }
 
-export const MessageList: React.FC<MessageListProps> = ({
+export const MessageList: React.FC<MessageListProps> = React.memo(({
   loading,
   messages,
   timelineItems,
@@ -1364,8 +1368,10 @@ export const MessageList: React.FC<MessageListProps> = ({
       style={getWallpaperStyle()}
       onContextMenu={handleBackgroundContextMenu}
       onScroll={onScroll}
-      role="region"
+      role="group"
       aria-label="Liste des messages"
+      // tabIndex is appropriate here - message list needs keyboard navigation for accessibility
+      // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
       tabIndex={0}
     >
       <div ref={messagesContentRef} className="flex flex-col min-h-full">
@@ -1442,4 +1448,4 @@ export const MessageList: React.FC<MessageListProps> = ({
       </div>
     </div>
   )
-}
+})

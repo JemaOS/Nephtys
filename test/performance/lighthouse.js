@@ -18,7 +18,8 @@ const startServer = () => {
       console.log(output); // Log output to debug
       
       // Strip ANSI codes for better matching
-      const cleanOutput = output.replaceAll(/\u001b\[[0-9;]*m/g, '');
+      // eslint-disable-next-line no-control-regex
+      const cleanOutput = output.replaceAll(/\x1b\[[0-9;]*m/g, '');
       const match = cleanOutput.match(/http:\/\/localhost:(\d+)/);
       if (match) {
           serverPort = Number.parseInt(match[1], 10);

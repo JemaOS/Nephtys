@@ -555,8 +555,9 @@ export function SettingsPage() {
         </div>
 
         <div className="space-y-3">
-          <label className="text-sm text-text-secondary">Entrez le code à 6 chiffres de votre application :</label>
+          <label className="text-sm text-text-secondary" htmlFor="2fa-code">Entrez le code à 6 chiffres de votre application :</label>
           <input
+            id="2fa-code"
             type="text" inputMode="numeric" pattern="[0-9]*" maxLength={6}
             value={twoFactorCode}
             onChange={(e) => { const value = e.target.value.replaceAll(/\D/g, ''); setTwoFactorCode(value); setTwoFactorError(''); }}
@@ -692,7 +693,7 @@ export function SettingsPage() {
             )}
             <label className="absolute bottom-0 right-0 w-6 h-6 rounded-full bg-accent flex items-center justify-center cursor-pointer hover:bg-[#5a5ec9]">
               <Camera size={14} className="text-white" />
-              <input type="file" accept="image/*" onChange={handleUploadPhoto} className="hidden" disabled={uploadingPhoto} />
+              <input type="file" accept="image/*" onChange={handleUploadPhoto} className="hidden" disabled={uploadingPhoto} aria-label="Changer la photo de profil" />
             </label>
           </div>
           <div className="flex-1">
@@ -741,27 +742,27 @@ export function SettingsPage() {
             )}
             <label className="absolute bottom-2 right-2 w-10 h-10 rounded-full bg-accent flex items-center justify-center hover:bg-[#5a5ec9] transition-colors cursor-pointer">
               <Camera size={20} className="text-white" />
-              <input type="file" accept="image/*" onChange={handleUploadPhoto} className="hidden" disabled={uploadingPhoto} />
+              <input type="file" accept="image/*" onChange={handleUploadPhoto} className="hidden" disabled={uploadingPhoto} aria-label="Changer la photo de profil" />
             </label>
           </div>
           <p className="text-sm text-text-secondary">Modifier la photo de profil</p>
         </div>
         <div className="space-y-2">
-          <label className="text-sm text-accent">Nom</label>
+          <label className="text-sm text-accent" htmlFor="profile-name">Nom</label>
           <div className="flex items-center gap-3 p-4 bg-bg-surface rounded-2xl">
-            <input type="text" value={editingName ? newDisplayName : (profile?.display_name || profile?.username)} onChange={(e) => setNewDisplayName(e.target.value)} onFocus={() => setEditingName(true)} className="flex-1 bg-transparent text-text-primary outline-none" />
+            <input id="profile-name" type="text" value={editingName ? newDisplayName : (profile?.display_name || profile?.username)} onChange={(e) => setNewDisplayName(e.target.value)} onFocus={() => setEditingName(true)} className="flex-1 bg-transparent text-text-primary outline-none" aria-label="Nom" />
             {editingName ? <button onClick={handleUpdateDisplayName} className="text-accent"><Check size={18} /></button> : <Edit2 size={18} className="text-text-secondary" />}
           </div>
         </div>
         <div className="space-y-2">
-          <label className="text-sm text-accent">Nom d'utilisateur</label>
+          <p className="text-sm text-accent">Nom d'utilisateur</p>
           <div className="p-4 bg-bg-surface rounded-2xl"><p className="text-text-primary">@{profile?.username}</p></div>
           <p className="text-xs text-text-secondary">Le nom d'utilisateur ne peut pas être modifié</p>
         </div>
         <div className="space-y-2">
-          <label className="text-sm text-accent">Info</label>
+          <label className="text-sm text-accent" htmlFor="profile-bio">Info</label>
           <div className="flex items-center gap-3 p-4 bg-bg-surface rounded-2xl">
-            <input type="text" placeholder="Ajouter une info..." value={editingBio ? newBio : (profile?.bio || '')} onChange={(e) => setNewBio(e.target.value)} onFocus={() => { setEditingBio(true); setNewBio(profile?.bio || ''); }} className="flex-1 bg-transparent text-text-primary outline-none placeholder:text-text-secondary" />
+            <input id="profile-bio" type="text" placeholder="Ajouter une info..." value={editingBio ? newBio : (profile?.bio || '')} onChange={(e) => setNewBio(e.target.value)} onFocus={() => { setEditingBio(true); setNewBio(profile?.bio || ''); }} className="flex-1 bg-transparent text-text-primary outline-none placeholder:text-text-secondary" aria-label="Info" />
             {editingBio ? <button onClick={handleUpdateBio} className="text-accent"><Check size={18} /></button> : <Edit2 size={18} className="text-text-secondary" />}
           </div>
           {profile?.bio && !editingBio && <p className="text-xs text-text-secondary px-1">Votre info actuelle : "{profile.bio}"</p>}
@@ -1567,7 +1568,14 @@ const BackupSecurityInfo = () => (
         </div>
 
         <div className="px-6 py-2">
-          <input ref={restoreFileRef} type="file" accept=".neph" onChange={handleRestoreFileSelect} className="hidden" />
+          <input 
+            type="file" 
+            accept=".neph" 
+            onChange={handleRestoreFileSelect} 
+            className="hidden" 
+            ref={restoreFileRef}
+            aria-label="Sélectionner un fichier de sauvegarde"
+          />
           <button 
             onClick={() => restoreFileRef.current?.click()} 
             disabled={isBackingUp || isRestoring} 
@@ -1592,6 +1600,7 @@ const BackupSecurityInfo = () => (
               value={backupSettings.frequency} 
               onChange={(e) => updateBackupSettings({ frequency: e.target.value as 'daily' | 'weekly' | 'monthly' })} 
               className="bg-bg-surface text-text-primary px-3 py-2 rounded-xl border border-bg-hover focus:outline-none focus:border-accent"
+              aria-label="Fréquence de rappel"
             >
               <option value="daily">Tous les jours</option>
               <option value="weekly">Toutes les semaines</option>
