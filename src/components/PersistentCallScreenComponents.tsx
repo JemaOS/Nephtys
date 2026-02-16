@@ -70,7 +70,9 @@ export function ParticipantVideo({
   return (
     <div className="relative bg-gray-800 rounded-2xl overflow-hidden aspect-[3/4] md:aspect-video flex items-center justify-center shadow-lg border border-white/10">
       {!isLocal && (
-        <audio ref={audioRef} autoPlay playsInline style={{ display: 'none' }} />
+        <audio ref={audioRef} autoPlay playsInline style={{ display: 'none' }}>
+          <track kind="captions" />
+        </audio>
       )}
       
       {hasVideo ? (
@@ -81,7 +83,9 @@ export function ParticipantVideo({
           playsInline
           muted={true}
           className={`w-full h-full object-cover ${isLocal ? 'transform scale-x-[-1]' : ''}`}
-        />
+        >
+          <track kind="captions" />
+        </video>
       ) : (
         <div className="flex flex-col items-center justify-center p-4">
           {participant.avatar ? (
@@ -333,7 +337,9 @@ export function OneToOneCallUI({
 }) {
   return (
     <div className="fixed inset-0 z-[100] bg-gray-900 flex flex-col overflow-hidden">
-      <audio ref={(el) => { if (el && el.srcObject !== remoteStream) el.srcObject = remoteStream }} autoPlay playsInline style={{ display: 'none' }} />
+      <audio ref={(el) => { if (el && el.srcObject !== remoteStream) el.srcObject = remoteStream }} autoPlay playsInline style={{ display: 'none' }}>
+        <track kind="captions" />
+      </audio>
 
       {/* Background Layer */}
       <div className="absolute inset-0 z-0">
@@ -345,7 +351,9 @@ export function OneToOneCallUI({
             playsInline
             muted={true}
             className="w-full h-full object-contain bg-black"
-          />
+          >
+            <track kind="captions" />
+          </video>
         ) : (
           <>
             {callerAvatar ? (
@@ -423,7 +431,9 @@ export function OneToOneCallUI({
                 playsInline
                 muted
                 className="w-full h-full object-cover transform scale-x-[-1] pointer-events-none"
-              />
+              >
+                <track kind="captions" />
+              </video>
             ) : (
               <div className="w-full h-full flex items-center justify-center bg-gray-800">
                 {profile?.avatar_url ? (

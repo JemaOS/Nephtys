@@ -407,9 +407,8 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
         ref={audioRef}
         src={url}
         preload="auto"
-        playsInline
       >
-        <track kind="captions" src="" label="English" />
+        <track kind="captions" />
       </audio>
       
       {/* Play/Pause Button - Apple Vision Pro style */}
