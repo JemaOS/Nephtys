@@ -2,11 +2,13 @@
 // Distributed under the license specified in the root directory of this project.
 
 // Service Worker for Nephtys PWA
-// Version: 6.0.0 - FORCE RELOAD STRATEGY for stuck PWA on Android
+// Version: 7.0.0 - Optimized caching for offline + performance
 
-const CACHE_NAME = 'nephtys-app-v6';
-const STATIC_CACHE = 'nephtys-static-v6';
-const DYNAMIC_CACHE = 'nephtys-dynamic-v6';
+const CACHE_NAME = 'nephtys-app-v7';
+const STATIC_CACHE = 'nephtys-static-v7';
+const DYNAMIC_CACHE = 'nephtys-dynamic-v7';
+const SUPABASE_CACHE = 'nephtys-supabase-v7';
+const MEDIA_CACHE = 'nephtys-media-v7';
 
 // Static assets to cache immediately (shell)
 const STATIC_ASSETS = [
@@ -16,9 +18,15 @@ const STATIC_ASSETS = [
   '/icon.svg'
 ];
 
-// Network timeout in milliseconds - REDUCED for faster fallback
-const NETWORK_TIMEOUT = 2000; // 2 seconds for normal requests
-const SUPABASE_TIMEOUT = 5000; // 5 seconds for Supabase (reduced from 10)
+// Network timeout in milliseconds
+const NETWORK_TIMEOUT = 3000; // 3 seconds for normal requests
+const SUPABASE_TIMEOUT = 8000; // 8 seconds for Supabase (gives time for fresh data)
+const MEDIA_TIMEOUT = 5000; // 5 seconds for media
+
+// Cache expiration times (in milliseconds)
+const SUPABASE_CACHE_MAX_AGE = 5 * 60 * 1000; // 5 minutes for Supabase data
+const MEDIA_CACHE_MAX_AGE = 24 * 60 * 60 * 1000; // 24 hours for media
+const STATIC_CACHE_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days for static assets
 
 // Track if we should bypass cache (after app returns from background)
 let bypassCache = false;
@@ -26,7 +34,7 @@ let lastActiveTime = Date.now();
 
 // Install event - cache static assets
 globalThis.addEventListener('install', (event) => {
-  console.log('[SW] Installing service worker...');
+  console.log('[SW] Installing service worker v7...');
   event.waitUntil(
     caches.open(STATIC_CACHE)
       .then((cache) => {
@@ -47,14 +55,16 @@ globalThis.addEventListener('install', (event) => {
 
 // Activate event - clean old caches
 globalThis.addEventListener('activate', (event) => {
-  console.log('[SW] Activating service worker...');
+  console.log('[SW] Activating service worker v7...');
   event.waitUntil(
     Promise.all([
       // Clean old caches
       caches.keys().then((cacheNames) => {
         return Promise.all(
           cacheNames.map((cacheName) => {
-            if (cacheName !== STATIC_CACHE && cacheName !== DYNAMIC_CACHE && cacheName !== CACHE_NAME) {
+            if (cacheName !== STATIC_CACHE && cacheName !== DYNAMIC_CACHE && 
+                cacheName !== CACHE_NAME && cacheName !== SUPABASE_CACHE && 
+                cacheName !== MEDIA_CACHE) {
               console.log('[SW] Deleting old cache:', cacheName);
               return caches.delete(cacheName);
             }
@@ -66,6 +76,18 @@ globalThis.addEventListener('activate', (event) => {
     ])
   );
 });
+
+// Helper: Check if cache is expired
+function isCacheExpired(cachedResponse) {
+  if (!cachedResponse) return true;
+  
+  const dateHeader = cachedResponse.headers.get('date');
+  if (!dateHeader) return true;
+  
+  const cachedTime = new Date(dateHeader).getTime();
+  const now = Date.now();
+  return (now - cachedTime) > SUPABASE_CACHE_MAX_AGE;
+}
 
 // Helper: Fetch with timeout
 function fetchWithTimeout(request, timeout = NETWORK_TIMEOUT) {
@@ -86,13 +108,31 @@ function fetchWithTimeout(request, timeout = NETWORK_TIMEOUT) {
   });
 }
 
+// Helper: Fetch with AbortController for better timeout handling
+async function fetchWithAbort(request, timeout) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  
+  try {
+    const response = await fetch(request, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      throw new Error('Request timed out');
+    }
+    throw error;
+  }
+}
+
 // Helper: Stale-while-revalidate strategy
-async function staleWhileRevalidate(request, cacheName = DYNAMIC_CACHE) {
+async function staleWhileRevalidate(request, cacheName = DYNAMIC_CACHE, timeout = NETWORK_TIMEOUT) {
   const cache = await caches.open(cacheName);
   const cachedResponse = await cache.match(request);
   
   // Start network fetch in background
-  const networkFetch = fetchWithTimeout(request)
+  const networkFetch = fetchWithTimeout(request, timeout)
     .then((response) => {
       if (response && response.ok) {
         cache.put(request, response.clone());
@@ -107,6 +147,8 @@ async function staleWhileRevalidate(request, cacheName = DYNAMIC_CACHE) {
   // Return cached response immediately if available, otherwise wait for network
   if (cachedResponse) {
     console.log('[SW] Returning cached response for:', request.url);
+    // Also update cache in background
+    networkFetch;
     return cachedResponse;
   }
 
@@ -125,9 +167,9 @@ async function staleWhileRevalidate(request, cacheName = DYNAMIC_CACHE) {
 }
 
 // Helper: Network-first with cache fallback
-async function networkFirst(request, cacheName = DYNAMIC_CACHE) {
+async function networkFirst(request, cacheName = DYNAMIC_CACHE, timeout = NETWORK_TIMEOUT) {
   try {
-    const response = await fetchWithTimeout(request);
+    const response = await fetchWithTimeout(request, timeout);
     if (response && response.ok) {
       const cache = await caches.open(cacheName);
       cache.put(request, response.clone());
@@ -146,6 +188,49 @@ async function networkFirst(request, cacheName = DYNAMIC_CACHE) {
     }
     
     return new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
+  }
+}
+
+// Helper: Network-first specifically for Supabase with cache fallback
+async function networkFirstSupabase(request) {
+  // First check cache for recent data
+  const cachedResponse = await caches.match(request);
+  
+  if (cachedResponse && !isCacheExpired(cachedResponse)) {
+    console.log('[SW] Returning fresh cache for Supabase:', request.url);
+    // Try to update in background
+    fetchWithTimeout(request, SUPABASE_TIMEOUT)
+      .then((response) => {
+        if (response && response.ok) {
+          caches.open(SUPABASE_CACHE).then((cache) => {
+            cache.put(request, response.clone());
+          });
+        }
+      })
+      .catch(() => {
+        // Silently fail background update
+      });
+    return cachedResponse;
+  }
+
+  // Try network first
+  try {
+    const response = await fetchWithTimeout(request, SUPABASE_TIMEOUT);
+    if (response && response.ok) {
+      const cache = await caches.open(SUPABASE_CACHE);
+      cache.put(request, response.clone());
+    }
+    return response;
+  } catch (error) {
+    console.log('[SW] Supabase network failed, trying cache:', request.url);
+    if (cachedResponse) {
+      return cachedResponse;
+    }
+    
+    return new Response(
+      JSON.stringify({ error: 'Offline', message: 'No network connection' }),
+      { status: 503, statusText: 'Service Unavailable', headers: { 'Content-Type': 'application/json' } }
+    );
   }
 }
 
@@ -169,6 +254,56 @@ async function cacheFirst(request, cacheName = STATIC_CACHE) {
   }
 }
 
+// Helper: Network-first with very fast fallback for navigation
+async function networkFirstFast(request, cacheName = STATIC_CACHE) {
+  // Try network first with short timeout
+  try {
+    const response = await fetchWithAbort(request, 1500); // 1.5 seconds for navigation
+    if (response && response.ok) {
+      const cache = await caches.open(cacheName);
+      cache.put(request, response.clone());
+    }
+    return response;
+  } catch (error) {
+    console.log('[SW] Network failed for navigation, using cache:', error.message);
+    const cachedResponse = await caches.match(request);
+    if (cachedResponse) {
+      return cachedResponse;
+    }
+    // Return index.html for SPA routing
+    return caches.match('/index.html');
+  }
+}
+
+// Helper: Determine if request is for Supabase API
+function isSupabaseRequest(url) {
+  return url.hostname.includes('supabase');
+}
+
+// Helper: Determine if request is for media (images, files, avatars)
+function isMediaRequest(request) {
+  const url = new URL(request.url);
+  const pathname = url.pathname.toLowerCase();
+  
+  // Check for media file extensions
+  const mediaExtensions = /\.(png|jpg|jpeg|gif|svg|webp|avif|ico|woff|woff2|ttf|eot|otf|mp3|mp4|webm|ogg|wav|pdf|doc|docx|xls|xlsx|zip|rar)$/;
+  
+  // Check for common media/storage paths
+  const mediaPaths = [
+    '/storage/',
+    '/avatars/',
+    '/files/',
+    '/media/',
+    '/attachments/',
+    '/uploads/'
+  ];
+  
+  return mediaExtensions.test(pathname) || 
+         mediaPaths.some(path => pathname.includes(path)) ||
+         url.hostname.includes('storage') ||
+         url.hostname.includes('cdn');
+}
+
 // Fetch event - smart caching strategy optimized for PWA
 globalThis.addEventListener('fetch', (event) => {
   const { request } = event;
@@ -179,17 +314,22 @@ globalThis.addEventListener('fetch', (event) => {
     return;
   }
 
-  // CRITICAL: NEVER intercept Supabase requests
-  // Let them go directly to the network without any Service Worker involvement
-  // This prevents the SW from blocking/delaying database requests after background
-  if (url.hostname.includes('supabase')) {
-    // Don't call event.respondWith() - this lets the request bypass the SW completely
-    console.log('[SW] Bypassing Supabase request:', url.pathname);
+  // Handle Supabase API requests - Network-first with cache fallback
+  // This gives fresh data while providing offline support
+  if (isSupabaseRequest(url)) {
+    event.respondWith(networkFirstSupabase(request));
     return;
   }
 
-  // Skip other cross-origin requests
-  if (url.origin !== globalThis.location.origin) {
+  // Skip other cross-origin requests (except media CDNs we want to cache)
+  if (url.origin !== globalThis.location.origin && !isMediaRequest(request)) {
+    return;
+  }
+
+  // Media requests (images, files, avatars) - Stale-While-Revalidate
+  // Shows cached content immediately while updating in background
+  if (isMediaRequest(request)) {
+    event.respondWith(staleWhileRevalidate(request, MEDIA_CACHE, MEDIA_TIMEOUT));
     return;
   }
 
@@ -212,45 +352,6 @@ globalThis.addEventListener('fetch', (event) => {
   // API calls and other requests - network-first
   event.respondWith(networkFirst(request, DYNAMIC_CACHE));
 });
-
-// Helper: Fetch with AbortController for better timeout handling
-async function fetchWithAbort(request, timeout) {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeout);
-  
-  try {
-    const response = await fetch(request, { signal: controller.signal });
-    clearTimeout(timeoutId);
-    return response;
-  } catch (error) {
-    clearTimeout(timeoutId);
-    if (error.name === 'AbortError') {
-      throw new Error('Request timed out');
-    }
-    throw error;
-  }
-}
-
-// Helper: Network-first with very fast fallback for navigation
-async function networkFirstFast(request, cacheName = STATIC_CACHE) {
-  // Try network first with short timeout
-  try {
-    const response = await fetchWithAbort(request, 1500); // 1.5 seconds for navigation
-    if (response && response.ok) {
-      const cache = await caches.open(cacheName);
-      cache.put(request, response.clone());
-    }
-    return response;
-  } catch (error) {
-    console.log('[SW] Network failed for navigation, using cache:', error.message);
-    const cachedResponse = await caches.match(request);
-    if (cachedResponse) {
-      return cachedResponse;
-    }
-    // Return index.html for SPA routing
-    return caches.match('/index.html');
-  }
-}
 
 // Push notification event
 globalThis.addEventListener('push', (event) => {
@@ -369,6 +470,12 @@ globalThis.addEventListener('message', (event) => {
         keys.forEach((key) => cache.delete(key));
       });
     });
+    // Also clear Supabase cache to get fresh data
+    caches.open(SUPABASE_CACHE).then((cache) => {
+      cache.keys().then((keys) => {
+        keys.forEach((key) => cache.delete(key));
+      });
+    });
     bypassCache = true;
     // Reset bypass flag after 5 seconds
     setTimeout(() => {
@@ -408,6 +515,27 @@ globalThis.addEventListener('message', (event) => {
       event.ports[0].postMessage({ status: 'alive', timestamp: Date.now() });
     }
   }
+  
+  // Cache specific resource on demand
+  if (event.data && event.data.type === 'CACHE_URL') {
+    const url = event.data.url;
+    if (url) {
+      console.log('[SW] Caching URL on demand:', url);
+      event.waitUntil(
+        fetch(url).then((response) => {
+          if (response.ok) {
+            const cacheName = isSupabaseRequest(new URL(url)) ? SUPABASE_CACHE : 
+                              isMediaRequest(new Request(url)) ? MEDIA_CACHE : DYNAMIC_CACHE;
+            return caches.open(cacheName).then((cache) => {
+              return cache.put(url, response);
+            });
+          }
+        }).catch((err) => {
+          console.error('[SW] Failed to cache URL:', err);
+        })
+      );
+    }
+  }
 });
 
 // Periodic check for stale connections (every 30 seconds)
@@ -422,4 +550,28 @@ setInterval(() => {
   }
 }, 30000);
 
-console.log('[SW] Service worker loaded - v6.0.0 (Force reload strategy)');
+// Cleanup old cached data periodically (every hour)
+setInterval(async () => {
+  try {
+    const cacheNames = await caches.keys();
+    
+    for (const cacheName of cacheNames) {
+      if (cacheName === SUPABASE_CACHE) {
+        const cache = await caches.open(cacheName);
+        const keys = await cache.keys();
+        
+        for (const request of keys) {
+          const response = await cache.match(request);
+          if (isCacheExpired(response)) {
+            await cache.delete(request);
+          }
+        }
+      }
+    }
+    console.log('[SW] Periodic cache cleanup completed');
+  } catch (error) {
+    console.error('[SW] Cache cleanup error:', error);
+  }
+}, 60 * 60 * 1000); // Every hour
+
+console.log('[SW] Service worker loaded - v7.0.0 (Optimized caching for offline + performance)');

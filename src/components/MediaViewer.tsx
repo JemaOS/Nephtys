@@ -1088,7 +1088,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
       onClick={() => setShowControls(true)}
       onMouseMove={handleContainerMouseMove}
       onKeyDown={(e) => handleKeyDown(e.nativeEvent)}
-      tabIndex={-1}
+      tabIndex={0}
       role="dialog"
       aria-modal="true"
       aria-label="Visualiseur de média"

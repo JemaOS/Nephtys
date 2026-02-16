@@ -889,6 +889,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
           onTouchCancel={handlePointerUp}
           role="application"
           aria-label="Zone de dessin"
+          aria-roledescription="canevas de dessin"
           tabIndex={0}
           onKeyDown={(e) => {
             if (e.key === 'Escape') {

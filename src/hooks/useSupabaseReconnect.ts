@@ -8,20 +8,20 @@ import { initializePresence, cleanupPresence } from '@/hooks/usePresence'
 // Configuration for reconnection - OPTIMIZED FOR PWA v6 (FORCE RELOAD STRATEGY)
 const RECONNECT_DELAY_PWA = 0 // No delay for PWA - reconnect immediately
 const RECONNECT_DELAY_BROWSER = 300 // Reduced delay for regular browser
-const BACKGROUND_THRESHOLD_PWA = 1000 // 1 second for PWA - reconnect VERY fast
-const BACKGROUND_THRESHOLD_BROWSER = 15000 // 15 seconds for regular browser (reduced)
-const SESSION_CHECK_INTERVAL = 60000 // Check session every 60 seconds when visible
-const KEEPALIVE_INTERVAL = 30000 // Send keepalive to SW every 30 seconds
-const RECONNECT_DEBOUNCE = 2000 // Minimum time between reconnections (2 seconds)
-const RECONNECT_TIMEOUT = 10000 // Maximum time for a reconnection attempt (10 seconds)
-const ACTIVITY_CHECK_INTERVAL = 45000 // Check connection health every 45 seconds during active use
-const STALE_CONNECTION_THRESHOLD = 90000 // Consider connection stale after 90 seconds of no successful queries
+const BACKGROUND_THRESHOLD_PWA = 500 // 0.5 second for PWA - reconnect IMMEDIATELY
+const BACKGROUND_THRESHOLD_BROWSER = 5000 // 5 seconds for regular browser (reduced)
+const SESSION_CHECK_INTERVAL = 30000 // Check session every 30 seconds when visible (optimized for real-time)
+const KEEPALIVE_INTERVAL = 15000 // Send keepalive to SW every 15 seconds (reduced for faster detection)
+const RECONNECT_DEBOUNCE = 1000 // Minimum time between reconnections (1 second - faster recovery)
+const RECONNECT_TIMEOUT = 5000 // Maximum time for a reconnection attempt (5 seconds - faster)
+const ACTIVITY_CHECK_INTERVAL = 10000 // Check connection health every 10 seconds during active use (optimized)
+const STALE_CONNECTION_THRESHOLD = 30000 // Consider connection stale after 30 seconds of no successful queries
 
 // CRITICAL: Force page reload after this duration in background (Android PWA fix)
 // This is the nuclear option - if the app was in background for more than 2 minutes,
 // force a full page reload to ensure clean state
-const FORCE_RELOAD_THRESHOLD_PWA = 120000 // 2 minutes for PWA
-const FORCE_RELOAD_THRESHOLD_BROWSER = 300000 // 5 minutes for browser
+const FORCE_RELOAD_THRESHOLD_PWA = 60000 // 1 minute for PWA (reduced from 2 min)
+const FORCE_RELOAD_THRESHOLD_BROWSER = 120000 // 2 minutes for browser
 
 // Track if we've already scheduled a reload to prevent multiple reloads
 let reloadScheduled = false

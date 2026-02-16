@@ -6,7 +6,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { useTheme } from '@/context/ThemeContext'
 import { MainLayout } from '@/components/MainLayout'
-import { supabase, Message, Conversation, Profile } from '@/lib/supabase'
+import { supabase, Message, Conversation, Profile, onBroadcastMessage, sendBroadcastMessage } from '@/lib/supabase'
 import { offlineStorage } from '@/lib/offlineStorage'
 import { useUserPresence } from '@/hooks/usePresence'
 import { ArrowLeft, Send, Phone, Video, MoreVertical, Search, Smile, Mic, Plus, Reply, UserPlus, Archive, Trash2, Bell, BellOff, Lock, Star, Forward, Pin, Info, Share2, Copy } from 'lucide-react'
@@ -41,20 +41,81 @@ import { CallMessage } from '@/components/CallMessage'
 import { MessageItem } from '@/components/MessageItem'
 import { ChatHeader, CallLog, TimelineItem, MessageList } from './ChatViewPageComponents'
 
-// Utility function to detect emoji-only messages (1-3 emojis without other text)
-// Uses a comprehensive regex pattern to match emojis including compound emojis
+// Complete emoji list for chat input
+const CHAT_EMOJIS = [
+  // Smiles et émotions
+  '😊', '😂', '😍', '🤔', '😢', '😭', '😡', '😎', '🥳', '😮', '🤩', '😌', '🤗', '🤭', '🤫', '🤥', '😶', '😏', '😬', '😱',
+  // Gestes et mains
+  '👍', '👎', '👋', '✌️', '🤞', '🤟', '🤘', '👌', '🤌', '🤏', '👊', '✊', '🤛', '🤜', '👏', '🙌', '👐', '🤲', '🙏', '💪',
+  // Cœurs
+  '❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝', '💟', '♥️',
+  // Symbols
+  '⭐', '✅', '❌', '💯', '🔴', '⚫', '🟢', '🟡', '🟠', '🔵', '⚪', '🟤', '▪️', '▫️', '🔶', '🔷', '🔸', '🔹', '💠', '🔘',
+  // Numbers keycaps
+  '#️⃣', '0️⃣', '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '*️⃣',
+  // Lettres
+  '🅰️', '🅱️', '🆎', '🅾️', '🆘', '❓', '❔', '⁉️', '❗', '❕',
+  // Météo
+  '☀️', '🌙', '⛈️', '❄️', '🔥', '💨', '🌈', '☁️', '🌤️', '⛅', '🌦️', '🌧️', '🌩️', '🌨️', '💧', '💦', '🌊', '☔', '⚡',
+  // Animaux
+  '🐶', '🐱', '🐭', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐸', '🐵', '🐔', '🐧', '🐦', '🐤', '🦆', '🦅',
+  // Nourriture
+  '🍕', '🍔', '🍟', '🌭', '🍿', '🥓', '🍳', '🥞', '🍞', '🥐', '🧀', '🥗', '🥙', '🌮', '🌯', '🍝', '🍜', '🍲', '🍣', '🍱',
+  '🍦', '🍰', '🎂', '🍩', '🍪', '☕', '🍵', '🧃', '🥤', '🧋', '🍶', '🍷', '🍸', '🍹', '🍺', '🥂',
+  // Sports
+  '⚽', '🏀', '🏈', '⚾', '🎾', '🏐', '🏉', '🎱', '🏓', '🏸', '🏒', '🏑', '🥍', '🏏', '🥅', '⛳', '🏹', '🎣', '🥊', '🥋',
+  // Musique
+  '🎵', '🎶', '🎸', '🎹', '🎺', '🎷', '🎻', '🥁', '🥇', '🏅', '🎖️', '🏆',
+  // Travel
+  '🚗', '✈️', '🚀', '🛸', '🚢', '🚂', '🚃', '🚄', '🚅', '🚆', '🚇', '🚈', '🚉', '🚊', '🚋', '🚌', '🚍', '🚎', '🚐', '🚑',
+  // Zodiac
+  '♈', '♉', '♊', '♋', '♌', '♍', '♎', '♏', '♐', '♑', '♒', '♓', '⛎',
+  // Flags
+  '🇫🇷', '🇺🇸', '🇬🇧', '🇪🇸', '🇮🇹', '🇩🇪', '🇯🇵', '🇨🇳', '🇰🇷', '🇧🇷', '🇷🇺', '🇮🇳', '🇦🇺', '🇨🇦', '🇲🇽', '🇪🇺',
+  // Divers
+  '✨', '🎉', '🎊', '🎁', '🎈', '🎀', '🎗️', '💰', '💳', '💵', '🔮', '🧸', '💿', '📷', '📸', '🎥', '📞', '☎️', '📺', '📻',
+  // Temps
+  '⌛', '⏳', '⏰', '⏱️', '⏲️', '🕐', '🕑', '🕒', '🕓', '🕔', '🕕', '🕖', '🕗', '🕘', '🕙', '🕚', '🕛'
+];
 const isEmojiOnly = (text: string): { isEmoji: boolean; emojiCount: number } => {
   if (!text || text.trim() === '') return { isEmoji: false, emojiCount: 0 }
   
   const trimmed = text.trim()
   
   // Comprehensive emoji regex that matches:
-  // - Basic emojis with optional variation selector
+  // - Basic emojis with optional variation selector (VS16)
   // - Emojis with skin tone modifiers
   // - ZWJ sequences (family, profession emojis, etc.)
   // - Flag emojis (regional indicators)
-  // - Keycap emojis
-  const emojiPattern = /(?:\p{Emoji_Presentation}|\p{Emoji}\uFE0F?|\p{Regional_Indicator}{2}|[\u0023\u002A\u0030-\u0039]\uFE0F?\u20E3)(?:\u200D(?:\p{Emoji_Presentation}|\p{Emoji}\uFE0F?))*(?:\p{Emoji_Modifier})?/gu
+  // - Keycap emojis (#️⃣, 0️⃣-9️⃣, *️⃣)
+  // - Letters and symbols (🅰️, 🅱️, 🆎, 🅾️, 🆘)
+  // - Zodiac symbols (♈♉♊♋♌♍♎♏♐♑♒♓⛎)
+  // - Misc symbols with emoji property
+  const emojiPattern = new RegExp(
+    '(?:' +
+      // Emoji Presentation or Emoji with optional VS16
+      '(?:\\p{Emoji_Presentation}|\\p{Extended_Pictographic})' +
+      '|' +
+      // Regional indicators (flags)
+      '(?:\\p{Regional_Indicator}{2})' +
+      '|' +
+      // Keycap digits (#*0-9)
+      '(?:[\\u0023\\u002A\\u0030-\\u0039]\\uFE0F?\\u20E3)' +
+      '|' +
+      // Digits with variation selector
+      '(?:[\\u0030-\\u0039]\\uFE0F\\u20E3)' +
+      '|' +
+      // Zodiac and misc symbols
+      '(?:[♈♉♊♋♌♍♎♏♐♑♒♓⛎🉀🉁🉂🉃🉄🉅🉆🉇🉈🉊🉋🉌🉍🉎🉏🉐🉑🉒🉓🉔🉕🉖🉗🉘🉙🉚🉛🉜🉝🉞🉟🉠🉡🉢🉣🉤🉥🉦🉧🉨🉩🉪🉫🉬🉭🉮🉯🉰🉱🉲🉳🉴🉵🉶🉷🉸🉹🉺🉻🉼🉽🉾🉿🊀🊁🊂🊃🊄🊅🊆🊇🊈🊉🊊🊋🊌🊍🊎🊏🊐🊑🊒🊓🊔🊕🊖🊗🊘🊙🊚🊛🊜🊝🊞🊟🊠🊡🊢🊣🊤🊥🊦🊧🊨🊩🊪🊫🊬🊭🊮🊯🊰🊱🊲🊳🊴🊵🊶🊷🊸🊹🊺🊻🊼🊽🊾🊿🋀🋁🋂🋃🋄🋅🋆🋇🋈🋉🋊🋋🋌🋍🋎🋏])' +
+    ')' +
+    // Optional ZWJ sequences and modifiers
+    '(?:' +
+      '\\u200D(?:\\p{Emoji_Presentation}|\\p{Extended_Pictographic})' +
+      '|' +
+      '\\p{Emoji_Modifier}' +
+    ')*' +
+    '/gu'
+  )
   
   // Find all emojis in the text
   const emojis = trimmed.match(emojiPattern)
@@ -63,7 +124,7 @@ const isEmojiOnly = (text: string): { isEmoji: boolean; emojiCount: number } => 
   
   // Check if the entire string is just emojis (with optional whitespace between)
   const emojiString = emojis.join('')
-  const textWithoutWhitespace = trimmed.replaceAll('\s', '')
+  const textWithoutWhitespace = trimmed.replaceAll('\\s', '')
   
   // If the text without whitespace equals the joined emojis, it's emoji-only
   if (textWithoutWhitespace === emojiString && emojis.length >= 1 && emojis.length <= 3) {
@@ -303,6 +364,9 @@ export function ChatViewPage() {
     pinned_at: string;
     pinned_until: string;
   } | null>(null)
+  // Message queue for pending messages (optimistic UI + broadcast)
+  const messageQueueRef = useRef<Message[]>([])
+  const isProcessingQueue = useRef(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const emojiPickerRef = useRef<HTMLDivElement>(null)
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null)
@@ -665,6 +729,26 @@ export function ChatViewPage() {
         console.log('[ChatViewPage] Messages channel subscription status:', status)
       })
 
+    // OPTIMIZATION: Add broadcast channel for instant message delivery (WhatsApp-level latency)
+    const broadcastChannel = supabase.channel(`chat-broadcast:${conversationId}`, {
+      config: {
+        broadcast: { self: false }
+      }
+    })
+    
+    broadcastChannel.on('broadcast', { event: 'message' }, ({ payload }) => {
+      console.log('[ChatViewPage] Broadcast message received:', payload?.message?.id)
+      if (payload?.message) {
+        const broadcastMsg = payload.message as Message
+        // Handle broadcast message - same as postgres_changes
+        handleNewMessage({ new: broadcastMsg })
+      }
+    })
+    
+    broadcastChannel.subscribe((status) => {
+      console.log('[ChatViewPage] Broadcast channel status:', status)
+    })
+
     // Subscribe to profile changes for real-time avatar updates
     const profilesChannel = supabase
       .channel(`profiles-chat:${conversationId}`)
@@ -742,6 +826,7 @@ export function ChatViewPage() {
       supabase.removeChannel(messagesChannel)
       supabase.removeChannel(profilesChannel)
       supabase.removeChannel(memberLeftChannel)
+      supabase.removeChannel(broadcastChannel)
       unsubscribeFromConversation(conversationId)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       window.removeEventListener('supabase-reconnected', handleSupabaseReconnect)
@@ -891,6 +976,26 @@ export function ChatViewPage() {
     setLinkPreview(null)
     setIsLoadingPreview(false)
   }
+
+  // Process message queue for broadcast delivery
+  const processMessageQueue = useCallback(async () => {
+    if (isProcessingQueue.current || messageQueueRef.current.length === 0 || !conversationId) return
+    
+    isProcessingQueue.current = true
+    const queue = [...messageQueueRef.current]
+    messageQueueRef.current = []
+    
+    for (const msg of queue) {
+      try {
+        // Send via broadcast for instant delivery to other clients
+        await sendBroadcastMessage(conversationId, msg)
+      } catch (e) {
+        console.warn('[ChatViewPage] Broadcast failed, relying on postgres_changes:', e)
+      }
+    }
+    
+    isProcessingQueue.current = false
+  }, [conversationId])
 
   const handleEmojiSelect = (emoji: string) => {
     setNewMessage(prev => prev + emoji)
@@ -1202,6 +1307,40 @@ export function ChatViewPage() {
     e.preventDefault()
     if (!newMessage.trim() || !user || sending) return
     setSending(true)
+    
+    // OPTIMISTIC UI: Add message to local state immediately for instant display
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    const optimisticMessage: Message = {
+      id: tempId,
+      conversation_id: conversationId!,
+      sender_id: user.id,
+      content: newMessage.trim(),
+      type: 'text',
+      status: 'sent',
+      created_at: new Date().toISOString(),
+      reply_to_id: replyToMessage?.id || null,
+      is_starred: false,
+      is_pinned: false,
+      is_ephemeral: !!ephemeralDuration,
+      ephemeral_duration: ephemeralDuration,
+      ephemeral_expires_at: ephemeralDuration 
+        ? new Date(Date.now() + ephemeralDuration * 1000).toISOString() 
+        : null,
+    } as Message
+    
+    // Add to local state immediately (optimistic update)
+    setMessages(prev => [...prev, optimisticMessage])
+    
+    // Queue for broadcast delivery
+    messageQueueRef.current.push(optimisticMessage)
+    processMessageQueue()
+    
+    // Clear input immediately for better UX
+    setNewMessage('')
+    setReplyToMessage(null)
+    setLinkPreview(null)
+    setDismissedPreviewUrl(null)
+    
     try {
       const messageData: any = {
         conversation_id: conversationId!, sender_id: user.id, content: newMessage.trim(),
@@ -1227,19 +1366,28 @@ export function ChatViewPage() {
         messageData.ephemeral_duration = ephemeralDuration
         messageData.ephemeral_expires_at = expiresAt.toISOString()
       }
+      
       const { data, error } = await supabase.from('messages').insert(messageData).select()
+      
       if (!error && data && data[0]) {
-        setNewMessage('')
-        setReplyToMessage(null)
-        setLinkPreview(null)
-        setDismissedPreviewUrl(null)
+        // Replace optimistic message with real one from DB
+        setMessages(prev => prev.map(m => m.id === tempId ? data[0] : m))
         await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conversationId!)
         // Dispatch event to update ChatsPage conversation list in real-time
         window.dispatchEvent(new CustomEvent('message-sent-in-chat', {
           detail: { conversationId, message: data[0] }
         }))
+      } else if (error) {
+        // Remove optimistic message on error
+        setMessages(prev => prev.filter(m => m.id !== tempId))
+        console.error('[ChatViewPage] Error sending message:', error)
       }
-    } finally { setSending(false) }
+    } catch (err) {
+      console.error('[ChatViewPage] Error sending message:', err)
+      setMessages(prev => prev.filter(m => m.id !== tempId))
+    } finally { 
+      setSending(false) 
+    }
   }
 
   const handleMediaUploadComplete = async (
@@ -2307,7 +2455,7 @@ export function ChatViewPage() {
                     <div className="absolute bottom-full left-0 mb-2 bg-bg-surface backdrop-blur-xl rounded-2xl p-3 shadow-2xl border border-bg-hover z-50 min-w-[280px]">
                       <div className="text-xs text-text-secondary mb-2 px-1">Emojis</div>
                       <div className="grid grid-cols-6 gap-1">
-                        {['👍', '❤️', '😂', '😮', '😢', '🙏', '😊', '🔥', '👏', '🎉', '💯', '✨', '😍', '🤔', '😎', '🥳', '😭', '💪', '👌', '✅', '❌', '⭐', '💙', '💚', '💛', '💜', '🧡', '🖤', '🤍', '💖'].map((emoji) => (
+                        {CHAT_EMOJIS.map((emoji) => (
                           <button
                             key={emoji}
                             onClick={() => handleEmojiSelect(emoji)}
