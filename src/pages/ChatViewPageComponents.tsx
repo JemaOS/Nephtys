@@ -532,6 +532,555 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   )
 }
 
+interface TimelineItemComponentProps {
+  item: TimelineItem
+  user: any
+  reactions: any[]
+  selectedMessages: Set<string>
+  hoveredMessageId: string | null
+  setHoveredMessageId: (id: string | null) => void
+  handleTouchStart: (msg: Message) => void
+  handleTouchEnd: () => void
+  handleTouchMove: () => void
+  handleSelectMessage: (id: string) => void
+  isSelectionMode: boolean
+  isMobile: boolean
+  setReplyToMessage: (msg: Message) => void
+  handleForwardMessage: (msg: Message) => void
+  setQuickReactionBar: (data: any) => void
+  handleContextMenu: (e: React.MouseEvent, msg: Message) => void
+  setContextMenu: (data: any) => void
+  getSenderInfo: (id: string) => { name: string; avatar?: string }
+  setGifStickerViewer: (data: any) => void
+  handlePinMessage: (id: string) => void
+  addReaction: (id: string, emoji: string) => void
+  removeReaction: (id: string, emoji: string) => void
+  handleStarMessage: (id: string) => void
+  allMediaItems: any[]
+  getMediaIndexForMessage: (id: string) => number
+  handleMediaNavigate: (index: number) => void
+  scrollToMessage: (id: string) => void
+  handleStartVideoCall: () => void
+  handleStartAudioCall: () => void
+  otherUser: Profile | null
+  messages: Message[]
+}
+
+const TimelineItemComponent: React.FC<TimelineItemComponentProps> = ({
+  item,
+  user,
+  reactions,
+  selectedMessages,
+  hoveredMessageId,
+  setHoveredMessageId,
+  handleTouchStart,
+  handleTouchEnd,
+  handleTouchMove,
+  handleSelectMessage,
+  isSelectionMode,
+  isMobile,
+  setReplyToMessage,
+  handleForwardMessage,
+  setQuickReactionBar,
+  handleContextMenu,
+  setContextMenu,
+  getSenderInfo,
+  setGifStickerViewer,
+  handlePinMessage,
+  addReaction,
+  removeReaction,
+  handleStarMessage,
+  allMediaItems,
+  getMediaIndexForMessage,
+  handleMediaNavigate,
+  scrollToMessage,
+  handleStartVideoCall,
+  handleStartAudioCall,
+  otherUser,
+  messages
+}) => {
+  if (item.type === 'call') {
+    const call = item.data as CallLog
+    const isOutgoing = call.caller_id === user?.id
+    const isGroupCall = call.caller_id === call.callee_id
+    
+    return (
+      <CallMessage
+        key={`call-${call.id}`}
+        type={call.type}
+        status={call.status}
+        isOutgoing={isOutgoing}
+        duration={call.duration}
+        timestamp={call.started_at}
+        isGroupCall={isGroupCall}
+        participantCount={call.participant_count ?? undefined}
+        isOwn={isOutgoing}
+        onClick={() => {
+          if (call.type === 'video') {
+            handleStartVideoCall()
+          } else {
+            handleStartAudioCall()
+          }
+        }}
+      />
+    )
+  }
+  
+  const message = item.data as Message
+  const isOwn = message.sender_id === user?.id
+  const messageReactions = reactions.filter(r => r.message_id === message.id)
+  const isSelected = selectedMessages.has(message.id)
+  
+  const isSystemMessage = message.type === 'text' && message.content?.startsWith('[SYSTEM]')
+  const systemMessageContent = isSystemMessage ? message.content.replace('[SYSTEM]', '') : ''
+  
+  if (isSystemMessage) {
+    return (
+      <SystemMessageItem
+        key={message.id}
+        messageId={message.id}
+        content={systemMessageContent}
+      />
+    )
+  }
+  
+  const { isEmojiOnlyMessage, emojiCount, isGifMessage, isStickerMessage, isGifOrStickerMessage, mediaUrl, mediaType, isMediaMessage, isDocumentMessage, gifMatch, stickerMatch } = getMessageTypeInfo(message)
+  
+  return (
+    <div
+      key={message.id}
+      id={`message-${message.id}`}
+      className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-1 ${isSelected ? 'bg-[#787add]/10' : ''} transition-colors duration-500`}
+      onMouseEnter={() => setHoveredMessageId(message.id)}
+      onMouseLeave={() => setHoveredMessageId(null)}
+      onTouchStart={() => handleTouchStart(message)}
+      onTouchEnd={handleTouchEnd}
+      onTouchMove={handleTouchMove}
+      onClick={() => {
+        if (isSelectionMode) {
+          handleSelectMessage(message.id)
+        }
+      }}
+    >
+      {isOwn && hoveredMessageId === message.id && !isSelectionMode && (
+        <div className="flex items-center gap-0.5 md:gap-1 mr-1 md:mr-2">
+          <button
+            onClick={() => setReplyToMessage(message)}
+            className="md:hidden w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] flex items-center justify-center transition-colors shadow-md"
+            title="Répondre"
+          >
+            <Reply size={16} className="text-[#8696a0]" />
+          </button>
+          <button
+            onClick={() => handleForwardMessage(message)}
+            className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
+            title="Transférer"
+          >
+            <Forward size={16} className="text-[#8696a0]" />
+          </button>
+          <button
+            onClick={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              setQuickReactionBar({
+                isOpen: true,
+                position: { x: rect.left + rect.width / 2, y: rect.top },
+                message,
+              });
+            }}
+            className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
+            title="Réagir"
+          >
+            <Smile size={16} className="text-[#8696a0]" />
+          </button>
+          <button
+            onClick={() => setReplyToMessage(message)}
+            className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
+            title="Répondre"
+          >
+            <Reply size={16} className="text-[#8696a0]" />
+          </button>
+        </div>
+      )}
+      <div
+        className={`max-w-[85%] sm:max-w-[75%] md:max-w-[70%] lg:max-w-[65%] relative group`}
+        data-message-id={message.id}
+        onContextMenu={(e) => {
+          if (isMobile) {
+            e.preventDefault()
+            return
+          }
+          handleContextMenu(e, message)
+        }}
+      >
+        {isEmojiOnlyMessage ? (
+          <div className="relative">
+            <MessageHoverActions
+              isVisible={hoveredMessageId === message.id}
+              isOwn={isOwn}
+              onOpenMenu={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                setContextMenu({
+                  isOpen: true,
+                  position: { x: rect.left, y: rect.bottom + 5 },
+                  message,
+                });
+              }}
+            />
+            <div className={`${
+              emojiCount === 1 ? 'text-7xl' : emojiCount === 2 ? 'text-6xl' : 'text-5xl'
+            } leading-none py-1`}>
+              {message.content}
+            </div>
+            <MessageTimestamp timestamp={message.created_at} isStarred={message.is_starred || false} isOwn={isOwn} status={message.status} />
+          </div>
+        ) : isGifOrStickerMessage ? (
+          <div className="relative">
+            <MessageHoverActions
+              isVisible={hoveredMessageId === message.id}
+              isOwn={isOwn}
+              onOpenMenu={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                setContextMenu({
+                  isOpen: true,
+                  position: { x: rect.left, y: rect.bottom + 5 },
+                  message,
+                });
+              }}
+            />
+            {isGifMessage && gifMatch && (() => {
+              const caption = gifMatch[1]
+              const gifUrl = gifMatch[2]
+              const senderInfo = getSenderInfo(message.sender_id)
+              return (
+                <div className="space-y-1">
+                  <div
+                      className="overflow-hidden cursor-pointer max-w-[240px] sm:max-w-[280px] rounded-xl border-[3px] border-[#787add]"
+                      onClick={(e) => {
+                      e.stopPropagation()
+                      setGifStickerViewer({
+                        isOpen: true,
+                        url: gifUrl,
+                        type: 'gif',
+                        senderName: senderInfo.name,
+                        senderAvatar: senderInfo.avatar,
+                        timestamp: message.created_at,
+                        isOwn: message.sender_id === user?.id,
+                        messageId: message.id
+                      })
+                    }}
+                  >
+                    <img
+                      src={gifUrl}
+                      alt="GIF"
+                      className="w-full h-auto max-h-[200px] sm:max-h-[240px] object-contain"
+                      loading="lazy"
+                    />
+                  </div>
+                  {caption && (
+                    <div className={`px-3 py-2 rounded-2xl ${isOwn ? 'bg-[#787add] text-white' : 'bg-bg-surface text-text-primary'}`}>
+                      <p className="text-sm whitespace-pre-wrap break-words">{caption}</p>
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
+            {isStickerMessage && stickerMatch && (() => {
+              const caption = stickerMatch[1]
+              const stickerUrl = stickerMatch[2]
+              const senderInfo = getSenderInfo(message.sender_id)
+              return (
+                <div className="space-y-1">
+                  <div
+                    className="cursor-pointer max-w-[160px] sm:max-w-[200px] overflow-hidden rounded-xl border-[3px] border-[#787add]"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setGifStickerViewer({
+                        isOpen: true,
+                        url: stickerUrl,
+                        type: 'sticker',
+                        senderName: senderInfo.name,
+                        senderAvatar: senderInfo.avatar,
+                        timestamp: message.created_at,
+                        isOwn: message.sender_id === user?.id,
+                        messageId: message.id
+                      })
+                    }}
+                  >
+                    <img
+                      src={stickerUrl}
+                      alt="Sticker"
+                      className="w-full h-auto max-h-[160px] sm:max-h-[200px] object-contain"
+                      loading="lazy"
+                    />
+                  </div>
+                  {caption && (
+                    <div className={`px-3 py-2 rounded-2xl ${isOwn ? 'bg-[#787add] text-white' : 'bg-bg-surface text-text-primary'}`}>
+                      <p className="text-sm whitespace-pre-wrap break-words">{caption}</p>
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
+            <MessageTimestamp timestamp={message.created_at} isStarred={message.is_starred || false} isOwn={isOwn} status={message.status} />
+          </div>
+        ) : isMediaMessage ? (
+          (() => {
+            const mediaSenderInfo = getSenderInfo(message.sender_id)
+            return (
+          <div className="relative">
+            <div className="space-y-1">
+              <MediaMessage
+                  url={mediaUrl!}
+                  type={mediaType as 'image' | 'video' | 'file'}
+                  fileName={message.file_name}
+                  fileSize={message.file_size}
+                  caption={message.content}
+                  width={message.media_width ?? undefined}
+                  height={message.media_height ?? undefined}
+                  thumbnail={message.media_thumbnail ?? undefined}
+                  senderName={mediaSenderInfo.name}
+                  senderAvatar={mediaSenderInfo.avatar}
+                  timestamp={message.created_at}
+                  isOwn={message.sender_id === user?.id}
+                  isStarred={message.is_starred || false}
+                  messageId={message.id}
+                  status={message.status as 'sent' | 'delivered' | 'read' | undefined}
+                  onForward={() => handleForwardMessage(message)}
+                  onStar={() => handleStarMessage(message.id)}
+                  onPin={() => handlePinMessage(message.id)}
+                  onReaction={(emoji) => addReaction(message.id, emoji)}
+                  showHoverActions={hoveredMessageId === message.id}
+                  onOpenMenu={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    setContextMenu({
+                      isOpen: true,
+                      position: { x: rect.left, y: rect.bottom + 5 },
+                      message,
+                    });
+                  }}
+                  allMedia={allMediaItems}
+                  currentIndex={getMediaIndexForMessage(message.id)}
+                  onNavigate={handleMediaNavigate}
+                />
+            </div>
+          </div>
+            )
+          })()
+        ) : isDocumentMessage ? (
+          (() => {
+            const docSenderInfo = getSenderInfo(message.sender_id)
+            return (
+          <div className="relative">
+            <MessageHoverActions
+              isVisible={hoveredMessageId === message.id}
+              isOwn={isOwn}
+              onOpenMenu={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                setContextMenu({
+                  isOpen: true,
+                  position: { x: rect.left, y: rect.bottom + 5 },
+                  message,
+                });
+              }}
+            />
+            <MediaMessage
+              url={mediaUrl!}
+              type="file"
+              fileName={message.file_name}
+              fileSize={message.file_size}
+              caption={message.content}
+              thumbnail={message.media_thumbnail ?? undefined}
+              senderName={docSenderInfo.name}
+              timestamp={message.created_at}
+              isOwn={message.sender_id === user?.id}
+              isStarred={message.is_starred || false}
+              messageId={message.id}
+              status={message.status as 'sent' | 'delivered' | 'read' | undefined}
+              onForward={() => handleForwardMessage(message)}
+              onStar={() => handleStarMessage(message.id)}
+              onPin={() => handlePinMessage(message.id)}
+              onReaction={(emoji) => addReaction(message.id, emoji)}
+              showHoverActions={hoveredMessageId === message.id}
+              onOpenMenu={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                setContextMenu({
+                  isOpen: true,
+                  position: { x: rect.left, y: rect.bottom + 5 },
+                  message,
+                });
+              }}
+            />
+          </div>
+            )
+          })()
+        ) : (
+        <div className={`relative px-3 py-2 rounded-2xl ${isOwn ? 'bg-[#787add] text-white rounded-br-none' : 'bg-bg-surface text-text-primary rounded-bl-none'}`}>
+          <MessageHoverActions
+            isVisible={hoveredMessageId === message.id}
+            isOwn={isOwn}
+            onOpenMenu={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              setContextMenu({
+                isOpen: true,
+                position: { x: rect.left, y: rect.bottom + 5 },
+                message,
+              });
+            }}
+          />
+          {message.reply_to_id && (() => {
+            const replyMessage = messages.find(m => m.id === message.reply_to_id)
+            if (replyMessage) {
+              const replySenderName = replyMessage.sender_id === user?.id
+                ? 'Vous'
+                : otherUser?.display_name || otherUser?.username || 'Utilisateur'
+              return (
+                <div onClick={(e) => { e.stopPropagation(); scrollToMessage(replyMessage.id); }}>
+                  <MessageReply
+                    replyToMessage={{
+                      id: replyMessage.id,
+                      content: replyMessage.content,
+                      sender_id: replyMessage.sender_id,
+                      senderName: replySenderName,
+                      mediaUrl: replyMessage.media_url || replyMessage.file_url,
+                      mediaType: replyMessage.media_type || replyMessage.type,
+                      fileName: replyMessage.file_name
+                    }}
+                    isPreview={false}
+                  />
+                </div>
+              )
+            }
+            return null
+          })()}
+          {message.type === 'audio' && (message.media_url || message.file_url) && (
+            message.file_name?.startsWith('voice-') ? (
+              <VoiceMessage url={message.media_url || message.file_url || ''} duration={message.ephemeral_duration || 0} isOwn={isOwn} />
+            ) : (
+              <AudioFilePlayer
+                url={message.media_url || message.file_url || ''}
+                fileName={message.file_name || undefined}
+                duration={message.ephemeral_duration || undefined}
+                isOwn={isOwn}
+              />
+            )
+          )}
+          {(!(message.media_url || message.file_url) && message.content) && (
+            <>
+              {(() => {
+                let displayContent = message.content
+                if ((message as any).link_preview) {
+                  try {
+                    const previewData = typeof (message as any).link_preview === 'string'
+                      ? JSON.parse((message as any).link_preview)
+                      : (message as any).link_preview
+                    if (previewData.url) {
+                      displayContent = message.content.replace(previewData.url, '').trim()
+                      displayContent = displayContent.replace(/^[\s\-–—:]+|[\s\-–—:]+$/g, '').trim()
+                    }
+                  } catch {
+                  }
+                }
+                return displayContent ? <p className="text-sm whitespace-pre-wrap break-words">{displayContent}</p> : null
+              })()}
+              {(message as any).link_preview && (() => {
+                try {
+                  const previewData = typeof (message as any).link_preview === 'string'
+                    ? JSON.parse((message as any).link_preview)
+                    : (message as any).link_preview
+                  return (
+                    <LinkPreview
+                      preview={previewData}
+                      isInMessage={true}
+                      isOwn={isOwn}
+                    />
+                  )
+                } catch {
+                  return null
+                }
+              })()}
+            </>
+          )}
+          {!(mediaUrl && (mediaType === 'image' || mediaType === 'video') && message.type !== 'audio') && (
+          <div className={`flex items-center justify-end gap-1 mt-1 text-xs ${isOwn ? 'text-[#2d2f6e]' : 'text-text-secondary'}`}>
+            {message.is_starred && (
+              <Star size={12} className="fill-current" />
+            )}
+            <span>{formatTime(message.created_at)}</span>
+            {isOwn && (
+              <MessageStatusIcons status={message.status} />
+            )}
+          </div>
+          )}
+        </div>
+        )}
+        {isSelectionMode && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              handleSelectMessage(message.id);
+            }}
+            className={`absolute top-1/2 -translate-y-1/2 ${
+              isOwn ? '-left-10' : '-right-10'
+            } w-7 h-7 rounded-full flex items-center justify-center transition-all ${
+              isSelected
+                ? 'bg-[#787add] text-white'
+                : 'bg-bg-surface hover:bg-bg-hover text-text-tertiary border border-bg-hover'
+            }`}
+            type="button"
+            aria-label={isSelected ? 'Désélectionner le message' : 'Sélectionner le message'}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+          </button>
+        )}
+        {messageReactions.length > 0 && (
+          <MessageReactions reactions={messageReactions} currentUserId={user?.id || ''} onReactionClick={(emoji) => addReaction(message.id, emoji)} onReactionRemove={(emoji) => removeReaction(message.id, emoji)} />
+        )}
+      </div>
+      {!isOwn && hoveredMessageId === message.id && !isSelectionMode && (
+        <div className="flex items-center gap-0.5 md:gap-1 pb-4 ml-1 md:ml-2">
+          <button
+            onClick={() => setReplyToMessage(message)}
+            className="md:hidden w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] flex items-center justify-center transition-colors shadow-md"
+            title="Répondre"
+          >
+            <Reply size={16} className="text-[#8696a0]" />
+          </button>
+          <button
+            onClick={() => setReplyToMessage(message)}
+            className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
+            title="Répondre"
+          >
+            <Reply size={16} className="text-[#8696a0]" />
+          </button>
+          <button
+            onClick={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              setQuickReactionBar({
+                isOpen: true,
+                position: { x: rect.left + rect.width / 2, y: rect.top },
+                message,
+              });
+            }}
+            className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
+            title="Réagir"
+          >
+            <Smile size={16} className="text-[#8696a0]" />
+          </button>
+          <button
+            onClick={() => handleForwardMessage(message)}
+            className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
+            title="Transférer"
+          >
+            <Forward size={16} className="text-[#8696a0]" />
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 interface MessageListProps {
   loading: boolean
   messages: Message[]
@@ -663,605 +1212,42 @@ export const MessageList: React.FC<MessageListProps> = ({
       ) : (
         <>
           <div>
-          {timelineItems.map((item) => {
-            // Render call messages
-            if (item.type === 'call') {
-              const call = item.data as CallLog
-              const isOutgoing = call.caller_id === user?.id
-              // Group calls are identified by caller_id === callee_id (self-reference)
-              const isGroupCall = call.caller_id === call.callee_id
-              
-              return (
-                <CallMessage
-                  key={`call-${call.id}`}
-                  type={call.type}
-                  status={call.status}
-                  isOutgoing={isOutgoing}
-                  duration={call.duration}
-                  timestamp={call.started_at}
-                  isGroupCall={isGroupCall}
-                  participantCount={call.participant_count ?? undefined}
-                  isOwn={isOutgoing}
-                  onClick={() => {
-                    if (call.type === 'video') {
-                      handleStartVideoCall()
-                    } else {
-                      handleStartAudioCall()
-                    }
-                  }}
-                />
-              )
-            }
-            
-            // Render regular messages
-            const message = item.data as Message
-            const isOwn = message.sender_id === user?.id
-            const messageReactions = reactions.filter(r => r.message_id === message.id)
-            const isSelected = selectedMessages.has(message.id)
-            
-            // Check if this is a system message (starts with [SYSTEM])
-            const isSystemMessage = message.type === 'text' && message.content?.startsWith('[SYSTEM]')
-            const systemMessageContent = isSystemMessage ? message.content.replace('[SYSTEM]', '') : ''
-            
-            // Render system messages with glassmorphism 2025 style
-            if (isSystemMessage) {
-              return (
-                <SystemMessageItem
-                  key={message.id}
-                  messageId={message.id}
-                  content={systemMessageContent}
-                />
-              )
-            }
-            
-            // Extract message type to avoid deep nesting
-            const { isEmojiOnlyMessage, emojiCount, isGifMessage, isStickerMessage, isGifOrStickerMessage, mediaUrl, mediaType, isMediaMessage, isDocumentMessage, gifMatch, stickerMatch } = getMessageTypeInfo(message)
-            
-            // Extract message type to avoid deep nesting in return statement
-            const messageType = isEmojiOnlyMessage ? 'emoji' 
-              : isGifOrStickerMessage ? 'gifOrSticker'
-              : isMediaMessage ? 'media'
-              : isDocumentMessage ? 'document'
-              : 'text'
-
-            return (
-              <div
-                key={message.id}
-                id={`message-${message.id}`}
-                className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-1 ${isSelected ? 'bg-[#787add]/10' : ''} transition-colors duration-500`}
-                onMouseEnter={() => setHoveredMessageId(message.id)}
-                onMouseLeave={() => setHoveredMessageId(null)}
-                onTouchStart={() => handleTouchStart(message)}
-                onTouchEnd={handleTouchEnd}
-                onTouchMove={handleTouchMove}
-                onClick={() => {
-                  // In selection mode, clicking anywhere on the message row selects/deselects it
-                  if (isSelectionMode) {
-                    handleSelectMessage(message.id)
-                  }
-                }}
-              >
-                {/* Quick action buttons - LEFT of sent messages (isOwn) */}
-                {isOwn && hoveredMessageId === message.id && !isSelectionMode && (
-                  <div className="flex items-center gap-0.5 md:gap-1 mr-1 md:mr-2">
-                    {/* Mobile: only Reply button */}
-                    <button
-                      onClick={() => setReplyToMessage(message)}
-                      className="md:hidden w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] flex items-center justify-center transition-colors shadow-md"
-                      title="Répondre"
-                    >
-                      <Reply size={16} className="text-[#8696a0]" />
-                    </button>
-                    {/* Desktop: all 3 buttons */}
-                    <button
-                      onClick={() => handleForwardMessage(message)}
-                      className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
-                      title="Transférer"
-                    >
-                      <Forward size={16} className="text-[#8696a0]" />
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        setQuickReactionBar({
-                          isOpen: true,
-                          position: { x: rect.left + rect.width / 2, y: rect.top },
-                          message,
-                        });
-                      }}
-                      className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
-                      title="Réagir"
-                    >
-                      <Smile size={16} className="text-[#8696a0]" />
-                    </button>
-                    <button
-                      onClick={() => setReplyToMessage(message)}
-                      className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
-                      title="Répondre"
-                    >
-                      <Reply size={16} className="text-[#8696a0]" />
-                    </button>
-                  </div>
-                )}
-                <div
-                  className={`max-w-[85%] sm:max-w-[75%] md:max-w-[70%] lg:max-w-[65%] relative group`}
-                  data-message-id={message.id}
-                  onContextMenu={(e) => {
-                    // On mobile, prevent native context menu - use long press instead
-                    if (isMobile) {
-                      e.preventDefault()
-                      return
-                    }
-                    handleContextMenu(e, message)
-                  }}
-                >
-                  {/* Emoji-only message - WhatsApp style: no bubble, large emoji */}
-                  {isEmojiOnlyMessage ? (
-                    <div className="relative">
-                      {/* Hover Actions for emoji messages */}
-                      <MessageHoverActions
-                        isVisible={hoveredMessageId === message.id}
-                        isOwn={isOwn}
-                        onOpenMenu={(e) => {
-                          const rect = e.currentTarget.getBoundingClientRect();
-                          setContextMenu({
-                            isOpen: true,
-                            position: { x: rect.left, y: rect.bottom + 5 },
-                            message,
-                          });
-                        }}
-                      />
-                      {/* Large emoji display */}
-                      <div className={`${
-                        emojiCount === 1 ? 'text-7xl' : emojiCount === 2 ? 'text-6xl' : 'text-5xl'
-                      } leading-none py-1`}>
-                        {message.content}
-                      </div>
-                      {/* Timestamp in small separate bubble - WhatsApp style */}
-                      <div className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mt-1`}>
-                        <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs ${
-                          isOwn ? 'bg-[#787add]/80' : 'bg-bg-surface/80'
-                        }`}>
-                          {message.is_starred && (
-                            <Star size={10} className="fill-current text-text-secondary" />
-                          )}
-                          <span className="text-text-secondary">{formatTime(message.created_at)}</span>
-                          {isOwn && (
-                            <>
-                              {message.status === 'sent' && (
-                                <svg width="14" height="9" viewBox="0 0 16 11" fill="none">
-                                  <path d="M10.5 1L4.5 7L2 4.5" stroke="#8696a0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                                </svg>
-                              )}
-                              {message.status === 'delivered' && (
-                                <svg width="14" height="9" viewBox="0 0 16 11" fill="none">
-                                  <path d="M1.5 5.5L4.5 8.5L10.5 2.5" stroke="#8696a0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                                  <path d="M5.5 5.5L8.5 8.5L14.5 2.5" stroke="#8696a0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                                </svg>
-                              )}
-                              {message.status === 'read' && (
-                                <svg width="14" height="9" viewBox="0 0 16 11" fill="none">
-                                  <path d="M1.5 5.5L4.5 8.5L10.5 2.5" stroke="#53bdeb" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                                  <path d="M5.5 5.5L8.5 8.5L14.5 2.5" stroke="#53bdeb" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                                </svg>
-                              )}
-                              {!message.status && (
-                                <svg width="14" height="9" viewBox="0 0 16 11" fill="none">
-                                  <path d="M10.5 1L4.5 7L2 4.5" stroke="#8696a0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                                </svg>
-                              )}
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ) : isGifOrStickerMessage ? (
-                    /* GIF/Sticker message - WhatsApp style: no bubble, floating on chat background */
-                    <div className="relative">
-                      {/* Hover Actions for GIF/Sticker messages */}
-                      <MessageHoverActions
-                        isVisible={hoveredMessageId === message.id}
-                        isOwn={isOwn}
-                        onOpenMenu={(e) => {
-                          const rect = e.currentTarget.getBoundingClientRect();
-                          setContextMenu({
-                            isOpen: true,
-                            position: { x: rect.left, y: rect.bottom + 5 },
-                            message,
-                          });
-                        }}
-                      />
-                      {/* GIF display - larger size, no background */}
-                      {isGifMessage && gifMatch && (() => {
-                        const caption = gifMatch[1]
-                        const gifUrl = gifMatch[2]
-                        const senderInfo = getSenderInfo(message.sender_id)
-                        return (
-                          <div className="space-y-1">
-                            <div
-                                className="overflow-hidden cursor-pointer max-w-[240px] sm:max-w-[280px] rounded-xl border-[3px] border-[#787add]"
-                                onClick={(e) => {
-                                e.stopPropagation()
-                                setGifStickerViewer({
-                                  isOpen: true,
-                                  url: gifUrl,
-                                  type: 'gif',
-                                  senderName: senderInfo.name,
-                                  senderAvatar: senderInfo.avatar,
-                                  timestamp: message.created_at,
-                                  isOwn: message.sender_id === user?.id,
-                                  messageId: message.id
-                                })
-                              }}
-                            >
-                              <img
-                                src={gifUrl}
-                                alt="GIF"
-                                className="w-full h-auto max-h-[200px] sm:max-h-[240px] object-contain"
-                                loading="lazy"
-                              />
-                            </div>
-                            {caption && (
-                              <div className={`px-3 py-2 rounded-2xl ${isOwn ? 'bg-[#787add] text-white' : 'bg-bg-surface text-text-primary'}`}>
-                                <p className="text-sm whitespace-pre-wrap break-words">{caption}</p>
-                              </div>
-                            )}
-                          </div>
-                        )
-                      })()}
-                      {/* Sticker display - larger size, no background */}
-                      {isStickerMessage && stickerMatch && (() => {
-                        const caption = stickerMatch[1]
-                        const stickerUrl = stickerMatch[2]
-                        const senderInfo = getSenderInfo(message.sender_id)
-                        return (
-                          <div className="space-y-1">
-                            <div
-                              className="cursor-pointer max-w-[160px] sm:max-w-[200px] overflow-hidden rounded-xl border-[3px] border-[#787add]"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                setGifStickerViewer({
-                                  isOpen: true,
-                                  url: stickerUrl,
-                                  type: 'sticker',
-                                  senderName: senderInfo.name,
-                                  senderAvatar: senderInfo.avatar,
-                                  timestamp: message.created_at,
-                                  isOwn: message.sender_id === user?.id,
-                                  messageId: message.id
-                                })
-                              }}
-                            >
-                              <img
-                                src={stickerUrl}
-                                alt="Sticker"
-                                className="w-full h-auto max-h-[160px] sm:max-h-[200px] object-contain"
-                                loading="lazy"
-                              />
-                            </div>
-                            {caption && (
-                              <div className={`px-3 py-2 rounded-2xl ${isOwn ? 'bg-[#787add] text-white' : 'bg-bg-surface text-text-primary'}`}>
-                                <p className="text-sm whitespace-pre-wrap break-words">{caption}</p>
-                              </div>
-                            )}
-                          </div>
-                        )
-                      })()}
-                      {/* Timestamp in small separate bubble - WhatsApp style */}
-                      <div className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mt-1`}>
-                        <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs ${
-                          isOwn ? 'bg-[#787add]/80' : 'bg-bg-surface/80'
-                        }`}>
-                          {message.is_starred && (
-                            <Star size={10} className="fill-current text-text-secondary" />
-                          )}
-                          <span className="text-text-secondary">{formatTime(message.created_at)}</span>
-                          {isOwn && (
-                            <>
-                              {message.status === 'sent' && (
-                                <svg width="14" height="9" viewBox="0 0 16 11" fill="none">
-                                  <path d="M10.5 1L4.5 7L2 4.5" stroke="#8696a0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                                </svg>
-                              )}
-                              {message.status === 'delivered' && (
-                                <svg width="14" height="9" viewBox="0 0 16 11" fill="none">
-                                  <path d="M1.5 5.5L4.5 8.5L10.5 2.5" stroke="#8696a0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                                  <path d="M5.5 5.5L8.5 8.5L14.5 2.5" stroke="#8696a0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                                </svg>
-                              )}
-                              {message.status === 'read' && (
-                                <svg width="14" height="9" viewBox="0 0 16 11" fill="none">
-                                  <path d="M1.5 5.5L4.5 8.5L10.5 2.5" stroke="#53bdeb" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                                  <path d="M5.5 5.5L8.5 8.5L14.5 2.5" stroke="#53bdeb" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                                </svg>
-                              )}
-                              {!message.status && (
-                                <svg width="14" height="9" viewBox="0 0 16 11" fill="none">
-                                  <path d="M10.5 1L4.5 7L2 4.5" stroke="#8696a0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                                </svg>
-                              )}
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ) : isMediaMessage ? (
-                    /* Image/Video message - WhatsApp style: no bubble, floating on chat background */
-                    (() => {
-                      const mediaSenderInfo = getSenderInfo(message.sender_id)
-                      return (
-                    <div className="relative">
-                      {/* Media display - no background bubble */}
-                      <div className="space-y-1">
-                        <MediaMessage
-                            url={mediaUrl!}
-                            type={mediaType as 'image' | 'video' | 'file'}
-                            fileName={message.file_name}
-                            fileSize={message.file_size}
-                            caption={message.content}
-                            width={message.media_width ?? undefined}
-                            height={message.media_height ?? undefined}
-                            thumbnail={message.media_thumbnail ?? undefined}
-                            senderName={mediaSenderInfo.name}
-                            senderAvatar={mediaSenderInfo.avatar}
-                            timestamp={message.created_at}
-                            isOwn={message.sender_id === user?.id}
-                            isStarred={message.is_starred || false}
-                            messageId={message.id}
-                            status={message.status as 'sent' | 'delivered' | 'read' | undefined}
-                            onForward={() => handleForwardMessage(message)}
-                            onStar={() => handleStarMessage(message.id)}
-                            onPin={() => handlePinMessage(message.id)}
-                            onReaction={(emoji) => addReaction(message.id, emoji)}
-                            showHoverActions={hoveredMessageId === message.id}
-                            onOpenMenu={(e) => {
-                              const rect = e.currentTarget.getBoundingClientRect();
-                              setContextMenu({
-                                isOpen: true,
-                                position: { x: rect.left, y: rect.bottom + 5 },
-                                message,
-                              });
-                            }}
-                            allMedia={allMediaItems}
-                            currentIndex={getMediaIndexForMessage(message.id)}
-                            onNavigate={handleMediaNavigate}
-                          />
-                      </div>
-                    </div>
-                      )
-                    })()
-                  ) : isDocumentMessage ? (
-                    /* Document/File message - WhatsApp style document card */
-                    (() => {
-                      const docSenderInfo = getSenderInfo(message.sender_id)
-                      return (
-                    <div className="relative">
-                      {/* Hover Actions for document messages */}
-                      <MessageHoverActions
-                        isVisible={hoveredMessageId === message.id}
-                        isOwn={isOwn}
-                        onOpenMenu={(e) => {
-                          const rect = e.currentTarget.getBoundingClientRect();
-                          setContextMenu({
-                            isOpen: true,
-                            position: { x: rect.left, y: rect.bottom + 5 },
-                            message,
-                          });
-                        }}
-                      />
-                      <MediaMessage
-                        url={mediaUrl!}
-                        type="file"
-                        fileName={message.file_name}
-                        fileSize={message.file_size}
-                        caption={message.content}
-                        thumbnail={message.media_thumbnail ?? undefined}
-                        senderName={docSenderInfo.name}
-                        timestamp={message.created_at}
-                        isOwn={message.sender_id === user?.id}
-                        isStarred={message.is_starred || false}
-                        messageId={message.id}
-                        status={message.status as 'sent' | 'delivered' | 'read' | undefined}
-                        onForward={() => handleForwardMessage(message)}
-                        onStar={() => handleStarMessage(message.id)}
-                        onPin={() => handlePinMessage(message.id)}
-                        onReaction={(emoji) => addReaction(message.id, emoji)}
-                        showHoverActions={hoveredMessageId === message.id}
-                        onOpenMenu={(e) => {
-                          const rect = e.currentTarget.getBoundingClientRect();
-                          setContextMenu({
-                            isOpen: true,
-                            position: { x: rect.left, y: rect.bottom + 5 },
-                            message,
-                          });
-                        }}
-                      />
-                    </div>
-                      )
-                    })()
-                  ) : (
-                  <div className={`relative px-3 py-2 rounded-2xl ${isOwn ? 'bg-[#787add] text-white rounded-br-none' : 'bg-bg-surface text-text-primary rounded-bl-none'}`}>
-                    {/* Hover Actions (Chevron dropdown) - Inside message bubble */}
-                    <MessageHoverActions
-                      isVisible={hoveredMessageId === message.id}
-                      isOwn={isOwn}
-                      onOpenMenu={(e) => {
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        setContextMenu({
-                          isOpen: true,
-                          position: { x: rect.left, y: rect.bottom + 5 },
-                          message,
-                        });
-                      }}
-                    />
-                    {/* Reply quote inside message - clickable to scroll to original */}
-                    {message.reply_to_id && (() => {
-                      const replyMessage = messages.find(m => m.id === message.reply_to_id)
-                      if (replyMessage) {
-                        const replySenderName = replyMessage.sender_id === user?.id
-                          ? 'Vous'
-                          : otherUser?.display_name || otherUser?.username || 'Utilisateur'
-                        return (
-                          <div onClick={(e) => { e.stopPropagation(); scrollToMessage(replyMessage.id); }}>
-                            <MessageReply
-                              replyToMessage={{
-                                id: replyMessage.id,
-                                content: replyMessage.content,
-                                sender_id: replyMessage.sender_id,
-                                senderName: replySenderName,
-                                mediaUrl: replyMessage.media_url || replyMessage.file_url,
-                                mediaType: replyMessage.media_type || replyMessage.type,
-                                fileName: replyMessage.file_name
-                              }}
-                              isPreview={false}
-                            />
-                          </div>
-                        )
-                      }
-                      return null
-                    })()}
-                    {message.type === 'audio' && (message.media_url || message.file_url) && (
-                      // Check if it's a voice message (recorded) or an audio file (uploaded)
-                      // Voice messages have file names starting with 'voice-'
-                      message.file_name?.startsWith('voice-') ? (
-                        <VoiceMessage url={message.media_url || message.file_url || ''} duration={message.ephemeral_duration || 0} isOwn={isOwn} />
-                      ) : (
-                        <AudioFilePlayer
-                          url={message.media_url || message.file_url || ''}
-                          fileName={message.file_name || undefined}
-                          duration={message.ephemeral_duration || undefined}
-                          isOwn={isOwn}
-                        />
-                      )
-                    )}
-                    {(!(message.media_url || message.file_url) && message.content) && (
-                      <>
-                        {/* Regular text message - if there's a link preview, don't show the URL in text */}
-                        {(() => {
-                          let displayContent = message.content
-                          if ((message as any).link_preview) {
-                            try {
-                              const previewData = typeof (message as any).link_preview === 'string'
-                                ? JSON.parse((message as any).link_preview)
-                                : (message as any).link_preview
-                              // Remove the URL from the message content since it will be shown in the preview
-                              if (previewData.url) {
-                                displayContent = message.content.replace(previewData.url, '').trim()
-                                // Also clean up any trailing/leading hyphens, dashes, or common separators
-                                displayContent = displayContent.replace(/^[\s\-–—:]+|[\s\-–—:]+$/g, '').trim()
-                              }
-                            } catch {
-                              // Keep original content if parsing fails
-                            }
-                          }
-                          
-                          // Only show text if there's content after removing the URL
-                          return displayContent ? <p className="text-sm whitespace-pre-wrap break-words">{displayContent}</p> : null
-                        })()}
-                        {/* Link Preview in message */}
-                        {(message as any).link_preview && (() => {
-                          try {
-                            const previewData = typeof (message as any).link_preview === 'string'
-                              ? JSON.parse((message as any).link_preview)
-                              : (message as any).link_preview
-                            return (
-                              <LinkPreview
-                                preview={previewData}
-                                isInMessage={true}
-                                isOwn={isOwn}
-                              />
-                            )
-                          } catch {
-                            return null
-                          }
-                        })()}
-                      </>
-                    )}
-                    {/* Only show timestamp in message bubble for non-media messages (media messages show timestamp via MediaTimestampOverlay) */}
-                    {!(mediaUrl && (mediaType === 'image' || mediaType === 'video') && message.type !== 'audio') && (
-                    <div className={`flex items-center justify-end gap-1 mt-1 text-xs ${isOwn ? 'text-[#2d2f6e]' : 'text-text-secondary'}`}>
-                      {message.is_starred && (
-                        <Star size={12} className="fill-current" />
-                      )}
-                      <span>{formatTime(message.created_at)}</span>
-                      {isOwn && (
-                        <MessageStatusIcons status={message.status} />
-                      )}
-                    </div>
-                    )}
-                  </div>
-                  )}
-                  {/* Selection checkbox - shown in selection mode */}
-                  {isSelectionMode && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleSelectMessage(message.id);
-                      }}
-                      className={`absolute top-1/2 -translate-y-1/2 ${
-                        isOwn ? '-left-10' : '-right-10'
-                      } w-7 h-7 rounded-full flex items-center justify-center transition-all ${
-                        isSelected
-                          ? 'bg-[#787add] text-white'
-                          : 'bg-bg-surface hover:bg-bg-hover text-text-tertiary border border-bg-hover'
-                      }`}
-                      type="button"
-                      aria-label={isSelected ? 'Désélectionner le message' : 'Sélectionner le message'}
-                    >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="20 6 9 17 4 12"></polyline>
-                      </svg>
-                    </button>
-                  )}
-                  {messageReactions.length > 0 && (
-                    <MessageReactions reactions={messageReactions} currentUserId={user?.id || ''} onReactionClick={(emoji) => addReaction(message.id, emoji)} onReactionRemove={(emoji) => removeReaction(message.id, emoji)} />
-                  )}
-                </div>
-                {/* Quick action buttons - RIGHT of received messages */}
-                {!isOwn && hoveredMessageId === message.id && !isSelectionMode && (
-                  <div className="flex items-center gap-0.5 md:gap-1 pb-4 ml-1 md:ml-2">
-                    {/* Mobile: only Reply button */}
-                    <button
-                      onClick={() => setReplyToMessage(message)}
-                      className="md:hidden w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] flex items-center justify-center transition-colors shadow-md"
-                      title="Répondre"
-                    >
-                      <Reply size={16} className="text-[#8696a0]" />
-                    </button>
-                    {/* Desktop: all 3 buttons */}
-                    <button
-                      onClick={() => setReplyToMessage(message)}
-                      className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
-                      title="Répondre"
-                    >
-                      <Reply size={16} className="text-[#8696a0]" />
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        setQuickReactionBar({
-                          isOpen: true,
-                          position: { x: rect.left + rect.width / 2, y: rect.top },
-                          message,
-                        });
-                      }}
-                      className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
-                      title="Réagir"
-                    >
-                      <Smile size={16} className="text-[#8696a0]" />
-                    </button>
-                    <button
-                      onClick={() => handleForwardMessage(message)}
-                      className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
-                      title="Transférer"
-                    >
-                      <Forward size={16} className="text-[#8696a0]" />
-                    </button>
-                  </div>
-                )}
-              </div>
-            )
-          })}
+          {timelineItems.map((item) => (
+            <TimelineItemComponent
+              key={item.type === 'call' ? `call-${item.data.id}` : `message-${item.data.id}`}
+              item={item}
+              user={user}
+              reactions={reactions}
+              selectedMessages={selectedMessages}
+              hoveredMessageId={hoveredMessageId}
+              setHoveredMessageId={setHoveredMessageId}
+              handleTouchStart={handleTouchStart}
+              handleTouchEnd={handleTouchEnd}
+              handleTouchMove={handleTouchMove}
+              handleSelectMessage={handleSelectMessage}
+              isSelectionMode={isSelectionMode}
+              isMobile={isMobile}
+              setReplyToMessage={setReplyToMessage}
+              handleForwardMessage={handleForwardMessage}
+              setQuickReactionBar={setQuickReactionBar}
+              handleContextMenu={handleContextMenu}
+              setContextMenu={setContextMenu}
+              getSenderInfo={getSenderInfo}
+              setGifStickerViewer={setGifStickerViewer}
+              handlePinMessage={handlePinMessage}
+              addReaction={addReaction}
+              removeReaction={removeReaction}
+              handleStarMessage={handleStarMessage}
+              allMediaItems={allMediaItems}
+              getMediaIndexForMessage={getMediaIndexForMessage}
+              handleMediaNavigate={handleMediaNavigate}
+              scrollToMessage={scrollToMessage}
+              handleStartVideoCall={handleStartVideoCall}
+              handleStartAudioCall={handleStartAudioCall}
+              otherUser={otherUser}
+              messages={messages}
+            />
+          ))}
           </div>
           {/* Spacer element to ensure scroll goes past the last message */}
           <div ref={messagesEndRef} className="h-1 md:h-4" />

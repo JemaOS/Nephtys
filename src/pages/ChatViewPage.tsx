@@ -806,7 +806,7 @@ export function ChatViewPage() {
           if (members && members.length > 0) {
             const newIds = members.map(m => m.user_id)
             // Only update cache if changed
-            if (JSON.stringify(newIds.sort()) !== JSON.stringify(memberIds.sort())) {
+            if (JSON.stringify(newIds.sort((a, b) => a.localeCompare(b))) !== JSON.stringify(memberIds.sort((a, b) => a.localeCompare(b)))) {
               setCache(`members_${convId}`, newIds)
             }
           }
@@ -847,6 +847,20 @@ export function ChatViewPage() {
     return new Map()
   }
 
+  // Helper to find other user ID
+  const findOtherUserId = (members: any[], currentUserId: string): string | null => {
+    if (!members || members.length === 0) return null
+    
+    // Saved Messages (only one member = self)
+    if (members.length === 1 && members[0].user_id === currentUserId) {
+      return currentUserId
+    }
+    
+    // Find the other user
+    const otherMember = members.find((m: any) => m.user_id !== currentUserId)
+    return otherMember ? otherMember.user_id : null
+  }
+
   // Extract direct conversation user loading to helper function
   const loadDirectConversationUser = async (convId: string, userId: string): Promise<Profile | null> => {
     // Try cache first for the user ID association
@@ -855,17 +869,7 @@ export function ChatViewPage() {
     
     if (!otherUserId) {
       const { data: allMembers } = await supabase.from('conversation_members').select('user_id').eq('conversation_id', convId)
-      
-      // Check if this is a "Saved Messages" conversation (only one member = self)
-      if (allMembers && allMembers.length === 1 && allMembers[0].user_id === userId) {
-        otherUserId = userId
-      } else if (allMembers && allMembers.length > 0) {
-        // Find the other user
-        const otherMember = allMembers.find(m => m.user_id !== userId)
-        if (otherMember) {
-          otherUserId = otherMember.user_id
-        }
-      }
+      otherUserId = findOtherUserId(allMembers || [], userId)
       
       if (otherUserId) {
         setCache(`direct_user_id_${convId}`, otherUserId)
@@ -926,6 +930,23 @@ export function ChatViewPage() {
     loadConversation()
   }
 
+  const cacheMessageProfiles = async (messages: Message[]) => {
+    const senderIds = [...new Set(messages.map(m => m.sender_id))]
+    if (senderIds.length > 0) {
+      const { data: profiles } = await supabase.from('profiles').select('*').in('id', senderIds)
+      if (profiles && profiles.length > 0) {
+        offlineStorage.cacheProfiles(profiles)
+      }
+    }
+  }
+
+  const markMessagesAsRead = async (messages: Message[], currentUserId: string) => {
+    const unreadMessages = messages.filter(msg => msg.sender_id !== currentUserId && msg.status !== 'read')
+    if (unreadMessages.length > 0) {
+      await supabase.from('messages').update({ status: 'read' }).in('id', unreadMessages.map(msg => msg.id))
+    }
+  }
+
   const loadMessages = async () => {
     // Only show loading if we don't have cached messages
     const hasCachedMessages = messages.length > 0
@@ -939,13 +960,7 @@ export function ChatViewPage() {
       setCache(`msgs_${conversationId}`, data) // Cache messages
       
       // Cache profiles for offline access
-      const senderIds = [...new Set(data.map(m => m.sender_id))]
-      if (senderIds.length > 0) {
-        const { data: profiles } = await supabase.from('profiles').select('*').in('id', senderIds)
-        if (profiles && profiles.length > 0) {
-          offlineStorage.cacheProfiles(profiles)
-        }
-      }
+      await cacheMessageProfiles(data)
       
       setFilteredMessages([])
       
@@ -956,10 +971,7 @@ export function ChatViewPage() {
       }
       
       if (user) {
-        const unreadMessages = data.filter(msg => msg.sender_id !== user.id && msg.status !== 'read')
-        if (unreadMessages.length > 0) {
-          await supabase.from('messages').update({ status: 'read' }).in('id', unreadMessages.map(msg => msg.id))
-        }
+        await markMessagesAsRead(data, user.id)
       }
     }
     setLoading(false)
