@@ -5,7 +5,7 @@ import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { MainLayout } from '@/components/MainLayout'
 import { ConversationContextMenu } from '@/components/ConversationContextMenu'
-import { supabase, Conversation, Profile, Message, updateLastSuccessfulQuery } from '@/lib/supabase'
+import { supabase, Conversation, Profile, Message } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { offlineStorage } from '@/lib/offlineStorage'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -334,46 +334,65 @@ export function ChatsPage() {
   const handleNewMessageInConversation = useCallback((payload: any) => {
     const newMessage = payload.new
     if (newMessage && newMessage.conversation_id) {
-      console.log('[ChatsPage] New message detected, updating conversation:', newMessage.conversation_id)
       // Instantly update the conversation's last_message_at
       setConversations(prev => {
-        const updated = prev.map(conv => {
-          if (conv.id === newMessage.conversation_id) {
-            return {
-              ...conv,
-              last_message_at: newMessage.created_at,
-              lastMessage: newMessage
+        // Check if conversation exists in current list
+        const convExists = prev.some(conv => conv.id === newMessage.conversation_id)
+        
+        if (convExists) {
+          // Update existing conversation
+          const updated = prev.map(conv => {
+            if (conv.id === newMessage.conversation_id) {
+              return {
+                ...conv,
+                last_message_at: newMessage.created_at,
+                lastMessage: newMessage
+              }
             }
-          }
-          return conv
-        })
-        // Re-sort to put the conversation at the top
-        return sortConversations(updated)
+            return conv
+          })
+          // Re-sort to put the conversation at the top
+          return sortConversations(updated)
+        } else {
+          // Conversation not in list - need to reload to get full conversation data
+          // This handles the case where a new conversation is created
+          debouncedReload()
+          return prev
+        }
       })
     }
-  }, [])
+  }, [debouncedReload])
   
   // Handle message sent from ChatViewPage (via custom event)
   const handleMessageSentFromChat = useCallback((event: CustomEvent) => {
     const { conversationId, message } = event.detail
     if (conversationId && message) {
-      console.log('[ChatsPage] Message sent from chat view, updating:', conversationId)
       setConversations(prev => {
-        const updated = prev.map(conv => {
-          if (conv.id === conversationId) {
-            return {
-              ...conv,
-              last_message_at: message.created_at,
-              lastMessage: message
+        // Check if conversation exists in current list
+        const convExists = prev.some(conv => conv.id === conversationId)
+        
+        if (convExists) {
+          // Update existing conversation
+          const updated = prev.map(conv => {
+            if (conv.id === conversationId) {
+              return {
+                ...conv,
+                last_message_at: message.created_at,
+                lastMessage: message
+              }
             }
-          }
-          return conv
-        })
-        // Re-sort to put the conversation at the top
-        return sortConversations(updated)
+            return conv
+          })
+          // Re-sort to put the conversation at the top
+          return sortConversations(updated)
+        } else {
+          // Conversation not in list - need to reload
+          debouncedReload()
+          return prev
+        }
       })
     }
-  }, [])
+  }, [debouncedReload])
   
   // Instant handler for conversation deletion (when user is removed from conversation)
   const handleConversationMemberRemoved = useCallback((payload: any) => {
