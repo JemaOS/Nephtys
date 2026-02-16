@@ -1,5 +1,4 @@
-import { readFileSync, writeFileSync, readdirSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { processFile, processDirectory } from './fix-utils.js';
 
 // Patterns à remplacer - seulement les textes qui doivent s'adapter au thème
 const replacements = [
@@ -24,52 +23,13 @@ const replacements = [
   { from: 'text-white truncate', to: 'text-text-primary truncate' },
 ];
 
-function processFile(filePath) {
-  let content = readFileSync(filePath, { encoding: 'utf8' });
-  let modified = false;
-  let changes = [];
-  
-  for (const { from, to } of replacements) {
-    const regex = new RegExp(from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
-    const matches = content.match(regex);
-    if (matches) {
-      content = content.replaceAll(regex, to);
-      modified = true;
-      changes.push(`  ${from} -> ${to} (${matches.length} occurrences)`);
-    }
-  }
-  
-  if (modified) {
-    writeFileSync(filePath, content, { encoding: 'utf8' });
-    console.log(`✅ Fixed: ${filePath}`);
-    changes.forEach(c => console.log(c));
-    console.log('');
-    return 1;
-  }
-  return 0;
-}
-
-function processDirectory(dirPath) {
-  let count = 0;
-  const items = readdirSync(dirPath);
-  
-  for (const item of items) {
-    const fullPath = join(dirPath, item);
-    const stat = statSync(fullPath);
-    
-    if (stat.isDirectory() && !item.startsWith('.') && item !== 'node_modules') {
-      count += processDirectory(fullPath);
-    } else if (item.endsWith('.tsx') || item.endsWith('.ts')) {
-      count += processFile(fullPath);
-    }
-  }
-  
-  return count;
+function handleFile(filePath) {
+  return processFile(filePath, replacements);
 }
 
 console.log('🔧 Fixing text-white classes...\n');
 console.log('Replacing hardcoded text-white with text-text-primary...\n');
-const fixed = processDirectory('./src');
+const fixed = processDirectory('./src', handleFile);
 console.log(`\n✨ Fixed ${fixed} files!`);
 
 if (fixed === 0) {
