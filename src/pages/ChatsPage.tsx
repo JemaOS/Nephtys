@@ -221,7 +221,7 @@ export function ChatsPage() {
   }, [])
 
   // Load conversations from server (can be called with or without loading state)
-  const loadConversationsFromServer = useCallback(async (showLoading: boolean = true) => {
+  const loadConversationsFromServer = useCallback(async (showLoading: boolean = true, forceFullUpdate: boolean = false) => {
     if (!user) return
 
     if (showLoading) {
@@ -247,6 +247,15 @@ export function ChatsPage() {
 
       // Sort: pinned first, then by last_message_at
       const sorted = sortConversations(enrichedConversations)
+
+      // FORCE FULL UPDATE: When returning from ChatViewPage, always do a full update
+      // This ensures the conversation order is correct (newest message at top)
+      if (forceFullUpdate) {
+        console.log('[ChatsPage] FORCE FULL UPDATE - Replacing all conversations')
+        setConversations(sorted)
+        await offlineStorage.saveConversations(sorted)
+        return
+      }
 
       // Analyze conversation changes to determine update strategy
       const currentConversations = conversationsRef.current
@@ -689,20 +698,20 @@ export function ChatsPage() {
     }
   }, [user])
   
-  // AGGRESSIVE FIX: Force reload on EVERY mount and when page becomes visible
+  // AGGRESSIVE FIX: Force FULL reload on EVERY mount and when page becomes visible
   // This ensures the conversation list is ALWAYS fresh when returning from ChatViewPage
   useEffect(() => {
     if (!user) return
     
-    // Immediate reload on mount - no delay
-    console.log('[ChatsPage] MOUNT: Force reloading conversations immediately...')
-    loadConversationsFromServer(false)
+    // Immediate FULL reload on mount - force complete replacement of conversations
+    console.log('[ChatsPage] MOUNT: Force FULL reload of conversations...')
+    loadConversationsFromServer(false, true) // true = forceFullUpdate
     
     // Also listen for visibility changes
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        console.log('[ChatsPage] VISIBLE: Force reloading conversations...')
-        loadConversationsFromServer(false)
+        console.log('[ChatsPage] VISIBLE: Force FULL reload of conversations...')
+        loadConversationsFromServer(false, true) // true = forceFullUpdate
       }
     }
     
