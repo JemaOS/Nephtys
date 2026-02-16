@@ -559,7 +559,7 @@ export function SettingsPage() {
           <input
             type="text" inputMode="numeric" pattern="[0-9]*" maxLength={6}
             value={twoFactorCode}
-            onChange={(e) => { const value = e.target.value.replace(/\D/g, ''); setTwoFactorCode(value); setTwoFactorError(''); }}
+            onChange={(e) => { const value = e.target.value.replaceAll(/\D/g, ''); setTwoFactorCode(value); setTwoFactorError(''); }}
             placeholder="000000"
             className="w-full px-4 py-4 bg-bg-surface rounded-2xl text-text-primary text-center text-2xl font-mono tracking-widest placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-accent"
             autoFocus

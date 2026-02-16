@@ -321,7 +321,7 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
           .map(message => {
             // Remove GIF and Sticker markdown before extracting links
             // Pattern: [GIF](url) or [STICKER](url)
-            const cleanContent = message.content?.replace(/\[(GIF|STICKER)\]\([^)]+\)/g, '') || '';
+            const cleanContent = message.content?.replaceAll(/\[(GIF|STICKER)\]\([^)]+\)/g, '') || '';
             const urls = cleanContent.match(urlRegex) || [];
             return { message, urls };
           })

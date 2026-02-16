@@ -70,7 +70,7 @@ export function ParticipantVideo({
   return (
     <div className="relative bg-gray-800 rounded-2xl overflow-hidden aspect-[3/4] md:aspect-video flex items-center justify-center shadow-lg border border-white/10">
       {!isLocal && (
-        <audio ref={audioRef} autoPlay playsInline style={{ display: 'none' }}>
+        <audio ref={audioRef} autoPlay style={{ display: 'none' }}>
           <track kind="captions" />
         </audio>
       )}

@@ -365,7 +365,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Check if we can reuse an existing ephemeral account
       const storedUser = localStorage.getItem('anu_ephemeral_user');
       const storedPassword = localStorage.getItem('anu_ephemeral_password');
-      const sanitizedInput = username.toLowerCase().replace(/[^a-z0-9]/g, '') || 'user';
+      const sanitizedInput = username.toLowerCase().replaceAll(/[^a-z0-9]/g, '') || 'user';
       
       // If we have stored credentials and the username prefix matches, try to reuse
       if (storedUser && storedPassword && storedUser.startsWith(sanitizedInput)) {

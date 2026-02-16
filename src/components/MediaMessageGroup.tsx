@@ -274,7 +274,7 @@ export const MediaMessageGroup: React.FC<MediaMessageGroupProps> = ({
             {currentItem.type === 'image' ? (
               <img
                 src={currentItem.url}
-                alt={`Image ${currentIndex + 1}`}
+                alt={`${currentIndex + 1}`}
                 className="max-w-full max-h-[70vh] object-contain"
               />
             ) : (

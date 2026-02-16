@@ -66,7 +66,7 @@ export const AudioFilePlayer: React.FC<AudioFilePlayerProps> = ({
 
   // Extract file name without extension and clean it up
   const displayName = fileName 
-    ? fileName.replace(/\.[^/.]+$/, '').replace(/_/g, ' ').replace(/-/g, ' ')
+    ? fileName.replace(/\.[^/.]+$/, '').replaceAll('_', ' ').replaceAll('-', ' ')
     : 'Audio';
 
   const togglePlay = () => {

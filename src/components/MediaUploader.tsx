@@ -803,7 +803,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
           // Upload thumbnail to storage
           const thumbnailResponse = await fetch(thumbnailDataUrl);
           const thumbnailBlob = await thumbnailResponse.blob();
-          const thumbnailFileName = `${user.id}/thumbnails/${Date.now()}_${documentFile.name.replace(/\.[^/.]+$/, '')}_thumb.jpg`;
+          const thumbnailFileName = `${user.id}/thumbnails/${Date.now()}_${documentFile.name.replaceAll(/\.[^/.]+$/, '')}_thumb.jpg`;
 
           const { error: thumbError } = await supabase.storage
             .from('media')
@@ -832,7 +832,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       // Upload the document
       setDocumentUploadPhase('uploading');
       const folder = 'documents';
-      const fileName = `${user.id}/${folder}/${Date.now()}_${documentFile.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+      const fileName = `${user.id}/${folder}/${Date.now()}_${documentFile.name.replaceAll(/[^a-zA-Z0-9.-]/g, '_')}`;
 
       // Simulate progress for better UX
       const progressInterval = setInterval(() => {
@@ -936,7 +936,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       
       const fileToUpload = processedImage?.blob || editedFile;
       const folder = 'images';
-      const uploadFileName = `${user.id}/${folder}/${Date.now()}_${fileName.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+      const uploadFileName = `${user.id}/${folder}/${Date.now()}_${fileName.replaceAll(/[^a-zA-Z0-9.-]/g, '_')}`;
 
       setUploadPhase('uploading');
       setUploadProgress(0);

@@ -8,7 +8,8 @@ function processFile(filePath, replacements) {
   let changes = [];
   
   for (const { from, to } of replacements) {
-    const regex = new RegExp(from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+    const escapedFrom = from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(escapedFrom, 'g');
     const matches = content.match(regex);
     if (matches) {
       content = content.replaceAll(regex, to);
