@@ -687,7 +687,11 @@ export function ChatsPage() {
 
       // Subscribe to new messages for instant conversation update
       const messagesChannel = supabase
-        .channel('chats-messages')
+        .channel('chats-messages', {
+          config: {
+            broadcast: { self: true },
+          }
+        })
         .on('postgres_changes',
           {
             event: 'INSERT',

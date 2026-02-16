@@ -264,10 +264,12 @@ export function GroupsPage() {
                 </div>
               ) : (
                 contacts.map((contact) => (
-                  <div
+                  <button
                     key={contact.id}
-                    className="px-6 py-3 cursor-pointer hover:bg-bg-hover transition-colors"
+                    type="button"
+                    className="w-full px-6 py-3 cursor-pointer hover:bg-bg-hover transition-colors text-left"
                     onClick={() => toggleContact(contact.contact_user_id)}
+                    aria-pressed={selectedContacts.includes(contact.contact_user_id)}
                   >
                     <div className="flex items-center gap-3">
                       {contact.profile.avatar_url ? (
@@ -301,7 +303,7 @@ export function GroupsPage() {
                         )}
                       </div>
                     </div>
-                  </div>
+                  </button>
                 ))
               )}
             </div>

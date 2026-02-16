@@ -319,16 +319,9 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
       willChange: 'transform',
     }}
   >
-    <img
-      src={mediaUrl}
-      alt="Media"
-      className="max-w-full max-h-full object-contain select-none"
-      style={{
-        transform: `scale(${zoom}) translate(${position.x / zoom}px, ${position.y / zoom}px)`,
-        transition: isDragging ? 'none' : 'transform 0.1s ease-out',
-        touchAction: 'manipulation',
-        pointerEvents: isSwipeActive ? 'none' : 'auto',
-      }}
+    <button
+      type="button"
+      className="cursor-pointer"
       onClick={(e) => {
         e.stopPropagation();
         // Double-click/tap to reset zoom
@@ -341,10 +334,21 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
           handleResetZoom();
         }
       }}
-      role="button"
-      tabIndex={0}
-      draggable={false}
-    />
+      aria-label="Image,double-cliquez pour réinitialiser le zoom"
+    >
+      <img
+        src={mediaUrl}
+        alt="Media"
+        className="max-w-full max-h-full object-contain select-none"
+        style={{
+          transform: `scale(${zoom}) translate(${position.x / zoom}px, ${position.y / zoom}px)`,
+          transition: isDragging ? 'none' : 'transform 0.1s ease-out',
+          touchAction: 'manipulation',
+          pointerEvents: isSwipeActive ? 'none' : 'auto',
+        }}
+        draggable={false}
+      />
+    </button>
     
     {/* Zoom indicator */}
     {zoom !== 1 && (

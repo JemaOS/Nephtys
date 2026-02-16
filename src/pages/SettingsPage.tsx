@@ -676,7 +676,11 @@ export function SettingsPage() {
 
   const renderMainView = () => (
     <div className="flex-1 overflow-y-auto pb-4">
-      <div className="bg-bg-surface px-6 py-8 cursor-pointer hover:bg-bg-hover transition-colors" onClick={() => setCurrentView('profile')}>
+      <button
+        type="button"
+        className="w-full bg-bg-surface px-6 py-8 cursor-pointer hover:bg-bg-hover transition-colors text-left"
+        onClick={() => setCurrentView('profile')}
+      >
         <div className="flex items-center gap-4">
           <div className="relative">
             {profile?.avatar_url ? (
@@ -698,7 +702,7 @@ export function SettingsPage() {
           </div>
           <ChevronRight size={20} className="text-text-secondary" />
         </div>
-      </div>
+      </button>
       <div className="py-2">
         {mainSettings.map((setting, idx) => (
           <button key={idx} onClick={() => setCurrentView(setting.view)} className="w-full px-6 py-4 flex items-center gap-4 hover:bg-bg-surface transition-colors">

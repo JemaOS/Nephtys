@@ -14,6 +14,9 @@ export const EphemeralDurationMenu: React.FC<EphemeralDurationMenuProps> = ({
   currentDuration,
   onSelectDuration,
 }) => {
+  // Move useRef before early return to comply with React Hooks rules
+  const modalRef = React.useRef<HTMLDivElement>(null);
+  
   if (!isOpen) return null;
 
   const renderEphemeralMenuItem = (duration: number | null, label: string) => (
@@ -30,40 +33,33 @@ export const EphemeralDurationMenu: React.FC<EphemeralDurationMenuProps> = ({
     </button>
   );
 
-  const modalRef = React.useRef<HTMLDivElement>(null);
+  const handleBackdropClick = (e: React.MouseEvent) => {
+    if (modalRef.current && !modalRef.current.contains(e.target as Node)) {
+      onClose();
+    }
+  };
+
+  const handleBackdropKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      onClose();
+    }
+    if (e.key === 'Escape') {
+      onClose();
+    }
+  };
 
   return (
     <div 
       className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4"
-      role="button"
-      tabIndex={0}
-      onClick={(e) => {
-        if (modalRef.current && !modalRef.current.contains(e.target as Node)) {
-          onClose();
-        }
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          onClose();
-        }
-        if (e.key === 'Escape') {
-          onClose();
-        }
-      }}
-      aria-label="Fermer le menu"
+      onClick={handleBackdropClick}
+      onKeyDown={handleBackdropKeyDown}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Menu de durée éphémère"
     >
       <div
         ref={modalRef}
         className="bg-bg-surface w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden"
-        onKeyDown={(e) => {
-          if (e.key === 'Escape') {
-            e.stopPropagation();
-            onClose();
-          }
-        }}
-        role="dialog"
-        aria-modal="true"
-        tabIndex={-1}
       >
         <div className="p-4 border-b border-bg-hover">
           <h4 className="text-base font-medium text-text-primary">Durée des messages</h4>

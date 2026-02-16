@@ -99,17 +99,39 @@ export const useMessageReactions = (conversationId: string): UseMessageReactions
           schema: 'public',
           table: 'message_reactions',
         },
-        (payload) => {
+        async (payload) => {
+          console.log('[useMessageReactions] Realtime reaction event:', payload.eventType, payload);
+          
+          // For INSERT: add the new reaction if it's for a message in this conversation
           if (payload.eventType === 'INSERT') {
             const newReaction = payload.new as Reaction;
-            // Éviter les doublons - vérifier si la réaction existe déjà
-            setReactions(prev => addReactionIfNotExists(prev, newReaction));
+            // Check if this reaction belongs to a message in this conversation
+            const { data: messageData } = await supabase
+              .from('messages')
+              .select('conversation_id')
+              .eq('id', newReaction.message_id)
+              .maybeSingle();
+            
+            if (messageData && messageData.conversation_id === conversationId) {
+              setReactions(prev => addReactionIfNotExists(prev, newReaction));
+            }
           } else if (payload.eventType === 'DELETE') {
+            // Handle DELETE - remove the reaction
             setReactions(prev => removeReactionById(prev, payload.old.id));
+          } else if (payload.eventType === 'UPDATE') {
+            // Handle UPDATE - when user changes their reaction emoji
+            const updatedReaction = payload.new as Reaction;
+            // Remove old reaction and add new one
+            setReactions(prev => {
+              const filtered = prev.filter(r => r.id !== payload.old.id);
+              return addReactionIfNotExists(filtered, updatedReaction);
+            });
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log('[useMessageReactions] Subscription status:', status);
+      });
 
     return () => {
       supabase.removeChannel(channel);
