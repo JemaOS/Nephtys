@@ -20,7 +20,7 @@ const STATIC_ASSETS = [
 
 // Network timeout in milliseconds
 const NETWORK_TIMEOUT = 3000; // 3 seconds for normal requests
-const SUPABASE_TIMEOUT = 8000; // 8 seconds for Supabase (gives time for fresh data)
+const SUPABASE_TIMEOUT = 5000; // 5 seconds for Supabase (reduced for faster fallback)
 const MEDIA_TIMEOUT = 5000; // 5 seconds for media
 
 // Cache expiration times (in milliseconds)
@@ -300,10 +300,9 @@ globalThis.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Handle Supabase API requests - Network-first with cache fallback
-  // This gives fresh data while providing offline support
+  // Don't intercept Supabase requests - let them go directly to network
+  // This ensures fresh data and prevents caching issues
   if (isSupabaseRequest(url)) {
-    event.respondWith(networkFirstSupabase(request));
     return;
   }
 
