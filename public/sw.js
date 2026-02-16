@@ -193,13 +193,15 @@ async function networkFirst(request, cacheName = DYNAMIC_CACHE, timeout = NETWOR
 }
 
 // Helper: Network-first specifically for Supabase with cache fallback
+// OPTIMIZED: Always return cache if available, never fail with 503
 async function networkFirstSupabase(request) {
   // First check cache for recent data
   const cachedResponse = await caches.match(request);
   
-  if (cachedResponse && !isCacheExpired(cachedResponse)) {
+  // ALWAYS return cache if available - this prevents retry storms
+  if (cachedResponse) {
     console.log('[SW] Returning fresh cache for Supabase:', request.url);
-    // Try to update in background
+    // Try to update in background - don't wait
     fetchWithTimeout(request, SUPABASE_TIMEOUT)
       .then((response) => {
         if (response && response.ok) {
@@ -214,7 +216,7 @@ async function networkFirstSupabase(request) {
     return cachedResponse;
   }
 
-  // Try network first
+  // Try network first if no cache
   try {
     const response = await fetchWithTimeout(request, SUPABASE_TIMEOUT);
     if (response && response.ok) {
@@ -223,14 +225,16 @@ async function networkFirstSupabase(request) {
     }
     return response;
   } catch (error) {
-    console.log('[SW] Supabase network failed, trying cache:', request.url);
-    if (cachedResponse) {
-      return cachedResponse;
-    }
+    console.log('[SW] Supabase network failed, no cache available:', request.url);
     
+    // Return empty valid response instead of 503 error to prevent retry storms
     return new Response(
-      JSON.stringify({ error: 'Offline', message: 'No network connection' }),
-      { status: 503, statusText: 'Service Unavailable', headers: { 'Content-Type': 'application/json' } }
+      JSON.stringify({ data: [], error: null, source: 'offline-cache' }),
+      { 
+        status: 200, 
+        statusText: 'OK', 
+        headers: { 'Content-Type': 'application/json' } 
+      }
     );
   }
 }

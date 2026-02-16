@@ -18,9 +18,9 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
   realtime: {
     params: {
-      // OPTIMIZED heartbeat interval - 5 seconds for ultra-low latency (WhatsApp-level)
-      // This keeps the WebSocket connection fresh for instant message delivery
-      heartbeat_interval: 5,
+      // OPTIMIZED heartbeat interval - 30 seconds (WhatsApp uses ~30s)
+      // Previous 5 second heartbeat was too aggressive and caused excessive load
+      heartbeat_interval: 30,
       // Increase timeout to reduce reconnection attempts
       timeout: 60000, // 60 seconds
     },
@@ -131,8 +131,10 @@ export async function checkConnection(): Promise<boolean> {
   }
 }
 
-// Lightweight ping to keep connection alive
+// Lightweight ping to keep connection alive - REMOVED to reduce load
+// The Realtime heartbeat (30s) already keeps the connection alive
 async function pingConnection(): Promise<void> {
+  // This function is kept for compatibility but no longer called automatically
   if (document.hidden) return
   
   try {
@@ -151,7 +153,7 @@ async function pingConnection(): Promise<void> {
 }
 
 // Start connection monitoring (call this once when app starts)
-// OPTIMIZED: Reduced frequency to decrease server load
+// OPTIMIZED: Removed aggressive pings - use only stale connection detection
 export function startConnectionMonitoring(): void {
   if (connectionCheckInterval) {
     return // Already monitoring
@@ -159,11 +161,10 @@ export function startConnectionMonitoring(): void {
   
   console.log('[Supabase] Starting OPTIMIZED connection monitoring...')
   
-  // Ping every 10 seconds to keep connection alive (optimized for real-time)
-  // The Realtime heartbeat already keeps the WebSocket alive
-  pingInterval = setInterval(pingConnection, 10000)
+  // REMOVED: Aggressive ping every 10 seconds was causing too many requests
+  // The Realtime heartbeat (now 30s) already keeps the WebSocket alive
   
-  // Check connection every 45 seconds (was 15 - too aggressive)
+  // Check connection every 60 seconds instead of 10s
   // Only do health check when there's a suspected issue
   connectionCheckInterval = setInterval(async () => {
     // Only check if document is visible
@@ -185,10 +186,7 @@ export function startConnectionMonitoring(): void {
         await forceReconnectRealtime()
       }
     }
-  }, 10000)
-  
-  // Initial ping after a short delay (not immediately)
-  setTimeout(pingConnection, 5000)
+  }, 60000)
 }
 
 // Stop connection monitoring
