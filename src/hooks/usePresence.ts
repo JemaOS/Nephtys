@@ -113,7 +113,6 @@ export const initializePresence = (userId: string) => {
       presenceListeners.forEach(listener => listener(globalPresenceState))
     })
     .on('presence', { event: 'join' }, ({ key, newPresences }) => {
-      console.log('User joined:', key)
       globalPresenceState[key] = {
         isOnline: true,
         lastSeen: new Date().toISOString(),
@@ -121,7 +120,6 @@ export const initializePresence = (userId: string) => {
       presenceListeners.forEach(listener => listener({ ...globalPresenceState }))
     })
     .on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
-      console.log('User left:', key)
       globalPresenceState[key] = {
         isOnline: false,
         lastSeen: new Date().toISOString(),
@@ -329,7 +327,6 @@ export function useUserPresence(userId: string | undefined) {
         },
         (payload) => {
           // Profile updated - presence might have changed
-          console.log('User profile updated:', payload.new)
         }
       )
       .subscribe()

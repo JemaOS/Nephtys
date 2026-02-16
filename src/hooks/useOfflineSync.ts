@@ -70,7 +70,7 @@ export const useOfflineSync = (conversationId?: string): UseOfflineSyncReturn =>
         return;
       }
 
-      console.log(`[OfflineSync] Syncing ${pendingMessages.length} pending messages`);
+      // Syncing pending messages silently
       
       for (const pending of pendingMessages) {
         try {
@@ -95,12 +95,10 @@ export const useOfflineSync = (conversationId?: string): UseOfflineSyncReturn =>
           if (!error) {
             // Successfully sent, remove from local storage
             await offlineStorage.deletePendingMessage(pending.tempId);
-            console.log('[OfflineSync] Message synced successfully');
           } else {
-            console.warn('[OfflineSync] Failed to sync message:', error);
+            // Failed to sync message
           }
-        } catch (error) {
-          console.warn('[OfflineSync] Error syncing individual message:', error);
+        } catch {
           // Continue with next message, don't break the loop
         }
       }
@@ -125,7 +123,7 @@ export const useOfflineSync = (conversationId?: string): UseOfflineSyncReturn =>
   // Handle online/offline events
   useEffect(() => {
     const handleOnline = () => {
-      console.log('[OfflineSync] Back online, starting sync');
+      // Back online, starting sync
       setIsOnline(true);
       // Delay sync slightly to ensure connection is stable
       setTimeout(() => {
@@ -134,7 +132,7 @@ export const useOfflineSync = (conversationId?: string): UseOfflineSyncReturn =>
     };
 
     const handleOffline = () => {
-      console.log('[OfflineSync] Gone offline');
+      // Gone offline
       setIsOnline(false);
       // Clear any pending retry
       if (retryTimeoutRef.current) {
@@ -189,8 +187,8 @@ export const useOfflineSync = (conversationId?: string): UseOfflineSyncReturn =>
         }, async (payload) => {
           try {
             await offlineStorage.saveMessage(payload.new as any);
-          } catch (error) {
-            console.warn('[OfflineSync] Error saving message offline:', error);
+          } catch {
+            // Error saving message offline
           }
         })
         .subscribe();

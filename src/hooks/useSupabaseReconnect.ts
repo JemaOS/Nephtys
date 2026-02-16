@@ -41,7 +41,6 @@ export function useSupabaseReconnect(userId: string | null) {
       const { data: { session } } = await supabase.auth.getSession()
       
       if (!session) {
-        console.warn('[Reconnect] No session found')
         isReconnecting.current = false
         return false
       }
@@ -53,8 +52,7 @@ export function useSupabaseReconnect(userId: string | null) {
 
       isReconnecting.current = false
       return true
-    } catch (error) {
-      console.error('[Reconnect] Error:', error)
+    } catch {
       isReconnecting.current = false
       return true // Return true to not block the app
     }

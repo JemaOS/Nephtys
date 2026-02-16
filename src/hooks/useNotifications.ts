@@ -29,15 +29,14 @@ export const useNotifications = (): UseNotificationsReturn => {
     try {
       const reg = await navigator.serviceWorker.register('/sw.js');
       setRegistration(reg);
-      console.log('Service Worker registered:', reg);
-    } catch (error) {
-      console.error('Service Worker registration failed:', error);
+    } catch {
+      // Service Worker registration failed
     }
   };
 
   const requestPermission = async (): Promise<boolean> => {
     if (!isSupported) {
-      console.warn('Notifications not supported');
+      // Notifications not supported
       return false;
     }
 
@@ -46,14 +45,14 @@ export const useNotifications = (): UseNotificationsReturn => {
       setPermission(result);
       return result === 'granted';
     } catch (error) {
-      console.error('Error requesting notification permission:', error);
+      // Error requesting notification permission
       return false;
     }
   };
 
   const sendNotification = (title: string, body: string, data?: any) => {
     if (!isSupported || permission !== 'granted') {
-      console.warn('Cannot send notification: permission not granted');
+      // Cannot send notification: permission not granted
       return;
     }
 

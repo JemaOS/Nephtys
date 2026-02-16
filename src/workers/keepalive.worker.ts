@@ -9,9 +9,9 @@ let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
 let lastPingTime = Date.now();
 let isActive = true;
 
-// Configuration
-const HEARTBEAT_INTERVAL = 10000; // 10 seconds - aggressive heartbeat
-const STALE_THRESHOLD = 30000; // 30 seconds without response = stale
+// Configuration - WHATSAPP STYLE: Much longer intervals
+const HEARTBEAT_INTERVAL = 30000; // 30 seconds - WhatsApp style
+const STALE_THRESHOLD = 120000; // 2 minutes without response = stale
 
 // Send message to main thread
 function postToMain(type: string, data?: any) {
@@ -24,7 +24,7 @@ function startHeartbeat() {
     clearInterval(heartbeatInterval);
   }
   
-  console.log('[KeepAlive Worker] Starting heartbeat...');
+  // Heartbeat started silently
   
   heartbeatInterval = setInterval(() => {
     const now = Date.now();
@@ -35,7 +35,7 @@ function startHeartbeat() {
     
     // Check if connection seems stale
     if (timeSinceLastPing > STALE_THRESHOLD) {
-      console.log('[KeepAlive Worker] Connection seems stale, requesting reconnect');
+      // Connection seems stale, requesting reconnect silently
       postToMain('REQUEST_RECONNECT', { 
         reason: 'stale',
         lastPing: lastPingTime,
@@ -51,7 +51,7 @@ function stopHeartbeat() {
     clearInterval(heartbeatInterval);
     heartbeatInterval = null;
   }
-  console.log('[KeepAlive Worker] Heartbeat stopped');
+  // Heartbeat stopped silently
 }
 
 // Handle messages from main thread
@@ -98,9 +98,9 @@ self.onmessage = (event) => {
       break;
       
     default:
-      console.log('[KeepAlive Worker] Unknown message type:', type);
+      // Unknown message type
   }
 };
 
 // Start immediately
-console.log('[KeepAlive Worker] Worker initialized');
+// Worker initialized silently

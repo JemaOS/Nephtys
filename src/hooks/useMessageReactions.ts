@@ -87,7 +87,7 @@ export const useMessageReactions = (conversationId: string): UseMessageReactions
   }, [conversationId]);
 
   const handleRealtimeEvent = useCallback(async (payload: any) => {
-    console.log('[useMessageReactions] Realtime reaction event:', payload.eventType, payload);
+    // Silent realtime event handling
     
     // For INSERT: add the new reaction if it's for a message in this conversation
     if (payload.eventType === 'INSERT') {
@@ -131,9 +131,7 @@ export const useMessageReactions = (conversationId: string): UseMessageReactions
         },
         handleRealtimeEvent
       )
-      .subscribe((status) => {
-        console.log('[useMessageReactions] Subscription status:', status);
-      });
+      .subscribe();
 
     return () => {
       supabase.removeChannel(channel);

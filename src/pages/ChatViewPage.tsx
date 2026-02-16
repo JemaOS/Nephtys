@@ -630,7 +630,7 @@ export function ChatViewPage() {
       return
     }
     
-    console.log('[ChatViewPage] Reloading data...')
+    // Silent reload - no console spam
     isLoadingDataRef.current = true
     lastLoadTimeRef.current = now
     
@@ -653,7 +653,7 @@ export function ChatViewPage() {
       initialLoadDoneRef.current = true
       lastLoadTimeRef.current = Date.now()
       
-      console.log('[ChatViewPage] Initial load')
+      // Initial load complete
       // Load sequentially to avoid connection pressure
       loadMessages().then(() => {
         loadConversation().then(() => {
@@ -754,7 +754,7 @@ export function ChatViewPage() {
     const handleVisibilityChange = () => {
       // Only log, don't reload - realtime channel handles updates
       if (document.visibilityState === 'visible') {
-        console.log('[ChatViewPage] Tab visible, realtime channel active')
+        // Tab visible, realtime channel active
       }
     }
     
@@ -787,7 +787,11 @@ export function ChatViewPage() {
     return () => {
       clearTimeout(loadingTimeout)
       if (reconnectTimeout) clearTimeout(reconnectTimeout)
-      supabase.removeChannel(mainChannel)
+      try {
+        supabase.removeChannel(mainChannel)
+      } catch {
+        // Ignore channel removal errors
+      }
       unsubscribeFromConversation(conversationId)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       window.removeEventListener('supabase-reconnected', handleSupabaseReconnect)
