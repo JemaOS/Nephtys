@@ -62,7 +62,7 @@ export const fetchLastMessages = async (conversationIds: string[]) => {
     .in('conversation_id', conversationIds)
     .is('deleted_at', null)
     .order('created_at', { ascending: false })
-    .limit(conversationIds.length * 2)
+    .limit(conversationIds.length * 10) // Increased to ensure we get last message for each conversation
 }
 
 export const fetchUnreadCounts = async (conversationIds: string[], userId: string) => {

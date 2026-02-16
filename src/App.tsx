@@ -6,7 +6,6 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { ThemeProvider } from './context/ThemeContext'
 import { CallProvider } from './context/CallContext'
-import { OfflineIndicator } from './components/OfflineIndicator'
 import { PersistentCallScreen } from './components/PersistentCallScreen'
 import { useSupabaseReconnect } from './hooks/useSupabaseReconnect'
 import { useKeepAlive } from './hooks/useKeepAlive'
@@ -219,7 +218,6 @@ function App() {
           <AuthProvider>
             <CallProvider>
               <SupabaseReconnectHandler />
-              <OfflineIndicator />
               <PersistentCallScreen />
               <AppRoutes />
             </CallProvider>
