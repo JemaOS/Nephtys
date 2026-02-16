@@ -566,6 +566,423 @@ interface TimelineItemComponentProps {
   messages: Message[]
 }
 
+// Helper components for TimelineItemComponent to reduce complexity
+
+const EmojiMessageDisplay = ({ message, typeInfo, hoveredMessageId, isOwn, setContextMenu, addReaction }: any) => (
+  <div className="relative">
+    <MessageHoverActions
+      isVisible={hoveredMessageId === message.id}
+      isOwn={isOwn}
+      onOpenMenu={(e) => {
+        const rect = e.currentTarget.getBoundingClientRect();
+        setContextMenu({
+          isOpen: true,
+          position: { x: rect.left, y: rect.bottom + 5 },
+          message,
+        });
+      }}
+    />
+    <div className={`${
+      typeInfo.emojiCount === 1 ? 'text-7xl' : typeInfo.emojiCount === 2 ? 'text-6xl' : 'text-5xl'
+    } leading-none py-1`}>
+      {message.content}
+    </div>
+    <MessageTimestamp timestamp={message.created_at} isStarred={message.is_starred || false} isOwn={isOwn} status={message.status} />
+  </div>
+)
+
+const GifStickerMessageDisplay = ({ message, typeInfo, hoveredMessageId, isOwn, setContextMenu, getSenderInfo, setGifStickerViewer, user }: any) => {
+  const { isGifMessage, gifMatch, isStickerMessage, stickerMatch } = typeInfo
+  
+  return (
+    <div className="relative">
+      <MessageHoverActions
+        isVisible={hoveredMessageId === message.id}
+        isOwn={isOwn}
+        onOpenMenu={(e) => {
+          const rect = e.currentTarget.getBoundingClientRect();
+          setContextMenu({
+            isOpen: true,
+            position: { x: rect.left, y: rect.bottom + 5 },
+            message,
+          });
+        }}
+      />
+      {isGifMessage && gifMatch && (() => {
+        const caption = gifMatch[1]
+        const gifUrl = gifMatch[2]
+        const senderInfo = getSenderInfo(message.sender_id)
+        return (
+          <div className="space-y-1">
+            <div
+                className="overflow-hidden cursor-pointer max-w-[240px] sm:max-w-[280px] rounded-xl border-[3px] border-[#787add]"
+                onClick={(e) => {
+                e.stopPropagation()
+                setGifStickerViewer({
+                  isOpen: true,
+                  url: gifUrl,
+                  type: 'gif',
+                  senderName: senderInfo.name,
+                  senderAvatar: senderInfo.avatar,
+                  timestamp: message.created_at,
+                  isOwn: message.sender_id === user?.id,
+                  messageId: message.id
+                })
+              }}
+            >
+              <img
+                src={gifUrl}
+                alt="GIF"
+                className="w-full h-auto max-h-[200px] sm:max-h-[240px] object-contain"
+                loading="lazy"
+              />
+            </div>
+            {caption && (
+              <div className={`px-3 py-2 rounded-2xl ${isOwn ? 'bg-[#787add] text-white' : 'bg-bg-surface text-text-primary'}`}>
+                <p className="text-sm whitespace-pre-wrap break-words">{caption}</p>
+              </div>
+            )}
+          </div>
+        )
+      })()}
+      {isStickerMessage && stickerMatch && (() => {
+        const caption = stickerMatch[1]
+        const stickerUrl = stickerMatch[2]
+        const senderInfo = getSenderInfo(message.sender_id)
+        return (
+          <div className="space-y-1">
+            <div
+              className="cursor-pointer max-w-[160px] sm:max-w-[200px] overflow-hidden rounded-xl border-[3px] border-[#787add]"
+              onClick={(e) => {
+                e.stopPropagation()
+                setGifStickerViewer({
+                  isOpen: true,
+                  url: stickerUrl,
+                  type: 'sticker',
+                  senderName: senderInfo.name,
+                  senderAvatar: senderInfo.avatar,
+                  timestamp: message.created_at,
+                  isOwn: message.sender_id === user?.id,
+                  messageId: message.id
+                })
+              }}
+            >
+              <img
+                src={stickerUrl}
+                alt="Sticker"
+                className="w-full h-auto max-h-[160px] sm:max-h-[200px] object-contain"
+                loading="lazy"
+              />
+            </div>
+            {caption && (
+              <div className={`px-3 py-2 rounded-2xl ${isOwn ? 'bg-[#787add] text-white' : 'bg-bg-surface text-text-primary'}`}>
+                <p className="text-sm whitespace-pre-wrap break-words">{caption}</p>
+              </div>
+            )}
+          </div>
+        )
+      })()}
+      <MessageTimestamp timestamp={message.created_at} isStarred={message.is_starred || false} isOwn={isOwn} status={message.status} />
+    </div>
+  )
+}
+
+const MediaMessageDisplay = ({ message, typeInfo, hoveredMessageId, isOwn, setContextMenu, getSenderInfo, handleForwardMessage, handleStarMessage, handlePinMessage, addReaction, allMediaItems, getMediaIndexForMessage, handleMediaNavigate, user }: any) => {
+  const { mediaUrl, mediaType } = typeInfo
+  const mediaSenderInfo = getSenderInfo(message.sender_id)
+  
+  return (
+    <div className="relative">
+      <div className="space-y-1">
+        <MediaMessage
+            url={mediaUrl!}
+            type={mediaType as 'image' | 'video' | 'file'}
+            fileName={message.file_name}
+            fileSize={message.file_size}
+            caption={message.content}
+            width={message.media_width ?? undefined}
+            height={message.media_height ?? undefined}
+            thumbnail={message.media_thumbnail ?? undefined}
+            senderName={mediaSenderInfo.name}
+            senderAvatar={mediaSenderInfo.avatar}
+            timestamp={message.created_at}
+            isOwn={message.sender_id === user?.id}
+            isStarred={message.is_starred || false}
+            messageId={message.id}
+            status={message.status as 'sent' | 'delivered' | 'read' | undefined}
+            onForward={() => handleForwardMessage(message)}
+            onStar={() => handleStarMessage(message.id)}
+            onPin={() => handlePinMessage(message.id)}
+            onReaction={(emoji) => addReaction(message.id, emoji)}
+            showHoverActions={hoveredMessageId === message.id}
+            onOpenMenu={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              setContextMenu({
+                isOpen: true,
+                position: { x: rect.left, y: rect.bottom + 5 },
+                message,
+              });
+            }}
+            allMedia={allMediaItems}
+            currentIndex={getMediaIndexForMessage(message.id)}
+            onNavigate={handleMediaNavigate}
+          />
+      </div>
+    </div>
+  )
+}
+
+const DocumentMessageDisplay = ({ message, typeInfo, hoveredMessageId, isOwn, setContextMenu, getSenderInfo, handleForwardMessage, handleStarMessage, handlePinMessage, addReaction, user }: any) => {
+  const { mediaUrl } = typeInfo
+  const docSenderInfo = getSenderInfo(message.sender_id)
+  
+  return (
+    <div className="relative">
+      <MessageHoverActions
+        isVisible={hoveredMessageId === message.id}
+        isOwn={isOwn}
+        onOpenMenu={(e) => {
+          const rect = e.currentTarget.getBoundingClientRect();
+          setContextMenu({
+            isOpen: true,
+            position: { x: rect.left, y: rect.bottom + 5 },
+            message,
+          });
+        }}
+      />
+      <MediaMessage
+        url={mediaUrl!}
+        type="file"
+        fileName={message.file_name}
+        fileSize={message.file_size}
+        caption={message.content}
+        thumbnail={message.media_thumbnail ?? undefined}
+        senderName={docSenderInfo.name}
+        timestamp={message.created_at}
+        isOwn={message.sender_id === user?.id}
+        isStarred={message.is_starred || false}
+        messageId={message.id}
+        status={message.status as 'sent' | 'delivered' | 'read' | undefined}
+        onForward={() => handleForwardMessage(message)}
+        onStar={() => handleStarMessage(message.id)}
+        onPin={() => handlePinMessage(message.id)}
+        onReaction={(emoji) => addReaction(message.id, emoji)}
+        showHoverActions={hoveredMessageId === message.id}
+        onOpenMenu={(e) => {
+          const rect = e.currentTarget.getBoundingClientRect();
+          setContextMenu({
+            isOpen: true,
+            position: { x: rect.left, y: rect.bottom + 5 },
+            message,
+          });
+        }}
+      />
+    </div>
+  )
+}
+
+const TextMessageDisplay = ({ message, hoveredMessageId, isOwn, setContextMenu, user, otherUser, messages, scrollToMessage, setReplyToMessage }: any) => {
+  return (
+    <div className={`relative px-3 py-2 rounded-2xl ${isOwn ? 'bg-[#787add] text-white rounded-br-none' : 'bg-bg-surface text-text-primary rounded-bl-none'}`}>
+      <MessageHoverActions
+        isVisible={hoveredMessageId === message.id}
+        isOwn={isOwn}
+        onOpenMenu={(e) => {
+          const rect = e.currentTarget.getBoundingClientRect();
+          setContextMenu({
+            isOpen: true,
+            position: { x: rect.left, y: rect.bottom + 5 },
+            message,
+          });
+        }}
+      />
+      {message.reply_to_id && (() => {
+        const replyMessage = messages.find((m: Message) => m.id === message.reply_to_id)
+        if (replyMessage) {
+          const replySenderName = replyMessage.sender_id === user?.id
+            ? 'Vous'
+            : otherUser?.display_name || otherUser?.username || 'Utilisateur'
+          return (
+            <div onClick={(e) => { e.stopPropagation(); scrollToMessage(replyMessage.id); }}>
+              <MessageReply
+                replyToMessage={{
+                  id: replyMessage.id,
+                  content: replyMessage.content,
+                  sender_id: replyMessage.sender_id,
+                  senderName: replySenderName,
+                  mediaUrl: replyMessage.media_url || replyMessage.file_url,
+                  mediaType: replyMessage.media_type || replyMessage.type,
+                  fileName: replyMessage.file_name
+                }}
+                isPreview={false}
+              />
+            </div>
+          )
+        }
+        return null
+      })()}
+      {message.type === 'audio' && (message.media_url || message.file_url) && (
+        message.file_name?.startsWith('voice-') ? (
+          <VoiceMessage url={message.media_url || message.file_url || ''} duration={message.ephemeral_duration || 0} isOwn={isOwn} />
+        ) : (
+          <AudioFilePlayer
+            url={message.media_url || message.file_url || ''}
+            fileName={message.file_name || undefined}
+            duration={message.ephemeral_duration || undefined}
+            isOwn={isOwn}
+          />
+        )
+      )}
+      {(!(message.media_url || message.file_url) && message.content) && (
+        <>
+          {(() => {
+            let displayContent = message.content
+            if ((message as any).link_preview) {
+              try {
+                const previewData = typeof (message as any).link_preview === 'string'
+                  ? JSON.parse((message as any).link_preview)
+                  : (message as any).link_preview
+                if (previewData.url) {
+                  displayContent = message.content.replace(previewData.url, '').trim()
+                  displayContent = displayContent.replace(/^[\s\-–—:]+|[\s\-–—:]+$/g, '').trim()
+                }
+              } catch {
+              }
+            }
+            return displayContent ? <p className="text-sm whitespace-pre-wrap break-words">{displayContent}</p> : null
+          })()}
+          {(message as any).link_preview && (() => {
+            try {
+              const previewData = typeof (message as any).link_preview === 'string'
+                ? JSON.parse((message as any).link_preview)
+                : (message as any).link_preview
+              return (
+                <LinkPreview
+                  preview={previewData}
+                  isInMessage={true}
+                  isOwn={isOwn}
+                />
+              )
+            } catch {
+              return null
+            }
+          })()}
+        </>
+      )}
+      {!(message.media_url && (message.media_type === 'image' || message.media_type === 'video') && message.type !== 'audio') && (
+      <div className={`flex items-center justify-end gap-1 mt-1 text-xs ${isOwn ? 'text-[#2d2f6e]' : 'text-text-secondary'}`}>
+        {message.is_starred && (
+          <Star size={12} className="fill-current" />
+        )}
+        <span>{formatTime(message.created_at)}</span>
+        {isOwn && (
+          <MessageStatusIcons status={message.status} />
+        )}
+      </div>
+      )}
+    </div>
+  )
+}
+
+const MessageContent = (props: any) => {
+  const { message } = props
+  const typeInfo = getMessageTypeInfo(message)
+  
+  if (typeInfo.isEmojiOnlyMessage) return <EmojiMessageDisplay {...props} typeInfo={typeInfo} />
+  if (typeInfo.isGifOrStickerMessage) return <GifStickerMessageDisplay {...props} typeInfo={typeInfo} />
+  if (typeInfo.isMediaMessage) return <MediaMessageDisplay {...props} typeInfo={typeInfo} />
+  if (typeInfo.isDocumentMessage) return <DocumentMessageDisplay {...props} typeInfo={typeInfo} />
+  return <TextMessageDisplay {...props} />
+}
+
+const MessageSideActions = ({ isOwn, hoveredMessageId, message, isSelectionMode, setReplyToMessage, handleForwardMessage, setQuickReactionBar }: any) => {
+  if (isOwn && hoveredMessageId === message.id && !isSelectionMode) {
+    return (
+      <div className="flex items-center gap-0.5 md:gap-1 mr-1 md:mr-2">
+        <button
+          onClick={() => setReplyToMessage(message)}
+          className="md:hidden w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] flex items-center justify-center transition-colors shadow-md"
+          title="Répondre"
+        >
+          <Reply size={16} className="text-[#8696a0]" />
+        </button>
+        <button
+          onClick={() => handleForwardMessage(message)}
+          className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
+          title="Transférer"
+        >
+          <Forward size={16} className="text-[#8696a0]" />
+        </button>
+        <button
+          onClick={(e) => {
+            const rect = e.currentTarget.getBoundingClientRect();
+            setQuickReactionBar({
+              isOpen: true,
+              position: { x: rect.left + rect.width / 2, y: rect.top },
+              message,
+            });
+          }}
+          className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
+          title="Réagir"
+        >
+          <Smile size={16} className="text-[#8696a0]" />
+        </button>
+        <button
+          onClick={() => setReplyToMessage(message)}
+          className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
+          title="Répondre"
+        >
+          <Reply size={16} className="text-[#8696a0]" />
+        </button>
+      </div>
+    )
+  }
+  
+  if (!isOwn && hoveredMessageId === message.id && !isSelectionMode) {
+    return (
+      <div className="flex items-center gap-0.5 md:gap-1 pb-4 ml-1 md:ml-2">
+        <button
+          onClick={() => setReplyToMessage(message)}
+          className="md:hidden w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] flex items-center justify-center transition-colors shadow-md"
+          title="Répondre"
+        >
+          <Reply size={16} className="text-[#8696a0]" />
+        </button>
+        <button
+          onClick={() => setReplyToMessage(message)}
+          className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
+          title="Répondre"
+        >
+          <Reply size={16} className="text-[#8696a0]" />
+        </button>
+        <button
+          onClick={(e) => {
+            const rect = e.currentTarget.getBoundingClientRect();
+            setQuickReactionBar({
+              isOpen: true,
+              position: { x: rect.left + rect.width / 2, y: rect.top },
+              message,
+            });
+          }}
+          className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
+          title="Réagir"
+        >
+          <Smile size={16} className="text-[#8696a0]" />
+        </button>
+        <button
+          onClick={() => handleForwardMessage(message)}
+          className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
+          title="Transférer"
+        >
+          <Forward size={16} className="text-[#8696a0]" />
+        </button>
+      </div>
+    )
+  }
+  
+  return null
+}
+
 const TimelineItemComponent: React.FC<TimelineItemComponentProps> = ({
   item,
   user,
@@ -644,8 +1061,6 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = ({
     )
   }
   
-  const { isEmojiOnlyMessage, emojiCount, isGifMessage, isStickerMessage, isGifOrStickerMessage, mediaUrl, mediaType, isMediaMessage, isDocumentMessage, gifMatch, stickerMatch } = getMessageTypeInfo(message)
-  
   return (
     <div
       key={message.id}
@@ -662,45 +1077,16 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = ({
         }
       }}
     >
-      {isOwn && hoveredMessageId === message.id && !isSelectionMode && (
-        <div className="flex items-center gap-0.5 md:gap-1 mr-1 md:mr-2">
-          <button
-            onClick={() => setReplyToMessage(message)}
-            className="md:hidden w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] flex items-center justify-center transition-colors shadow-md"
-            title="Répondre"
-          >
-            <Reply size={16} className="text-[#8696a0]" />
-          </button>
-          <button
-            onClick={() => handleForwardMessage(message)}
-            className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
-            title="Transférer"
-          >
-            <Forward size={16} className="text-[#8696a0]" />
-          </button>
-          <button
-            onClick={(e) => {
-              const rect = e.currentTarget.getBoundingClientRect();
-              setQuickReactionBar({
-                isOpen: true,
-                position: { x: rect.left + rect.width / 2, y: rect.top },
-                message,
-              });
-            }}
-            className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
-            title="Réagir"
-          >
-            <Smile size={16} className="text-[#8696a0]" />
-          </button>
-          <button
-            onClick={() => setReplyToMessage(message)}
-            className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
-            title="Répondre"
-          >
-            <Reply size={16} className="text-[#8696a0]" />
-          </button>
-        </div>
-      )}
+      <MessageSideActions
+        isOwn={isOwn}
+        hoveredMessageId={hoveredMessageId}
+        message={message}
+        isSelectionMode={isSelectionMode}
+        setReplyToMessage={setReplyToMessage}
+        handleForwardMessage={handleForwardMessage}
+        setQuickReactionBar={setQuickReactionBar}
+      />
+      
       <div
         className={`max-w-[85%] sm:max-w-[75%] md:max-w-[70%] lg:max-w-[65%] relative group`}
         data-message-id={message.id}
@@ -712,307 +1098,27 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = ({
           handleContextMenu(e, message)
         }}
       >
-        {isEmojiOnlyMessage ? (
-          <div className="relative">
-            <MessageHoverActions
-              isVisible={hoveredMessageId === message.id}
-              isOwn={isOwn}
-              onOpenMenu={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect();
-                setContextMenu({
-                  isOpen: true,
-                  position: { x: rect.left, y: rect.bottom + 5 },
-                  message,
-                });
-              }}
-            />
-            <div className={`${
-              emojiCount === 1 ? 'text-7xl' : emojiCount === 2 ? 'text-6xl' : 'text-5xl'
-            } leading-none py-1`}>
-              {message.content}
-            </div>
-            <MessageTimestamp timestamp={message.created_at} isStarred={message.is_starred || false} isOwn={isOwn} status={message.status} />
-          </div>
-        ) : isGifOrStickerMessage ? (
-          <div className="relative">
-            <MessageHoverActions
-              isVisible={hoveredMessageId === message.id}
-              isOwn={isOwn}
-              onOpenMenu={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect();
-                setContextMenu({
-                  isOpen: true,
-                  position: { x: rect.left, y: rect.bottom + 5 },
-                  message,
-                });
-              }}
-            />
-            {isGifMessage && gifMatch && (() => {
-              const caption = gifMatch[1]
-              const gifUrl = gifMatch[2]
-              const senderInfo = getSenderInfo(message.sender_id)
-              return (
-                <div className="space-y-1">
-                  <div
-                      className="overflow-hidden cursor-pointer max-w-[240px] sm:max-w-[280px] rounded-xl border-[3px] border-[#787add]"
-                      onClick={(e) => {
-                      e.stopPropagation()
-                      setGifStickerViewer({
-                        isOpen: true,
-                        url: gifUrl,
-                        type: 'gif',
-                        senderName: senderInfo.name,
-                        senderAvatar: senderInfo.avatar,
-                        timestamp: message.created_at,
-                        isOwn: message.sender_id === user?.id,
-                        messageId: message.id
-                      })
-                    }}
-                  >
-                    <img
-                      src={gifUrl}
-                      alt="GIF"
-                      className="w-full h-auto max-h-[200px] sm:max-h-[240px] object-contain"
-                      loading="lazy"
-                    />
-                  </div>
-                  {caption && (
-                    <div className={`px-3 py-2 rounded-2xl ${isOwn ? 'bg-[#787add] text-white' : 'bg-bg-surface text-text-primary'}`}>
-                      <p className="text-sm whitespace-pre-wrap break-words">{caption}</p>
-                    </div>
-                  )}
-                </div>
-              )
-            })()}
-            {isStickerMessage && stickerMatch && (() => {
-              const caption = stickerMatch[1]
-              const stickerUrl = stickerMatch[2]
-              const senderInfo = getSenderInfo(message.sender_id)
-              return (
-                <div className="space-y-1">
-                  <div
-                    className="cursor-pointer max-w-[160px] sm:max-w-[200px] overflow-hidden rounded-xl border-[3px] border-[#787add]"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setGifStickerViewer({
-                        isOpen: true,
-                        url: stickerUrl,
-                        type: 'sticker',
-                        senderName: senderInfo.name,
-                        senderAvatar: senderInfo.avatar,
-                        timestamp: message.created_at,
-                        isOwn: message.sender_id === user?.id,
-                        messageId: message.id
-                      })
-                    }}
-                  >
-                    <img
-                      src={stickerUrl}
-                      alt="Sticker"
-                      className="w-full h-auto max-h-[160px] sm:max-h-[200px] object-contain"
-                      loading="lazy"
-                    />
-                  </div>
-                  {caption && (
-                    <div className={`px-3 py-2 rounded-2xl ${isOwn ? 'bg-[#787add] text-white' : 'bg-bg-surface text-text-primary'}`}>
-                      <p className="text-sm whitespace-pre-wrap break-words">{caption}</p>
-                    </div>
-                  )}
-                </div>
-              )
-            })()}
-            <MessageTimestamp timestamp={message.created_at} isStarred={message.is_starred || false} isOwn={isOwn} status={message.status} />
-          </div>
-        ) : isMediaMessage ? (
-          (() => {
-            const mediaSenderInfo = getSenderInfo(message.sender_id)
-            return (
-          <div className="relative">
-            <div className="space-y-1">
-              <MediaMessage
-                  url={mediaUrl!}
-                  type={mediaType as 'image' | 'video' | 'file'}
-                  fileName={message.file_name}
-                  fileSize={message.file_size}
-                  caption={message.content}
-                  width={message.media_width ?? undefined}
-                  height={message.media_height ?? undefined}
-                  thumbnail={message.media_thumbnail ?? undefined}
-                  senderName={mediaSenderInfo.name}
-                  senderAvatar={mediaSenderInfo.avatar}
-                  timestamp={message.created_at}
-                  isOwn={message.sender_id === user?.id}
-                  isStarred={message.is_starred || false}
-                  messageId={message.id}
-                  status={message.status as 'sent' | 'delivered' | 'read' | undefined}
-                  onForward={() => handleForwardMessage(message)}
-                  onStar={() => handleStarMessage(message.id)}
-                  onPin={() => handlePinMessage(message.id)}
-                  onReaction={(emoji) => addReaction(message.id, emoji)}
-                  showHoverActions={hoveredMessageId === message.id}
-                  onOpenMenu={(e) => {
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    setContextMenu({
-                      isOpen: true,
-                      position: { x: rect.left, y: rect.bottom + 5 },
-                      message,
-                    });
-                  }}
-                  allMedia={allMediaItems}
-                  currentIndex={getMediaIndexForMessage(message.id)}
-                  onNavigate={handleMediaNavigate}
-                />
-            </div>
-          </div>
-            )
-          })()
-        ) : isDocumentMessage ? (
-          (() => {
-            const docSenderInfo = getSenderInfo(message.sender_id)
-            return (
-          <div className="relative">
-            <MessageHoverActions
-              isVisible={hoveredMessageId === message.id}
-              isOwn={isOwn}
-              onOpenMenu={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect();
-                setContextMenu({
-                  isOpen: true,
-                  position: { x: rect.left, y: rect.bottom + 5 },
-                  message,
-                });
-              }}
-            />
-            <MediaMessage
-              url={mediaUrl!}
-              type="file"
-              fileName={message.file_name}
-              fileSize={message.file_size}
-              caption={message.content}
-              thumbnail={message.media_thumbnail ?? undefined}
-              senderName={docSenderInfo.name}
-              timestamp={message.created_at}
-              isOwn={message.sender_id === user?.id}
-              isStarred={message.is_starred || false}
-              messageId={message.id}
-              status={message.status as 'sent' | 'delivered' | 'read' | undefined}
-              onForward={() => handleForwardMessage(message)}
-              onStar={() => handleStarMessage(message.id)}
-              onPin={() => handlePinMessage(message.id)}
-              onReaction={(emoji) => addReaction(message.id, emoji)}
-              showHoverActions={hoveredMessageId === message.id}
-              onOpenMenu={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect();
-                setContextMenu({
-                  isOpen: true,
-                  position: { x: rect.left, y: rect.bottom + 5 },
-                  message,
-                });
-              }}
-            />
-          </div>
-            )
-          })()
-        ) : (
-        <div className={`relative px-3 py-2 rounded-2xl ${isOwn ? 'bg-[#787add] text-white rounded-br-none' : 'bg-bg-surface text-text-primary rounded-bl-none'}`}>
-          <MessageHoverActions
-            isVisible={hoveredMessageId === message.id}
-            isOwn={isOwn}
-            onOpenMenu={(e) => {
-              const rect = e.currentTarget.getBoundingClientRect();
-              setContextMenu({
-                isOpen: true,
-                position: { x: rect.left, y: rect.bottom + 5 },
-                message,
-              });
-            }}
-          />
-          {message.reply_to_id && (() => {
-            const replyMessage = messages.find(m => m.id === message.reply_to_id)
-            if (replyMessage) {
-              const replySenderName = replyMessage.sender_id === user?.id
-                ? 'Vous'
-                : otherUser?.display_name || otherUser?.username || 'Utilisateur'
-              return (
-                <div onClick={(e) => { e.stopPropagation(); scrollToMessage(replyMessage.id); }}>
-                  <MessageReply
-                    replyToMessage={{
-                      id: replyMessage.id,
-                      content: replyMessage.content,
-                      sender_id: replyMessage.sender_id,
-                      senderName: replySenderName,
-                      mediaUrl: replyMessage.media_url || replyMessage.file_url,
-                      mediaType: replyMessage.media_type || replyMessage.type,
-                      fileName: replyMessage.file_name
-                    }}
-                    isPreview={false}
-                  />
-                </div>
-              )
-            }
-            return null
-          })()}
-          {message.type === 'audio' && (message.media_url || message.file_url) && (
-            message.file_name?.startsWith('voice-') ? (
-              <VoiceMessage url={message.media_url || message.file_url || ''} duration={message.ephemeral_duration || 0} isOwn={isOwn} />
-            ) : (
-              <AudioFilePlayer
-                url={message.media_url || message.file_url || ''}
-                fileName={message.file_name || undefined}
-                duration={message.ephemeral_duration || undefined}
-                isOwn={isOwn}
-              />
-            )
-          )}
-          {(!(message.media_url || message.file_url) && message.content) && (
-            <>
-              {(() => {
-                let displayContent = message.content
-                if ((message as any).link_preview) {
-                  try {
-                    const previewData = typeof (message as any).link_preview === 'string'
-                      ? JSON.parse((message as any).link_preview)
-                      : (message as any).link_preview
-                    if (previewData.url) {
-                      displayContent = message.content.replace(previewData.url, '').trim()
-                      displayContent = displayContent.replace(/^[\s\-–—:]+|[\s\-–—:]+$/g, '').trim()
-                    }
-                  } catch {
-                  }
-                }
-                return displayContent ? <p className="text-sm whitespace-pre-wrap break-words">{displayContent}</p> : null
-              })()}
-              {(message as any).link_preview && (() => {
-                try {
-                  const previewData = typeof (message as any).link_preview === 'string'
-                    ? JSON.parse((message as any).link_preview)
-                    : (message as any).link_preview
-                  return (
-                    <LinkPreview
-                      preview={previewData}
-                      isInMessage={true}
-                      isOwn={isOwn}
-                    />
-                  )
-                } catch {
-                  return null
-                }
-              })()}
-            </>
-          )}
-          {!(mediaUrl && (mediaType === 'image' || mediaType === 'video') && message.type !== 'audio') && (
-          <div className={`flex items-center justify-end gap-1 mt-1 text-xs ${isOwn ? 'text-[#2d2f6e]' : 'text-text-secondary'}`}>
-            {message.is_starred && (
-              <Star size={12} className="fill-current" />
-            )}
-            <span>{formatTime(message.created_at)}</span>
-            {isOwn && (
-              <MessageStatusIcons status={message.status} />
-            )}
-          </div>
-          )}
-        </div>
-        )}
+        <MessageContent
+          message={message}
+          hoveredMessageId={hoveredMessageId}
+          isOwn={isOwn}
+          setContextMenu={setContextMenu}
+          getSenderInfo={getSenderInfo}
+          setGifStickerViewer={setGifStickerViewer}
+          user={user}
+          handleForwardMessage={handleForwardMessage}
+          handleStarMessage={handleStarMessage}
+          handlePinMessage={handlePinMessage}
+          addReaction={addReaction}
+          allMediaItems={allMediaItems}
+          getMediaIndexForMessage={getMediaIndexForMessage}
+          handleMediaNavigate={handleMediaNavigate}
+          scrollToMessage={scrollToMessage}
+          messages={messages}
+          otherUser={otherUser}
+          setReplyToMessage={setReplyToMessage}
+        />
+
         {isSelectionMode && (
           <button
             onClick={(e) => {
@@ -1038,44 +1144,17 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = ({
           <MessageReactions reactions={messageReactions} currentUserId={user?.id || ''} onReactionClick={(emoji) => addReaction(message.id, emoji)} onReactionRemove={(emoji) => removeReaction(message.id, emoji)} />
         )}
       </div>
-      {!isOwn && hoveredMessageId === message.id && !isSelectionMode && (
-        <div className="flex items-center gap-0.5 md:gap-1 pb-4 ml-1 md:ml-2">
-          <button
-            onClick={() => setReplyToMessage(message)}
-            className="md:hidden w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] flex items-center justify-center transition-colors shadow-md"
-            title="Répondre"
-          >
-            <Reply size={16} className="text-[#8696a0]" />
-          </button>
-          <button
-            onClick={() => setReplyToMessage(message)}
-            className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
-            title="Répondre"
-          >
-            <Reply size={16} className="text-[#8696a0]" />
-          </button>
-          <button
-            onClick={(e) => {
-              const rect = e.currentTarget.getBoundingClientRect();
-              setQuickReactionBar({
-                isOpen: true,
-                position: { x: rect.left + rect.width / 2, y: rect.top },
-                message,
-              });
-            }}
-            className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
-            title="Réagir"
-          >
-            <Smile size={16} className="text-[#8696a0]" />
-          </button>
-          <button
-            onClick={() => handleForwardMessage(message)}
-            className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
-            title="Transférer"
-          >
-            <Forward size={16} className="text-[#8696a0]" />
-          </button>
-        </div>
+      
+      {!isOwn && (
+        <MessageSideActions
+          isOwn={isOwn}
+          hoveredMessageId={hoveredMessageId}
+          message={message}
+          isSelectionMode={isSelectionMode}
+          setReplyToMessage={setReplyToMessage}
+          handleForwardMessage={handleForwardMessage}
+          setQuickReactionBar={setQuickReactionBar}
+        />
       )}
     </div>
   )
@@ -1125,6 +1204,7 @@ interface MessageListProps {
   onScroll?: (e: React.UIEvent<HTMLDivElement>) => void
   isLoadingMore?: boolean
   hasMoreMessages?: boolean
+  messagesContentRef?: React.RefObject<HTMLDivElement>
 }
 
 export const MessageList: React.FC<MessageListProps> = ({
@@ -1169,7 +1249,8 @@ export const MessageList: React.FC<MessageListProps> = ({
   otherUser,
   onScroll,
   isLoadingMore,
-  hasMoreMessages
+  hasMoreMessages,
+  messagesContentRef
 }) => {
   return (
     <div
@@ -1183,6 +1264,7 @@ export const MessageList: React.FC<MessageListProps> = ({
       onContextMenu={handleBackgroundContextMenu}
       onScroll={onScroll}
     >
+      <div ref={messagesContentRef} className="flex flex-col min-h-full">
       {/* Loading indicator for infinite scroll */}
       {isLoadingMore && (
         <div className="flex justify-center py-2">
@@ -1198,7 +1280,7 @@ export const MessageList: React.FC<MessageListProps> = ({
       {loading ? (
         <MessageListSkeleton count={8} />
       ) : messages.length === 0 ? (
-        <div className="flex flex-col items-center justify-center h-full text-center space-y-3 px-8">
+        <div className="flex flex-col items-center justify-center flex-1 text-center space-y-3 px-8 my-auto">
           <div className="w-16 h-16 rounded-full bg-bg-surface flex items-center justify-center">
             <svg width="24" height="28" viewBox="0 0 16 20" fill="#8696a0">
               <path d="M13 7h-1V5c0-2.21-1.79-4-4-4S4 2.79 4 5v2H3c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2zm-5 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H4.9V5c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/>
@@ -1253,7 +1335,7 @@ export const MessageList: React.FC<MessageListProps> = ({
           <div ref={messagesEndRef} className="h-1 md:h-4" />
         </>
       )}
+      </div>
     </div>
   )
 }
-

@@ -5,15 +5,15 @@
 // Batch loads all conversation data in a single call to replace 4-7 sequential queries
 // Returns: conversation metadata, messages (with sender profiles), participants/profiles, other_user
 
-Deno.serve(async (req) => {
-  const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Max-Age': '86400',
-    'Access-Control-Allow-Credentials': 'false'
-  };
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Max-Age': '86400',
+  'Access-Control-Allow-Credentials': 'false'
+};
 
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 200, headers: corsHeaders });
   }
@@ -38,166 +38,20 @@ Deno.serve(async (req) => {
     }
 
     // Get user from auth token
-    const userResponse = await fetch(`${supabaseUrl}/auth/v1/user`, {
-      headers: {
-        'Authorization': authHeader,
-        'apikey': supabaseServiceKey
-      }
-    });
-
-    if (!userResponse.ok) {
-      throw new Error('Authentification invalide');
-    }
-
-    const userData = await userResponse.json();
-    const userId = userData.id;
+    const userId = await getAuthUser(supabaseUrl, supabaseServiceKey, authHeader);
 
     // Execute all queries in parallel for maximum performance
     const [
-      conversationResult,
-      membersResult,
-      messagesResult,
-      otherUserResult
+      conversation,
+      members,
+      messages,
+      otherUser
     ] = await Promise.all([
-      // Query 1: Get conversation metadata
-      fetch(`${supabaseUrl}/rest/v1/conversations?id=eq.${conversation_id}&select=*`, {
-        headers: {
-          'Authorization': `Bearer ${supabaseServiceKey}`,
-          'apikey': supabaseServiceKey,
-          'Content-Type': 'application/json'
-        }
-      }),
-
-      // Query 2: Get conversation members with profiles
-      fetch(
-        `${supabaseUrl}/rest/v1/conversation_members?conversation_id=eq.${conversation_id}&select=*,profile:profiles(id,username,display_name,avatar_url,bio,session_id,public_key,created_at,updated_at)`,
-        {
-          headers: {
-            'Authorization': `Bearer ${supabaseServiceKey}`,
-            'apikey': supabaseServiceKey,
-            'Content-Type': 'application/json'
-          }
-        }
-      ),
-
-      // Query 3: Get messages with sender profiles
-      (async () => {
-        let messagesUrl = `${supabaseUrl}/rest/v1/messages?conversation_id=eq.${conversation_id}&select=*,sender:profiles(id,username,display_name,avatar_url,bio,session_id,public_key,created_at,updated_at)&order=created_at.desc&limit=${limit}`;
-        
-        if (before_message_id) {
-          // Get messages before the specified message for infinite scroll
-          messagesUrl += `&created_at.lt=(select created_at from messages where id='${before_message_id}')`;
-        }
-
-        const response = await fetch(messagesUrl, {
-          headers: {
-            'Authorization': `Bearer ${supabaseServiceKey}`,
-            'apikey': supabaseServiceKey,
-            'Content-Type': 'application/json'
-          }
-        });
-
-        if (!response.ok) {
-          return { data: [], error: null };
-        }
-
-        const data = await response.json();
-        return { data: Array.isArray(data) ? data : [], error: null };
-      })(),
-
-      // Query 4: Get other user for direct messages (find the user that is NOT the current user)
-      (async () => {
-        // First get the conversation type
-        const convResponse = await fetch(
-          `${supabaseUrl}/rest/v1/conversations?id=eq.${conversation_id}&select=type`,
-          {
-            headers: {
-              'Authorization': `Bearer ${supabaseServiceKey}`,
-              'apikey': supabaseServiceKey,
-              'Content-Type': 'application/json'
-            }
-          }
-        );
-
-        if (!convResponse.ok) {
-          return { data: null, error: null };
-        }
-
-        const convData = await convResponse.json();
-        if (!Array.isArray(convData) || convData.length === 0) {
-          return { data: null, error: null };
-        }
-
-        const convType = convData[0].type;
-
-        if (convType === 'direct') {
-          // For direct messages, find the other member
-          const membersResponse = await fetch(
-            `${supabaseUrl}/rest/v1/conversation_members?conversation_id=eq.${conversation_id}&user_id=neq.${userId}&select=profile:profiles(id,username,display_name,avatar_url,bio,session_id,public_key,created_at,updated_at)`,
-            {
-              headers: {
-                'Authorization': `Bearer ${supabaseServiceKey}`,
-                'apikey': supabaseServiceKey,
-                'Content-Type': 'application/json'
-              }
-            }
-          );
-
-          if (!membersResponse.ok) {
-            return { data: null, error: null };
-          }
-
-          const membersData = await membersResponse.json();
-          if (Array.isArray(membersData) && membersData.length > 0) {
-            return { data: membersData[0].profile, error: null };
-          }
-        }
-
-        return { data: null, error: null };
-      })()
+      fetchConversationData(supabaseUrl, supabaseServiceKey, conversation_id),
+      fetchMembersData(supabaseUrl, supabaseServiceKey, conversation_id),
+      fetchMessagesData(supabaseUrl, supabaseServiceKey, conversation_id, limit, before_message_id),
+      fetchOtherUserData(supabaseUrl, supabaseServiceKey, conversation_id, userId)
     ]);
-
-    // Process results
-    let conversation = null;
-    let members: any[] = [];
-    let messages: any[] = [];
-    let otherUser = null;
-
-    // Parse conversation
-    if (conversationResult.ok) {
-      const convData = await conversationResult.json();
-      if (Array.isArray(convData) && convData.length > 0) {
-        conversation = convData[0];
-      }
-    }
-
-    // Parse members
-    if (membersResult.ok) {
-      const membersData = await membersResult.json();
-      if (Array.isArray(membersData)) {
-        // Flatten the profile data from the nested structure
-        members = membersData.map((m: any) => ({
-          id: m.id,
-          conversation_id: m.conversation_id,
-          user_id: m.user_id,
-          role: m.role,
-          joined_at: m.joined_at,
-          last_read_at: m.last_read_at,
-          is_active: m.is_active,
-          profile: m.profile
-        }));
-      }
-    }
-
-    // Messages are already parsed
-    if (messagesResult.data) {
-      messages = messagesResult.data;
-    }
-
-    // Other user for direct messages
-    if (otherUserResult.data) {
-      otherUser = otherUserResult.data;
-    }
 
     // Extract unique profile IDs from messages for batch profile loading
     const senderIds = [...new Set(messages.map((m: any) => m.sender_id))];
@@ -205,29 +59,7 @@ Deno.serve(async (req) => {
     const allUserIds = [...new Set([...senderIds, ...memberUserIds])];
 
     // Batch load all profiles needed
-    let profilesMap = new Map();
-    
-    if (allUserIds.length > 0) {
-      const profilesResponse = await fetch(
-        `${supabaseUrl}/rest/v1/profiles?id=in.(${allUserIds.map((id: string) => `"${id}"`).join(',')})&select=id,username,display_name,avatar_url,bio,session_id,public_key,created_at,updated_at`,
-        {
-          headers: {
-            'Authorization': `Bearer ${supabaseServiceKey}`,
-            'apikey': supabaseServiceKey,
-            'Content-Type': 'application/json'
-          }
-        }
-      );
-
-      if (profilesResponse.ok) {
-        const profilesData = await profilesResponse.json();
-        if (Array.isArray(profilesData)) {
-          profilesData.forEach((profile: any) => {
-            profilesMap.set(profile.id, profile);
-          });
-        }
-      }
-    }
+    const profilesMap = await fetchProfilesData(supabaseUrl, supabaseServiceKey, allUserIds);
 
     // Enrich messages with sender profiles from the map
     const enrichedMessages = messages.map((message: any) => ({
@@ -258,13 +90,13 @@ Deno.serve(async (req) => {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Erreur get-conversation-full:', error);
 
     const errorResponse = {
       error: {
         code: 'GET_CONVERSATION_ERROR',
-        message: error.message
+        message: error.message || 'Unknown error'
       }
     };
 
@@ -274,3 +106,168 @@ Deno.serve(async (req) => {
     });
   }
 });
+
+async function getAuthUser(supabaseUrl: string, supabaseServiceKey: string, authHeader: string) {
+  const userResponse = await fetch(`${supabaseUrl}/auth/v1/user`, {
+    headers: {
+      'Authorization': authHeader,
+      'apikey': supabaseServiceKey
+    }
+  });
+
+  if (!userResponse.ok) {
+    throw new Error('Authentification invalide');
+  }
+
+  const userData = await userResponse.json();
+  return userData.id;
+}
+
+async function fetchConversationData(supabaseUrl: string, supabaseServiceKey: string, conversation_id: string) {
+  const response = await fetch(`${supabaseUrl}/rest/v1/conversations?id=eq.${conversation_id}&select=*`, {
+    headers: {
+      'Authorization': `Bearer ${supabaseServiceKey}`,
+      'apikey': supabaseServiceKey,
+      'Content-Type': 'application/json'
+    }
+  });
+
+  if (response.ok) {
+    const data = await response.json();
+    if (Array.isArray(data) && data.length > 0) {
+      return data[0];
+    }
+  }
+  return null;
+}
+
+async function fetchMembersData(supabaseUrl: string, supabaseServiceKey: string, conversation_id: string) {
+  const response = await fetch(
+    `${supabaseUrl}/rest/v1/conversation_members?conversation_id=eq.${conversation_id}&select=*,profile:profiles(id,username,display_name,avatar_url,bio,session_id,public_key,created_at,updated_at)`,
+    {
+      headers: {
+        'Authorization': `Bearer ${supabaseServiceKey}`,
+        'apikey': supabaseServiceKey,
+        'Content-Type': 'application/json'
+      }
+    }
+  );
+
+  if (response.ok) {
+    const data = await response.json();
+    if (Array.isArray(data)) {
+      return data.map((m: any) => ({
+        id: m.id,
+        conversation_id: m.conversation_id,
+        user_id: m.user_id,
+        role: m.role,
+        joined_at: m.joined_at,
+        last_read_at: m.last_read_at,
+        is_active: m.is_active,
+        profile: m.profile
+      }));
+    }
+  }
+  return [];
+}
+
+async function fetchMessagesData(supabaseUrl: string, supabaseServiceKey: string, conversation_id: string, limit: number, before_message_id?: string) {
+  let messagesUrl = `${supabaseUrl}/rest/v1/messages?conversation_id=eq.${conversation_id}&select=*,sender:profiles(id,username,display_name,avatar_url,bio,session_id,public_key,created_at,updated_at)&order=created_at.desc&limit=${limit}`;
+  
+  if (before_message_id) {
+    messagesUrl += `&created_at.lt=(select created_at from messages where id='${before_message_id}')`;
+  }
+
+  const response = await fetch(messagesUrl, {
+    headers: {
+      'Authorization': `Bearer ${supabaseServiceKey}`,
+      'apikey': supabaseServiceKey,
+      'Content-Type': 'application/json'
+    }
+  });
+
+  if (!response.ok) {
+    return [];
+  }
+
+  const data = await response.json();
+  return Array.isArray(data) ? data : [];
+}
+
+async function fetchOtherUserData(supabaseUrl: string, supabaseServiceKey: string, conversation_id: string, userId: string) {
+  // First get the conversation type
+  const convResponse = await fetch(
+    `${supabaseUrl}/rest/v1/conversations?id=eq.${conversation_id}&select=type`,
+    {
+      headers: {
+        'Authorization': `Bearer ${supabaseServiceKey}`,
+        'apikey': supabaseServiceKey,
+        'Content-Type': 'application/json'
+      }
+    }
+  );
+
+  if (!convResponse.ok) {
+    return null;
+  }
+
+  const convData = await convResponse.json();
+  if (!Array.isArray(convData) || convData.length === 0) {
+    return null;
+  }
+
+  const convType = convData[0].type;
+
+  if (convType === 'direct') {
+    // For direct messages, find the other member
+    const membersResponse = await fetch(
+      `${supabaseUrl}/rest/v1/conversation_members?conversation_id=eq.${conversation_id}&user_id=neq.${userId}&select=profile:profiles(id,username,display_name,avatar_url,bio,session_id,public_key,created_at,updated_at)`,
+      {
+        headers: {
+          'Authorization': `Bearer ${supabaseServiceKey}`,
+          'apikey': supabaseServiceKey,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    if (!membersResponse.ok) {
+      return null;
+    }
+
+    const membersData = await membersResponse.json();
+    if (Array.isArray(membersData) && membersData.length > 0) {
+      return membersData[0].profile;
+    }
+  }
+
+  return null;
+}
+
+async function fetchProfilesData(supabaseUrl: string, supabaseServiceKey: string, userIds: string[]) {
+  const profilesMap = new Map();
+  
+  if (userIds.length > 0) {
+    const profilesResponse = await fetch(
+      `${supabaseUrl}/rest/v1/profiles?id=in.(${userIds.map((id: string) => `"${id}"`).join(',')})&select=id,username,display_name,avatar_url,bio,session_id,public_key,created_at,updated_at`,
+      {
+        headers: {
+          'Authorization': `Bearer ${supabaseServiceKey}`,
+          'apikey': supabaseServiceKey,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    if (profilesResponse.ok) {
+      const profilesData = await profilesResponse.json();
+      if (Array.isArray(profilesData)) {
+        profilesData.forEach((profile: any) => {
+          profilesMap.set(profile.id, profile);
+        });
+      }
+    }
+  }
+  
+  return profilesMap;
+}

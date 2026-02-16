@@ -668,6 +668,7 @@ export function ChatViewPage() {
   const prevMessageCountRef = useRef(0)
   const hasScrolledInitially = useRef(false)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
+  const messagesContentRef = useRef<HTMLDivElement>(null)
   const [isInitialScrollDone, setIsInitialScrollDone] = useState(false)
   
   // Reset initial scroll flag when conversation changes - MUST run before scroll effect
@@ -691,16 +692,59 @@ export function ChatViewPage() {
     
     if (hasScrolledInitially.current) return
     
-    // Scroll immediately before paint
-    if (messagesContainerRef.current) {
-      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
+    const scrollContainer = messagesContainerRef.current
+    if (scrollContainer) {
+      // Force scroll to bottom immediately
+      scrollContainer.scrollTop = scrollContainer.scrollHeight
+      
+      // Use requestAnimationFrame to ensure layout is stable
+      requestAnimationFrame(() => {
+        if (scrollContainer) {
+          scrollContainer.scrollTop = scrollContainer.scrollHeight
+          
+          // Double RAF for safety
+          requestAnimationFrame(() => {
+            if (scrollContainer) {
+              scrollContainer.scrollTop = scrollContainer.scrollHeight
+              setIsInitialScrollDone(true)
+              hasScrolledInitially.current = true
+              prevMessageCountRef.current = messages.length
+            }
+          })
+        }
+      })
     }
-    
-    hasScrolledInitially.current = true
-    setIsInitialScrollDone(true)
-    
-    prevMessageCountRef.current = messages.length
   }, [loading, messages.length, conversationId])
+
+  // ResizeObserver to handle dynamic content changes (images loading, etc.)
+  useEffect(() => {
+    const scrollContainer = messagesContainerRef.current
+    const contentContainer = messagesContentRef.current
+    
+    if (!scrollContainer || !contentContainer) return
+
+    // Function to handle resize
+    const handleResize = () => {
+      if (!hasScrolledInitially.current) return
+
+      // Check if we were near the bottom before the resize
+      // We use a generous threshold (e.g., 150px) to account for minor shifts
+      const isNearBottom = scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight < 150
+      
+      if (isNearBottom) {
+        // Maintain scroll at bottom
+        scrollContainer.scrollTop = scrollContainer.scrollHeight
+      }
+    }
+
+    const observer = new ResizeObserver(handleResize)
+    
+    // Observe both the container (for window resize) and the content (for dynamic loading)
+    observer.observe(scrollContainer)
+    observer.observe(contentContainer)
+    
+    return () => observer.disconnect()
+  }, [hasScrolledInitially.current])
   
   // Handle new messages with smooth scroll (after initial load)
   useEffect(() => {
@@ -2060,6 +2104,7 @@ export function ChatViewPage() {
         <MessageList
           loading={loading}
           messages={messages}
+          messagesContentRef={messagesContentRef}
           timelineItems={timelineItems}
           user={user}
           reactions={reactions}
