@@ -615,43 +615,52 @@ export function ChatViewPage() {
   // CRITICAL STABILITY FIX: Prevent multiple simultaneous data loads
   const isLoadingDataRef = useRef(false)
   const lastLoadTimeRef = useRef(0)
+  const initialLoadDoneRef = useRef(false)
   
-  // Debounced load function to prevent request spam
+  // Debounced load function to prevent request spam - WHATSAPP STYLE
   const debouncedLoadData = useCallback(() => {
     const now = Date.now()
-    // Only allow reload every 5 seconds minimum
-    if (now - lastLoadTimeRef.current < 5000) {
+    // Only allow reload every 10 seconds minimum (WhatsApp style)
+    if (now - lastLoadTimeRef.current < 10000) {
+      console.log('[ChatViewPage] Skipping reload, too soon')
       return
     }
     if (isLoadingDataRef.current) {
+      console.log('[ChatViewPage] Skipping reload, already in progress')
       return
     }
     
+    console.log('[ChatViewPage] Reloading data...')
     isLoadingDataRef.current = true
     lastLoadTimeRef.current = now
     
-    Promise.all([
-      loadConversation(),
-      loadMessages(),
-      loadCallLogs()
-    ]).finally(() => {
-      isLoadingDataRef.current = false
+    // Load sequentially, not in parallel to reduce connection pressure
+    loadMessages().then(() => {
+      loadConversation().then(() => {
+        loadCallLogs().finally(() => {
+          isLoadingDataRef.current = false
+        })
+      })
     })
   }, [])
 
   useEffect(() => {
     if (!conversationId || !user) return
     
-    // Initial load
-    isLoadingDataRef.current = true
-    lastLoadTimeRef.current = Date.now()
-    Promise.all([
-      loadConversation(),
-      loadMessages(),
-      loadCallLogs()
-    ]).finally(() => {
-      isLoadingDataRef.current = false
-    })
+    // WHATSAPP-LEVEL STABILITY: Only load once on mount
+    // Real-time updates come through the channel, not polling
+    if (!initialLoadDoneRef.current) {
+      initialLoadDoneRef.current = true
+      lastLoadTimeRef.current = Date.now()
+      
+      console.log('[ChatViewPage] Initial load')
+      // Load sequentially to avoid connection pressure
+      loadMessages().then(() => {
+        loadConversation().then(() => {
+          loadCallLogs()
+        })
+      })
+    }
     
     loadEphemeralSetting()
     if (permission === 'default') requestPermission()
@@ -718,7 +727,8 @@ export function ChatViewPage() {
         if (otherUser && payload.new.id === otherUser.id) {
           setOtherUser(payload.new as Profile)
         }
-        loadConversation()
+        // Don't reload conversation on every profile update - too expensive
+        // loadConversation()
       })
       // Member left
       .on('postgres_changes', {
@@ -739,34 +749,28 @@ export function ChatViewPage() {
       })
       .subscribe()
 
-    // Handle visibility change - WHATSAPP STYLE: debounced refresh
-    let visibilityTimeout: NodeJS.Timeout | null = null
+    // Handle visibility change - WHATSAPP STYLE: NO reload on visibility change
+    // The realtime channel handles updates, no need to poll
     const handleVisibilityChange = () => {
+      // Only log, don't reload - realtime channel handles updates
       if (document.visibilityState === 'visible') {
-        // Clear any pending timeout
-        if (visibilityTimeout) {
-          clearTimeout(visibilityTimeout)
-        }
-        // Debounce: wait 2 seconds then reload (max once every 5 seconds)
-        visibilityTimeout = setTimeout(() => {
-          debouncedLoadData()
-        }, 2000)
+        console.log('[ChatViewPage] Tab visible, realtime channel active')
       }
     }
     
     document.addEventListener('visibilitychange', handleVisibilityChange)
     
-    // Handle Supabase reconnection event - debounced
+    // Handle Supabase reconnection event - minimal reload
     let reconnectTimeout: NodeJS.Timeout | null = null
     const handleSupabaseReconnect = () => {
       // Clear any pending timeout
       if (reconnectTimeout) {
         clearTimeout(reconnectTimeout)
       }
-      // Debounce: wait 2 seconds then reload (max once every 5 seconds)
+      // Wait 3 seconds then reload (max once every 10 seconds)
       reconnectTimeout = setTimeout(() => {
         debouncedLoadData()
-      }, 2000)
+      }, 3000)
     }
     
     window.addEventListener('supabase-reconnected', handleSupabaseReconnect)
@@ -782,7 +786,6 @@ export function ChatViewPage() {
 
     return () => {
       clearTimeout(loadingTimeout)
-      if (visibilityTimeout) clearTimeout(visibilityTimeout)
       if (reconnectTimeout) clearTimeout(reconnectTimeout)
       supabase.removeChannel(mainChannel)
       unsubscribeFromConversation(conversationId)
