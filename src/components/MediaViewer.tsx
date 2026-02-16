@@ -830,7 +830,6 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
     // Unlock orientation (only if not PWA)
     if (window.screen?.orientation && !isPWA) {
       try {
-        // @ts-ignore - unlock is experimental
         window.screen.orientation.unlock();
       } catch (e) {
         // Ignore unlock errors
@@ -867,7 +866,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   const tryOrientationLock = async (): Promise<void> => {
     if (!isPWA && window.screen?.orientation) {
       try {
-        // @ts-ignore - lock is experimental
+        // @ts-expect-error - lock is experimental API not in TypeScript types
         await window.screen.orientation.lock('landscape');
       } catch (e) {
         console.log('Orientation lock not available:', e);

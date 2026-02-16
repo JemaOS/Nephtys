@@ -315,17 +315,10 @@ export const ImageRenderer: React.FC<{
   
   return (
     <>
-      <div
-        className="relative cursor-pointer overflow-hidden rounded-xl border-[3px] border-[#787add] group message-media-container"
-        style={{ ...containerStyle, boxSizing: 'border-box' }}
+      <button
+        type="button"
+        className="relative cursor-pointer overflow-hidden rounded-xl border-[3px] border-[#787add] group message-media-container text-left w-full border-none bg-transparent p-0"
         onClick={onImageClick}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            onImageClick();
-          }
-        }}
-        role="button"
-        tabIndex={0}
         aria-label="Afficher l'image en plein écran"
       >
         {onOpenMenu && (
@@ -392,7 +385,7 @@ export const ImageRenderer: React.FC<{
             isOwn={isOwn}
           />
         )}
-      </div>
+      </button>
       {caption && (
         <p className="mt-1.5 text-sm whitespace-pre-wrap break-words">{caption}</p>
       )}
@@ -419,16 +412,10 @@ export const VideoRenderer: React.FC<{
   
   return (
     <>
-      <div
-        className="relative cursor-pointer overflow-hidden rounded-xl border-[3px] border-[#787add] max-w-[280px] group message-media-container"
+      <button
+        type="button"
+        className="relative cursor-pointer overflow-hidden rounded-xl border-[3px] border-[#787add] max-w-[280px] group message-media-container text-left w-full border-none bg-transparent p-0"
         onClick={onVideoClick}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            onVideoClick();
-          }
-        }}
-        role="button"
-        tabIndex={0}
         aria-label="Lire la vidéo"
       >
         {onOpenMenu && (
@@ -473,7 +460,7 @@ export const VideoRenderer: React.FC<{
             <Copy size={16} className="text-white drop-shadow-lg" />
           </div>
         </div>
-      </div>
+      </button>
       {caption && (
         <p className="mt-1.5 text-sm whitespace-pre-wrap break-words">{caption}</p>
       )}

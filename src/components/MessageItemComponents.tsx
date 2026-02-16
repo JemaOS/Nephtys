@@ -105,16 +105,10 @@ export const ReplyQuote: React.FC<{
     : otherUserDisplayName || 'Utilisateur'
   
   return (
-    <div
+    <button
+      type="button"
+      className="text-left w-full cursor-pointer bg-transparent border-none p-0"
       onClick={(e) => { e.stopPropagation(); onScrollToMessage(replyMessage.id); }}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.stopPropagation();
-          onScrollToMessage(replyMessage.id);
-        }
-      }}
-      role="button"
-      tabIndex={0}
     >
       <MessageReply
         replyToMessage={{
@@ -128,7 +122,7 @@ export const ReplyQuote: React.FC<{
         }}
         isPreview={false}
       />
-    </div>
+    </button>
   )
 }
 

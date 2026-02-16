@@ -173,7 +173,7 @@ export function ArchivedPage() {
                   <div className="relative">
                     {(conversation.type === 'direct' && conversation.otherUserProfile?.avatar_url) || conversation.avatar_url ? (
                       <img
-                        src={conversation.type === 'direct' ? conversation.otherUserProfile?.avatar_url! : conversation.avatar_url!}
+                        src={conversation.type === 'direct' ? conversation.otherUserProfile?.avatar_url : conversation.avatar_url}
                         alt={displayName}
                         className="w-12 h-12 rounded-full object-cover flex-shrink-0"
                         key={conversation.type === 'direct' ? conversation.otherUserProfile?.avatar_url : conversation.avatar_url}

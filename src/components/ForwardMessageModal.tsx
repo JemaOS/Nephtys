@@ -267,20 +267,12 @@ export const ForwardMessageModal: React.FC<ForwardMessageModalProps> = ({
   return (
     <>
       {/* Backdrop */}
-      <div 
-        className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[250]" 
-        onClick={onClose}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            onClose();
-          }
-        }}
-        role="button"
-        tabIndex={0}
+      <button
+        type="button"
+        className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[250] border-none cursor-default"
+        onClick={() => onClose()}
         aria-label="Fermer le modal"
       />
-
-      {/* Modal */}
       <div className="fixed inset-0 z-[250] flex items-center justify-center p-4">
         <div className="w-full max-w-md bg-bg-surface rounded-2xl shadow-2xl overflow-hidden max-h-[80vh] flex flex-col">
           {/* Header */}

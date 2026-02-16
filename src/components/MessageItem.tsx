@@ -19,6 +19,13 @@ import {
   formatTime
 } from './MessageItemComponents'
 
+// Pre-compiled regex patterns for better performance
+// Emoji pattern using Unicode properties - this is the correct way to detect emojis in JS
+const EMOJI_PATTERN = /(?:\p{Emoji_Presentation}|\p{Emoji}\uFE0F?|\p{Regional_Indicator}{2}|[\u0023\u002A\u0030-\u0039]\uFE0F?\u20E3)(?:\u200D(?:\p{Emoji_Presentation}|\p{Emoji}\uFE0F?))*(?:\p{Emoji_Modifier})?/gu
+
+// Prefix pattern for transferred messages
+const TRANSFERRED_PREFIX_PATTERN = /^(?:\[Transféré\]\s*)?/
+
 // Utility function to detect emoji-only messages
 const isEmojiOnly = (text: string): { isEmoji: boolean; emojiCount: number } => {
   if (!text || text.trim() === '') return { isEmoji: false, emojiCount: 0 }
@@ -27,13 +34,12 @@ const isEmojiOnly = (text: string): { isEmoji: boolean; emojiCount: number } => 
   if (text.length > 100) return { isEmoji: false, emojiCount: 0 }
   
   const trimmed = text.trim()
-  const emojiPattern = /(?:\p{Emoji_Presentation}|\p{Emoji}\uFE0F?|\p{Regional_Indicator}{2}|[\u0023\u002A\u0030-\u0039]\uFE0F?\u20E3)(?:\u200D(?:\p{Emoji_Presentation}|\p{Emoji}\uFE0F?))*(?:\p{Emoji_Modifier})?/gu
   
-  const emojis = trimmed.match(emojiPattern)
+  const emojis = trimmed.match(EMOJI_PATTERN)
   if (!emojis) return { isEmoji: false, emojiCount: 0 }
   
   const emojiString = emojis.join('')
-  const textWithoutWhitespace = trimmed.replaceAll('\s', '')
+  const textWithoutWhitespace = trimmed.replace(/\s/g, '')
   
   if (textWithoutWhitespace === emojiString && emojis.length >= 1 && emojis.length <= 3) {
     return { isEmoji: true, emojiCount: emojis.length }
@@ -76,6 +82,13 @@ const getSenderInfoForMessage = (
   }
   
   return { name: 'Utilisateur', avatar: undefined }
+}
+
+// Helper function to get emoji size class based on count
+const getEmojiSizeClass = (emojiCount: number): string => {
+  if (emojiCount === 1) return 'text-7xl';
+  if (emojiCount === 2) return 'text-6xl';
+  return 'text-5xl';
 }
 
 // Message type properties interface
@@ -307,17 +320,10 @@ export const MessageItem: React.FC<MessageItemProps> = React.memo(({
 
   // Common wrapper for message bubbles (non-system, non-emoji)
   const renderBubbleWrapper = (content: React.ReactNode, showReplyQuote: boolean = false) => (
-    <div className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-1 ${isSelected ? 'bg-[#787add]/10' : ''} transition-colors duration-500`}
-      onMouseEnter={() => setHoveredMessageId(message.id)}
-      onMouseLeave={() => setHoveredMessageId(null)}
+    <button
+      type="button"
+      className={`flex w-full text-left ${isOwn ? 'justify-end' : 'justify-start'} mb-1 ${isSelected ? 'bg-[#787add]/10' : ''} transition-colors duration-500 border-none bg-transparent p-0`}
       onClick={handleClick}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          handleClick();
-        }
-      }}
-      role="button"
-      tabIndex={0}
     >
       <MessageQuickActions position="left" isOwn={isOwn} isHovered={isHovered} isSelectionMode={isSelectionMode} messageId={message.id} onReply={handleReply} onForward={handleForward} />
       <div className={`max-w-[85%] sm:max-w-[75%] md:max-w-[70%] lg:max-w-[65%] relative group`}>
@@ -339,7 +345,7 @@ export const MessageItem: React.FC<MessageItemProps> = React.memo(({
       </div>
       <MessageSelectionCheckbox isOwn={isOwn} isSelected={isSelected} isSelectionMode={isSelectionMode} messageId={message.id} onSelectMessage={onSelectMessage} />
       {renderReactions()}
-    </div>
+    </button>
   )
 
   // Render based on message type
@@ -365,7 +371,7 @@ export const MessageItem: React.FC<MessageItemProps> = React.memo(({
   }
 
   if (msgType.isEmojiOnlyMessage) {
-    const emojiSize = msgType.emojiCount === 1 ? 'text-7xl' : msgType.emojiCount === 2 ? 'text-6xl' : 'text-5xl'
+    const emojiSize = getEmojiSizeClass(msgType.emojiCount);
     return renderBubbleWrapper(
       <>
         <div className={`${emojiSize} leading-none py-1`}>
@@ -436,19 +442,11 @@ export const MessageItem: React.FC<MessageItemProps> = React.memo(({
   const textContent = renderTextContent(message, isOwn, msgType)
 
   return (
-    <div
+    <button
+      type="button"
       id={`message-${message.id}`}
-      className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-1 ${isSelected ? 'bg-[#787add]/10' : ''} transition-colors duration-500`}
-      onMouseEnter={() => setHoveredMessageId(message.id)}
-      onMouseLeave={() => setHoveredMessageId(null)}
+      className={`flex w-full text-left ${isOwn ? 'justify-end' : 'justify-start'} mb-1 ${isSelected ? 'bg-[#787add]/10' : ''} transition-colors duration-500 border-none bg-transparent p-0`}
       onClick={handleClick}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          handleClick();
-        }
-      }}
-      role="button"
-      tabIndex={0}
     >
       <MessageQuickActions position="left" isOwn={isOwn} isHovered={isHovered} isSelectionMode={isSelectionMode} messageId={message.id} onReply={handleReply} onForward={handleForward} />
       <div className={`max-w-[85%] sm:max-w-[75%] md:max-w-[70%] lg:max-w-[65%] relative px-3 py-2 rounded-2xl ${isOwn ? 'bg-[#787add] text-white rounded-br-none' : 'bg-bg-surface text-text-primary rounded-bl-none'}`}>
@@ -469,7 +467,7 @@ export const MessageItem: React.FC<MessageItemProps> = React.memo(({
       <MessageQuickActions position="right" isOwn={isOwn} isHovered={isHovered} isSelectionMode={isSelectionMode} messageId={message.id} onReply={handleReply} onForward={handleForward} />
       <MessageSelectionCheckbox isOwn={isOwn} isSelected={isSelected} isSelectionMode={isSelectionMode} messageId={message.id} onSelectMessage={onSelectMessage} />
       {renderReactions()}
-    </div>
+    </button>
   )
 })
 

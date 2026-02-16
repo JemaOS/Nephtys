@@ -489,7 +489,7 @@ export class WebRTCE2EEManager {
   private async applySenderTransformLegacy(sender: RTCRtpSender): Promise<void> {
     if (!this.senderTransform) return;
     
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     const senderAny = sender as any;
     const { readable, writable } = senderAny.createEncodedStreams();
     
@@ -538,7 +538,7 @@ export class WebRTCE2EEManager {
   private async applyReceiverTransformLegacy(receiver: RTCRtpReceiver): Promise<void> {
     if (!this.receiverTransform) return;
     
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     const receiverAny = receiver as any;
     const { readable, writable } = receiverAny.createEncodedStreams();
     

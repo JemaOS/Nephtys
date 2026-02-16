@@ -5,6 +5,27 @@ import { useState } from 'react'
 import { useAuth } from '@/context/AuthContext'
 import { Lock, User, Shield, Zap, EyeOff } from 'lucide-react'
 
+// Helper function to get auth title based on mode
+const getAuthTitle = (mode: 'signin' | 'signup' | 'guest'): string => {
+  if (mode === 'guest') return 'Mode éphémère';
+  if (mode === 'signin') return 'Connexion';
+  return 'Créer un compte';
+}
+
+// Helper function to get auth subtitle based on mode
+const getAuthSubtitle = (mode: 'signin' | 'signup' | 'guest'): string => {
+  if (mode === 'guest') return 'Session temporaire sans compte';
+  if (mode === 'signin') return 'Accédez à vos conversations';
+  return 'Rejoignez Nephtys';
+}
+
+// Helper function to get auth button text based on mode
+const getAuthButtonText = (mode: 'signin' | 'signup' | 'guest'): string => {
+  if (mode === 'guest') return 'Démarrer en mode éphémère';
+  if (mode === 'signin') return 'Se connecter';
+  return 'Créer le compte';
+}
+
 export function AuthPage() {
   const [mode, setMode] = useState<'signin' | 'signup' | 'guest'>('signin')
   const [username, setUsername] = useState('')
@@ -107,10 +128,10 @@ export function AuthPage() {
         <div className="bg-bg-surface rounded-3xl p-3 sm:p-4 space-y-2 sm:space-y-3">
           <div className="text-center">
             <h2 className="text-sm sm:text-base font-semibold text-text-primary mb-0.5">
-              {mode === 'guest' ? 'Mode éphémère' : mode === 'signin' ? 'Connexion' : 'Créer un compte'}
+              {getAuthTitle(mode)}
             </h2>
             <p className="text-[9px] sm:text-[10px] text-text-secondary">
-              {mode === 'guest' ? 'Session temporaire sans compte' : mode === 'signin' ? 'Accédez à vos conversations' : 'Rejoignez Nephtys'}
+              {getAuthSubtitle(mode)}
             </p>
           </div>
 
@@ -169,7 +190,7 @@ export function AuthPage() {
               {loading ? (
                 <div className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
               ) : (
-                mode === 'guest' ? 'Démarrer en mode éphémère' : mode === 'signin' ? 'Se connecter' : 'Créer le compte'
+                getAuthButtonText(mode)
               )}
             </button>
 

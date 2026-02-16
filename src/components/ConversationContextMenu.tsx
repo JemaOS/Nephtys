@@ -64,16 +64,10 @@ export function ConversationContextMenu({
     return (
       <>
         {/* Overlay - tap anywhere to close */}
-        <div 
-          className="fixed inset-0 z-40 bg-black/20" 
-          onClick={onClose}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              onClose();
-            }
-          }}
-          role="button"
-          tabIndex={0}
+        <button
+          type="button"
+          className="fixed inset-0 z-40 bg-black/20 border-none cursor-default"
+          onClick={() => onClose()}
           aria-label="Fermer le menu"
         />
         
@@ -153,8 +147,6 @@ export function ConversationContextMenu({
             onClose();
           }
         }}
-        role="button"
-        tabIndex={0}
         aria-label="Fermer le menu"
       />
       

@@ -231,7 +231,7 @@ export class WebRTCManager {
   onRemoteStream(callback: (stream: MediaStream) => void): void {
     this.onRemoteStreamCallback = (...args: any[]) => {
       if (args.length > 1) console.error('WebRTCManager: onRemoteStreamCallback called with multiple arguments!', args);
-      // @ts-ignore
+      // @ts-expect-error - TypeScript doesn't understand the callback signature
       callback(...args);
     };
   }

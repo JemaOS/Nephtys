@@ -232,13 +232,12 @@ export const MediaViewerHeader: React.FC<MediaViewerHeaderProps> = ({
   timestamp,
   headerActionsProps,
 }) => (
-  <div
+  <header
     className={`absolute top-0 left-0 right-0 z-10 transition-opacity duration-300 ${
       showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
     }`}
     onMouseEnter={() => setIsHoveringControls(true)}
     onMouseLeave={() => setIsHoveringControls(false)}
-    role="banner"
   >
     <div className="flex items-center justify-between p-3 md:p-4 bg-gradient-to-b from-black/80 to-transparent">
       {/* Left side - Sender info */}
@@ -263,7 +262,7 @@ export const MediaViewerHeader: React.FC<MediaViewerHeaderProps> = ({
       {/* Right side - Action buttons */}
       <HeaderActions {...headerActionsProps} />
     </div>
-  </div>
+  </header>
 );
 
 interface ImageViewerProps {
@@ -430,9 +429,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const progressPercentage = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
-    <div
-      ref={videoContainerRef}
-      className={`relative flex flex-col ${isLandscape && isMobile ? 'w-full h-full' : 'max-w-full max-h-full w-full'} ${isFullscreen ? 'bg-black' : ''}`}
+    <button
+      type="button"
+      className={`relative flex flex-col w-full h-full border-none bg-transparent p-0 ${isLandscape && isMobile ? 'w-full h-full' : 'max-w-full max-h-full w-full'} ${isFullscreen ? 'bg-black' : ''}`}
       onClick={(e) => {
         // Smart click handling: Single click toggles play/pause immediately, double click toggles fullscreen
         const now = Date.now();
@@ -444,13 +443,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           lastClickTimeRef.current = now;
         }
       }}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          togglePlayPause();
-        }
-      }}
-      role="button"
-      tabIndex={0}
+      aria-label="Lecteur vidéo"
     >
       <div className="flex-1 flex items-center justify-center relative">
         <video
@@ -603,7 +596,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           </button>
         </div>
       </div>
-    </div>
+    </button>
   );
 };
 

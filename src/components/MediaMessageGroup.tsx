@@ -53,16 +53,15 @@ export const MediaMessageGroup: React.FC<MediaMessageGroupProps> = ({
     const item = items[0];
     return (
       <>
-        <div
-          className="relative cursor-pointer max-w-[240px] sm:max-w-[280px] rounded-xl overflow-hidden border-[3px] border-[#787add] message-media-container"
+        <button
+          type="button"
+          className="relative cursor-pointer max-w-[240px] sm:max-w-[280px] rounded-xl overflow-hidden border-[3px] border-[#787add] message-media-container text-left"
           onClick={() => openFullscreen(0)}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
               openFullscreen(0);
             }
           }}
-          role="button"
-          tabIndex={0}
           aria-label="Afficher l'image en plein écran"
         >
           {item.type === 'image' ? (
@@ -84,7 +83,7 @@ export const MediaMessageGroup: React.FC<MediaMessageGroupProps> = ({
           {item.caption && (
             <p className="mt-1.5 text-sm">{item.caption}</p>
           )}
-        </div>
+        </button>
         {renderFullscreenModal()}
       </>
     );
@@ -96,17 +95,16 @@ export const MediaMessageGroup: React.FC<MediaMessageGroupProps> = ({
       <>
         <div className="flex gap-0.5 max-w-[280px] sm:max-w-[320px] rounded-xl overflow-hidden border-[3px] border-[#787add] message-media-container">
           {items.map((item, index) => (
-            <div
+            <button
+              type="button"
               key={item.id}
-              className="flex-1 cursor-pointer relative"
+              className="flex-1 cursor-pointer relative text-left"
               onClick={() => openFullscreen(index)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   openFullscreen(index);
                 }
               }}
-              role="button"
-              tabIndex={0}
               aria-label={`Image ${index + 1}`}
             >
               {item.type === 'image' ? (
@@ -123,7 +121,7 @@ export const MediaMessageGroup: React.FC<MediaMessageGroupProps> = ({
                   </video>
                 </div>
               )}
-            </div>
+            </button>
           ))}
         </div>
         {renderFullscreenModal()}
@@ -137,17 +135,16 @@ export const MediaMessageGroup: React.FC<MediaMessageGroupProps> = ({
       <>
         <div className="grid grid-cols-2 gap-0.5 max-w-[280px] sm:max-w-[320px] rounded-xl overflow-hidden border-[3px] border-[#787add] message-media-container">
           {visibleItems.map((item, index) => (
-            <div
+            <button
+              type="button"
               key={item.id}
-              className="cursor-pointer relative aspect-square"
+              className="cursor-pointer relative aspect-square text-left"
               onClick={() => openFullscreen(index)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   openFullscreen(index);
                 }
               }}
-              role="button"
-              tabIndex={0}
               aria-label={`Image ${index + 1}`}
             >
               {item.type === 'image' ? (
@@ -164,7 +161,7 @@ export const MediaMessageGroup: React.FC<MediaMessageGroupProps> = ({
                   </video>
                 </div>
               )}
-            </div>
+            </button>
           ))}
         </div>
         {renderFullscreenModal()}
@@ -177,17 +174,16 @@ export const MediaMessageGroup: React.FC<MediaMessageGroupProps> = ({
     <>
       <div className="grid grid-cols-2 gap-0.5 max-w-[280px] sm:max-w-[320px] rounded-xl overflow-hidden border-[3px] border-[#787add] message-media-container">
         {visibleItems.map((item, index) => (
-          <div
+          <button
+            type="button"
             key={item.id}
-            className="cursor-pointer relative aspect-square"
+            className="cursor-pointer relative aspect-square text-left"
             onClick={() => openFullscreen(index)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {
                 openFullscreen(index);
               }
             }}
-            role="button"
-            tabIndex={0}
             aria-label={`Image ${index + 1}`}
           >
             {item.type === 'image' ? (
@@ -213,7 +209,7 @@ export const MediaMessageGroup: React.FC<MediaMessageGroupProps> = ({
                 </span>
               </div>
             )}
-          </div>
+          </button>
         ))}
       </div>
       {renderFullscreenModal()}
@@ -226,21 +222,21 @@ export const MediaMessageGroup: React.FC<MediaMessageGroupProps> = ({
     const currentItem = items[currentIndex];
 
     return (
-      <div
-        className="fixed inset-0 bg-black z-[200] flex flex-col"
+      <button
+        type="button"
+        className="fixed inset-0 bg-black z-[200] flex flex-col cursor-default"
         onClick={closeFullscreen}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
             closeFullscreen();
           }
         }}
-        role="button"
-        tabIndex={0}
         aria-label="Fermer le plein écran"
       >
         {/* Header */}
         <div className="flex items-center justify-between p-4 safe-area-top">
           <button
+            type="button"
             onClick={closeFullscreen}
             className="p-2 rounded-full bg-white/10 backdrop-blur-sm hover:bg-white/20 transition-colors"
           >
@@ -257,6 +253,7 @@ export const MediaMessageGroup: React.FC<MediaMessageGroupProps> = ({
           {/* Previous button */}
           {items.length > 1 && (
             <button
+              type="button"
               onClick={goToPrevious}
               className="absolute left-2 sm:left-4 p-2 rounded-full bg-white/10 backdrop-blur-sm hover:bg-white/20 transition-colors z-10"
             >
@@ -269,7 +266,7 @@ export const MediaMessageGroup: React.FC<MediaMessageGroupProps> = ({
             className="max-w-full max-h-full" 
             onClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => e.stopPropagation()}
-            role="presentation"
+            aria-hidden="true"
           >
             {currentItem.type === 'image' ? (
               <img
@@ -292,6 +289,7 @@ export const MediaMessageGroup: React.FC<MediaMessageGroupProps> = ({
           {/* Next button */}
           {items.length > 1 && (
             <button
+              type="button"
               onClick={goToNext}
               className="absolute right-2 sm:right-4 p-2 rounded-full bg-white/10 backdrop-blur-sm hover:bg-white/20 transition-colors z-10"
             >
@@ -306,6 +304,7 @@ export const MediaMessageGroup: React.FC<MediaMessageGroupProps> = ({
             <div className="flex justify-center gap-2 overflow-x-auto">
               {items.map((item, index) => (
                 <button
+                  type="button"
                   key={item.id}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -338,7 +337,7 @@ export const MediaMessageGroup: React.FC<MediaMessageGroupProps> = ({
             <p className="text-white text-sm">{currentItem.caption}</p>
           </div>
         )}
-      </div>
+      </button>
     );
   }
 };

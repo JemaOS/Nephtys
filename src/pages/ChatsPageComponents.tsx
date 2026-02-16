@@ -432,16 +432,15 @@ const ConversationItem = ({
   rowClass: string;
 }) => {
   return (
-    <div
-      className={`px-4 py-3 cursor-pointer transition-colors ${rowClass}`}
+    <button
+      type="button"
+      className={`w-full px-4 py-3 cursor-pointer transition-colors text-left ${rowClass}`}
       onClick={() => handleConversationClick(conversation.id)}
       onContextMenu={(e) => {
         if (!isSelectionMode) {
           handleContextMenu(e, conversation.id)
         }
       }}
-      role="button"
-      tabIndex={0}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           handleConversationClick(conversation.id)
@@ -521,7 +520,7 @@ const ConversationItem = ({
           </div>
         </div>
       </div>
-    </div>
+    </button>
   )
 }
 

@@ -17,47 +17,59 @@ interface Position {
 
 /**
  * Extract YouTube video ID from various URL formats
+ * Uses native URL API for better performance and security
  */
 export const extractYouTubeVideoId = (url: string): string | null => {
   try {
-    // Try using URL API first - safer and more robust
     const urlObj = new URL(url);
     const hostname = urlObj.hostname;
     
-    if (hostname.includes('youtube.com') || hostname.includes('www.youtube.com')) {
+    // Handle youtube.com/watch?v=VIDEO_ID
+    if (hostname === 'youtube.com' || hostname === 'www.youtube.com' || hostname.includes('youtube.com')) {
       if (urlObj.pathname === '/watch') {
-        return urlObj.searchParams.get('v');
+        const videoId = urlObj.searchParams.get('v');
+        if (videoId && videoId.length === 11) {
+          return videoId;
+        }
       }
+      // Handle youtube.com/embed/VIDEO_ID, youtube.com/v/VIDEO_ID, youtube.com/shorts/VIDEO_ID
       if (urlObj.pathname.startsWith('/embed/') || urlObj.pathname.startsWith('/v/') || urlObj.pathname.startsWith('/shorts/')) {
-        return urlObj.pathname.split('/')[2];
+        const parts = urlObj.pathname.split('/');
+        if (parts.length >= 3 && parts[2].length === 11) {
+          return parts[2];
+        }
       }
     }
     
-    if (hostname.includes('youtu.be')) {
-      return urlObj.pathname.slice(1);
+    // Handle youtu.be/VIDEO_ID (short URL)
+    if (hostname === 'youtu.be' || hostname.includes('youtu.be')) {
+      const videoId = urlObj.pathname.slice(1);
+      if (videoId && videoId.length === 11) {
+        return videoId;
+      }
     }
-  } catch (e) {
-    // Continue to regex fallback if URL parsing fails
+  } catch {
+    // Invalid URL
   }
-
-  const patterns = [
-    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/v\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/,
-  ];
-
-  for (const pattern of patterns) {
-    const match = pattern.exec(url);
-    if (match && match[1]) {
-      return match[1];
-    }
-  }
+  
   return null;
 };
 
 /**
  * Check if a URL is a YouTube video
+ * Uses native URL API for better performance
  */
 export const isYouTubeUrl = (url: string): boolean => {
-  return /(?:youtube\.com|youtu\.be)/.test(url) && extractYouTubeVideoId(url) !== null;
+  try {
+    const urlObj = new URL(url);
+    const hostname = urlObj.hostname;
+    const isYouTube = hostname === 'youtube.com' || hostname === 'www.youtube.com' || 
+                      hostname.includes('youtube.com') || hostname === 'youtu.be' || 
+                      hostname.includes('youtu.be');
+    return isYouTube && extractYouTubeVideoId(url) !== null;
+  } catch {
+    return false;
+  }
 };
 
 /**
@@ -209,16 +221,12 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
         }}
       >
         {/* Drag Handle - Full header area */}
-        <div
-          className="absolute top-0 left-0 right-0 z-20 bg-gradient-to-b from-black/80 to-transparent p-2 flex items-center justify-between cursor-grab active:cursor-grabbing"
+        <button
+          type="button"
+          className="absolute top-0 left-0 right-0 z-20 bg-gradient-to-b from-black/80 to-transparent p-2 flex items-center justify-between cursor-grab active:cursor-grabbing text-left"
           onMouseDown={handleDragStart}
           onTouchStart={handleDragStart}
-          role="button"
-          tabIndex={0}
           aria-label="Déplacer le lecteur"
-          onKeyDown={(e) => {
-            // Allow keyboard navigation if needed
-          }}
         >
           {/* Drag indicator */}
           <div className="flex items-center gap-1.5 flex-1 mr-2">
@@ -227,6 +235,7 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
           </div>
           <div className="flex gap-1">
             <button
+              type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 toggleFullscreen();
@@ -237,6 +246,7 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
               <Maximize2 size={14} className="text-white" />
             </button>
             <button
+              type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 onClose();
@@ -247,7 +257,7 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
               <X size={14} className="text-white" />
             </button>
           </div>
-        </div>
+        </button>
 
         {/* Video iframe */}
         <iframe
@@ -272,6 +282,7 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
       {/* Header */}
       <div className="flex items-center justify-between p-4 bg-gradient-to-b from-black/80 to-transparent absolute top-0 left-0 right-0 z-10">
         <button
+          type="button"
           onClick={togglePiP}
           className="w-10 h-10 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center transition-colors"
           title="Picture-in-Picture"
@@ -281,6 +292,7 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
         </button>
         
         <button
+          type="button"
           onClick={onClose}
           className="w-10 h-10 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center transition-colors"
           aria-label="Fermer"
@@ -315,6 +327,7 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
           <span>{formatTime(currentTime)}</span>
           <div className="flex items-center gap-2">
             <button
+              type="button"
               onClick={togglePiP}
               className="px-3 py-1.5 rounded-full bg-white/20 hover:bg-white/30 text-white text-xs flex items-center gap-1 transition-colors"
             >

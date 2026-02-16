@@ -448,7 +448,7 @@ export class E2EEMessagingService {
     }
     
     // Get the session
-    let session = this.sessions.get(senderId);
+    const session = this.sessions.get(senderId);
     if (!session) {
       throw new Error(`No session exists for sender: ${senderId}`);
     }

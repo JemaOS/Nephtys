@@ -42,7 +42,7 @@ import { MessageItem } from '@/components/MessageItem'
 import { ChatHeader, CallLog, TimelineItem, MessageList } from './ChatViewPageComponents'
 
 // Complete emoji list for chat input
-const CHAT_EMOJIS = [
+const CHAT_EMOJIS: string[] = [
   // Smiles et émotions
   '😊', '😂', '😍', '🤔', '😢', '😭', '😡', '😎', '🥳', '😮', '🤩', '😌', '🤗', '🤭', '🤫', '🤥', '😶', '😏', '😬', '😱',
   // Gestes et mains
@@ -105,8 +105,8 @@ const isEmojiOnly = (text: string): { isEmoji: boolean; emojiCount: number } => 
       // Digits with variation selector
       '(?:[\\u0030-\\u0039]\\uFE0F\\u20E3)' +
       '|' +
-      // Zodiac and misc symbols
-      '(?:[♈♉♊♋♌♍♎♏♐♑♒♓⛎🉀🉁🉂🉃🉄🉅🉆🉇🉈🉊🉋🉌🉍🉎🉏🉐🉑🉒🉓🉔🉕🉖🉗🉘🉙🉚🉛🉜🉝🉞🉟🉠🉡🉢🉣🉤🉥🉦🉧🉨🉩🉪🉫🉬🉭🉮🉯🉰🉱🉲🉳🉴🉵🉶🉷🉸🉹🉺🉻🉼🉽🉾🉿🊀🊁🊂🊃🊄🊅🊆🊇🊈🊉🊊🊋🊌🊍🊎🊏🊐🊑🊒🊓🊔🊕🊖🊗🊘🊙🊚🊛🊜🊝🊞🊟🊠🊡🊢🊣🊤🊥🊦🊧🊨🊩🊪🊫🊬🊭🊮🊯🊰🊱🊲🊳🊴🊵🊶🊷🊸🊹🊺🊻🊼🊽🊾🊿🋀🋁🋂🋃🋄🋅🋆🋇🋈🋉🋊🋋🋌🋍🋎🋏])' +
+      // Zodiac - moved outside character class to avoid surrogate pair issues
+      '(?:[♈-♓⛎])' +
     ')' +
     // Optional ZWJ sequences and modifiers
     '(?:' +
@@ -209,12 +209,15 @@ const requestMediaPermissions = async (video: boolean): Promise<MediaStream | nu
 }
 
 // Extract video call handler logic to reduce complexity
+type StartCallFunction = (userId: string, conversationId: string, media: { audio: boolean; video: boolean }) => Promise<void>;
+type StartGroupCallFunction = (conversationId: string, media: { audio: boolean; video: boolean }) => Promise<void>;
+
 const startVideoCall = async (
   conversationId: string,
   conversationType: string | undefined,
   otherUser: Profile | null,
-  startGroupCall: Function,
-  startCall: Function
+  startGroupCall: StartGroupCallFunction,
+  startCall: StartCallFunction
 ): Promise<void> => {
   if (!conversationId) return
   
@@ -237,8 +240,8 @@ const startAudioCall = async (
   conversationId: string,
   conversationType: string | undefined,
   otherUser: Profile | null,
-  startGroupCall: Function,
-  startCall: Function
+  startGroupCall: StartGroupCallFunction,
+  startCall: StartCallFunction
 ): Promise<void> => {
   if (!conversationId) return
   
@@ -2437,7 +2440,7 @@ export function ChatViewPage() {
                     id: replyToMessage.id,
                     content: replyToMessage.content,
                     sender_id: replyToMessage.sender_id,
-                    senderName: replyToMessage.sender_id === user?.id ? 'Vous' : otherUser?.display_name || otherUser?.username || 'Utilisateur',
+                    senderName: getSenderInfo(replyToMessage.sender_id).name,
                     mediaUrl: replyToMessage.media_url || replyToMessage.file_url,
                     mediaType: replyToMessage.media_type || replyToMessage.type,
                     fileName: replyToMessage.file_name
@@ -2595,7 +2598,7 @@ export function ChatViewPage() {
           conversationAvatar={conversation?.avatar_url}
           otherUser={otherUser}
           currentUserId={user?.id || ''}
-          isAdmin={conversation?.type === 'group' ? true : false}
+          isAdmin={conversation?.type === 'group'}
           onClose={() => {
             setShowConversationInfo(false)
             setShowAddMemberModal(false)
@@ -2620,7 +2623,7 @@ export function ChatViewPage() {
           messageType={contextMenu.message.type as 'text' | 'image' | 'video' | 'file' | 'audio'}
           isOwn={contextMenu.message.sender_id === user?.id}
           isGroupChat={conversation?.type === 'group'}
-          senderName={contextMenu.message.sender_id === user?.id ? profile?.display_name || profile?.username : otherUser?.display_name || otherUser?.username}
+          senderName={getSenderInfo(contextMenu.message.sender_id).name}
           mediaUrl={contextMenu.message.media_url || undefined}
           onClose={closeContextMenu}
           onReply={() => setReplyToMessage(contextMenu.message)}

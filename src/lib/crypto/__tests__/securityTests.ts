@@ -20,7 +20,6 @@
  * @module crypto/__tests__/securityTests
  */
 
-// @ts-ignore - vitest types may not be installed
 import { describe, test, expect, beforeEach, afterEach } from 'vitest';
 
 // Import all crypto modules
@@ -421,27 +420,27 @@ describe('Double Ratchet Algorithm', () => {
       const conversation: string[] = [];
       
       // Alice sends
-      let [aState, aMsg1] = encryptMessage(aliceState, 'Hello Bob!');
+      const [aState, aMsg1] = encryptMessage(aliceState, 'Hello Bob!');
       aliceState = aState;
       
       // Bob receives and responds
-      let [bState, received1] = decryptMessage(bobState, aMsg1);
+      const [bState, received1] = decryptMessage(bobState, aMsg1);
       bobState = bState;
       conversation.push(received1);
       
-      let [bState2, bMsg1] = encryptMessage(bobState, 'Hi Alice!');
+      const [bState2, bMsg1] = encryptMessage(bobState, 'Hi Alice!');
       bobState = bState2;
       
       // Alice receives and responds
-      let [aState2, received2] = decryptMessage(aliceState, bMsg1);
+      const [aState2, received2] = decryptMessage(aliceState, bMsg1);
       aliceState = aState2;
       conversation.push(received2);
       
-      let [aState3, aMsg2] = encryptMessage(aliceState, 'How are you?');
+      const [aState3, aMsg2] = encryptMessage(aliceState, 'How are you?');
       aliceState = aState3;
       
       // Bob receives
-      let [bState3, received3] = decryptMessage(bobState, aMsg2);
+      const [bState3, received3] = decryptMessage(bobState, aMsg2);
       bobState = bState3;
       conversation.push(received3);
       
@@ -1210,8 +1209,8 @@ describe('Integration Tests', () => {
     const charlieBundle = getPublicKeyBundle(charlie.keyBundle, 0);
     
     // Alice establishes sessions with both Bob and Charlie
-    let aliceBobSession = establishSession(alice, bobBundle, 'alice-bob');
-    let aliceCharlieSession = establishSession(alice, charlieBundle, 'alice-charlie');
+    const aliceBobSession = establishSession(alice, bobBundle, 'alice-bob');
+    const aliceCharlieSession = establishSession(alice, charlieBundle, 'alice-charlie');
     
     // Send different messages to each
     const { encrypted: toBob } = sessionEncrypt(aliceBobSession, 'Hello Bob!');

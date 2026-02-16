@@ -146,13 +146,20 @@ export const isEmojiOnly = (text: string): { isEmoji: boolean; emojiCount: numbe
   if (!emojis) return { isEmoji: false, emojiCount: 0 }
   
   const emojiString = emojis.join('')
-  const textWithoutWhitespace = trimmed.replaceAll('\s', '')
+  const textWithoutWhitespace = trimmed.replace(/\s/g, '')
   
   if (textWithoutWhitespace === emojiString && emojis.length >= 1 && emojis.length <= 3) {
     return { isEmoji: true, emojiCount: emojis.length }
   }
   
   return { isEmoji: false, emojiCount: 0 }
+}
+
+// Helper function to get emoji size class based on count
+export const getEmojiSizeClass = (emojiCount: number): string => {
+  if (emojiCount === 1) return 'text-7xl';
+  if (emojiCount === 2) return 'text-6xl';
+  return 'text-5xl';
 }
 
 export interface CallLog {
@@ -312,11 +319,10 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
             {/* Selection mode dropdown menu */}
             {showSelectionMenu && (
               <>
-                <div
-                  className="fixed inset-0 z-40"
+                <button
+                  type="button"
+                  className="fixed inset-0 z-40 cursor-default"
                   onClick={() => setShowSelectionMenu(false)}
-                  role="button"
-                  tabIndex={0}
                   aria-label="Fermer le menu"
                   onKeyDown={(e) => {
                     if (e.key === 'Escape') {
@@ -506,11 +512,10 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
           
           {showConversationMenu && (
             <>
-              <div
-                className="fixed inset-0 z-40"
+              <button
+                type="button"
+                className="fixed inset-0 z-40 cursor-default"
                 onClick={() => setShowConversationMenu(false)}
-                role="button"
-                tabIndex={0}
                 aria-label="Fermer le menu"
                 onKeyDown={(e) => {
                   if (e.key === 'Escape') {
@@ -654,9 +659,7 @@ const EmojiMessageDisplay = ({ message, typeInfo, hoveredMessageId, isOwn, setCo
         });
       }}
     />
-    <div className={`${
-      typeInfo.emojiCount === 1 ? 'text-7xl' : typeInfo.emojiCount === 2 ? 'text-6xl' : 'text-5xl'
-    } leading-none py-1`}>
+    <div className={`${getEmojiSizeClass(typeInfo.emojiCount)} leading-none py-1`}>
       {message.content}
     </div>
     <MessageTimestamp timestamp={message.created_at} isStarred={message.is_starred || false} isOwn={isOwn} status={message.status} />
@@ -926,6 +929,7 @@ const TextMessageDisplay = ({ message, hoveredMessageId, isOwn, setContextMenu, 
                   displayContent = cleanLinkPreviewContent(message.content, previewData.url)
                 }
               } catch {
+                // Ignore parse errors - link preview data may be malformed
               }
             }
             return displayContent ? <p className="text-sm whitespace-pre-wrap break-words">{displayContent}</p> : null

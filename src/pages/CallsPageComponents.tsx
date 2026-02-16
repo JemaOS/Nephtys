@@ -114,16 +114,15 @@ export const CallItem = ({
   }
 
   return (
-    <div
-      className={`px-4 py-3 transition-colors cursor-pointer ${containerClass}`}
+    <button
+      type="button"
+      className={`w-full px-4 py-3 transition-colors cursor-pointer text-left ${containerClass}`}
       onClick={onClick}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           onClick();
         }
       }}
-      role="button"
-      tabIndex={0}
       onContextMenu={onContextMenu}
       onTouchStart={onTouchStart}
       onTouchEnd={onTouchEnd}
@@ -174,7 +173,7 @@ export const CallItem = ({
           {formatCallDate(call.started_at)}
         </div>
       </div>
-    </div>
+    </button>
   )
 }
 
@@ -356,7 +355,7 @@ export const CallContextMenu = ({
         className="fixed inset-0 z-40"
         onClick={handleCloseContextMenu}
         onKeyDown={(e) => e.stopPropagation()}
-        role="presentation"
+        aria-hidden="true"
       />
       
       {/* Menu contextuel */}

@@ -1000,11 +1000,14 @@ export function CallsPage() {
 
   const filteredCalls = filterCalls(calls, searchQuery, user?.id)
 
-  // Helper to get favorite ID for a call
+  // Helper to get favorite ID for a call - extracted to avoid ternary nest
   const getFavoriteId = (call: CallLog): string => {
-    return call.is_group_call
-      ? call.conversation_id
-      : (call.caller_id === user?.id ? call.callee_profile?.id : call.caller_profile?.id)
+    if (call.is_group_call) {
+      return call.conversation_id;
+    }
+    // For direct calls, determine the other user
+    const isOutgoing = call.caller_id === user?.id;
+    return isOutgoing ? call.callee_profile?.id : call.caller_profile?.id;
   }
 
   // Helper to check if a call is a favorite
@@ -1032,11 +1035,14 @@ export function CallsPage() {
     return otherProfile?.avatar_url
   }
 
-  // Helper to get call status text
+  // Helper to get call status text - extracted to avoid ternary nest
   const getCallStatusText = (call: CallLog): string => {
-    return call.is_group_call
-      ? 'Appel de groupe'
-      : (call.caller_id === user?.id ? 'Appel sortant' : 'Appel entrant')
+    if (call.is_group_call) {
+      return 'Appel de groupe';
+    }
+    // For direct calls, determine if outgoing or incoming
+    const isOutgoing = call.caller_id === user?.id;
+    return isOutgoing ? 'Appel sortant' : 'Appel entrant';
   }
 
   // Helper to get call type text
@@ -1779,11 +1785,10 @@ export function CallsPage() {
       {contextMenuCall && contextMenuPosition && !isSelectionMode && (
         <>
           {/* Overlay pour fermer le menu */}
-          <div
-            className="fixed inset-0 z-40"
+          <button
+            type="button"
+            className="fixed inset-0 z-40 cursor-default"
             onClick={handleCloseContextMenu}
-            role="button"
-            tabIndex={0}
             aria-label="Fermer le menu"
             onKeyDown={(e) => {
               if (e.key === 'Escape') {

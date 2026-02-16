@@ -15,8 +15,30 @@ export interface LinkPreviewData {
   domain: string;
 }
 
-// URL regex pattern to detect URLs in text
-const URL_REGEX = /https?:\/\/(www\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_+.~#?&/=]*)/gi;
+// URL extraction using native URL API for better performance and security
+const extractUrlsInternal = (text: string): string[] => {
+  // Use a simple pattern to find potential URLs, then validate with URL API
+  const urlPattern = /https?:\/\/[^\s<>"]+/gi;
+  const matches = text.match(urlPattern) || [];
+  
+  // Validate and dedupe using URL API
+  const validUrls: string[] = [];
+  const seen = new Set<string>();
+  
+  for (const match of matches) {
+    try {
+      const url = new URL(match);
+      if (!seen.has(url.href)) {
+        seen.add(url.href);
+        validUrls.push(url.href);
+      }
+    } catch {
+      // Invalid URL, skip
+    }
+  }
+  
+  return validUrls;
+}
 
 /**
  * Extract URLs from text
@@ -24,8 +46,7 @@ const URL_REGEX = /https?:\/\/(www\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\.[a-zA-Z0-9()
  * @returns Array of URLs found in the text
  */
 export function extractUrls(text: string): string[] {
-  const matches = text.match(URL_REGEX);
-  return matches ? [...new Set(matches)] : [];
+  return extractUrlsInternal(text);
 }
 
 /**

@@ -128,16 +128,10 @@ export const ConversationActions: React.FC<ConversationActionsProps> = ({
       {isOpen && (
         <>
           {/* Backdrop */}
-          <div
-            className="fixed inset-0 z-40"
+          <button
+            type="button"
+            className="fixed inset-0 z-40 border-none cursor-default"
             onClick={() => setIsOpen(false)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                setIsOpen(false);
-              }
-            }}
-            role="button"
-            tabIndex={0}
             aria-label="Fermer le menu"
           />
 

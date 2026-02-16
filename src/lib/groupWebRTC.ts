@@ -275,7 +275,7 @@ export class GroupCallManager {
     console.log('🎥 GroupWebRTC: Handling offer from:', participantId);
 
     // Get or create peer connection
-    let participant = this.participants.get(participantId);
+    const participant = this.participants.get(participantId);
     let peerConnection = participant?.peerConnection;
     
     if (!peerConnection) {

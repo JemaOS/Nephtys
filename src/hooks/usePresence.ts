@@ -20,7 +20,7 @@ interface UserPresence {
 // Global presence channel - shared across all components
 let globalPresenceChannel: RealtimeChannel | null = null
 let globalPresenceState: UserPresence = {}
-let presenceListeners: Set<(state: UserPresence) => void> = new Set()
+const presenceListeners: Set<(state: UserPresence) => void> = new Set()
 let currentUserId: string | null = null
 let heartbeatInterval: NodeJS.Timeout | null = null
 

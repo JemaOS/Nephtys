@@ -75,6 +75,13 @@ const getDocumentIconConfig = (extension: string): { bgColor: string; icon: Reac
   };
 };
 
+// Helper function to get folder name based on file type - extracted to avoid ternary nest
+const getFolderForFileType = (type: 'image' | 'video' | 'file' | 'audio'): string => {
+  if (type === 'image') return 'images';
+  if (type === 'video') return 'videos';
+  return 'documents';
+}
+
 // Module-level helper: Check if video needs compression
 const checkVideoNeedsCompression = async (previewUrl: string): Promise<boolean> => {
   return new Promise<boolean>((resolve) => {
@@ -463,7 +470,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       }
     }
     
-    const folder = type === 'image' ? 'images' : type === 'video' ? 'videos' : 'documents';
+    const folder = getFolderForFileType(type);
     const fileName = `${userId}/${folder}/${Date.now()}_${file.name.replaceAll(/[^a-zA-Z0-9.-]/g, "_")}`;
 
     const { data, error } = await supabase.storage
@@ -503,73 +510,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
     return uploadedFile;
   };
 
-  // Process a single file for upload - extracted to reduce component complexity
-  const processFileForUpload = async (
-    fileItem: { file: File; preview: string; type: 'image' | 'video' | 'file' | 'audio' },
-    userId: string,
-    index: number
-  ): Promise<UploadedFileData | null> => {
-    const { file, type } = fileItem;
-    
-    let fileToUpload: Blob = file;
-    let processedImage: ProcessedImage | null = null;
-    
-    // Compress images before upload
-    if (type === 'image') {
-      try {
-        processedImage = await processImageForUpload(file);
-        fileToUpload = processedImage.blob;
-      } catch (err) {
-        console.warn('Image compression failed, using original:', err);
-      }
-    }
-
-    // Compress video if needed
-    if (type === 'video') {
-      const shouldCompress = await checkVideoNeedsCompression(fileItem.preview);
-      if (shouldCompress) {
-        console.log(`Compressing video ${file.name}...`);
-        const compressedBlob = await compressVideo(file);
-        fileToUpload = compressedBlob;
-      }
-    }
-    
-    const folder = type === 'image' ? 'images' : type === 'video' ? 'videos' : 'documents';
-    const fileName = `${userId}/${folder}/${Date.now()}_${file.name.replaceAll(/[^a-zA-Z0-9.-]/g, "_")}`;
-
-    const { data, error } = await supabase.storage
-      .from('media')
-      .upload(fileName, fileToUpload, {
-        cacheControl: '3600',
-        upsert: false,
-        contentType: file.type || 'application/octet-stream',
-      });
-
-    if (error) {
-      console.error('Upload error:', error);
-      return null;
-    }
-
-    const { data: { publicUrl } } = supabase.storage
-      .from('media')
-      .getPublicUrl(fileName);
-
-    const uploadedFile: UploadedFileData = {
-      url: publicUrl,
-      type,
-      fileName: file.name,
-      fileSize: fileToUpload instanceof Blob ? fileToUpload.size : file.size,
-    };
-    
-    // Add image dimensions if available
-    if (processedImage) {
-      uploadedFile.width = processedImage.dimensions.width;
-      uploadedFile.height = processedImage.dimensions.height;
-      uploadedFile.thumbnail = processedImage.thumbnailDataUrl;
-    }
-    
-    return uploadedFile;
-  };
+  // Handle multiple file upload (WhatsApp-like)
   const handleMultipleUpload = async () => {
     if (selectedFiles.length === 0) return;
 
@@ -626,6 +567,77 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
     } finally {
       setUploading(false);
     }
+  };
+
+  // Process a single file for upload - extracted to reduce component complexity
+  const processFileForUpload = async (
+    fileItem: { file: File; preview: string; type: 'image' | 'video' | 'file' | 'audio' },
+    userId: string,
+    index: number
+  ): Promise<UploadedFileData | null> => {
+    const { file, type } = fileItem;
+    
+    let fileToUpload: Blob = file;
+    let processedImage: ProcessedImage | null = null;
+    
+    // Compress images before upload
+    if (type === 'image') {
+      try {
+        processedImage = await processImageForUpload(file);
+        fileToUpload = processedImage.blob;
+      } catch (err) {
+        console.warn('Image compression failed, using original:', err);
+      }
+    }
+
+    // Compress video if needed
+    if (type === 'video') {
+      const shouldCompress = await checkVideoNeedsCompression(fileItem.preview);
+      if (shouldCompress) {
+        console.log(`Compressing video ${file.name}...`);
+        const compressedBlob = await compressVideo(file);
+        fileToUpload = compressedBlob;
+      }
+    }
+    
+    const folder = getFolderForFileType(type);
+    const fileName = `${userId}/${folder}/${Date.now()}_${file.name.replaceAll(/[^a-zA-Z0-9.-]/g, "_")}`;
+
+    const { data, error } = await supabase.storage
+      .from('media')
+      .upload(fileName, fileToUpload, {
+        cacheControl: '3600',
+        upsert: false,
+        contentType: file.type || 'application/octet-stream',
+      });
+
+    if (error) {
+      console.error('Upload error:', error);
+      return null;
+    }
+
+    const { data: { publicUrl } } = supabase.storage
+      .from('media')
+      .getPublicUrl(fileName);
+
+    const uploadedFile: UploadedFileData = {
+      url: publicUrl,
+      type,
+      fileName: file.name,
+      fileSize: fileToUpload instanceof Blob ? fileToUpload.size : file.size,
+    };
+    
+    // Add image dimensions if available
+    if (processedImage) {
+      uploadedFile.width = processedImage.dimensions.width;
+      uploadedFile.height = processedImage.dimensions.height;
+      uploadedFile.thumbnail = processedImage.thumbnailDataUrl;
+    }
+    
+    // Update progress
+    setUploadProgress(Math.round(((index + 1)) * 100));
+    
+    return uploadedFile;
   };
 
   // Camera functions
@@ -1339,7 +1351,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
               {/* Thumbnails row - scrollable */}
               <div className="flex items-center gap-2 overflow-x-auto pb-2">
                 {selectedFiles.map((item, index) => (
-                  <div key={index} className="relative flex-shrink-0">
+                  <div key={`file-${index}-${item.file.name}`} className="relative flex-shrink-0">
                     <div className={`w-14 h-14 md:w-16 md:h-16 rounded-lg overflow-hidden border-2 ${index === 0 ? 'border-accent' : 'border-transparent'}`}>
                       {item.type === 'image' && item.preview && (
                         <img

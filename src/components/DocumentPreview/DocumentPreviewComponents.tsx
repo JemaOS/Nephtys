@@ -300,7 +300,6 @@ export const DocumentPreviewContent: React.FC<DocumentPreviewContentProps> = ({
     role="button"
     aria-label="Zone de prévisualisation du document - Appuyez sur Échap pour fermer"
   >
-    {/* Loading state */}
     {loading && (
       <div className="flex items-center justify-center h-full w-full">
         <div className="flex flex-col items-center gap-3">
