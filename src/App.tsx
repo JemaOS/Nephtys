@@ -9,7 +9,6 @@ import { CallProvider } from './context/CallContext'
 import { PersistentCallScreen } from './components/PersistentCallScreen'
 import { useSupabaseReconnect } from './hooks/useSupabaseReconnect'
 import { useKeepAlive } from './hooks/useKeepAlive'
-import { startConnectionMonitoring, stopConnectionMonitoring } from './lib/supabase'
 import { useEffect, useState, useCallback, lazy, Suspense } from 'react'
 import { ErrorBoundary } from './components/ErrorBoundary'
 
@@ -91,6 +90,7 @@ function PrivateRoute({ children }: { readonly children: React.ReactNode }) {
 }
 
 // Component to handle Supabase reconnection for PWA
+// WHATSAPP-LEVEL STABILITY: Minimal reconnection logic
 function SupabaseReconnectHandler() {
   const { user } = useAuth()
   
@@ -99,42 +99,14 @@ function SupabaseReconnectHandler() {
   
   // Callback for keep-alive reconnect requests
   const handleKeepAliveReconnect = useCallback(() => {
-    console.log('[App] Keep-alive requested reconnect')
     reconnect()
   }, [reconnect])
   
   // Use keep-alive hook for PWA - maintains connection with Web Worker + Wake Lock
-  // Also includes auto-reload as last resort for stuck connections
-  const { markConnectionSuccess } = useKeepAlive(handleKeepAliveReconnect, !!user)
+  useKeepAlive(handleKeepAliveReconnect, !!user)
   
-  // Start connection monitoring when user is logged in
-  useEffect(() => {
-    if (user) {
-      // Start monitoring connection health
-      startConnectionMonitoring()
-      
-      // Listen for connection lost events
-      const handleConnectionLost = () => {
-        console.log('[App] Connection lost detected, triggering reconnect...')
-        reconnect()
-      }
-      
-      // Listen for successful data loads to mark connection as healthy
-      const handleConnectionSuccess = () => {
-        console.log('[App] Connection success detected')
-        markConnectionSuccess()
-      }
-      
-      globalThis.addEventListener('supabase-connection-lost', handleConnectionLost)
-      globalThis.addEventListener('supabase-connection-success', handleConnectionSuccess)
-      
-      return () => {
-        stopConnectionMonitoring()
-        globalThis.removeEventListener('supabase-connection-lost', handleConnectionLost)
-        globalThis.removeEventListener('supabase-connection-success', handleConnectionSuccess)
-      }
-    }
-  }, [user, reconnect, markConnectionSuccess])
+  // WHATSAPP-LEVEL STABILITY: No aggressive connection monitoring
+  // The useSupabaseReconnect hook handles reconnection automatically
   
   return null // This component doesn't render anything
 }

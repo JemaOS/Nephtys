@@ -1,4 +1,4 @@
-import { supabase, Conversation, Profile, Message, updateLastSuccessfulQuery } from '@/lib/supabase'
+import { supabase, Conversation, Profile, Message } from '@/lib/supabase'
 import { ConversationWithDetails } from '@/pages/ChatsPageComponents'
 
 export const fetchConversationMembers = async (userId: string) => {
@@ -17,13 +17,11 @@ export const fetchConversationMembers = async (userId: string) => {
     memberError = result.error
     
     if (!memberError && memberData) {
-      updateLastSuccessfulQuery()
       break
     }
     
     retryCount++
     if (retryCount <= maxRetries) {
-      console.log(`[ChatsPage] Query failed, retrying (${retryCount}/${maxRetries})...`)
       await new Promise(resolve => setTimeout(resolve, 1000 * retryCount))
     }
   }
