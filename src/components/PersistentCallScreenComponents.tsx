@@ -337,7 +337,7 @@ export function OneToOneCallUI({
 }) {
   return (
     <div className="fixed inset-0 z-[100] bg-gray-900 flex flex-col overflow-hidden">
-      <audio ref={(el) => { if (el && el.srcObject !== remoteStream) el.srcObject = remoteStream }} autoPlay playsInline style={{ display: 'none' }}>
+      <audio ref={(el) => { if (el && el.srcObject !== remoteStream) el.srcObject = remoteStream }} autoPlay style={{ display: 'none' }}>
         <track kind="captions" />
       </audio>
 

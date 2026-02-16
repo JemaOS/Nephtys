@@ -199,7 +199,9 @@ export const MediaMessageGroup: React.FC<MediaMessageGroupProps> = ({
               />
             ) : (
               <div className="w-full h-full bg-black flex items-center justify-center">
-                <video src={item.url} className="w-full h-full object-cover" />
+                <video src={item.url} className="w-full h-full object-cover">
+                  <track kind="captions" />
+                </video>
               </div>
             )}
             
