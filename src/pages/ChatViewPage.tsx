@@ -1227,13 +1227,17 @@ export function ChatViewPage() {
         messageData.ephemeral_duration = ephemeralDuration
         messageData.ephemeral_expires_at = expiresAt.toISOString()
       }
-      const { error } = await supabase.from('messages').insert(messageData).select()
-      if (!error) {
+      const { data, error } = await supabase.from('messages').insert(messageData).select()
+      if (!error && data && data[0]) {
         setNewMessage('')
         setReplyToMessage(null)
         setLinkPreview(null)
         setDismissedPreviewUrl(null)
         await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conversationId!)
+        // Dispatch event to update ChatsPage conversation list in real-time
+        window.dispatchEvent(new CustomEvent('message-sent-in-chat', {
+          detail: { conversationId, message: data[0] }
+        }))
       }
     } finally { setSending(false) }
   }
@@ -1300,6 +1304,10 @@ export function ChatViewPage() {
         // Replace optimistic message with real one
         setMessages(prev => prev.map(m => m.id === tempId ? data : m))
         await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conversationId!)
+        // Dispatch event to update ChatsPage conversation list in real-time
+        window.dispatchEvent(new CustomEvent('message-sent-in-chat', {
+          detail: { conversationId, message: data }
+        }))
       } else {
         // Remove optimistic message on error
         setMessages(prev => prev.filter(m => m.id !== tempId))
@@ -1391,6 +1399,10 @@ export function ChatViewPage() {
       }
       
       await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conversationId!)
+      // Dispatch event to update ChatsPage conversation list in real-time
+      window.dispatchEvent(new CustomEvent('message-sent-in-chat', {
+        detail: { conversationId, message: { id: `temp-${Date.now()}`, conversation_id: conversationId, created_at: new Date().toISOString(), type: 'file' } }
+      }))
     } finally {
       setSending(false)
     }
@@ -1460,6 +1472,10 @@ export function ChatViewPage() {
         // Replace optimistic message with real one
         setMessages(prev => prev.map(m => m.id === tempId ? insertedMessage : m))
         await supabase.from('conversations').update({ last_message_at: now }).eq('id', conversationId!)
+        // Dispatch event to update ChatsPage conversation list in real-time
+        window.dispatchEvent(new CustomEvent('message-sent-in-chat', {
+          detail: { conversationId, message: insertedMessage }
+        }))
       } else if (error) {
         // Remove optimistic message on error
         setMessages(prev => prev.filter(m => m.id !== tempId))
@@ -2405,6 +2421,10 @@ export function ChatViewPage() {
               if (!error && data) {
                 setMessages(prev => prev.map(m => m.id === tempId ? data : m))
                 await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conversationId!)
+                // Dispatch event to update ChatsPage conversation list in real-time
+                window.dispatchEvent(new CustomEvent('message-sent-in-chat', {
+                  detail: { conversationId, message: data }
+                }))
               } else {
                 setMessages(prev => prev.filter(m => m.id !== tempId))
               }

@@ -330,6 +330,51 @@ export function ChatsPage() {
     }, 500) // 500ms debounce
   }, [loadConversationsFromServer])
   
+  // Instant handler for new message in a conversation (for updating last_message_at instantly)
+  const handleNewMessageInConversation = useCallback((payload: any) => {
+    const newMessage = payload.new
+    if (newMessage && newMessage.conversation_id) {
+      console.log('[ChatsPage] New message detected, updating conversation:', newMessage.conversation_id)
+      // Instantly update the conversation's last_message_at
+      setConversations(prev => {
+        const updated = prev.map(conv => {
+          if (conv.id === newMessage.conversation_id) {
+            return {
+              ...conv,
+              last_message_at: newMessage.created_at,
+              lastMessage: newMessage
+            }
+          }
+          return conv
+        })
+        // Re-sort to put the conversation at the top
+        return sortConversations(updated)
+      })
+    }
+  }, [])
+  
+  // Handle message sent from ChatViewPage (via custom event)
+  const handleMessageSentFromChat = useCallback((event: CustomEvent) => {
+    const { conversationId, message } = event.detail
+    if (conversationId && message) {
+      console.log('[ChatsPage] Message sent from chat view, updating:', conversationId)
+      setConversations(prev => {
+        const updated = prev.map(conv => {
+          if (conv.id === conversationId) {
+            return {
+              ...conv,
+              last_message_at: message.created_at,
+              lastMessage: message
+            }
+          }
+          return conv
+        })
+        // Re-sort to put the conversation at the top
+        return sortConversations(updated)
+      })
+    }
+  }, [])
+  
   // Instant handler for conversation deletion (when user is removed from conversation)
   const handleConversationMemberRemoved = useCallback((payload: any) => {
     if (!user) return
@@ -611,9 +656,29 @@ export function ChatsPage() {
             schema: 'public',
             table: 'conversations'
           },
-          () => debouncedReload()
+          (payload) => {
+            console.log('[ChatsPage] Conversation change detected:', payload.eventType)
+            debouncedReload()
+          }
         )
-        .subscribe()
+        .subscribe((status) => {
+          console.log('[ChatsPage] Conversations channel status:', status)
+        })
+
+      // Subscribe to new messages for instant conversation update
+      const messagesChannel = supabase
+        .channel('chats-messages')
+        .on('postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'messages'
+          },
+          handleNewMessageInConversation
+        )
+        .subscribe((status) => {
+          console.log('[ChatsPage] Messages channel status:', status)
+        })
 
       // Subscribe to conversation_members changes (for when members are added/removed)
       const membersChannel = supabase
@@ -675,15 +740,18 @@ export function ChatsPage() {
       
       window.addEventListener('supabase-reconnected', handleSupabaseReconnect)
       window.addEventListener('supabase-connection-lost', handleConnectionLost)
+      window.addEventListener('message-sent-in-chat', handleMessageSentFromChat as EventListener)
 
       return () => {
         clearTimeout(loadingTimeout)
         supabase.removeChannel(conversationsChannel)
+        supabase.removeChannel(messagesChannel)
         supabase.removeChannel(membersChannel)
         supabase.removeChannel(profilesChannel)
         document.removeEventListener('visibilitychange', handleVisibilityChange)
         window.removeEventListener('supabase-reconnected', handleSupabaseReconnect)
         window.removeEventListener('supabase-connection-lost', handleConnectionLost)
+        window.removeEventListener('message-sent-in-chat', handleMessageSentFromChat as EventListener)
       }
     }
   }, [user, debouncedReload, loadConversationsFromServer])
@@ -848,6 +916,12 @@ export function ChatsPage() {
 
   const handleDeleteConversation = async (conversationId: string) => {
     if (confirm('Voulez-vous vraiment supprimer cette conversation ? La conversation sera supprimée de votre liste.')) {
+      // Cancel any pending debounced reload to prevent re-adding the conversation
+      if (reloadTimeoutRef.current) {
+        clearTimeout(reloadTimeoutRef.current)
+        reloadTimeoutRef.current = null
+      }
+      
       // Optimistic update - remove from list immediately
       const deletedConv = conversations.find(c => c.id === conversationId)
       setConversations(prev => prev.filter(c => c.id !== conversationId))
