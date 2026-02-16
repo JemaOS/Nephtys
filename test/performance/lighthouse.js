@@ -18,10 +18,10 @@ const startServer = () => {
       console.log(output); // Log output to debug
       
       // Strip ANSI codes for better matching
-      const cleanOutput = output.replace(/\u001b\[[0-9;]*m/g, '');
+      const cleanOutput = output.replaceAll(/\u001b\[[0-9;]*m/g, '');
       const match = cleanOutput.match(/http:\/\/localhost:(\d+)/);
       if (match) {
-          serverPort = parseInt(match[1], 10);
+          serverPort = Number.parseInt(match[1], 10);
           console.log(`Detected server port: ${serverPort}`);
       }
 
