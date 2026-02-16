@@ -801,39 +801,70 @@ export function ChatViewPage() {
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const messagesContentRef = useRef<HTMLDivElement>(null)
   const [isInitialScrollDone, setIsInitialScrollDone] = useState(false)
+  const scrollAttemptsRef = useRef(0)
   
   // Reset initial scroll flag when conversation changes - MUST run before scroll effect
   useLayoutEffect(() => {
     hasScrolledInitially.current = false
     prevMessageCountRef.current = 0
+    scrollAttemptsRef.current = 0
     setIsInitialScrollDone(false)
   }, [conversationId])
 
-    // Scroll to bottom INSTANTLY when conversation loads (initial load)
-    // Like WhatsApp/Telegram: scroll instantly, no animation, no delay
-    useLayoutEffect(() => {
-      // Only run when messages are loaded and we haven't scrolled yet for this conversation
-      if (loading || !conversationId) return
+  // WHATSAPP-STYLE: Scroll to bottom with multiple attempts for perfect positioning
+  useLayoutEffect(() => {
+    // Only run when messages are loaded and we haven't scrolled yet for this conversation
+    if (loading || !conversationId) return
+    
+    // If no messages, we are done
+    if (messages.length === 0) {
+      setIsInitialScrollDone(true)
+      hasScrolledInitially.current = true
+      return
+    }
+    
+    if (hasScrolledInitially.current) return
+    
+    const scrollContainer = messagesContainerRef.current
+    if (!scrollContainer) return
+    
+    // WHATSAPP STRATEGY: Multiple scroll attempts with increasing delays
+    // This ensures the scroll happens after React renders and DOM settles
+    const scrollToBottom = () => {
+      scrollAttemptsRef.current++
       
-      // If no messages, we are done
-      if (messages.length === 0) {
+      // Force scroll to bottom
+      scrollContainer.scrollTop = scrollContainer.scrollHeight
+      
+      // Verify scroll worked
+      const isAtBottom = scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight < 50
+      
+      if (isAtBottom || scrollAttemptsRef.current >= 5) {
+        // Success or max attempts reached
         setIsInitialScrollDone(true)
-        return
+        hasScrolledInitially.current = true
+        prevMessageCountRef.current = messages.length
+      } else {
+        // Retry with exponential backoff
+        setTimeout(scrollToBottom, scrollAttemptsRef.current * 50)
       }
-      
-      if (hasScrolledInitially.current) return
-      
-      const scrollContainer = messagesContainerRef.current
-      if (scrollContainer) {
-        // Force scroll to bottom immediately
+    }
+    
+    // Start scrolling immediately
+    scrollToBottom()
+    
+    // Additional safety: force scroll after a short delay
+    const safetyTimeout = setTimeout(() => {
+      if (!hasScrolledInitially.current) {
         scrollContainer.scrollTop = scrollContainer.scrollHeight
-        
-        // Mark as done immediately to prevent flickering
         setIsInitialScrollDone(true)
         hasScrolledInitially.current = true
         prevMessageCountRef.current = messages.length
       }
-    }, [loading, messages.length, conversationId])
+    }, 200)
+    
+    return () => clearTimeout(safetyTimeout)
+  }, [loading, messages.length, conversationId])
 
   // ResizeObserver to handle dynamic content changes (images loading, etc.)
   useEffect(() => {
