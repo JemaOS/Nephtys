@@ -1167,6 +1167,8 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
 
       {/* Media content */}
       <div
+        role="region"
+        aria-label="Visualisation du média"
         className={`flex-1 flex items-center justify-center overflow-hidden media-content-container ${
           isLandscape && isMobile ? 'p-0' : 'p-4 md:p-8'
         }`}
