@@ -675,6 +675,19 @@ export function ChatsPage() {
       loadConversationsWithCacheFirst()
     }
   }, [user, loadConversationsWithCacheFirst])
+  
+  // CRITICAL FIX: Force reload when component mounts (when navigating back from ChatViewPage)
+  // This ensures the conversation list is always fresh when returning to the page
+  useEffect(() => {
+    if (user) {
+      // Small delay to ensure the component is fully mounted
+      const timeout = setTimeout(() => {
+        console.log('[ChatsPage] Component mounted/re-mounted, forcing conversation reload...')
+        loadConversationsFromServer(false)
+      }, 50)
+      return () => clearTimeout(timeout)
+    }
+  }, [user])
 
   // Set up real-time subscriptions
   useEffect(() => {
