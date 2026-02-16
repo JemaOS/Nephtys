@@ -1145,10 +1145,14 @@ export function ChatViewPage() {
         }
       }
     } else if (!data && !error) {
-      // Conversation not found or no access
+      // Conversation not found or no access (deleted)
       console.error('Conversation not found or access denied')
-      // Redirect to chats list after a short delay
-      setTimeout(() => navigate('/chats'), 1000)
+      // Clear cached data and redirect immediately
+      localStorage.removeItem(`anu_cache_conv_${conversationId}`)
+      localStorage.removeItem(`anu_cache_user_${conversationId}`)
+      localStorage.removeItem(`anu_cache_msgs_${conversationId}`)
+      navigate('/chats')
+      return
     } else if (error) {
       console.error('Error loading conversation:', error)
     }
