@@ -277,6 +277,7 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
         .select('*')
         .eq('conversation_id', conversationId)
         .or('type.eq.image,type.eq.video,media_type.eq.image,media_type.eq.video')
+        .is('deleted_at', null) // Exclude deleted messages
         .order('created_at', { ascending: false });
       
       setMediaMessages(data || []);
@@ -295,6 +296,7 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
         .select('*')
         .eq('conversation_id', conversationId)
         .or('type.eq.file,media_type.eq.file')
+        .is('deleted_at', null) // Exclude deleted messages
         .order('created_at', { ascending: false });
       
       setFileMessages(data || []);
@@ -313,6 +315,7 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
         .select('*')
         .eq('conversation_id', conversationId)
         .eq('type', 'text')
+        .is('deleted_at', null) // Exclude deleted messages
         .order('created_at', { ascending: false });
       
       if (data) {
