@@ -7,7 +7,7 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://imkfbalgviqeot
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlta2ZiYWxndmlxZW90cGpvZ2ZmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ0NjE2NjYsImV4cCI6MjA4MDAzNzY2Nn0.POv8NbJu6TefE1e-J-9L8m5QTSp41XXwsO2ck69GnYc'
 
 // Create Supabase client with OPTIMIZED settings for PWA/mobile
-// REDUCED heartbeat to decrease server load (was causing 2.6M+ queries)
+// Using 5s heartbeat for WhatsApp-level real-time responsiveness
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
@@ -18,9 +18,8 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
   realtime: {
     params: {
-      // OPTIMIZED heartbeat interval - 30 seconds (WhatsApp uses ~30s)
-      // Previous 5 second heartbeat was too aggressive and caused excessive load
-      heartbeat_interval: 30,
+      // Heartbeat every 5 seconds for WhatsApp-level real-time responsiveness
+      heartbeat_interval: 5,
       // Increase timeout to reduce reconnection attempts
       timeout: 60000, // 60 seconds
     },
@@ -131,8 +130,8 @@ export async function checkConnection(): Promise<boolean> {
   }
 }
 
-// Lightweight ping to keep connection alive - REMOVED to reduce load
-// The Realtime heartbeat (30s) already keeps the connection alive
+// Lightweight ping to keep connection alive
+// The Realtime heartbeat (5s) keeps the connection alive
 async function pingConnection(): Promise<void> {
   // This function is kept for compatibility but no longer called automatically
   if (document.hidden) return
@@ -162,7 +161,7 @@ export function startConnectionMonitoring(): void {
   console.log('[Supabase] Starting OPTIMIZED connection monitoring...')
   
   // REMOVED: Aggressive ping every 10 seconds was causing too many requests
-  // The Realtime heartbeat (now 30s) already keeps the WebSocket alive
+  // The Realtime heartbeat (5s) already keeps the WebSocket alive
   
   // Check connection every 60 seconds instead of 10s
   // Only do health check when there's a suspected issue

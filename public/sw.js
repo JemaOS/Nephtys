@@ -192,44 +192,23 @@ async function networkFirst(request, cacheName = DYNAMIC_CACHE, timeout = NETWOR
   }
 }
 
-// Helper: Network-first specifically for Supabase with cache fallback
-// OPTIMIZED: Always return cache if available, never fail with 503
+// Helper: Network-first specifically for Supabase
+// Let Supabase requests go directly to network - no caching needed for realtime data
 async function networkFirstSupabase(request) {
-  // First check cache for recent data
-  const cachedResponse = await caches.match(request);
-  
-  // ALWAYS return cache if available - this prevents retry storms
-  if (cachedResponse) {
-    console.log('[SW] Returning fresh cache for Supabase:', request.url);
-    // Try to update in background - don't wait
-    fetchWithTimeout(request, SUPABASE_TIMEOUT)
-      .then((response) => {
-        if (response && response.ok) {
-          caches.open(SUPABASE_CACHE).then((cache) => {
-            cache.put(request, response.clone());
-          });
-        }
-      })
-      .catch(() => {
-        // Silently fail background update
-      });
-    return cachedResponse;
-  }
-
-  // Try network first if no cache
   try {
     const response = await fetchWithTimeout(request, SUPABASE_TIMEOUT);
-    if (response && response.ok) {
-      const cache = await caches.open(SUPABASE_CACHE);
-      cache.put(request, response.clone());
-    }
     return response;
   } catch (error) {
-    console.log('[SW] Supabase network failed, no cache available:', request.url);
+    console.log('[SW] Supabase network failed:', request.url);
     
-    // Return empty array response that Supabase expects
-    // Supabase client expects either [] for select or null for other queries
-    // We return [] which will result in data=[] and no error
+    // Try cache as fallback
+    const cachedResponse = await caches.match(request);
+    if (cachedResponse) {
+      console.log('[SW] Returning cached Supabase response:', request.url);
+      return cachedResponse;
+    }
+    
+    // Return empty array so Supabase client doesn't crash
     return new Response(
       JSON.stringify([]),
       { 
