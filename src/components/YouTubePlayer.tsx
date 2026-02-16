@@ -2,7 +2,7 @@
 // Distributed under the license specified in the root directory of this project.
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { X, Maximize2, Minimize2, Play, Pause, Volume2, VolumeX, Move } from 'lucide-react';
+import { X, Maximize2, Minimize2, Move } from 'lucide-react';
 
 interface YouTubePlayerProps {
   videoId: string;

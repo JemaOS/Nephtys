@@ -24,7 +24,7 @@ const getTouchDistance = (touches: React.TouchList): number => {
   if (touches.length < 2) return 0;
   const dx = touches[0].clientX - touches[1].clientX;
   const dy = touches[0].clientY - touches[1].clientY;
-  return Math.sqrt(dx * dx + dy * dy);
+  return Math.hypot(dx, dy);
 };
 
 // Get file type info based on extension
@@ -154,8 +154,15 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
 
   // Create object URL for the file and load text content if applicable
   useEffect(() => {
-    const cleanup = initializeFile(file, isText, isPDF);
-    return cleanup;
+    let cleanupFn: (() => void) | undefined;
+    
+    initializeFile(file, isText, isPDF).then((cleanup) => {
+      cleanupFn = cleanup;
+    });
+    
+    return () => {
+      if (cleanupFn) cleanupFn();
+    };
   }, [file, isText, isPDF, initializeFile]);
 
   // Track container width for responsive PDF sizing and detect mobile

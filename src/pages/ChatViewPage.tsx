@@ -566,15 +566,39 @@ export function ChatViewPage() {
         console.log('[ChatViewPage] Realtime INSERT received:', payload.new?.id)
         const newMsg = payload.new as Message
         
-        // Check for temp message to replace
-        const tempIndex = messages.findIndex(m =>
-          m.id.startsWith('temp-') &&
-          m.media_url === newMsg.media_url &&
-          m.sender_id === newMsg.sender_id
-        )
+        setMessages(prev => {
+          // 1. Check if message already exists (by ID) to prevent duplicates
+          // This handles the case where the optimistic message was already replaced by the real one
+          if (prev.some(m => m.id === newMsg.id)) {
+            return prev
+          }
 
-        // Use helper to update messages
-        setMessages(prev => getUpdatedMessages(prev, newMsg, tempIndex))
+          // 2. Check for temp message to replace
+          // We must do this inside the callback to access the current 'prev' state
+          // instead of the stale 'messages' closure
+          const tempIndex = prev.findIndex(m => 
+            m.id.startsWith('temp-') && 
+            m.sender_id === newMsg.sender_id &&
+            (
+              // Match by media_url if present (for images/videos/files)
+              (m.media_url && newMsg.media_url && m.media_url === newMsg.media_url) ||
+              // OR match by content if it's a text message (for stickers/GIFs)
+              (m.type === 'text' && m.content === newMsg.content) ||
+              // Fallback for audio/files where media_url might be used
+              (m.type !== 'text' && m.media_url === newMsg.media_url)
+            )
+          )
+
+          if (tempIndex !== -1) {
+            console.log('[ChatViewPage] Replacing temp message with real one:', newMsg.id)
+            const newMessages = [...prev]
+            newMessages[tempIndex] = newMsg
+            return newMessages
+          }
+
+          console.log('[ChatViewPage] Adding new message:', newMsg.id)
+          return [...prev, newMsg]
+        })
         
         // Handle notification if not own message
         if (newMsg.sender_id !== user.id) {
@@ -1086,17 +1110,7 @@ export function ChatViewPage() {
     await supabase.from('messages').update({ status }).eq('id', messageId)
   }
 
-  // Helper to add or replace a message in the list (extracted to reduce complexity)
-  const getUpdatedMessages = (currentMessages: Message[], newMsg: Message, tempIndex: number): Message[] => {
-    if (tempIndex !== -1) {
-      console.log('[ChatViewPage] Replacing temp message with real one:', newMsg.id)
-      const newMessages = [...currentMessages]
-      newMessages[tempIndex] = newMsg
-      return newMessages
-    }
-    console.log('[ChatViewPage] Adding new message:', newMsg.id)
-    return [...currentMessages, newMsg]
-  }
+
 
   // Helper to update a message in the list
   const updateMessageInList = (currentMessages: Message[], updatedMsg: Message): Message[] => {

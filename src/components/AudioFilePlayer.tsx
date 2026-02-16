@@ -1,7 +1,7 @@
 // Copyright (c) 2025 Jema Technology.
 // Distributed under the license specified in the root directory of this project.
 
-import React, { useRef, useState, useEffect, useCallback } from 'react';
+import React, { useRef, useState } from 'react';
 import { Play, Pause, SkipBack, SkipForward } from 'lucide-react';
 
 interface AudioFilePlayerProps {
@@ -102,7 +102,7 @@ export const AudioFilePlayer: React.FC<AudioFilePlayerProps> = ({
   };
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newTime = parseFloat(e.target.value);
+    const newTime = Number.parseFloat(e.target.value);
     setCurrentTime(newTime);
     if (audioRef.current) {
       audioRef.current.currentTime = newTime;

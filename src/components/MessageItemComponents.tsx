@@ -1,5 +1,6 @@
 import React from 'react'
 import { Message } from '@/lib/supabase'
+import { cleanLinkPreviewContent } from '@/lib/utils'
 import { MessageReactions } from '@/components/MessageReactions'
 import { MessageReply } from '@/components/MessageReply'
 import { MessageHoverActions } from '@/components/MessageHoverActions'
@@ -56,8 +57,7 @@ export const MessageContent: React.FC<{ message: Message; isOwn: boolean }> = ({
         ? JSON.parse((message as any).link_preview)
         : (message as any).link_preview
       if (previewData.url) {
-        displayContent = message.content.replace(previewData.url, '').trim()
-        displayContent = displayContent.replace(/^[\s\-–—:]+/g, '').replace(/[\s\-–—:]+$/g, '').trim()
+        displayContent = cleanLinkPreviewContent(message.content, previewData.url)
       }
     } catch {
       // Keep original content

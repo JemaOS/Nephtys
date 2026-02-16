@@ -2,7 +2,7 @@
 // Distributed under the license specified in the root directory of this project.
 
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { Image, Video, File as FileIcon, X, Loader2, Camera, Smile, Sticker, FileImage, Search, Plus, Send, Edit3, FileText, FileSpreadsheet, FileArchive, Download, Music, Play, Pause } from 'lucide-react';
+import { Image, Video, File as FileIcon, X, Loader2, Camera, Sticker, FileImage, Search, Plus, Send, Edit3, FileText, FileSpreadsheet, FileArchive, Download, Music, Play, Pause } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { ImageEditor } from './ImageEditor';
 import { processImageForUpload, ProcessedImage } from '@/lib/imageUtils';

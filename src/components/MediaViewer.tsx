@@ -17,7 +17,7 @@ const getTouchDistance = (touches: React.TouchList): number => {
   if (touches.length < 2) return 0;
   const dx = touches[0].clientX - touches[1].clientX;
   const dy = touches[0].clientY - touches[1].clientY;
-  return Math.sqrt(dx * dx + dy * dy);
+  return Math.hypot(dx, dy);
 };
 
 // Get touch center helper - extracted to module level
@@ -427,23 +427,6 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
     setPosition({ x: 0, y: 0 });
   }, []);
 
-  // Calculate distance between two touch points
-  const getTouchDistance = (touches: React.TouchList): number => {
-    if (touches.length < 2) return 0;
-    const dx = touches[0].clientX - touches[1].clientX;
-    const dy = touches[0].clientY - touches[1].clientY;
-    return Math.sqrt(dx * dx + dy * dy);
-  };
-
-  // Get center point between two touches
-  const getTouchCenter = (touches: React.TouchList): { x: number; y: number } => {
-    if (touches.length < 2) return { x: 0, y: 0 };
-    return {
-      x: (touches[0].clientX + touches[1].clientX) / 2,
-      y: (touches[0].clientY + touches[1].clientY) / 2,
-    };
-  };
-
   // Handle touch start for pinch-to-zoom, pan, and swipe navigation (WhatsApp-like)
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     // IMPORTANT: Stop propagation to prevent parent components (like chat view) from receiving touch events
@@ -745,16 +728,6 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   const isAndroid = useMemo(() => {
     return /Android/i.test(navigator.userAgent);
   }, []);
-
-  // Helper: Check if currently in fullscreen mode
-  const checkFullscreenState = (): boolean => {
-    return !!(
-      document.fullscreenElement ||
-      (document as any).webkitFullscreenElement ||
-      (document as any).mozFullScreenElement ||
-      (document as any).msFullscreenElement
-    );
-  };
 
   // Helper: Request fullscreen for video element on mobile - extracted to reduce complexity
   const requestVideoFullscreen = async (video: HTMLVideoElement & { webkitEnterFullscreen?: () => void; webkitRequestFullscreen?: () => Promise<void>; mozRequestFullScreen?: () => Promise<void>; msRequestFullscreen?: () => Promise<void>; webkitSupportsFullscreen?: boolean; webkitDisplayingFullscreen?: boolean; }, isCurrentlyFullscreen: boolean): Promise<boolean> => {

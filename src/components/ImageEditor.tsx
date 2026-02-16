@@ -3,7 +3,6 @@
 
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import {
-  X,
   Check,
 } from 'lucide-react';
 import {
@@ -226,8 +225,6 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
   const [zoom, setZoom] = useState(1);
   const [hdQuality, setHdQuality] = useState(true);
   const [caption, setCaption] = useState('');
-  const [history, setHistory] = useState<HistoryState[]>([]);
-  const [historyIndex, setHistoryIndex] = useState(-1);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showBrushSize, setShowBrushSize] = useState(false);
   const [showFontSize, setShowFontSize] = useState(false);
@@ -240,8 +237,6 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
   const [cropEnd, setCropEnd] = useState<{ x: number; y: number } | null>(null);
   const [blurStart, setBlurStart] = useState<{ x: number; y: number } | null>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
-  const [draggingItem, setDraggingItem] = useState<{ type: 'text' | 'emoji' | 'shape'; id: string } | null>(null);
-  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
 
   // Calculate canvas size to fit container while maintaining aspect ratio
   const calculateCanvasSize = (imgWidth: number, imgHeight: number): { width: number; height: number } => {

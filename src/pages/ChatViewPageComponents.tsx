@@ -12,6 +12,7 @@ import { AudioFilePlayer } from '@/components/AudioFilePlayer'
 import { LinkPreview } from '@/components/LinkPreview'
 import { MessageListSkeleton } from '@/components/MessageListSkeleton'
 import { formatTime } from '@/components/MessageItemComponents'
+import { cleanLinkPreviewContent } from '@/lib/utils'
 
 // Helper to extract message type info - extracted to reduce complexity in MessageList
 const getMessageTypeInfo = (message: Message) => {
@@ -856,8 +857,7 @@ const TextMessageDisplay = ({ message, hoveredMessageId, isOwn, setContextMenu, 
                   ? JSON.parse((message as any).link_preview)
                   : (message as any).link_preview
                 if (previewData.url) {
-                  displayContent = message.content.replace(previewData.url, '').trim()
-                  displayContent = displayContent.replace(/^[\s\-–—:]+/g, '').replace(/[\s\-–—:]+$/g, '').trim()
+                  displayContent = cleanLinkPreviewContent(message.content, previewData.url)
                 }
               } catch {
               }
