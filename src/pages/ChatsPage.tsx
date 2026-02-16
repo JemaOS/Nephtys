@@ -599,9 +599,28 @@ export function ChatsPage() {
       return
     }
     
+    // Cancel any pending debounced reload to prevent re-adding conversations
+    if (reloadTimeoutRef.current) {
+      clearTimeout(reloadTimeoutRef.current)
+      reloadTimeoutRef.current = null
+    }
+    
     // Optimistic update - remove from list
     const deletedConvs = conversations.filter(c => selectedConversations.has(c.id))
     setConversations(prev => prev.filter(c => !selectedConversations.has(c.id)))
+    
+    // Also clear localStorage cache for these conversations
+    try {
+      selectedIds.forEach(conversationId => {
+        localStorage.removeItem('anu_cache_conv_' + conversationId)
+        localStorage.removeItem('anu_cache_user_' + conversationId)
+        localStorage.removeItem('anu_cache_direct_user_id_' + conversationId)
+        localStorage.removeItem('anu_cache_msgs_' + conversationId)
+        localStorage.removeItem('anu_cache_members_' + conversationId)
+      })
+    } catch (e) {
+      console.warn('[ChatsPage] Error clearing cache:', e)
+    }
     
     // Update database
     let hasError = false
@@ -925,6 +944,19 @@ export function ChatsPage() {
       // Optimistic update - remove from list immediately
       const deletedConv = conversations.find(c => c.id === conversationId)
       setConversations(prev => prev.filter(c => c.id !== conversationId))
+      
+      // Also remove from localStorage cache to prevent stale data
+      try {
+        const cachedKey = 'anu_cache_conv_' + conversationId
+        localStorage.removeItem(cachedKey)
+        // Also remove user cache
+        localStorage.removeItem('anu_cache_user_' + conversationId)
+        localStorage.removeItem('anu_cache_direct_user_id_' + conversationId)
+        localStorage.removeItem('anu_cache_msgs_' + conversationId)
+        localStorage.removeItem('anu_cache_members_' + conversationId)
+      } catch (e) {
+        console.warn('[ChatsPage] Error clearing cache:', e)
+      }
       
       // Remove user from conversation (soft delete the conversation for this user)
       const { error } = await supabase
