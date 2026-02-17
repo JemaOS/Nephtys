@@ -228,7 +228,7 @@ export const DocumentPreviewFooter: React.FC<DocumentPreviewFooterProps> = ({
 );
 
 interface DocumentPreviewContentProps {
-  containerRef: React.RefObject<HTMLButtonElement>;
+  containerRef: React.RefObject<HTMLDivElement>;
   canPreview: boolean;
   getCursorStyle: () => string;
   isPDF: boolean;
@@ -283,9 +283,11 @@ export const DocumentPreviewContent: React.FC<DocumentPreviewContentProps> = ({
   getPreviewMessage,
 }) => (
   <div
-    ref={containerRef as unknown as React.RefObject<HTMLDivElement>}
+    ref={containerRef}
     className={`flex-1 overflow-auto bg-[#525659] flex justify-center select-none ${canPreview ? 'items-start' : 'items-center'}`}
     style={{ cursor: getCursorStyle() }}
+    role="button"
+    tabIndex={0}
     aria-label="Zone de prévisualisation du document - Appuyez sur Échap pour fermer"
     onMouseDown={isPDF ? handleMouseDown : undefined}
     onTouchStart={handleTouchStart}

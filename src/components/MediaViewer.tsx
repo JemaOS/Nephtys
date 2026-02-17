@@ -1060,6 +1060,8 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
     // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
     <div
       ref={viewerRef}
+      role="button"
+      tabIndex={0}
       aria-label="Visualiseur de média"
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -1145,7 +1147,6 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
       {/* Media content */}
       {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
       <div
-        role="presentation"
         aria-label="Visualisation du média"
         className={`flex-1 flex items-center justify-center overflow-hidden media-content-container ${
           isLandscape && isMobile ? 'p-0' : 'p-4 md:p-8'
