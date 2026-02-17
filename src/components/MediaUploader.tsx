@@ -1015,4 +1015,576 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
   const fetchStickers = async (query: string = 'love') => {
     setLoadingStickers(true);
     try {
-      let endpoint;
+      let endpoint = '';
+      
+      // Determine endpoint based on API key availability
+      if (TENOR_API_KEY) {
+        endpoint = `https://tenor.googleapis.com/v2/search?q=${encodeURIComponent(query)}&key=${TENOR_API_KEY}&client_key=${TENOR_CLIENT_KEY}&searchfilter=sticker&limit=20`;
+      } else {
+        endpoint = `https://g.tenor.com/v1/search?q=${encodeURIComponent(query)}&key=${FALLBACK_TENOR_KEY}&searchfilter=sticker&limit=20`;
+      }
+      
+      const response = await fetch(endpoint);
+      const data = await response.json();
+      
+      if (data.results) {
+        setStickers(data.results.map(normalizeTenorResult));
+      }
+    } catch (err) {
+      console.warn('Failed to fetch stickers:', err);
+      setStickers([]);
+    } finally {
+      setLoadingStickers(false);
+    }
+  };
+
+  // Fetch GIFs from Tenor API
+  const fetchGifs = async (query: string = 'trending') => {
+    setLoadingGifs(true);
+    try {
+      let endpoint = '';
+      
+      // Determine endpoint based on API key availability
+      if (TENOR_API_KEY) {
+        if (query === 'trending') {
+          endpoint = `https://tenor.googleapis.com/v2/featured?key=${TENOR_API_KEY}&client_key=${TENOR_CLIENT_KEY}&limit=20`;
+        } else {
+          endpoint = `https://tenor.googleapis.com/v2/search?q=${encodeURIComponent(query)}&key=${TENOR_API_KEY}&client_key=${TENOR_CLIENT_KEY}&limit=20`;
+        }
+      } else {
+        if (query === 'trending') {
+          endpoint = `https://g.tenor.com/v1/trending?key=${FALLBACK_TENOR_KEY}&limit=20`;
+        } else {
+          endpoint = `https://g.tenor.com/v1/search?q=${encodeURIComponent(query)}&key=${FALLBACK_TENOR_KEY}&limit=20`;
+        }
+      }
+      
+      const response = await fetch(endpoint);
+      const data = await response.json();
+      
+      if (data.results) {
+        setGifs(data.results.map(normalizeTenorResult));
+      }
+    } catch (err) {
+      console.warn('Failed to fetch GIFs:', err);
+      setGifs([]);
+    } finally {
+      setLoadingGifs(false);
+    }
+  };
+
+  // Handle GIF/sticker selection
+  const handleGifStickerSelect = (item: any, type: 'gif' | 'sticker') => {
+    const formats = item.media_formats;
+    let url = '';
+    let previewUrl = '';
+    
+    if (type === 'sticker') {
+      // For stickers, prefer webp formats
+      url = formats.webp?.url || formats.gif?.url || formats.tinygif?.url || '';
+      previewUrl = formats.tinywebp?.url || formats.nanogif?.url || formats.tinygif?.url || url;
+    } else {
+      // For GIFs, prefer smaller formats for preview
+      url = formats.gif?.url || formats.mediumgif?.url || formats.tinygif?.url || '';
+      previewUrl = formats.tinygif?.url || formats.nanogif?.url || url;
+    }
+    
+    if (url) {
+      setSelectedGifSticker({ url, previewUrl, type });
+    }
+  };
+
+  // Handle send GIF/sticker with caption
+  const handleGifStickerSend = () => {
+    if (selectedGifSticker && onGifStickerSend) {
+      onGifStickerSend(selectedGifSticker.url, selectedGifSticker.type, gifStickerCaption);
+      setSelectedGifSticker(null);
+      setGifStickerCaption('');
+      onCancel();
+    }
+  };
+
+  // Load initial GIFs on mount
+  useEffect(() => {
+    if (activeTab === 'gif') {
+      fetchGifs('trending');
+    }
+  }, [activeTab]);
+
+  // Load stickers when category changes
+  useEffect(() => {
+    if (activeTab === 'sticker') {
+      fetchStickers(selectedStickerCategory);
+    }
+  }, [activeTab, selectedStickerCategory]);
+
+  // Handle GIF search
+  const handleGifSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (gifSearchQuery.trim()) {
+      fetchGifs(gifSearchQuery.trim());
+    }
+  };
+
+  // Handle sticker search
+  const handleStickerSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (stickerSearchQuery.trim()) {
+      fetchStickers(stickerSearchQuery.trim());
+    }
+  };
+
+  // Render the component
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm">
+      <div className="bg-bg-surface w-full sm:w-[480px] sm:rounded-2xl rounded-t-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b border-bg-hover">
+          <h3 className="text-lg font-semibold text-text-primary">
+            {activeTab === 'attach' && 'Joindre un fichier'}
+            {activeTab === 'emoji' && 'Emoji'}
+            {activeTab === 'sticker' && 'Stickers'}
+            {activeTab === 'gif' && 'GIFs'}
+          </h3>
+          <button
+            onClick={handleCancel}
+            className="p-2 hover:bg-bg-hover rounded-full transition-colors"
+          >
+            <X size={20} className="text-text-secondary" />
+          </button>
+        </div>
+
+        {/* Tab Navigation */}
+        <div className="flex border-b border-bg-hover">
+          <button
+            onClick={() => setActiveTab('attach')}
+            className={`flex-1 py-3 flex items-center justify-center gap-2 text-sm font-medium transition-colors ${
+              activeTab === 'attach' ? 'text-accent border-b-2 border-accent' : 'text-text-secondary hover:text-text-primary'
+            }`}
+          >
+            <Plus size={18} />
+            Fichier
+          </button>
+          <button
+            onClick={() => setActiveTab('emoji')}
+            className={`flex-1 py-3 flex items-center justify-center gap-2 text-sm font-medium transition-colors ${
+              activeTab === 'emoji' ? 'text-accent border-b-2 border-accent' : 'text-text-secondary hover:text-text-primary'
+            }`}
+          >
+            <Sticker size={18} />
+            Emoji
+          </button>
+          <button
+            onClick={() => setActiveTab('sticker')}
+            className={`flex-1 py-3 flex items-center justify-center gap-2 text-sm font-medium transition-colors ${
+              activeTab === 'sticker' ? 'text-accent border-b-2 border-accent' : 'text-text-secondary hover:text-text-primary'
+            }`}
+          >
+            <FileImage size={18} />
+            Stickers
+          </button>
+          <button
+            onClick={() => setActiveTab('gif')}
+            className={`flex-1 py-3 flex items-center justify-center gap-2 text-sm font-medium transition-colors ${
+              activeTab === 'gif' ? 'text-accent border-b-2 border-accent' : 'text-text-secondary hover:text-text-primary'
+            }`}
+          >
+            <Video size={18} />
+            GIFs
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-4">
+          {/* Attach Tab */}
+          {activeTab === 'attach' && !selectedFile && !multipleSelectionMode && !showImageEditor && !showDocumentPreview && !cameraMode && (
+            <div className="grid grid-cols-3 gap-4">
+              <button
+                onClick={() => imageInputRef.current?.click()}
+                className="flex flex-col items-center gap-2 p-4 rounded-xl bg-bg-hover hover:bg-bg-primary transition-colors"
+              >
+                <div className="w-12 h-12 rounded-full bg-[#7578db]/20 flex items-center justify-center">
+                  <Image size={24} className="text-[#7578db]" />
+                </div>
+                <span className="text-sm text-text-secondary">Galerie</span>
+              </button>
+              <button
+                onClick={() => cameraInputRef.current?.click()}
+                className="flex flex-col items-center gap-2 p-4 rounded-xl bg-bg-hover hover:bg-bg-primary transition-colors"
+              >
+                <div className="w-12 h-12 rounded-full bg-[#7578db]/20 flex items-center justify-center">
+                  <Camera size={24} className="text-[#7578db]" />
+                </div>
+                <span className="text-sm text-text-secondary">Caméra</span>
+              </button>
+              <button
+                onClick={() => videoInputRef.current?.click()}
+                className="flex flex-col items-center gap-2 p-4 rounded-xl bg-bg-hover hover:bg-bg-primary transition-colors"
+              >
+                <div className="w-12 h-12 rounded-full bg-[#7578db]/20 flex items-center justify-center">
+                  <Video size={24} className="text-[#7578db]" />
+                </div>
+                <span className="text-sm text-text-secondary">Vidéo</span>
+              </button>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="flex flex-col items-center gap-2 p-4 rounded-xl bg-bg-hover hover:bg-bg-primary transition-colors"
+              >
+                <div className="w-12 h-12 rounded-full bg-[#7578db]/20 flex items-center justify-center">
+                  <FileIcon size={24} className="text-[#7578db]" />
+                </div>
+                <span className="text-sm text-text-secondary">Document</span>
+              </button>
+              <button
+                onClick={() => audioInputRef.current?.click()}
+                className="flex flex-col items-center gap-2 p-4 rounded-xl bg-bg-hover hover:bg-bg-primary transition-colors"
+              >
+                <div className="w-12 h-12 rounded-full bg-[#7578db]/20 flex items-center justify-center">
+                  <Music size={24} className="text-[#7578db]" />
+                </div>
+                <span className="text-sm text-text-secondary">Audio</span>
+              </button>
+            </div>
+          )}
+
+          {/* Hidden Inputs */}
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={handleFileSelect}
+            className="hidden"
+          />
+          <input
+            ref={videoInputRef}
+            type="file"
+            accept="video/*"
+            onChange={handleFileSelect}
+            className="hidden"
+          />
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.rtf"
+            onChange={handleFileSelect}
+            className="hidden"
+          />
+          <input
+            ref={audioInputRef}
+            type="file"
+            accept="audio/*"
+            onChange={handleFileSelect}
+            className="hidden"
+          />
+          <input
+            ref={cameraInputRef}
+            type="file"
+            accept="image/*,video/*"
+            capture="environment"
+            onChange={handleCameraCapture}
+            className="hidden"
+          />
+
+          {/* Emoji Tab */}
+          {activeTab === 'emoji' && (
+            <EmojiPicker onEmojiSelect={handleEmojiClick} />
+          )}
+
+          {/* Sticker Tab */}
+          {activeTab === 'sticker' && (
+            <StickerPicker
+              stickers={stickers}
+              loading={loadingStickers}
+              categories={stickerCategories}
+              selectedCategory={selectedStickerCategory}
+              onCategoryChange={setSelectedStickerCategory}
+              searchQuery={stickerSearchQuery}
+              onSearchChange={setStickerSearchQuery}
+              onSearch={handleStickerSearch}
+              onStickerSelect={(sticker) => handleGifStickerSelect(sticker, 'sticker')}
+            />
+          )}
+
+          {/* GIF Tab */}
+          {activeTab === 'gif' && (
+            <div className="space-y-4">
+              {/* Search */}
+              <form onSubmit={handleGifSearch} className="flex gap-2">
+                <div className="flex-1 relative">
+                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" />
+                  <input
+                    type="text"
+                    value={gifSearchQuery}
+                    onChange={(e) => setGifSearchQuery(e.target.value)}
+                    placeholder="Rechercher des GIFs..."
+                    className="w-full pl-9 pr-4 py-2 bg-bg-hover text-text-primary rounded-xl text-sm outline-none placeholder:text-text-secondary"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-accent text-white rounded-xl text-sm font-medium hover:bg-[#5a5ec9] transition-colors"
+                >
+                  <Search size={16} />
+                </button>
+              </form>
+
+              {/* GIF Grid */}
+              {loadingGifs ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 size={32} className="text-accent animate-spin" />
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-2">
+                  {gifs.map((gif, index) => (
+                    <button
+                      key={`${gif.id}-${index}`}
+                      onClick={() => handleGifStickerSelect(gif, 'gif')}
+                      className="relative aspect-video rounded-lg overflow-hidden bg-bg-hover hover:ring-2 hover:ring-accent transition-all"
+                    >
+                      <img
+                        src={gif.media_formats?.nanogif?.url || gif.media_formats?.tinygif?.url}
+                        alt={gif.content_description || 'GIF'}
+                        className="w-full h-full object-cover"
+                        loading="lazy"
+                      />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Selected File Preview */}
+          {selectedFile && !showImageEditor && !showDocumentPreview && (
+            <div className="space-y-4">
+              <div className="relative aspect-video bg-bg-hover rounded-xl overflow-hidden">
+                {selectedFileType === 'image' && preview && (
+                  <img src={preview} alt="Preview" className="w-full h-full object-contain" />
+                )}
+                {selectedFileType === 'video' && preview && (
+                  <video src={preview} className="w-full h-full object-contain" controls />
+                )}
+                {selectedFileType === 'audio' && (
+                  <AudioPreviewPlayer file={selectedFile} />
+                )}
+                <button
+                  onClick={() => {
+                    setSelectedFile(null);
+                    setSelectedFileType(null);
+                    setPreview(null);
+                  }}
+                  className="absolute top-2 right-2 p-1 bg-black/50 rounded-full hover:bg-black/70 transition-colors"
+                >
+                  <X size={16} className="text-white" />
+                </button>
+              </div>
+
+              {/* Upload Progress */}
+              {uploading && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-text-secondary">
+                      {uploadPhase === 'compressing' && 'Compression...'}
+                      {uploadPhase === 'uploading' && 'Upload...'}
+                    </span>
+                    <span className="text-accent font-medium">{uploadProgress}%</span>
+                  </div>
+                  <div className="h-2 bg-bg-hover rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-accent transition-all duration-300"
+                      style={{ width: `${uploadProgress}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex gap-2">
+                <button
+                  onClick={handleCancel}
+                  disabled={uploading}
+                  className="flex-1 py-2 px-4 bg-bg-hover text-text-secondary rounded-xl font-medium hover:bg-bg-primary transition-colors disabled:opacity-50"
+                >
+                  Annuler
+                </button>
+                <button
+                  onClick={handleUpload}
+                  disabled={uploading}
+                  className="flex-1 py-2 px-4 bg-accent text-white rounded-xl font-medium hover:bg-[#5a5ec9] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {uploading ? (
+                    <Loader2 size={18} className="animate-spin" />
+                  ) : (
+                    <Send size={18} />
+                  )}
+                  Envoyer
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Multiple Files Selection */}
+          {multipleSelectionMode && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-3 gap-2 max-h-[300px] overflow-y-auto">
+                {selectedFiles.map((file, index) => (
+                  <div key={index} className="relative aspect-square bg-bg-hover rounded-lg overflow-hidden">
+                    {file.type === 'image' && file.preview && (
+                      <img src={file.preview} alt={file.file.name} className="w-full h-full object-cover" />
+                    )}
+                    {file.type === 'video' && file.preview && (
+                      <video src={file.preview} className="w-full h-full object-cover" />
+                    )}
+                    <button
+                      onClick={() => handleRemoveFile(index)}
+                      className="absolute top-1 right-1 p-1 bg-black/50 rounded-full hover:bg-black/70 transition-colors"
+                    >
+                      <X size={12} className="text-white" />
+                    </button>
+                  </div>
+                ))}
+                <button
+                  onClick={handleAddMoreFiles}
+                  className="aspect-square bg-bg-hover rounded-lg flex items-center justify-center hover:bg-bg-primary transition-colors"
+                >
+                  <Plus size={24} className="text-text-secondary" />
+                </button>
+              </div>
+
+              {/* Caption Input */}
+              <input
+                type="text"
+                value={multipleCaption}
+                onChange={(e) => setMultipleCaption(e.target.value)}
+                placeholder="Ajouter une légende..."
+                className="w-full px-4 py-2 bg-bg-hover text-text-primary rounded-xl text-sm outline-none placeholder:text-text-secondary"
+              />
+
+              {/* Upload Progress */}
+              {uploading && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-text-secondary">Upload...</span>
+                    <span className="text-accent font-medium">{uploadProgress}%</span>
+                  </div>
+                  <div className="h-2 bg-bg-hover rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-accent transition-all duration-300"
+                      style={{ width: `${uploadProgress}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex gap-2">
+                <button
+                  onClick={handleCancel}
+                  disabled={uploading}
+                  className="flex-1 py-2 px-4 bg-bg-hover text-text-secondary rounded-xl font-medium hover:bg-bg-primary transition-colors disabled:opacity-50"
+                >
+                  Annuler
+                </button>
+                <button
+                  onClick={handleMultipleUpload}
+                  disabled={uploading}
+                  className="flex-1 py-2 px-4 bg-accent text-white rounded-xl font-medium hover:bg-[#5a5ec9] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {uploading ? (
+                    <Loader2 size={18} className="animate-spin" />
+                  ) : (
+                    <Send size={18} />
+                  )}
+                  Envoyer ({selectedFiles.length})
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Image Editor */}
+          {showImageEditor && imageToEdit && (
+            <ImageEditor
+              imageUrl={imageToEdit.url}
+              fileName={imageToEdit.fileName}
+              onSave={handleImageEditorSave}
+              onSend={handleImageEditorSend}
+              onCancel={() => {
+                setShowImageEditor(false);
+                setImageToEdit(null);
+              }}
+            />
+          )}
+
+          {/* Document Preview */}
+          {showDocumentPreview && documentFile && (
+            <DocumentPreviewModal
+              file={documentFile}
+              onSend={handleDocumentSend}
+              onCancel={() => {
+                setShowDocumentPreview(false);
+                setDocumentFile(null);
+              }}
+              uploading={documentUploading}
+              uploadPhase={documentUploadPhase}
+              uploadProgress={documentUploadProgress}
+            />
+          )}
+
+          {/* GIF/Sticker Preview */}
+          {selectedGifSticker && (
+            <div className="space-y-4">
+              <div className="relative aspect-video bg-bg-hover rounded-xl overflow-hidden flex items-center justify-center">
+                {selectedGifSticker.type === 'gif' ? (
+                  <img
+                    src={selectedGifSticker.previewUrl}
+                    alt="GIF Preview"
+                    className="max-w-full max-h-full object-contain"
+                  />
+                ) : (
+                  <img
+                    src={selectedGifSticker.previewUrl}
+                    alt="Sticker Preview"
+                    className="max-w-full max-h-full object-contain"
+                  />
+                )}
+              </div>
+
+              {/* Caption Input */}
+              <input
+                type="text"
+                value={gifStickerCaption}
+                onChange={(e) => setGifStickerCaption(e.target.value)}
+                placeholder="Ajouter une légende..."
+                className="w-full px-4 py-2 bg-bg-hover text-text-primary rounded-xl text-sm outline-none placeholder:text-text-secondary"
+              />
+
+              {/* Action Buttons */}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    setSelectedGifSticker(null);
+                    setGifStickerCaption('');
+                  }}
+                  className="flex-1 py-2 px-4 bg-bg-hover text-text-secondary rounded-xl font-medium hover:bg-bg-primary transition-colors"
+                >
+                  Annuler
+                </button>
+                <button
+                  onClick={handleGifStickerSend}
+                  className="flex-1 py-2 px-4 bg-accent text-white rounded-xl font-medium hover:bg-[#5a5ec9] transition-colors flex items-center justify-center gap-2"
+                >
+                  <Send size={18} />
+                  Envoyer
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Canvas for camera capture */}
+      <canvas ref={canvasRef} className="hidden" />
+    </div>
+  );
+};
