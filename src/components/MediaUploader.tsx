@@ -1,19 +1,19 @@
 // Copyright (c) 2025 Jema Technology.
 // Distributed under the license specified in the root directory of this project.
 
-import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { Image, Video, File as FileIcon, X, Loader2, Camera, Sticker, FileImage, Search, Plus, Send, Edit3, FileText, FileSpreadsheet, FileArchive, Download, Music, Play, Pause } from 'lucide-react';
+import React, { useRef, useState, useEffect } from 'react';
+import { Image, Video, File as FileIcon, X, Loader2, Camera, Sticker, FileImage, Search, Plus, Send, FileText, FileSpreadsheet, FileArchive, Music } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { ImageEditor } from './ImageEditor';
 import { processImageForUpload, ProcessedImage } from '@/lib/imageUtils';
 import { compressVideo } from '@/lib/videoCompression';
 import { DocumentPreviewModal, generatePDFThumbnail } from './DocumentPreview';
-import { AudioPreviewPlayer, EmojiPicker, StickerPicker, formatFileSizeDisplay } from './MediaUploaderComponents';
+import { AudioPreviewPlayer, EmojiPicker, StickerPicker } from './MediaUploaderComponents';
 
 // Helper function to get file extension
 const getFileExtension = (filename: string): string => {
   const parts = filename.split('.');
-  return parts.length > 1 ? parts[parts.length - 1].toLowerCase() : '';
+  return parts.length > 1 ? parts.at(-1)?.toLowerCase() || '' : '';
 };
 
 // Helper function to get icon and color based on file type
@@ -75,8 +75,11 @@ const getDocumentIconConfig = (extension: string): { bgColor: string; icon: Reac
   };
 };
 
+// Type alias for media file types
+export type MediaFileType = 'image' | 'video' | 'file' | 'audio';
+
 // Helper function to get folder name based on file type - extracted to avoid ternary nest
-const getFolderForFileType = (type: 'image' | 'video' | 'file' | 'audio'): string => {
+const getFolderForFileType = (type: MediaFileType): string => {
   if (type === 'image') return 'images';
   if (type === 'video') return 'videos';
   return 'documents';
@@ -285,9 +288,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
   const handleMultipleFileSelect = async (files: FileList, forcedType?: 'image' | 'video' | 'file' | 'audio') => {
     const newFiles: Array<{ file: File; preview: string; type: 'image' | 'video' | 'file' | 'audio' }> = [];
     
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      
+    for (const file of files) {
       const type = forcedType || getFileType(file);
 
       // WhatsApp Limits
@@ -1363,7 +1364,9 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
                   <img src={preview} alt="Preview" className="w-full h-full object-contain" />
                 )}
                 {selectedFileType === 'video' && preview && (
-                  <video src={preview} className="w-full h-full object-contain" controls />
+                  <video src={preview} className="w-full h-full object-contain" controls>
+                    <track kind="captions" src="" label="No captions" />
+                  </video>
                 )}
                 {selectedFileType === 'audio' && (
                   <AudioPreviewPlayer file={selectedFile} />
@@ -1434,7 +1437,9 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
                       <img src={file.preview} alt={file.file.name} className="w-full h-full object-cover" />
                     )}
                     {file.type === 'video' && file.preview && (
-                      <video src={file.preview} className="w-full h-full object-cover" />
+                      <video src={file.preview} className="w-full h-full object-cover">
+                        <track kind="captions" src="" label="No captions" />
+                      </video>
                     )}
                     <button
                       onClick={() => handleRemoveFile(index)}

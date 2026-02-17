@@ -6,9 +6,9 @@ function processFile(filePath, replacements) {
   let content = readFileSync(filePath, { encoding: 'utf8' });
   let modified = false;
   let changes = [];
-  
+
   for (const { from, to } of replacements) {
-    const escapedFrom = from.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const escapedFrom = from.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
     const regex = new RegExp(escapedFrom, 'g');
     const matches = content.match(regex);
     if (matches) {
@@ -17,7 +17,7 @@ function processFile(filePath, replacements) {
       changes.push(`  ${from} -> ${to} (${matches.length} occurrences)`);
     }
   }
-  
+
   if (modified) {
     writeFileSync(filePath, content, { encoding: 'utf8' });
     console.log(`✅ Fixed: ${filePath}`);
@@ -32,18 +32,18 @@ function processFile(filePath, replacements) {
 function processDirectory(dirPath, fileHandler) {
   let count = 0;
   const items = readdirSync(dirPath);
-  
+
   for (const item of items) {
     const fullPath = join(dirPath, item);
     const stat = statSync(fullPath);
-    
+
     if (stat.isDirectory() && !item.startsWith('.') && item !== 'node_modules') {
       count += processDirectory(fullPath, fileHandler);
     } else if (item.endsWith('.tsx') || item.endsWith('.ts')) {
       count += fileHandler(fullPath);
     }
   }
-  
+
   return count;
 }
 

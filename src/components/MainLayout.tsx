@@ -6,8 +6,8 @@ import { Sidebar } from './Sidebar'
 import { MobileBottomNav } from './MobileBottomNav'
 
 interface MainLayoutProps {
-  children: ReactNode
-  showSidebar?: boolean
+  readonly children: ReactNode
+  readonly showSidebar?: boolean
 }
 
 export function MainLayout({ children, showSidebar = true }: MainLayoutProps) {

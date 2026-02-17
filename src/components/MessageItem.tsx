@@ -21,7 +21,8 @@ import {
 
 // Pre-compiled regex patterns for better performance
 // Emoji pattern using Unicode properties - this is the correct way to detect emojis in JS
-const EMOJI_PATTERN = /(?:\p{Emoji_Presentation}|\p{Emoji}\uFE0F?|\p{Regional_Indicator}{2}|[\u0023\u002A\u0030-\u0039]\uFE0F?\u20E3)(?:\u200D(?:\p{Emoji_Presentation}|\p{Emoji}\uFE0F?))*(?:\p{Emoji_Modifier})?/gu
+const EMOJI_PATTERN = String.raw`(?:\p{Emoji_Presentation}|\p{Emoji}\uFE0F?|\p{Regional_Indicator}{2}|[\u0023\u002A\u0030-\u0039]\uFE0F?\u20E3)(?:\u200D(?:\p{Emoji_Presentation}|\p{Emoji}\uFE0F?))*(?:\p{Emoji_Modifier})?`;
+const EMOJI_REGEX = new RegExp(EMOJI_PATTERN, 'gu');
 
 // Prefix pattern for transferred messages
 const TRANSFERRED_PREFIX_PATTERN = /^(?:\[Transféré\]\s*)?/
@@ -35,7 +36,7 @@ const isEmojiOnly = (text: string): { isEmoji: boolean; emojiCount: number } => 
   
   const trimmed = text.trim()
   
-  const emojis = trimmed.match(EMOJI_PATTERN)
+  const emojis = EMOJI_REGEX.exec(trimmed)
   if (!emojis) return { isEmoji: false, emojiCount: 0 }
   
   const emojiString = emojis.join('')
@@ -111,8 +112,8 @@ const parseSpecialMessage = (content: string, tag: string): RegExpMatchArray | n
   
   // 1. Check if it ends with the tag
   // We use a simple regex anchored at the end
-  const suffixRegex = new RegExp(`\\[${tag}\\]\\((https?:\\/\\/[^\\)]+)\\)$`)
-  const match = content.match(suffixRegex)
+  const suffixRegex = new RegExp(String.raw`\[${tag}\]\((https?:\/\/[^\)]+)\)$`)
+  const match = suffixRegex.exec(content)
   
   if (!match) return null
   
@@ -124,7 +125,7 @@ const parseSpecialMessage = (content: string, tag: string): RegExpMatchArray | n
   
   // 2. Handle prefix
   const prefixRegex = /^(?:\[Transféré\]\s*)?/
-  const prefixMatch = beforeTag.match(prefixRegex)
+  const prefixMatch = prefixRegex.exec(beforeTag)
   const prefix = prefixMatch ? prefixMatch[0] : ''
   
   const realContent = beforeTag.substring(prefix.length)
@@ -263,7 +264,7 @@ export const MessageItem: React.FC<MessageItemProps> = React.memo(({
   // Extract all message type properties at once - reduces cognitive complexity
   const msgType = getMessageType(message)
   const messageReactions = reactions.filter(r => r.message_id === message.id)
-  const systemMessageContent = msgType.isSystemMessage ? message.content.replaceAll('[SYSTEM]', '') : ''
+  const systemMessageContent = msgType.isSystemMessage ? message.content.replace(/\[SYSTEM\]/g, '') : ''
   
   const senderInfo = getSenderInfoForMessage(
     message.sender_id,

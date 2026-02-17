@@ -3,9 +3,9 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { X, Send, Plus, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RotateCw, Loader2, FileText, FileSpreadsheet, Presentation, File, FileArchive } from 'lucide-react';
-import { Document, Page, pdfjs } from 'react-pdf';
+import { pdfjs } from 'react-pdf';
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-import { DocumentPreviewHeader, DocumentPreviewFooter, DocumentPreviewContent, FileTypeInfo } from './DocumentPreviewComponents';
+import { DocumentPreviewContent, FileTypeInfo } from './DocumentPreviewComponents';
 
 // Configure PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = pdfjsWorker;
@@ -73,16 +73,12 @@ const loadFileUrl = async (file: File, isText: boolean): Promise<{ url: string; 
   const url = URL.createObjectURL(file);
   
   if (isText) {
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        resolve({ url, textContent: e.target?.result as string, error: null });
-      };
-      reader.onerror = () => {
-        resolve({ url, textContent: null, error: 'Impossible de lire le fichier' });
-      };
-      reader.readAsText(file);
-    });
+    try {
+      const textContent = await file.text();
+      return { url, textContent, error: null };
+    } catch {
+      return { url, textContent: null, error: 'Impossible de lire le fichier' };
+    }
   }
   
   return { url, textContent: null, error: null };
@@ -135,16 +131,14 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
     setFileUrl(url);
     
     if (isTextFile) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        setTextContent(e.target?.result as string);
+      try {
+        const text = await file.text();
+        setTextContent(text);
         setLoading(false);
-      };
-      reader.onerror = () => {
+      } catch {
         setError('Impossible de lire le fichier');
         setLoading(false);
-      };
-      reader.readAsText(file);
+      }
     } else if (!isPDFFile) {
       setLoading(false);
     }
@@ -272,11 +266,11 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
   // Add mouse move and up listeners for drag
   useEffect(() => {
     if (isDragging) {
-      window.addEventListener('mousemove', handleMouseMove);
-      window.addEventListener('mouseup', handleMouseUp);
+      globalThis.addEventListener('mousemove', handleMouseMove);
+      globalThis.addEventListener('mouseup', handleMouseUp);
       return () => {
-        window.removeEventListener('mousemove', handleMouseMove);
-        window.removeEventListener('mouseup', handleMouseUp);
+        globalThis.removeEventListener('mousemove', handleMouseMove);
+        globalThis.removeEventListener('mouseup', handleMouseUp);
       };
     }
   }, [isDragging, handleMouseMove, handleMouseUp]);

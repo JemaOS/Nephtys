@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  X, RotateCcw, Crop, Pencil, Download, Send, Undo2, Check,
+  X, RotateCcw, Crop, Pencil, Download, Send, Undo2,
   Circle, Triangle, Square, Star, Heart, FlipHorizontal
 } from 'lucide-react';
 

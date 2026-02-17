@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect, useCallback } from 'react';
+import React, { useRef, useState } from 'react';
 import { Music, Play, Pause, Search, Loader2 } from 'lucide-react';
 
 // Helper function to format file size

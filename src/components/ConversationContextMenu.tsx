@@ -6,19 +6,19 @@ import { Pin, Archive, Trash2, X, Volume2, VolumeX, Edit, ArrowLeft, MoreVertica
 import { useIsMobile } from '@/hooks/use-mobile'
 
 export interface ConversationContextMenuProps {
-  x: number
-  y: number
-  onClose: () => void
-  onMarkAsUnread: () => void
-  onPin: () => void
-  onArchive: () => void
-  onMute: () => void
-  onClearMessages: () => void
-  onDelete: () => void
-  onOpenInNewWindow: () => void
-  onSelect?: () => void
-  isPinned?: boolean
-  isMuted?: boolean
+  readonly x: number
+  readonly y: number
+  readonly onClose: () => void
+  readonly onMarkAsUnread: () => void
+  readonly onPin: () => void
+  readonly onArchive: () => void
+  readonly onMute: () => void
+  readonly onClearMessages: () => void
+  readonly onDelete: () => void
+  readonly onOpenInNewWindow: () => void
+  readonly onSelect?: () => void
+  readonly isPinned?: boolean
+  readonly isMuted?: boolean
 }
 
 export function ConversationContextMenu({
@@ -185,10 +185,10 @@ function MoreOptionsMenu({
   onClearMessages,
   onOpenInNewWindow
 }: {
-  onMarkAsUnread: () => void
-  onArchive: () => void
-  onClearMessages: () => void
-  onOpenInNewWindow: () => void
+  readonly onMarkAsUnread: () => void
+  readonly onArchive: () => void
+  readonly onClearMessages: () => void
+  readonly onOpenInNewWindow: () => void
 }) {
   const [isOpen, setIsOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)

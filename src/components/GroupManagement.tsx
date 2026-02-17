@@ -2,7 +2,7 @@
 // Distributed under the license specified in the root directory of this project.
 
 import React, { useState } from 'react';
-import { Users, UserPlus, UserMinus, Edit, Trash2, LogOut, Crown, Camera } from 'lucide-react';
+import { UserPlus, UserMinus, Edit, Trash2, LogOut, Crown, Camera } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
 interface GroupMember {
@@ -208,7 +208,7 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({
       }
       
       alert('✅ Photo du groupe mise à jour !');
-      window.location.reload();
+      globalThis.location.reload();
     } catch (err: any) {
       console.error('Group photo upload error:', err);
       alert(err.message || '❌ Erreur lors de l\'upload de la photo\n\nVeuillez réessayer.');
@@ -287,25 +287,23 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({
               </div>
             </div>
           ) : (
-            <>
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <h3 className="text-xl font-semibold mb-1">{groupName}</h3>
-                  {groupDescription && (
-                    <p className="text-sm text-text-tertiary">{groupDescription}</p>
-                  )}
-                  <p className="text-xs text-text-tertiary mt-2">{members.length} membres</p>
-                </div>
-                {isAdmin && (
-                  <button
-                    onClick={() => setIsEditing(true)}
-                    className="p-2 rounded-full hover:bg-white/10 transition-colors"
-                  >
-                    <Edit size={18} />
-                  </button>
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
+                <h3 className="text-xl font-semibold mb-1">{groupName}</h3>
+                {groupDescription && (
+                  <p className="text-sm text-text-tertiary">{groupDescription}</p>
                 )}
+                <p className="text-xs text-text-tertiary mt-2">{members.length} membres</p>
               </div>
-            </>
+              {isAdmin && (
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className="p-2 rounded-full hover:bg-white/10 transition-colors"
+                >
+                  <Edit size={18} />
+                </button>
+              )}
+            </div>
           )}
         </div>
 

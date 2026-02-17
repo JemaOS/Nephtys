@@ -6,14 +6,14 @@ import { cn } from '@/lib/utils'
 import { Loader2 } from 'lucide-react'
 
 interface ButtonProps {
-  children: ReactNode
-  onClick?: () => void
-  variant?: 'primary' | 'secondary' | 'ghost'
-  size?: 'sm' | 'md' | 'lg'
-  disabled?: boolean
-  loading?: boolean
-  className?: string
-  type?: 'button' | 'submit'
+  readonly children: ReactNode
+  readonly onClick?: () => void
+  readonly variant?: 'primary' | 'secondary' | 'ghost'
+  readonly size?: 'sm' | 'md' | 'lg'
+  readonly disabled?: boolean
+  readonly loading?: boolean
+  readonly className?: string
+  readonly type?: 'button' | 'submit'
 }
 
 export function Button({

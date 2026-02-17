@@ -16,17 +16,17 @@ const STATIC_ASSETS = [
 ];
 
 // Install event - cache static assets
-self.addEventListener('install', (event) => {
+globalThis.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(STATIC_CACHE)
       .then((cache) => cache.addAll(STATIC_ASSETS))
-      .then(() => self.skipWaiting())
-      .catch(() => self.skipWaiting())
+      .then(() => globalThis.skipWaiting())
+      .catch(() => globalThis.skipWaiting())
   );
 });
 
 // Activate event - clean old caches
-self.addEventListener('activate', (event) => {
+globalThis.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
@@ -37,7 +37,7 @@ self.addEventListener('activate', (event) => {
           return Promise.resolve();
         })
       );
-    }).then(() => self.clients.claim())
+    }).then(() => globalThis.clients.claim())
   );
 });
 
@@ -51,14 +51,14 @@ function isMediaRequest(request) {
   const url = new URL(request.url);
   const pathname = url.pathname.toLowerCase();
   const mediaExtensions = /\.(png|jpg|jpeg|gif|svg|webp|avif|ico|woff|woff2|ttf|eot|otf|mp3|mp4|webm|ogg|wav|pdf)$/;
-  return mediaExtensions.test(pathname) || 
+  return mediaExtensions.test(pathname) ||
          pathname.includes('/storage/') ||
          url.hostname.includes('storage') ||
          url.hostname.includes('cdn');
 }
 
 // Fetch event - MINIMAL strategy (WhatsApp-style)
-self.addEventListener('fetch', (event) => {
+globalThis.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
@@ -74,7 +74,7 @@ self.addEventListener('fetch', (event) => {
   }
 
   // Skip cross-origin requests (except media CDNs)
-  if (url.origin !== self.location.origin && !isMediaRequest(request)) {
+  if (url.origin !== globalThis.location.origin && !isMediaRequest(request)) {
     return;
   }
 
@@ -139,9 +139,9 @@ self.addEventListener('fetch', (event) => {
 });
 
 // Push notification event
-self.addEventListener('push', (event) => {
+globalThis.addEventListener('push', (event) => {
   const data = event.data?.json() || {};
-  
+
   const title = data.title || 'Nouveau message';
   const options = {
     body: data.body || 'Vous avez reçu un nouveau message',
@@ -157,18 +157,18 @@ self.addEventListener('push', (event) => {
     ],
   };
 
-  event.waitUntil(self.registration.showNotification(title, options));
+  event.waitUntil(globalThis.registration.showNotification(title, options));
 });
 
 // Notification click event
-self.addEventListener('notificationclick', (event) => {
+globalThis.addEventListener('notificationclick', (event) => {
   event.notification.close();
   if (event.action === 'open' || !event.action) {
     event.waitUntil(
       clients.matchAll({ type: 'window', includeUncontrolled: true })
         .then((clientList) => {
           for (const client of clientList) {
-            if (client.url.includes(self.location.origin) && 'focus' in client) {
+            if (client.url.includes(globalThis.location.origin) && 'focus' in client) {
               return client.focus();
             }
           }
@@ -179,12 +179,10 @@ self.addEventListener('notificationclick', (event) => {
 });
 
 // Message event - minimal handlers
-self.addEventListener('message', (event) => {
+globalThis.addEventListener('message', (event) => {
   if (!event.data || !event.data.type) return;
 
-  switch (event.data.type) {
-    case 'SKIP_WAITING':
-      self.skipWaiting();
-      break;
+  if (event.data.type === 'SKIP_WAITING') {
+    globalThis.skipWaiting();
   }
 });

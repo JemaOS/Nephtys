@@ -1,5 +1,5 @@
-import React, { useRef } from 'react';
-import { X, ChevronLeft, ChevronRight, Forward, Star, Pin, Smile, Share2, Download, Play, Pause, Volume2, VolumeX, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
+import React from 'react';
+import { X, Forward, Star, Pin, Smile, Share2, Download, Play, Pause, Volume2, VolumeX, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
 
 // Format timestamp helper
 export const formatTimestamp = (ts: string): string => {
@@ -305,7 +305,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
   isMobile,
   showControls,
 }) => (
-  <div
+  <span
     ref={imageContainerRef}
     className={`relative flex items-center justify-center w-full h-full ${
       zoom > 1 ? 'cursor-grab' : 'cursor-default'
@@ -365,7 +365,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
         ← Glissez pour naviguer →
       </div>
     )}
-  </div>
+  </span>
 );
 
 interface VideoPlayerProps {
@@ -587,8 +587,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   lastClickTimeRef,
 }) => {
   return (
-    <button
-      type="button"
+    <div
       className={`relative flex flex-col w-full h-full border-none bg-transparent p-0 ${isFullscreen ? 'bg-black' : ''}`}
       onClick={(e) => {
         // Smart click handling: Single click toggles play/pause immediately, double click toggles fullscreen
@@ -601,7 +600,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           lastClickTimeRef.current = now;
         }
       }}
+      role="button"
+      tabIndex={0}
       aria-label="Lecteur vidéo"
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          togglePlayPause();
+        }
+      }}
     >
       <div className="flex-1 flex items-center justify-center relative w-full h-full">
         <video
@@ -651,7 +657,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           videoRef={videoRef}
         />
       </div>
-    </button>
+    </div>
   );
 };
 

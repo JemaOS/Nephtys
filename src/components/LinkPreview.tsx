@@ -2,7 +2,7 @@
 // Distributed under the license specified in the root directory of this project.
 
 import React, { useState } from 'react';
-import { X, ExternalLink, Play } from 'lucide-react';
+import { X, Play } from 'lucide-react';
 import { LinkPreviewData } from '@/lib/linkPreview';
 import { YouTubePlayer, isYouTubeUrl, extractYouTubeVideoId } from './YouTubePlayer';
 

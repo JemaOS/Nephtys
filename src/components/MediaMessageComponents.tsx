@@ -1,7 +1,6 @@
-import React, { useRef, useEffect, useCallback } from 'react';
-import { Download, File, Play, Copy, ChevronDown, FileText, FileSpreadsheet, FileImage, FileArchive } from 'lucide-react';
+import React, { useRef, useEffect } from 'react';
+import { Download, File, Play, Copy, FileText, FileSpreadsheet, FileImage, FileArchive } from 'lucide-react';
 import { MessageHoverActions } from './MessageHoverActions';
-import { calculateDisplayDimensions } from '@/lib/imageUtils';
 
 // Custom hook to preload next images in viewport
 const useMediaPreloader = (mediaUrls: string[], currentIndex: number) => {
@@ -50,7 +49,7 @@ export const formatFileSize = (bytes?: number): string => {
 export const getFileExtension = (filename?: string): string => {
   if (!filename) return '';
   const parts = filename.split('.');
-  return parts.length > 1 ? parts[parts.length - 1].toLowerCase() : '';
+  return parts.length > 1 ? parts.at(-1)?.toLowerCase() || '' : '';
 };
 
 // Helper function to get icon background color based on file type
@@ -146,8 +145,11 @@ export const formatMessageTimestamp = (ts: string): string => {
   return new Date(ts).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 };
 
+// Type alias for message status
+export type MessageStatus = 'sent' | 'delivered' | 'read';
+
 // Helper function to render status check SVG
-export const renderStatusCheckmark = (status?: 'sent' | 'delivered' | 'read'): React.ReactNode => {
+export const renderStatusCheckmark = (status?: MessageStatus): React.ReactNode => {
   if (status === 'read') {
     return (
       <svg width="16" height="11" viewBox="0 0 16 11" fill="none">

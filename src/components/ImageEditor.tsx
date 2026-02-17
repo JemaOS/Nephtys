@@ -10,11 +10,7 @@ import {
   ImageEditorSecondaryToolbar,
   ImageEditorFooter,
   Tool,
-  Shape,
-  COLORS,
-  BRUSH_SIZES,
-  FONT_SIZES,
-  FONT_FAMILIES
+  Shape
 } from './ImageEditorComponents';
 
 interface ImageEditorProps {
@@ -809,7 +805,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
             </button>
             <button
               onClick={() => { setHdQuality(false); setShowQualitySettings(false); }}
-              className={`w-full px-3 py-2 rounded-lg text-left text-sm transition-colors ${!hdQuality ? 'bg-accent text-white' : 'hover:bg-bg-hover text-text-primary'}`}
+              className={`w-full px-3 py-2 rounded-lg text-left text-sm transition-colors ${hdQuality ? 'hover:bg-bg-hover text-text-primary' : 'bg-accent text-white'}`}
             >
               Standard (Fichier plus petit)
             </button>

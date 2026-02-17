@@ -7,9 +7,9 @@ import { supabase, Contact, Profile } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 
 interface CallParticipantSelectorProps {
-  onClose: () => void
-  onSelect: (contactId: string) => void | Promise<void>
-  currentParticipants?: string[] // IDs of users already in the call to exclude
+  readonly onClose: () => void
+  readonly onSelect: (contactId: string) => void | Promise<void>
+  readonly currentParticipants?: string[] // IDs of users already in the call to exclude
 }
 
 export function CallParticipantSelector({ onClose, onSelect, currentParticipants = [] }: CallParticipantSelectorProps) {

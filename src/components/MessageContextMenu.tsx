@@ -152,14 +152,14 @@ export const MessageContextMenu: React.FC<MessageContextMenuProps> = ({
       try {
         const response = await fetch(mediaUrl);
         const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
+        const url = globalThis.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
         a.download = `download-${Date.now()}`;
         document.body.appendChild(a);
         a.click();
         a.remove();
-        window.URL.revokeObjectURL(url);
+        globalThis.URL.revokeObjectURL(url);
       } catch (error) {
         console.error('Error downloading file:', error);
       }
@@ -261,27 +261,7 @@ export const MessageContextMenu: React.FC<MessageContextMenuProps> = ({
       >
         {/* Emoji Reaction Bar */}
         <div className="p-3 border-b border-[#3b4a54]">
-          {!showExtendedEmojis ? (
-            <div className="flex items-center justify-between gap-1">
-              {QUICK_REACTIONS.map((emoji) => (
-                <button
-                  key={emoji}
-                  onClick={() => handleReaction(emoji)}
-                  className="w-10 h-10 flex items-center justify-center text-2xl hover:bg-bg-hover rounded-full transition-all hover:scale-110 active:scale-95"
-                  type="button"
-                >
-                  {emoji}
-                </button>
-              ))}
-              <button
-                onClick={() => setShowExtendedEmojis(true)}
-                className="w-10 h-10 flex items-center justify-center hover:bg-bg-hover rounded-full transition-all"
-                type="button"
-              >
-                <Plus size={20} className="text-[#8696a0]" />
-              </button>
-            </div>
-          ) : (
+          {showExtendedEmojis ? (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-xs text-[#8696a0]">Toutes les réactions</span>
@@ -305,6 +285,26 @@ export const MessageContextMenu: React.FC<MessageContextMenuProps> = ({
                   </button>
                 ))}
               </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between gap-1">
+              {QUICK_REACTIONS.map((emoji) => (
+                <button
+                  key={emoji}
+                  onClick={() => handleReaction(emoji)}
+                  className="w-10 h-10 flex items-center justify-center text-2xl hover:bg-bg-hover rounded-full transition-all hover:scale-110 active:scale-95"
+                  type="button"
+                >
+                  {emoji}
+                </button>
+              ))}
+              <button
+                onClick={() => setShowExtendedEmojis(true)}
+                className="w-10 h-10 flex items-center justify-center hover:bg-bg-hover rounded-full transition-all"
+                type="button"
+              >
+                <Plus size={20} className="text-[#8696a0]" />
+              </button>
             </div>
           )}
         </div>

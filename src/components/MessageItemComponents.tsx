@@ -1,9 +1,7 @@
 import React from 'react'
 import { Message } from '@/lib/supabase'
 import { cleanLinkPreviewContent } from '@/lib/utils'
-import { MessageReactions } from '@/components/MessageReactions'
 import { MessageReply } from '@/components/MessageReply'
-import { MessageHoverActions } from '@/components/MessageHoverActions'
 import { LinkPreview } from '@/components/LinkPreview'
 import { Reply, Forward, Smile, Star } from 'lucide-react'
 
@@ -51,11 +49,12 @@ export const MessageStatusIcons: React.FC<{ status?: string; isOwn: boolean }> =
 export const MessageContent: React.FC<{ message: Message; isOwn: boolean }> = ({ message, isOwn }) => {
   let displayContent = message.content
   
-  if ((message as any).link_preview) {
+  const linkPreview = (message as { link_preview?: unknown }).link_preview;
+  if (linkPreview) {
     try {
-      const previewData = typeof (message as any).link_preview === 'string'
-        ? JSON.parse((message as any).link_preview)
-        : (message as any).link_preview
+      const previewData = typeof linkPreview === 'string'
+        ? JSON.parse(linkPreview)
+        : linkPreview
       if (previewData.url) {
         displayContent = cleanLinkPreviewContent(message.content, previewData.url)
       }
@@ -64,7 +63,7 @@ export const MessageContent: React.FC<{ message: Message; isOwn: boolean }> = ({
     }
   }
   
-  const hasLinkPreview = !!(message as any).link_preview
+  const hasLinkPreview = !!linkPreview
   
   return (
     <>
@@ -73,9 +72,9 @@ export const MessageContent: React.FC<{ message: Message; isOwn: boolean }> = ({
       ) : null}
       {hasLinkPreview && (() => {
         try {
-          const previewData = typeof (message as any).link_preview === 'string'
-            ? JSON.parse((message as any).link_preview)
-            : (message as any).link_preview
+          const previewData = typeof linkPreview === 'string'
+            ? JSON.parse(linkPreview)
+            : linkPreview
           return (
             <LinkPreview preview={previewData} isInMessage={true} isOwn={isOwn} />
           )
@@ -102,7 +101,7 @@ export const ReplyQuote: React.FC<{
   
   const replySenderName = replyMessage.sender_id === userId
     ? 'Vous'
-    : otherUserDisplayName || 'Utilisateur'
+    : otherUserDisplayName ?? 'Utilisateur'
   
   return (
     <button
@@ -139,9 +138,15 @@ export const MessageQuickActions: React.FC<{
   const showOnLeft = isOwn && position === 'left'
   const showOnRight = !isOwn && position === 'right'
   
-  if (!isHovered || isSelectionMode) return null
-  if (position === 'left' && !showOnLeft) return null
-  if (position === 'right' && !showOnRight) return null
+  if (!isHovered || isSelectionMode) {
+    return null
+  }
+  if (position === 'left' && !showOnLeft) {
+    return null
+  }
+  if (position === 'right' && !showOnRight) {
+    return null
+  }
   
   return (
     <div className={`flex items-center gap-0.5 md:gap-1 ${position === 'left' ? 'mr-1 md:mr-2' : 'ml-1 md:ml-2 pb-4'}`}>
@@ -184,7 +189,9 @@ export const MessageSelectionCheckbox: React.FC<{
   messageId: string
   onSelectMessage: (messageId: string) => void
 }> = ({ isOwn, isSelected, isSelectionMode, messageId, onSelectMessage }) => {
-  if (!isSelectionMode) return null
+  if (!isSelectionMode) {
+    return null
+  }
   
   return (
     <button
@@ -217,7 +224,9 @@ export const MessageTimestamp: React.FC<{
   mediaType: string
 }> = ({ message, isOwn, mediaUrl, mediaType }) => {
   const showInBubble = !(mediaUrl && (mediaType === 'image' || mediaType === 'video') && message.type !== 'audio')
-  if (!showInBubble) return null
+  if (!showInBubble) {
+    return null
+  }
   
   return (
     <div className={`flex items-center justify-end gap-1 mt-1 text-xs ${isOwn ? 'text-[#2d2f6e]' : 'text-text-secondary'}`}>

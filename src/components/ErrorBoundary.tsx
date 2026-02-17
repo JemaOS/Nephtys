@@ -34,7 +34,7 @@ export class ErrorBoundary extends React.Component<
       
       if (!lastReload || (now - Number.parseInt(lastReload)) > 10000) {
         sessionStorage.setItem('chunk_reload_time', String(now));
-        window.location.reload();
+        globalThis.location.reload();
       }
     }
   }
@@ -59,7 +59,7 @@ export class ErrorBoundary extends React.Component<
           <h2 className="text-red-500 text-xl font-bold mb-4">Une erreur est survenue</h2>
           <p className="mb-4 text-gray-300">Veuillez rafraîchir la page.</p>
           <button
-            onClick={() => window.location.reload()}
+            onClick={() => globalThis.location.reload()}
             className="px-4 py-2 bg-primary-500 rounded hover:bg-primary-600 transition-colors"
           >
             Rafraîchir

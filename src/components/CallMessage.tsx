@@ -4,15 +4,15 @@
 import { Phone, Video, PhoneIncoming, PhoneOutgoing, PhoneMissed, Users } from 'lucide-react'
 
 interface CallMessageProps {
-  type: 'audio' | 'video'
-  status: 'initiated' | 'answered' | 'missed' | 'rejected' | 'ended'
-  duration: number | null
-  isOutgoing: boolean
-  isGroupCall: boolean
-  participantCount?: number
-  timestamp: string
-  isOwn: boolean
-  onClick?: () => void
+  readonly type: 'audio' | 'video'
+  readonly status: 'initiated' | 'answered' | 'missed' | 'rejected' | 'ended'
+  readonly duration: number | null
+  readonly isOutgoing: boolean
+  readonly isGroupCall: boolean
+  readonly participantCount?: number
+  readonly timestamp: string
+  readonly isOwn: boolean
+  readonly onClick?: () => void
 }
 
 export function CallMessage({

@@ -5,10 +5,10 @@ import { ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 
 interface GlassCardProps {
-  children: ReactNode
-  className?: string
-  onClick?: () => void
-  hover?: boolean
+  readonly children: ReactNode
+  readonly className?: string
+  readonly onClick?: () => void
+  readonly hover?: boolean
 }
 
 export function GlassCard({ children, className, onClick, hover = false }: GlassCardProps) {

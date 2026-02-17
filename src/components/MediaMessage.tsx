@@ -3,8 +3,6 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { MediaViewer } from './MediaViewer';
-import { calculateDisplayDimensions } from '@/lib/imageUtils';
-import { MessageHoverActions } from './MessageHoverActions';
 import {
   ImageRenderer,
   VideoRenderer,
@@ -121,14 +119,14 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
     try {
       const response = await fetch(url);
       const blob = await response.blob();
-      const downloadUrl = window.URL.createObjectURL(blob);
+      const downloadUrl = globalThis.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = downloadUrl;
       a.download = fileName || 'download';
       document.body.appendChild(a);
       a.click();
       a.remove();
-      window.URL.revokeObjectURL(downloadUrl);
+      globalThis.URL.revokeObjectURL(downloadUrl);
     } catch (error) {
       console.error('Error downloading file:', error);
     }
@@ -151,7 +149,7 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
   const shareFileWithAPI = async (blob: Blob, mimeType: string): Promise<boolean | 'aborted'> => {
     if (!navigator.canShare) return false;
     
-    const shareFile = new window.File([blob], fileName || 'document', { type: mimeType });
+    const shareFile = new globalThis.File([blob], fileName || 'document', { type: mimeType });
     if (!navigator.canShare({ files: [shareFile] })) return false;
     
     try {
@@ -166,7 +164,7 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
   // Helper to open file with fallback - extracted for complexity reduction
   const openFileWithFallback = async (blob: Blob, mimeType: string): Promise<void> => {
     const fileUrl = URL.createObjectURL(blob);
-    const newWindow = window.open(fileUrl, '_blank');
+    const newWindow = globalThis.open(fileUrl, '_blank');
     
     if (!newWindow) {
       const a = document.createElement('a');
@@ -201,7 +199,7 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
       await openFileWithFallback(blob, mimeType);
     } else {
       // On desktop, open in new tab
-      window.open(url, '_blank', 'noopener,noreferrer');
+      globalThis.open(url, '_blank', 'noopener,noreferrer');
     }
   }, [url, fileName, isMobile, isPWA]);
 
