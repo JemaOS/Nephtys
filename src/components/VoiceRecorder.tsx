@@ -93,30 +93,24 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
       // Priority: MP4/AAC (most compatible) > audio/webm (basic) > audio/ogg
       // Note: We avoid opus codec as it has playback issues on some browsers
       let mimeType = 'audio/webm';
-      let audioBitsPerSecond = 128000; // 128 kbps for high quality voice
+      const audioBitsPerSecond = 128000; // 128 kbps for high quality voice
       
       // Check for MP4/AAC first - most universally supported for playback
       if (MediaRecorder.isTypeSupported('audio/mp4')) {
         mimeType = 'audio/mp4';
-        audioBitsPerSecond = 128000;
       } else if (MediaRecorder.isTypeSupported('audio/mp4;codecs=aac')) {
         mimeType = 'audio/mp4;codecs=aac';
-        audioBitsPerSecond = 128000;
       } else if (MediaRecorder.isTypeSupported('audio/aac')) {
         mimeType = 'audio/aac';
-        audioBitsPerSecond = 128000;
       } else if (MediaRecorder.isTypeSupported('audio/webm')) {
         // Basic WebM without opus codec - better compatibility
         mimeType = 'audio/webm';
-        audioBitsPerSecond = 128000;
       } else if (MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')) {
         // OGG/Opus as fallback
         mimeType = 'audio/ogg;codecs=opus';
-        audioBitsPerSecond = 128000;
       } else if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
         // WebM/Opus as last resort
         mimeType = 'audio/webm;codecs=opus';
-        audioBitsPerSecond = 128000;
       }
       
       // Store the mimeType for later use when creating the blob
@@ -289,20 +283,20 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
         
         {/* Waveform Visualization - Clean animated style */}
         <div className="flex-1 flex items-center justify-center gap-[2px] h-8 px-2">
-          {waveformData.map((value, i) => {
+          {waveformData.map((value, index) => {
             const isActive = isRecording && !isPaused;
             // Dynamic waveform
             const baseHeight = isActive ? Math.max(3, value * 28) : 3;
             const height = Math.max(3, baseHeight);
             
             // WhatsApp-like pattern: dots and bars
-            const isMainBar = i % 4 === 1 || i % 4 === 2;
+            const isMainBar = index % 4 === 1 || index % 4 === 2;
             const barWidth = isMainBar ? 3 : 2;
             const barHeight = isMainBar ? height : Math.min(height * 0.4, 6);
             
             return (
               <div
-                key={i}
+                key={`waveform-${index}`}
                 className="transition-all duration-75 rounded-full"
                 style={{
                   width: `${barWidth}px`,

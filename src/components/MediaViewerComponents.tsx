@@ -232,8 +232,7 @@ export const MediaViewerHeader: React.FC<MediaViewerHeaderProps> = ({
   timestamp,
   headerActionsProps,
 }) => (
-  <div
-    role="banner"
+  <header
     className={`absolute top-0 left-0 right-0 z-10 transition-opacity duration-300 ${
       showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
     }`}
@@ -263,7 +262,7 @@ export const MediaViewerHeader: React.FC<MediaViewerHeaderProps> = ({
       {/* Right side - Action buttons */}
       <HeaderActions {...headerActionsProps} />
     </div>
-  </div>
+  </header>
 );
 
 interface ImageViewerProps {
@@ -312,7 +311,6 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
     } ${isDragging ? 'cursor-grabbing' : ''}`}
     onMouseDown={handleMouseDown}
     onMouseMove={handleMouseMove}
-    role="presentation"
     style={{
       transform: zoom <= 1 ? `translateX(${swipeOffset}px)` : 'none',
       transition: isSwipeActive ? 'none' : 'transform 0.15s ease-out',
@@ -338,7 +336,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
     >
       <img
         src={mediaUrl}
-        alt="Media"
+        alt=""
         className="max-w-full max-h-full object-contain select-none"
         style={{
           transform: `scale(${zoom}) translate(${position.x / zoom}px, ${position.y / zoom}px)`,
@@ -691,16 +689,16 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
     <div className="flex flex-col items-center gap-4">
       {/* Waveform visualization placeholder */}
       <div className="w-full h-16 bg-bg-hover rounded-lg flex items-center justify-center gap-1">
-        {Array.from({ length: 30 }).map((_, i) => (
+        {Array.from({ length: 30 }).map((_, idx) => (
           <div
-            key={i}
+            key={idx}
             className={`w-1 bg-accent rounded-full transition-all ${
               isPlaying ? 'animate-pulse' : ''
             }`}
             style={{
               // Use deterministic value for visualizer height instead of Math.random()
-              height: `${((i * 7) % 40) + 10}px`,
-              animationDelay: `${i * 50}ms`,
+              height: `${((idx * 7) % 40) + 10}px`,
+              animationDelay: `${idx * 50}ms`,
             }}
           />
         ))}

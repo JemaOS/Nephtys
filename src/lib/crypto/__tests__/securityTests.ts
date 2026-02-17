@@ -308,14 +308,13 @@ describe('Double Ratchet Algorithm', () => {
       const savedState = serializeRatchetState(aliceState);
       
       // Bob receives and responds
-      const [bobState1, _] = decryptMessage(bobState, encrypted1);
+      const [bobState1] = decryptMessage(bobState, encrypted1);
       bobState = bobState1;
       const [bobState2, response] = encryptMessage(bobState, 'Response');
       bobState = bobState2;
       
       // Alice receives response
-      const [state2, __] = decryptMessage(aliceState, response);
-      aliceState = state2;
+      decryptMessage(aliceState, response);
       
       // Alice sends more messages
       const [state3, encrypted2] = encryptMessage(aliceState, 'Message 2');
@@ -356,13 +355,13 @@ describe('Double Ratchet Algorithm', () => {
         aliceState = aState;
         
         // Bob receives and responds
-        const [bState1, _] = decryptMessage(bobState, aMsg);
+        const [bState1] = decryptMessage(bobState, aMsg);
         bobState = bState1;
         const [bState2, bMsg] = encryptMessage(bobState, `Bob ${i}`);
         bobState = bState2;
         
         // Alice receives
-        const [aState2, __] = decryptMessage(aliceState, bMsg);
+        const [aState2] = decryptMessage(aliceState, bMsg);
         aliceState = aState2;
       }
       
@@ -370,7 +369,7 @@ describe('Double Ratchet Algorithm', () => {
       const oldState = deserializeRatchetState(compromisedState);
       
       // New messages cannot be decrypted with old state
-      const [_, newMsg] = encryptMessage(aliceState, 'New message');
+      const [, newMsg] = encryptMessage(aliceState, 'New message');
       expect(() => {
         decryptMessage(oldState, newMsg);
       }).toThrow();
@@ -405,7 +404,7 @@ describe('Double Ratchet Algorithm', () => {
       aliceState = newState;
       
       // Bob receives it
-      const [bobState1, _] = decryptMessage(bobState, encrypted);
+      const [bobState1] = decryptMessage(bobState, encrypted);
       bobState = bobState1;
       
       // Trying to decrypt the same message again should fail
@@ -451,7 +450,7 @@ describe('Double Ratchet Algorithm', () => {
   describe('State Serialization', () => {
     test('serializes and deserializes state correctly', () => {
       // Send some messages to advance state
-      const [state1, _unused1] = encryptMessage(aliceState, 'Test');
+      const [state1] = encryptMessage(aliceState, 'Test');
       aliceState = state1;
       
       // Serialize
@@ -462,7 +461,7 @@ describe('Double Ratchet Algorithm', () => {
       
       // Should be able to continue conversation
       const [state2, encrypted] = encryptMessage(restored, 'After restore');
-      const [_unused2, decrypted] = decryptMessage(bobState, encrypted);
+      const [, decrypted] = decryptMessage(bobState, encrypted);
       
       expect(decrypted).toBe('After restore');
     });
@@ -562,7 +561,6 @@ describe('X3DH Key Agreement', () => {
   describe('One-Time Pre-Key Consumption', () => {
     test('one-time pre-keys should be used only once', () => {
       const bobPublicBundle = getPublicKeyBundle(bobBundle, 0);
-      const usedOtkId = bobPublicBundle.oneTimePreKeyId;
       
       // First use
       const aliceEphemeral1 = generateX25519KeyPair();
@@ -912,7 +910,7 @@ describe('Key Derivation (HKDF)', () => {
     test('chain key ratchet is one-way', () => {
       const chainKey = secureRandomBytes(32);
       
-      const [newChainKey, _] = kdfCK(chainKey);
+      const [newChainKey] = kdfCK(chainKey);
       
       // Cannot derive original chain key from new chain key
       expect(arraysEqual(newChainKey, chainKey)).toBe(false);
@@ -1160,7 +1158,6 @@ describe('Integration Tests', () => {
     const bob = generateIdentity(10);
     
     // Exchange public bundles (simulating server)
-    const alicePublicBundle = getPublicKeyBundle(alice.keyBundle, 0);
     const bobPublicBundle = getPublicKeyBundle(bob.keyBundle, 0);
     
     // Alice initiates session with Bob
@@ -1193,8 +1190,7 @@ describe('Integration Tests', () => {
     expect(received2).toBe('Hi Alice!');
     
     // Continue conversation
-    const { session: aliceSession3, encrypted: msg3 } = sessionEncrypt(aliceSession, 'How are you?');
-    aliceSession = aliceSession3;
+    const { encrypted: msg3 } = sessionEncrypt(aliceSession, 'How are you?');
     
     const { message: received3 } = sessionDecrypt(bobSession, msg3);
     expect(received3).toBe('How are you?');

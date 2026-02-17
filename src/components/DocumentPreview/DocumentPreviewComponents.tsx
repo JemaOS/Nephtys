@@ -297,7 +297,6 @@ export const DocumentPreviewContent: React.FC<DocumentPreviewContentProps> = ({
       }
     }}
     tabIndex={0}
-    role="button"
     aria-label="Zone de prévisualisation du document - Appuyez sur Échap pour fermer"
   >
     {loading && (

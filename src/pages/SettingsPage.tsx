@@ -172,7 +172,6 @@ export function SettingsPage() {
   const [backupPassword, setBackupPassword] = useState('')
   const [showPasswordInput, setShowPasswordInput] = useState(false)
   const [passwordAction, setPasswordAction] = useState<'backup' | 'restore' | 'light-backup'>('backup')
-  const [lightBackupMode, setLightBackupMode] = useState(false)
   const restoreFileRef = useRef<HTMLInputElement>(null)
 
   // Load storage stats and backup metadata
@@ -1240,7 +1239,6 @@ export function SettingsPage() {
     
     if (!backupPassword) {
       setPasswordAction(isLightBackup ? 'light-backup' : 'backup')
-      setLightBackupMode(isLightBackup)
       setShowPasswordInput(true)
       return
     }
@@ -1265,7 +1263,6 @@ export function SettingsPage() {
       
       setBackupPassword('')
       setShowPasswordInput(false)
-      setLightBackupMode(false)
       alert('✅ Sauvegarde terminée avec succès !\n\nLe fichier a été téléchargé. Vous pouvez maintenant l\'uploader sur Proton Drive.')
     } catch (err: any) {
       console.error('Backup error:', err)
@@ -1548,16 +1545,16 @@ const BackupSecurityInfo = () => (
         />
 
         <div className="px-6 py-4 space-y-3">
-          <button 
-            onClick={() => { setPasswordAction('backup'); setLightBackupMode(false); setShowPasswordInput(true); }} 
-            disabled={isBackingUp || isRestoring} 
+          <button
+            onClick={() => { setPasswordAction('backup'); setShowPasswordInput(true); }}
+            disabled={isBackingUp || isRestoring}
             className={`w-full py-3 rounded-2xl font-medium transition-colors flex items-center justify-center gap-2 ${isBackingUp || isRestoring ? 'bg-accent/50 text-white/70 cursor-not-allowed' : 'bg-accent hover:bg-[#5a5ec9] text-white'}`}
           >
             <CloudUpload size={20} />Créer une sauvegarde complète
           </button>
-          <button 
-            onClick={() => { setPasswordAction('light-backup'); setLightBackupMode(true); setShowPasswordInput(true); }} 
-            disabled={isBackingUp || isRestoring} 
+          <button
+            onClick={() => { setPasswordAction('light-backup'); setShowPasswordInput(true); }}
+            disabled={isBackingUp || isRestoring}
             className={`w-full py-3 rounded-2xl font-medium transition-colors flex items-center justify-center gap-2 ${isBackingUp || isRestoring ? 'bg-bg-surface/50 text-text-secondary cursor-not-allowed' : 'bg-bg-surface hover:bg-bg-hover text-text-primary'}`}
           >
             <FileText size={20} />Sauvegarde légère (texte uniquement)

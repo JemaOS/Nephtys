@@ -475,8 +475,8 @@ export async function exportBackupAsFile(
     
     // Clean up after a delay to ensure download has started
     setTimeout(() => {
-      if (document.body.contains(a)) {
-        document.body.removeChild(a)
+      if (a.parentNode) {
+        a.remove()
       }
       URL.revokeObjectURL(url)
       resolve()
@@ -907,13 +907,13 @@ export async function estimateBackupSizeDetailed(
       const size = msg.file_size || 0
       
       // Check if this type should be included based on settings
-      if (type === 'image' && settings.includeImages) {
-        mediaSize += size
-      } else if (type === 'video' && settings.includeVideos) {
-        mediaSize += size
-      } else if ((type === 'audio' || type === 'voice') && settings.includeAudio) {
-        mediaSize += size
-      } else if (type === 'file' && settings.includeFiles) {
+      const shouldInclude =
+        (type === 'image' && settings.includeImages) ||
+        (type === 'video' && settings.includeVideos) ||
+        ((type === 'audio' || type === 'voice') && settings.includeAudio) ||
+        (type === 'file' && settings.includeFiles)
+      
+      if (shouldInclude) {
         mediaSize += size
       }
     }

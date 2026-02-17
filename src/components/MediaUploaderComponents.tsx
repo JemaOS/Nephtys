@@ -179,9 +179,9 @@ export const EmojiPicker: React.FC<EmojiPickerProps> = ({ onEmojiSelect, onCance
             {getEmojiCategoryLabel(category)}
           </h4>
           <div className="grid grid-cols-8 gap-1">
-            {emojis.map((emoji, idx) => (
+            {emojis.map((emoji) => (
               <button
-                key={idx}
+                key={emoji}
                 onClick={() => handleEmojiClick(emoji)}
                 className="w-10 h-10 flex items-center justify-center text-2xl hover:bg-bg-hover rounded-lg transition-all hover:scale-110 active:scale-95"
               >
@@ -273,20 +273,24 @@ export const StickerPicker: React.FC<StickerPickerProps> = ({
         </div>
       ) : stickers.length > 0 ? (
         <div className="grid grid-cols-3 gap-3">
-          {stickers.map((sticker) => (
-            <button
-              key={sticker.id}
-              onClick={() => handleStickerSelect(sticker)}
-              className="aspect-square rounded-xl overflow-hidden bg-transparent hover:bg-bg-hover transition-all p-2"
-            >
-              <img
-                src={sticker.media_formats?.tinywebp?.url || sticker.media_formats?.tinygif?.url}
-                alt={sticker.content_description || 'Sticker'}
-                className="w-full h-full object-contain"
-                loading="lazy"
-              />
-            </button>
-          ))}
+          {stickers.map((sticker) => {
+            const stickerUrl = sticker.media_formats?.tinywebp?.url || sticker.media_formats?.tinygif?.url;
+            const stickerAlt = sticker.content_description || 'Sticker';
+            return (
+              <button
+                key={sticker.id}
+                onClick={() => handleStickerSelect(sticker)}
+                className="aspect-square rounded-xl overflow-hidden bg-transparent hover:bg-bg-hover transition-all p-2"
+              >
+                <img
+                  src={stickerUrl}
+                  alt={stickerAlt}
+                  className="w-full h-full object-contain"
+                  loading="lazy"
+                />
+              </button>
+            );
+          })}
         </div>
       ) : (
         <div className="text-center py-8 text-text-secondary">

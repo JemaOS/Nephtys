@@ -746,9 +746,6 @@ export class SecureKeyStorage {
       throw new Error('Storage not initialized');
     }
     
-    // Verify current password
-    const currentKey = await this.deriveDeviceKey(currentPassword, this.salt!);
-    
     // Get all data with current key
     const keyBundle = await this.getKeyBundle();
     const sessionPeerIds = await this.getAllSessionPeerIds();

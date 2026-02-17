@@ -25,7 +25,7 @@ export const PinMessageDialog: React.FC<PinMessageDialogProps> = ({
 }) => {
   const [selectedDuration, setSelectedDuration] = useState<PinDuration>('7d');
 
-  const dialogRef = React.useRef<HTMLDivElement>(null);
+  const dialogRef = React.useRef<HTMLDialogElement>(null);
 
   if (!isOpen) return null;
 
@@ -38,18 +38,16 @@ export const PinMessageDialog: React.FC<PinMessageDialogProps> = ({
   };
 
   return (
-    <button
-      className="fixed inset-0 bg-black/50 z-[250] flex items-center justify-center w-full h-full cursor-default border-none"
+    <div
+      className="fixed inset-0 bg-black/50 z-[250] flex items-center justify-center w-full h-full cursor-default"
       onClick={() => onClose()}
       aria-label="Fermer la boîte de dialogue"
     >
         {/* Dialog */}
-        <div 
+        <dialog
           ref={dialogRef}
-          className="bg-bg-surface rounded-lg shadow-2xl w-full max-w-md mx-4 overflow-hidden cursor-auto text-left"
-          role="dialog"
+          className="bg-bg-surface rounded-lg shadow-2xl w-full max-w-md mx-4 overflow-hidden cursor-auto text-left p-0 border-none open:flex open:flex-col"
           aria-modal="true"
-          tabIndex={-1}
         >
           {/* Header */}
           <div className="px-6 py-4">
@@ -113,7 +111,7 @@ export const PinMessageDialog: React.FC<PinMessageDialogProps> = ({
               Épingler
             </button>
           </div>
-        </div>
-      </button>
+        </dialog>
+      </div>
   );
 };

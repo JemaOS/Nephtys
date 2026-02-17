@@ -309,7 +309,7 @@ export function usePresence(userId?: string) {
 
 // Hook to track a specific user's presence
 export function useUserPresence(userId: string | undefined) {
-  const { userStatus, isOnline, lastSeen, getStatusText } = usePresence(userId)
+  const { isOnline, lastSeen, getStatusText } = usePresence(userId)
   
   // Also subscribe to profile changes for this user
   useEffect(() => {

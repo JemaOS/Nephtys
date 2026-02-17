@@ -105,9 +105,9 @@ interface PendingInitialMessage {
  * Provides a complete end-to-end encryption solution for messaging.
  */
 export class E2EEMessagingService {
-  private keyStorage: SecureKeyStorage;
-  private sessions: Map<string, SessionInfo> = new Map();
-  private pendingInitials: Map<string, PendingInitialMessage> = new Map();
+  private readonly keyStorage: SecureKeyStorage;
+  private readonly sessions: Map<string, SessionInfo> = new Map();
+  private readonly pendingInitials: Map<string, PendingInitialMessage> = new Map();
   private initialized: boolean = false;
   private userId: string | null = null;
   private keyBundle: KeyBundle | null = null;

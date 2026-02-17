@@ -214,7 +214,7 @@ export function ratchetEncrypt(
   newState.Ns++;
   
   // Derive encryption keys from message key
-  const { encryptionKey, iv } = deriveMessageKeys(mk);
+  const { encryptionKey } = deriveMessageKeys(mk);
   
   // Encrypt the message with AES-256-GCM
   const nonce = randomBytes(12);
@@ -223,7 +223,7 @@ export function ratchetEncrypt(
   
   // Encrypt the header
   const headerBytes = serializeHeader(header);
-  const { headerKey, headerIV } = deriveHeaderKeys(newState.CKs);
+  const { headerKey } = deriveHeaderKeys(newState.CKs);
   const headerNonce = randomBytes(12);
   const headerCipher = gcm(headerKey, headerNonce);
   const encryptedHeader = headerCipher.encrypt(headerBytes);
@@ -742,31 +742,33 @@ export function deserializeEncryptedMessage(encoded: string): EncryptedMessage {
 }
 
 /**
- * Create a new session between two parties
+ * Create a new session as initiator (Alice)
  * 
  * High-level function to establish a Double Ratchet session after X3DH.
  * 
  * @param sharedSecret - Shared secret from X3DH
- * @param isInitiator - Whether this party initiated the session
- * @param theirPublicKey - Their DH public key (for initiator) or undefined (for responder)
- * @param ourKeyPair - Our DH key pair (for responder) or undefined (for initiator)
+ * @param theirPublicKey - Their DH public key
  * @returns Initialized ratchet state
  */
-export function createSession(
+export function createSessionAsInitiator(
   sharedSecret: Uint8Array,
-  isInitiator: boolean,
-  theirPublicKey?: Uint8Array,
-  ourKeyPair?: KeyPair
+  theirPublicKey: Uint8Array
 ): RatchetState {
-  if (isInitiator) {
-    if (!theirPublicKey) {
-      throw new Error('Initiator requires their public key');
-    }
-    return ratchetInitAlice(sharedSecret, theirPublicKey);
-  } else {
-    if (!ourKeyPair) {
-      throw new Error('Responder requires our key pair');
-    }
-    return ratchetInitBob(sharedSecret, ourKeyPair);
-  }
+  return ratchetInitAlice(sharedSecret, theirPublicKey);
+}
+
+/**
+ * Create a new session as responder (Bob)
+ * 
+ * High-level function to establish a Double Ratchet session after X3DH.
+ * 
+ * @param sharedSecret - Shared secret from X3DH
+ * @param ourKeyPair - Our DH key pair
+ * @returns Initialized ratchet state
+ */
+export function createSessionAsResponder(
+  sharedSecret: Uint8Array,
+  ourKeyPair: KeyPair
+): RatchetState {
+  return ratchetInitBob(sharedSecret, ourKeyPair);
 }

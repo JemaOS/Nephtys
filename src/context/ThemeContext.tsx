@@ -1,7 +1,7 @@
 // Copyright (c) 2025 Jema Technology.
 // Distributed under the license specified in the root directory of this project.
 
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, useMemo, ReactNode } from 'react'
 
 type Theme = 'light' | 'dark' | 'system'
 type Wallpaper = 'default' | 'dark' | 'light' | 'gradient' | 'custom'
@@ -53,8 +53,15 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('anu_wallpaper', newWallpaper)
   }
 
+  const value = useMemo(() => ({
+    theme,
+    wallpaper,
+    setTheme,
+    setWallpaper
+  }), [theme, wallpaper]);
+
   return (
-    <ThemeContext.Provider value={{ theme, wallpaper, setTheme, setWallpaper }}>
+    <ThemeContext.Provider value={value}>
       {children}
     </ThemeContext.Provider>
   )

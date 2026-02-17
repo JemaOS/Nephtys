@@ -1,7 +1,7 @@
 // Copyright (c) 2025 Jema Technology.
 // Distributed under the license specified in the root directory of this project.
 
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, useMemo, ReactNode } from 'react'
 import { User, Session } from '@supabase/supabase-js'
 import { supabase, Profile } from '@/lib/supabase'
 import { initializePresence, cleanupPresence } from '@/hooks/usePresence'
@@ -382,7 +382,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // Créer un compte temporaire avec un email valide
       const timestamp = Date.now()
-      const randomId = generateSecureRandomString(6)
       const randomPassword = generateSecureRandomString(16) + '!A1'
       
       const uniqueUsername = `${sanitizedInput}${timestamp.toString(36)}`
@@ -470,8 +469,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) throw error
   }
 
+  const value = useMemo(() => ({
+    user,
+    profile,
+    loading,
+    isOffline,
+    signIn,
+    signUp,
+    signInAsGuest,
+    signOut
+  }), [user, profile, loading, isOffline]);
+
   return (
-    <AuthContext.Provider value={{ user, profile, loading, isOffline, signIn, signUp, signInAsGuest, signOut }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   )

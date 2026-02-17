@@ -120,7 +120,6 @@ export function compressImage(
       URL.revokeObjectURL(url);
       
       let { naturalWidth: width, naturalHeight: height } = img;
-      const originalDimensions = { width, height };
       
       // Calculate new dimensions if image is too large
       if (width > maxWidth || height > maxHeight) {

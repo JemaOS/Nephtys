@@ -35,7 +35,7 @@ export const extractYouTubeVideoId = (url: string): string | null => {
       // Handle /watch?v=VIDEO_ID
       if (pathname === '/watch') {
         const videoId = searchParams.get('v');
-        return (videoId && videoId.length === 11) ? videoId : null;
+        return videoId?.length === 11 ? videoId : null;
       }
       
       // Handle /embed/, /v/, /shorts/
@@ -81,8 +81,6 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
 }) => {
   const [isFullscreen, setIsFullscreen] = useState(true);
   const [isPiP, setIsPiP] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(true);
-  const [isMuted, setIsMuted] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [pipPosition, setPipPosition] = useState<Position>({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);

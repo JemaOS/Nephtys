@@ -145,13 +145,15 @@ function OneToOneCallTopBar({
             {callerName}
           </h2>
           <div className="flex items-center gap-2 text-white/80 text-sm md:text-base font-medium drop-shadow-md bg-black/20 px-3 py-1 rounded-full backdrop-blur-sm">
-            {isRinging ? (
-              <span className="animate-pulse">Appel entrant...</span>
-            ) : isCalling ? (
-              <span className="animate-pulse">Appel en cours...</span>
-            ) : (
-              <CallDuration isActive={isInCall} />
-            )}
+            {(() => {
+              if (isRinging) {
+                return <span className="animate-pulse">Appel entrant...</span>;
+              }
+              if (isCalling) {
+                return <span className="animate-pulse">Appel en cours...</span>;
+              }
+              return <CallDuration isActive={isInCall} />;
+            })()}
           </div>
         </div>
       </div>

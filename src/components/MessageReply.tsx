@@ -91,8 +91,13 @@ export const MessageReply: React.FC<MessageReplyProps> = ({
     typeLabel = replyToMessage.fileName || 'Fichier';
   }
 
-  // If there is a caption, show it. Otherwise show the type label.
-  const showTypeLabel = !displayContent || (mediaType && !displayContent);
+  // Determine what text to display
+  const getDisplayText = (): string => {
+    if (displayContent) {
+      return truncateText(displayContent, isPreview ? 100 : 150);
+    }
+    return typeLabel;
+  };
   
   const renderContent = () => (
     <div className="flex items-stretch">
@@ -110,7 +115,7 @@ export const MessageReply: React.FC<MessageReplyProps> = ({
               <Icon size={16} className="flex-shrink-0" />
             )}
             <span className="truncate">
-              {displayContent ? truncateText(displayContent, isPreview ? 100 : 150) : typeLabel}
+              {getDisplayText()}
             </span>
           </div>
         </div>

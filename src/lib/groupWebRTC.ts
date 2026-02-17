@@ -45,12 +45,12 @@ type ErrorCallback = (error: Error) => void;
 
 export class GroupCallManager {
   private localStream: MediaStream | null = null;
-  private participants: Map<string, Participant> = new Map();
+  private readonly participants: Map<string, Participant> = new Map();
   private currentUserId: string = '';
   private conversationId: string = '';
   private config: GroupCallConfig = { audio: true, video: false };
   private channel: any = null;
-  private iceCandidateQueues: Map<string, RTCIceCandidateInit[]> = new Map();
+  private readonly iceCandidateQueues: Map<string, RTCIceCandidateInit[]> = new Map();
   
   // Callbacks
   private onParticipantUpdateCallback: ParticipantUpdateCallback | null = null;
@@ -368,7 +368,7 @@ export class GroupCallManager {
     const participantId = signal.from;
     const participant = this.participants.get(participantId);
 
-    if (!participant?.peerConnection || !participant.peerConnection.remoteDescription) {
+    if (!participant?.peerConnection?.remoteDescription) {
       // Queue the ICE candidate
       if (!this.iceCandidateQueues.has(participantId)) {
         this.iceCandidateQueues.set(participantId, []);
@@ -478,7 +478,7 @@ export class GroupCallManager {
     peerConnection.ontrack = (event) => {
       console.log('🎥 GroupWebRTC: Received remote track from:', participantId);
       
-      if (event.streams && event.streams[0]) {
+      if (event.streams?.[0]) {
         // Ensure all tracks are enabled
         event.streams[0].getTracks().forEach(track => {
           if (!track.enabled) track.enabled = true;

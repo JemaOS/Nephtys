@@ -99,7 +99,7 @@ export const useMessageReactions = (conversationId: string): UseMessageReactions
         .eq('id', newReaction.message_id)
         .maybeSingle();
       
-      if (messageData && messageData.conversation_id === conversationId) {
+      if (messageData?.conversation_id === conversationId) {
         setReactions(prev => addReactionIfNotExists(prev, newReaction));
       }
     } else if (payload.eventType === 'DELETE') {

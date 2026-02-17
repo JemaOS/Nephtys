@@ -73,16 +73,27 @@ export const fetchUnreadCounts = async (conversationIds: string[], userId: strin
     .is('deleted_at', null)
 }
 
-export const buildEnrichedConversations = (
-  conversationsData: Conversation[],
-  activeMembers: any[],
-  savedMessagesConvIds: Set<string>,
-  membersByConversation: Map<string, string[]>,
-  profileMap: Map<string, Profile>,
-  lastMessageMap: Map<string, Message>,
-  unreadCountMap: Map<string, number>,
+export interface BuildEnrichedConversationsParams {
+  conversationsData: Conversation[]
+  activeMembers: any[]
+  savedMessagesConvIds: Set<string>
+  membersByConversation: Map<string, string[]>
+  profileMap: Map<string, Profile>
+  lastMessageMap: Map<string, Message>
+  unreadCountMap: Map<string, number>
   currentUserId: string
-): ConversationWithDetails[] => {
+}
+
+export const buildEnrichedConversations = ({
+  conversationsData,
+  activeMembers,
+  savedMessagesConvIds,
+  membersByConversation,
+  profileMap,
+  lastMessageMap,
+  unreadCountMap,
+  currentUserId,
+}: BuildEnrichedConversationsParams): ConversationWithDetails[] => {
   return conversationsData.map(conv => {
     const memberInfo = activeMembers.find(m => m.conversation_id === conv.id)
     const isSavedMessages = savedMessagesConvIds.has(conv.id)
@@ -142,8 +153,8 @@ export const fetchAllConversationData = async (userId: string) => {
 
   // Step 4: Get profiles
   const otherUserIds = [...new Set(allMembers?.map(m => m.user_id) || [])]
-  const directConvIds = conversationsData.filter(c => c.type === 'direct').map(c => c.id)
-  const directConvOtherUserIds = allMembers.filter(m => directConvIds.includes(m.conversation_id)).map(m => m.user_id)
+  const directConvIds = new Set(conversationsData.filter(c => c.type === 'direct').map(c => c.id))
+  const directConvOtherUserIds = allMembers.filter(m => directConvIds.has(m.conversation_id)).map(m => m.user_id)
   const userIdsToFetch = [...new Set([...otherUserIds, ...directConvOtherUserIds, ...(savedMessagesConvIds.size > 0 ? [userId] : [])])]
   
   const { data: profiles } = await fetchProfiles(userIdsToFetch)
@@ -172,7 +183,7 @@ export const fetchAllConversationData = async (userId: string) => {
   })
 
   // Step 8: Build enriched conversations
-  const enrichedConversations = buildEnrichedConversations(
+  const enrichedConversations = buildEnrichedConversations({
     conversationsData,
     activeMembers,
     savedMessagesConvIds,
@@ -180,8 +191,8 @@ export const fetchAllConversationData = async (userId: string) => {
     profileMap,
     lastMessageMap,
     unreadCountMap,
-    userId
-  )
+    currentUserId: userId,
+  })
 
   return { enrichedConversations }
 }

@@ -31,7 +31,7 @@ const getMessageTypeInfo = (message: Message) => {
     if (!match) return null;
     
     const url = match[1];
-    const contentBefore = content.substring(0, match.index);
+    const contentBefore = content.substring(0, match.index ?? 0);
     const cleanContent = contentBefore.replace(/^(?:\[Transféré\]\s*)?/, '');
     
     return [content, cleanContent, url];

@@ -213,8 +213,8 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
   const [emojiOverlays, setEmojiOverlays] = useState<EmojiOverlay[]>([]);
   const [blurRegions, setBlurRegions] = useState<BlurRegion[]>([]);
   const [selectedColor, setSelectedColor] = useState('#ff0000');
-  const [brushSize, setBrushSize] = useState(4);
-  const [fontSize, setFontSize] = useState(32);
+  const [brushSize] = useState(4);
+  const [fontSize] = useState(32);
   const [fontFamily, setFontFamily] = useState('Arial');
   const [selectedShape, setSelectedShape] = useState<Shape>('rectangle');
   const [shapeFilled, setShapeFilled] = useState(true);
@@ -226,9 +226,6 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
   const [hdQuality, setHdQuality] = useState(true);
   const [caption, setCaption] = useState('');
   const [showColorPicker, setShowColorPicker] = useState(false);
-  const [showBrushSize] = useState(false);
-  const [showFontSize] = useState(false);
-  const [showShapes] = useState(false);
   const [showQualitySettings, setShowQualitySettings] = useState(false);
   const [editingText, setEditingText] = useState<string | null>(null);
   const [newTextInput, setNewTextInput] = useState('');
@@ -630,7 +627,6 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
 
   // Rotation handlers
   const rotateLeft = () => setRotation((r) => (r - 90) % 360);
-  const rotateRight = () => setRotation((r) => (r + 90) % 360);
 
   // Flip handlers
   const toggleFlipH = () => setFlipH(!flipH);
@@ -766,7 +762,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
   }, [fileName, hdQuality]);
 
   // Save/Send image - wrapped in useCallback
-  const handleSave = useCallback(() => {
+  const handleSaveCallback = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -866,21 +862,6 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
         <div
           className="relative select-none"
           style={{ touchAction: 'none' }}
-          onMouseDown={handlePointerDown}
-          onMouseMove={handlePointerMove}
-          onMouseUp={handlePointerUp}
-          onMouseLeave={handlePointerLeave}
-          onTouchStart={handlePointerDown}
-          onTouchMove={handlePointerMove}
-          onTouchEnd={handlePointerUp}
-          onTouchCancel={handlePointerUp}
-          role="application"
-          aria-label="Zone de dessin"
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') {
-              onCancel();
-            }
-          }}
         >
           <canvas
             ref={canvasRef}
@@ -891,8 +872,6 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
               userSelect: 'none',
             }}
             aria-label="Éditeur d'image"
-            tabIndex={0}
-            role="button"
           />
           <canvas
             ref={overlayCanvasRef}

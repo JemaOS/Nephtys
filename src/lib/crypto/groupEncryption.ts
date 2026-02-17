@@ -183,8 +183,8 @@ function generateSenderKey(): SenderKey {
  * Integrates with the E2EE messaging service for key distribution.
  */
 export class GroupEncryptionManager {
-  private groups: Map<string, GroupState> = new Map();
-  private messagingService: E2EEMessagingService;
+  private readonly groups: Map<string, GroupState> = new Map();
+  private readonly messagingService: E2EEMessagingService;
   private userId: string | null = null;
   
   /**
@@ -581,14 +581,6 @@ export class GroupEncryptionManager {
   private async distributeSenderKey(groupId: string, memberIds: string[]): Promise<void> {
     const group = this.groups.get(groupId);
     if (!group) return;
-    
-    const distribution: SenderKeyDistribution = {
-      groupId,
-      senderId: this.userId!,
-      chainKey: group.ownSenderKey.chainKey,
-      publicSigningKey: group.ownSenderKey.publicSigningKey,
-      iteration: group.ownSenderKey.iteration
-    };
     
     // In a real implementation, this would encrypt and send via the messaging service
     // For now, we just log the distribution

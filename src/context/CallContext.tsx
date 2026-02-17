@@ -1,7 +1,7 @@
 // Copyright (c) 2025 Jema Technology.
 // Distributed under the license specified in the root directory of this project.
 
-import { createContext, useContext, useEffect, useState, useRef, ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, useRef, useMemo, ReactNode } from 'react'
 import { supabase } from '@/lib/supabase'
 import { webrtcManager, CallConfig } from '@/lib/webrtc'
 import { groupCallManager, Participant, GroupCallConfig } from '@/lib/groupWebRTC'
@@ -378,7 +378,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
   // Handle media state update signal
   const handleMediaStateUpdateSignal = (signal: CallSignal) => {
-    if (signal.data && typeof signal.data.video !== 'undefined') {
+    if (signal.data?.video !== undefined) {
       setRemoteVideoEnabled(signal.data.video)
     }
   }
@@ -1099,28 +1099,30 @@ export function CallProvider({ children }: { children: ReactNode }) {
     resetCallState()
   }
 
+  const value = useMemo(() => ({
+    isInCall,
+    isRinging,
+    isCalling,
+    localStream,
+    remoteStream,
+    audioEnabled,
+    videoEnabled,
+    remoteVideoEnabled,
+    incomingCall,
+    isGroupCall,
+    groupParticipants,
+    startCall,
+    startGroupCall,
+    answerCall,
+    endCall,
+    toggleAudio,
+    toggleVideo,
+    rejectCall,
+    addParticipant,
+  }), [isInCall, isRinging, isCalling, localStream, remoteStream, audioEnabled, videoEnabled, remoteVideoEnabled, incomingCall, isGroupCall, groupParticipants]);
+
   return (
-    <CallContext.Provider value={{
-      isInCall,
-      isRinging,
-      isCalling,
-      localStream,
-      remoteStream,
-      audioEnabled,
-      videoEnabled,
-      remoteVideoEnabled,
-      incomingCall,
-      isGroupCall,
-      groupParticipants,
-      startCall,
-      startGroupCall,
-      answerCall,
-      endCall,
-      toggleAudio,
-      toggleVideo,
-      rejectCall,
-      addParticipant,
-    }}>
+    <CallContext.Provider value={value}>
       {children}
     </CallContext.Provider>
   )

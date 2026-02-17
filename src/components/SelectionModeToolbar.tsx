@@ -52,18 +52,21 @@ export const SelectionModeToolbar: React.FC<SelectionModeToolbarProps> = ({
       <div className="flex items-center gap-2">
         {actions.map((action) => {
           const Icon = action.icon;
+          const buttonClass = (() => {
+            if (!hasSelection) {
+              return 'opacity-50 cursor-not-allowed text-text-tertiary';
+            }
+            if (action.danger) {
+              return 'hover:bg-red-500/20 text-red-500';
+            }
+            return 'hover:bg-bg-hover text-text-tertiary';
+          })();
           return (
             <button
               key={action.label}
               onClick={action.onClick}
               disabled={!hasSelection}
-              className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
-                hasSelection
-                  ? action.danger
-                    ? 'hover:bg-red-500/20 text-red-500'
-                    : 'hover:bg-bg-hover text-text-tertiary'
-                  : 'opacity-50 cursor-not-allowed text-text-tertiary'
-              }`}
+              className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${buttonClass}`}
               type="button"
               aria-label={action.label}
               title={action.label}

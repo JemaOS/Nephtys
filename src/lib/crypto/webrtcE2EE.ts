@@ -120,7 +120,7 @@ export async function deriveFrameKey(
  * The encrypted frame includes the key ID and IV for decryption.
  */
 export class E2EETransformSender {
-  private context: E2EEContext;
+  private readonly context: E2EEContext;
   private frameCounter: bigint = 0n;
   
   /**
@@ -152,8 +152,10 @@ export class E2EETransformSender {
       throw new Error('Key ID must be between 0 and 255');
     }
     
-    this.context.encryptionKey = newKey;
-    this.context.sendKeyId = newKeyId;
+    // Note: context properties are readonly, but we can modify the object
+    // This is a limitation - in production, you'd want to recreate the transform
+    (this.context as { encryptionKey: CryptoKey }).encryptionKey = newKey;
+    (this.context as { sendKeyId: number }).sendKeyId = newKeyId;
     // Reset frame counter on key change for additional security
     this.frameCounter = 0n;
   }
@@ -249,7 +251,7 @@ export class E2EETransformSender {
  * Supports multiple keys for smooth key transitions.
  */
 export class E2EETransformReceiver {
-  private context: E2EEContext;
+  private readonly context: E2EEContext;
   
   /**
    * Create a new receiver transform
@@ -278,8 +280,8 @@ export class E2EETransformReceiver {
     
     // Set as primary encryption key if first key
     if (this.context.receiveKeys.size === 1) {
-      this.context.encryptionKey = key;
-      this.context.sendKeyId = keyId;
+      (this.context as { encryptionKey: CryptoKey }).encryptionKey = key;
+      (this.context as { sendKeyId: number }).sendKeyId = keyId;
     }
   }
   
@@ -370,7 +372,7 @@ export class E2EETransformReceiver {
  * Handles key derivation, transform setup, and key rotation.
  */
 export class WebRTCE2EEManager {
-  private peerConnection: RTCPeerConnection;
+  private readonly peerConnection: RTCPeerConnection;
   private senderTransform: E2EETransformSender | null = null;
   private receiverTransform: E2EETransformReceiver | null = null;
   private currentKeyId: number = 0;
@@ -378,8 +380,8 @@ export class WebRTCE2EEManager {
   private currentKey: CryptoKey | null = null;
   
   // Store references to cleanup
-  private senderTransformStreams: Map<RTCRtpSender, TransformStream> = new Map();
-  private receiverTransformStreams: Map<RTCRtpReceiver, TransformStream> = new Map();
+  private readonly senderTransformStreams: Map<RTCRtpSender, TransformStream> = new Map();
+  private readonly receiverTransformStreams: Map<RTCRtpReceiver, TransformStream> = new Map();
   
   /**
    * Create a new E2EE manager for a peer connection
@@ -454,7 +456,7 @@ export class WebRTCE2EEManager {
   /**
    * Handle new track event
    */
-  private handleTrack = async (event: RTCTrackEvent): Promise<void> => {
+  private readonly handleTrack = async (event: RTCTrackEvent): Promise<void> => {
     if (this.isEnabled && this.receiverTransform) {
       await this.applyReceiverTransform(event.receiver);
     }

@@ -221,14 +221,14 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
 
   // Helper: Get current media info (from allMedia or defaults) - extracted to reduce complexity
   const getCurrentMediaInfo = () => {
-    const media = allMedia && allMedia[viewerIndex];
+    const media = allMedia?.[viewerIndex];
     return {
-      url: media ? media.url : url,
-      type: media ? media.type : getViewerMediaType(),
-      senderName: media ? media.senderName : senderName,
-      senderAvatar: media ? media.senderAvatar : senderAvatar,
-      timestamp: media ? media.timestamp : timestamp,
-      isOwn: media ? media.isOwn : isOwn,
+      url: media?.url ?? url,
+      type: media?.type ?? getViewerMediaType(),
+      senderName: media?.senderName ?? senderName,
+      senderAvatar: media?.senderAvatar ?? senderAvatar,
+      timestamp: media?.timestamp ?? timestamp,
+      isOwn: media?.isOwn ?? isOwn,
     };
   };
 

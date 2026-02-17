@@ -35,7 +35,7 @@
  */
 export class E2EEManager {
   private keyPair: CryptoKeyPair | null = null;
-  private sharedKeys: Map<string, CryptoKey> = new Map();
+  private readonly sharedKeys: Map<string, CryptoKey> = new Map();
 
   // Générer une paire de clés (publique/privée)
   async generateKeyPair(): Promise<{ publicKey: string; privateKey: string }> {

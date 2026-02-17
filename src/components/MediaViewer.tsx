@@ -156,7 +156,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   onNavigate,
 }) => {
   const isMobile = useIsMobile();
-  const { orientation, isLandscape } = useScreenOrientation();
+  const { isLandscape } = useScreenOrientation();
   const [showControls, setShowControls] = useState(true);
   const [isHoveringControls, setIsHoveringControls] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -187,9 +187,6 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   const [initialZoom, setInitialZoom] = useState(1);
   const [pinchCenter, setPinchCenter] = useState<{ x: number; y: number } | null>(null);
   
-  // Navigation transition state
-  const [isNavigating, setIsNavigating] = useState(false);
-  const [navigationDirection, setNavigationDirection] = useState<'left' | 'right' | null>(null);
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
@@ -313,8 +310,6 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
     setTouchStartY(null);
     setIsSwipeActive(false);
     setSwipeDirection(null);
-    setIsNavigating(false);
-    setNavigationDirection(null);
   }, [mediaUrl, isOpen]);
 
   // Robust auto-play handling
@@ -680,40 +675,16 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
       setIsFullscreen(isCurrentlyFullscreen);
     };
 
-    // Also handle video-specific fullscreen events (iOS)
-    const handleVideoFullscreenChange = () => {
-      if (videoRef.current) {
-        // Check if video is in fullscreen mode
-        const video = videoRef.current as HTMLVideoElement & {
-          webkitDisplayingFullscreen?: boolean;
-        };
-        if (video.webkitDisplayingFullscreen !== undefined) {
-          setIsFullscreen(video.webkitDisplayingFullscreen);
-        }
-      }
-    };
-
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
     document.addEventListener('mozfullscreenchange', handleFullscreenChange);
     document.addEventListener('MSFullscreenChange', handleFullscreenChange);
-    
-    // iOS video fullscreen events
-    if (videoRef.current) {
-      videoRef.current.addEventListener('webkitbeginfullscreen', () => setIsFullscreen(true));
-      videoRef.current.addEventListener('webkitendfullscreen', () => setIsFullscreen(false));
-    }
     
     return () => {
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
       document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
       document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
       document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
-      
-      if (videoRef.current) {
-        videoRef.current.removeEventListener('webkitbeginfullscreen', () => setIsFullscreen(true));
-        videoRef.current.removeEventListener('webkitendfullscreen', () => setIsFullscreen(false));
-      }
     };
   }, [mediaType]);
 
@@ -1007,8 +978,8 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   // Cycle through playback rates
   const cyclePlaybackRate = useCallback(() => {
     const rates = [0.5, 0.75, 1, 1.25, 1.5, 2];
-    const currentIndex = rates.indexOf(playbackRate);
-    const nextIndex = (currentIndex + 1) % rates.length;
+    const currentRateIndex = rates.indexOf(playbackRate);
+    const nextIndex = (currentRateIndex + 1) % rates.length;
     const newRate = rates[nextIndex];
     
     setPlaybackRate(newRate);
@@ -1016,9 +987,6 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
       videoRef.current.playbackRate = newRate;
     }
   }, [playbackRate]);
-
-  // Calculate progress percentage
-  const progressPercentage = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   // Helper: Get file extension based on media type - extracted to reduce complexity
   const getMediaExtension = (type: string): string => {
@@ -1069,7 +1037,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   const quickEmojis = ['❤️', '😂', '😮', '😢', '🙏', '👍'];
 
   // Focus the viewer on mount for keyboard accessibility
-  const viewerRef = useRef<HTMLDivElement>(null);
+  const viewerRef = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     if (isOpen && viewerRef.current) {
       viewerRef.current.focus();
@@ -1079,9 +1047,9 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div
+    <dialog
       ref={viewerRef}
-      className={`fixed inset-0 z-[200] bg-black flex flex-col media-viewer-fullscreen ${
+      className={`fixed inset-0 z-[200] bg-black flex flex-col media-viewer-fullscreen m-0 p-0 w-full h-full max-w-none max-h-none ${
         isLandscape && isMobile ? 'landscape-mode' : ''
       } ${isFullscreen ? 'fullscreen-active' : ''} ${!showControls ? 'cursor-none' : ''}`}
       onClick={() => setShowControls(true)}
@@ -1091,12 +1059,9 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
         }
       }}
       onMouseMove={handleContainerMouseMove}
-      // tabIndex is appropriate here because this is a dialog with keyboard handlers
-      // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
-      tabIndex={0}
-      role="dialog"
       aria-modal="true"
       aria-label="Visualiseur de média"
+      open
       style={{
         // Ensure the viewer takes full screen on mobile in any orientation
         width: '100%',
@@ -1167,20 +1132,12 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
 
       {/* Media content */}
       <div
-        role="region"
         aria-label="Visualisation du média"
         className={`flex-1 flex items-center justify-center overflow-hidden media-content-container ${
           isLandscape && isMobile ? 'p-0' : 'p-4 md:p-8'
         }`}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-        onTouchCancel={(e) => {
-          e.stopPropagation();
-          handleTouchEnd(e);
-        }}
         style={{
           // Always use touch-action: none to prevent browser default behaviors and ensure we handle all touch events
           touchAction: 'none',
@@ -1265,6 +1222,6 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
           {currentIndex + 1} / {allMedia.length}
         </div>
       )}
-    </div>
+    </dialog>
   );
 };

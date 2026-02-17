@@ -1302,7 +1302,7 @@ export function ChatViewPage() {
 
 
   // Load ephemeral setting from localStorage (since DB doesn't have this column)
-  const loadEphemeralSetting = () => {
+  const loadEphemeralSetting = useCallback(() => {
     if (!conversationId) return
     
     const storedSetting = localStorage.getItem(`ephemeral_${conversationId}`)
@@ -1311,7 +1311,7 @@ export function ChatViewPage() {
     } else {
       setEphemeralDuration(null)
     }
-  }
+  }, [conversationId])
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault()

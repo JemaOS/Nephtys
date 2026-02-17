@@ -49,14 +49,13 @@ export const EphemeralDurationMenu: React.FC<EphemeralDurationMenuProps> = ({
   };
 
   return (
-    <div 
-      className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4"
+    <dialog
+      className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4 m-0 w-full h-full max-w-none max-h-none"
       onClick={handleBackdropClick}
       onKeyDown={handleBackdropKeyDown}
-      tabIndex={-1}
-      role="dialog"
       aria-modal="true"
       aria-label="Menu de durée éphémère"
+      open
     >
       <div
         ref={modalRef}
@@ -86,6 +85,6 @@ export const EphemeralDurationMenu: React.FC<EphemeralDurationMenuProps> = ({
           </button>
         </div>
       </div>
-    </div>
+    </dialog>
   );
 };

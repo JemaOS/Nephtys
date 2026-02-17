@@ -19,7 +19,7 @@ const useMediaPreloader = (mediaUrls: string[], currentIndex: number) => {
 
 // Generate srcSet for responsive images (if using Supabase storage with transformations)
 const generateSrcSet = (url: string, widths: number[] = [320, 640, 960, 1280]): string => {
-  if (!url || !url.includes('supabase')) return '';
+  if (!url?.includes('supabase')) return '';
   
   // For Supabase storage, we can use the public URL with transformation params
   // This assumes the storage bucket supports image transformations
@@ -292,7 +292,7 @@ export const ImageRenderer: React.FC<{
   const srcSet = generateSrcSet(url);
   const blurPlaceholder = thumbnail || generateBlurPlaceholder(url);
   
-  const containerStyle: React.CSSProperties = (() => {
+  const getContainerStyle = (): React.CSSProperties => {
     if (imageDimensions) {
       const displayDims = calculateDisplayDimensions(imageDimensions);
       const aspectRatio = imageDimensions.width / imageDimensions.height;
@@ -309,7 +309,7 @@ export const ImageRenderer: React.FC<{
       aspectRatio: '1',
       maxHeight: '400px',
     };
-  })();
+  };
   const hasKnownDimensions = !!imageDimensions;
   
   return (

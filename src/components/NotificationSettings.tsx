@@ -40,25 +40,35 @@ export const NotificationSettings: React.FC = () => {
             <div className="flex-1">
               <h3 className="font-semibold">Notifications push</h3>
               <p className="text-sm text-text-tertiary">
-                {permission === 'granted' 
-                  ? 'Activées - Vous recevrez des notifications pour les nouveaux messages'
-                  : permission === 'denied'
-                    ? 'Refusées - Activez-les dans les paramètres de votre navigateur'
-                    : 'Désactivées - Activez pour recevoir des notifications'}
+                {(() => {
+                  if (permission === 'granted') {
+                    return 'Activées - Vous recevrez des notifications pour les nouveaux messages';
+                  }
+                  if (permission === 'denied') {
+                    return 'Refusées - Activez-les dans les paramètres de votre navigateur';
+                  }
+                  return 'Désactivées - Activez pour recevoir des notifications';
+                })()}
               </p>
             </div>
           </div>
           
-          {permission === 'granted' ? (
-            <Check size={24} className="text-success-500" />
-          ) : permission === 'default' ? (
-            <button
-              onClick={handleEnableNotifications}
-              className="px-4 py-2 rounded-lg bg-primary-500 hover:bg-primary-600 text-white transition-colors"
-            >
-              Activer
-            </button>
-          ) : null}
+          {(() => {
+            if (permission === 'granted') {
+              return <Check size={24} className="text-success-500" />;
+            }
+            if (permission === 'default') {
+              return (
+                <button
+                  onClick={handleEnableNotifications}
+                  className="px-4 py-2 rounded-lg bg-primary-500 hover:bg-primary-600 text-white transition-colors"
+                >
+                  Activer
+                </button>
+              );
+            }
+            return null;
+          })()}
         </div>
       </div>
 

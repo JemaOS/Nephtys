@@ -12,9 +12,9 @@ export const OfflineIndicator: React.FC = () => {
     return null; // Ne rien afficher si tout va bien
   }
 
-  return (
-    <div className="fixed top-0 left-0 right-0 z-50 safe-area-top">
-      {!isOnline ? (
+  const getOfflineIndicator = () => {
+    if (!isOnline) {
+      return (
         <div className="bg-yellow-500/90 backdrop-blur-sm text-white px-4 py-2 flex items-center justify-center gap-2">
           <WifiOff size={16} />
           <span className="text-sm font-medium">Mode hors ligne</span>
@@ -24,12 +24,18 @@ export const OfflineIndicator: React.FC = () => {
             </span>
           )}
         </div>
-      ) : isSyncing ? (
+      );
+    }
+    if (isSyncing) {
+      return (
         <div className="bg-primary-500/90 backdrop-blur-sm text-white px-4 py-2 flex items-center justify-center gap-2">
           <RefreshCw size={16} className="animate-spin" />
           <span className="text-sm font-medium">Synchronisation en cours...</span>
         </div>
-      ) : pendingCount > 0 ? (
+      );
+    }
+    if (pendingCount > 0) {
+      return (
         <div className="bg-green-500/90 backdrop-blur-sm text-white px-4 py-2 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <Wifi size={16} />
@@ -42,7 +48,17 @@ export const OfflineIndicator: React.FC = () => {
             Synchroniser ({pendingCount})
           </button>
         </div>
-      ) : null}
+      );
+    }
+    return null;
+  };
+
+  const indicator = getOfflineIndicator();
+  if (!indicator) return null;
+
+  return (
+    <div className="fixed top-0 left-0 right-0 z-50 safe-area-top">
+      {indicator}
     </div>
   );
 };

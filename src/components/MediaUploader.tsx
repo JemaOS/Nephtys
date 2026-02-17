@@ -170,7 +170,6 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
   const [gifSearchQuery, setGifSearchQuery] = useState('');
   const [gifs, setGifs] = useState<any[]>([]);
   const [loadingGifs, setLoadingGifs] = useState(false);
-  const [stickerPack] = useState<'love' | 'fun' | 'animals' | 'food'>('love');
   // GIF/Sticker preview state
   const [selectedGifSticker, setSelectedGifSticker] = useState<{
     url: string;
@@ -1614,20 +1613,24 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
                     </div>
                   ) : gifs.length > 0 ? (
                     <div className="grid grid-cols-2 gap-2">
-                      {gifs.map((gif) => (
-                        <button
-                          key={gif.id}
-                          onClick={() => handleGifSelect(gif)}
-                          className="aspect-video rounded-xl overflow-hidden bg-bg-surface hover:opacity-80 transition-opacity"
-                        >
-                          <img
-                            src={gif.media_formats?.tinygif?.url || gif.media_formats?.nanogif?.url}
-                            alt={gif.content_description || 'GIF'}
-                            className="w-full h-full object-cover"
-                            loading="lazy"
-                          />
-                        </button>
-                      ))}
+                      {gifs.map((gif) => {
+                        const gifUrl = gif.media_formats?.tinygif?.url || gif.media_formats?.nanogif?.url;
+                        const gifAlt = gif.content_description || 'GIF';
+                        return (
+                          <button
+                            key={gif.id}
+                            onClick={() => handleGifSelect(gif)}
+                            className="aspect-video rounded-xl overflow-hidden bg-bg-surface hover:opacity-80 transition-opacity"
+                          >
+                            <img
+                              src={gifUrl}
+                              alt={gifAlt}
+                              className="w-full h-full object-cover"
+                              loading="lazy"
+                            />
+                          </button>
+                        );
+                      })}
                     </div>
                   ) : (
                     <div className="text-center py-8 text-text-secondary">
