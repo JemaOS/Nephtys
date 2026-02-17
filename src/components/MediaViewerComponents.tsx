@@ -589,7 +589,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   return (
     <button
       type="button"
-      className={`relative flex flex-col w-full h-full border-none bg-transparent p-0 ${isLandscape && isMobile ? 'w-full h-full' : 'max-w-full max-h-full w-full'} ${isFullscreen ? 'bg-black' : ''}`}
+      className={`relative flex flex-col w-full h-full border-none bg-transparent p-0 ${isFullscreen ? 'bg-black' : ''}`}
       onClick={(e) => {
         // Smart click handling: Single click toggles play/pause immediately, double click toggles fullscreen
         const now = Date.now();
@@ -603,16 +603,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       }}
       aria-label="Lecteur vidéo"
     >
-      <div className="flex-1 flex items-center justify-center relative">
+      <div className="flex-1 flex items-center justify-center relative w-full h-full">
         <video
           ref={videoRef}
           src={mediaUrl}
           muted={isMuted}
-          className={`object-contain ${
-            isLandscape && isMobile
-              ? 'w-full h-full max-w-none max-h-none'
-              : 'max-w-full max-h-[70vh]'
-          }`}
+          className="object-contain max-w-full max-h-full w-full h-full"
           playsInline
           onClick={(e) => {
             e.stopPropagation();
