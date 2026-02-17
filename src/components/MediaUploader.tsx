@@ -301,7 +301,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
   };
 
   // Handle multiple file selection (WhatsApp-like)
-  const handleMultipleFileSelect = async (files: FileList, forcedType?: 'image' | 'video' | 'file' | 'audio') => {
+  const handleMultipleFileSelect = async (files: FileList, forcedType?: MediaFileType) => {
     const newFiles: Array<{ file: File; preview: string; type: 'image' | 'video' | 'file' | 'audio' }> = [];
     
     for (const file of files) {

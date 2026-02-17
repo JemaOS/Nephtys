@@ -49,7 +49,7 @@ export function PersistentCallScreen() {
     return { x: 0, y: 0 }
   })
   const [isDragging, setIsDragging] = useState(false)
-  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
+  const [dragOffset] = useState({ x: 0, y: 0 })
   // pipRef was reserved for future PiP (Picture-in-Picture) API integration - now removed as unused
 
   // Helper: Get caller info - extracted to reduce complexity

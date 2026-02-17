@@ -1061,7 +1061,6 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
     <div
       ref={viewerRef}
       aria-label="Visualiseur de média"
-      role="dialog"
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           setShowControls(true);
@@ -1146,6 +1145,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
       {/* Media content */}
       {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
       <div
+        role="presentation"
         aria-label="Visualisation du média"
         className={`flex-1 flex items-center justify-center overflow-hidden media-content-container ${
           isLandscape && isMobile ? 'p-0' : 'p-4 md:p-8'

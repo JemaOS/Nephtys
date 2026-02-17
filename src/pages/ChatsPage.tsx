@@ -9,7 +9,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { offlineStorage } from '@/lib/offlineStorage'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { useOnSupabaseReconnect } from '@/hooks/useSupabaseReconnect'
+
 import { fetchAllConversationData } from '@/lib/conversationService'
 import { ChatsSelectionHeader, ChatsHeader, ChatsList, ConversationWithDetails } from './ChatsPageComponents'
 
@@ -836,10 +836,10 @@ export function ChatsPage() {
         // Just mark that we need to reload when connection is restored
       }
       
-      window.addEventListener('supabase-reconnected', handleSupabaseReconnect)
-      window.addEventListener('supabase-connection-lost', handleConnectionLost)
-      window.addEventListener('message-sent-in-chat', handleMessageSentFromChat as EventListener)
-      window.addEventListener('focus', handleFocus)
+      globalThis.addEventListener('supabase-reconnected', handleSupabaseReconnect)
+      globalThis.addEventListener('supabase-connection-lost', handleConnectionLost)
+      globalThis.addEventListener('message-sent-in-chat', handleMessageSentFromChat as EventListener)
+      globalThis.addEventListener('focus', handleFocus)
 
       return () => {
         clearTimeout(loadingTimeout)
@@ -848,10 +848,10 @@ export function ChatsPage() {
         supabase.removeChannel(membersChannel)
         supabase.removeChannel(profilesChannel)
         document.removeEventListener('visibilitychange', handleVisibilityChange)
-        window.removeEventListener('supabase-reconnected', handleSupabaseReconnect)
-        window.removeEventListener('supabase-connection-lost', handleConnectionLost)
-        window.removeEventListener('message-sent-in-chat', handleMessageSentFromChat as EventListener)
-        window.removeEventListener('focus', handleFocus)
+        globalThis.removeEventListener('supabase-reconnected', handleSupabaseReconnect)
+        globalThis.removeEventListener('supabase-connection-lost', handleConnectionLost)
+        globalThis.removeEventListener('message-sent-in-chat', handleMessageSentFromChat as EventListener)
+        globalThis.removeEventListener('focus', handleFocus)
       }
     }
   }, [user, debouncedReload, loadConversationsFromServer])
@@ -1061,7 +1061,7 @@ export function ChatsPage() {
   }
 
   const handleOpenInNewWindow = (conversationId: string) => {
-    window.open(`/chat/${conversationId}`, '_blank')
+    globalThis.open(`/chat/${conversationId}`, '_blank')
   }
 
     // Memoize filtered conversations to prevent unnecessary recalculations

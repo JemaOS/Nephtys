@@ -6,27 +6,21 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { useTheme } from '@/context/ThemeContext'
 import { MainLayout } from '@/components/MainLayout'
-import { supabase, Message, Conversation, Profile, onBroadcastMessage, sendBroadcastMessage } from '@/lib/supabase'
+import { supabase, Message, Conversation, Profile, sendBroadcastMessage } from '@/lib/supabase'
 import { offlineStorage } from '@/lib/offlineStorage'
 import { useUserPresence } from '@/hooks/usePresence'
-import { Send, Mic, Plus, Star, Copy } from 'lucide-react'
+import { Send, Mic, Plus } from 'lucide-react'
 import { EmojiPicker } from '@/components/EmojiPicker'
-import { MessageReactions } from '@/components/MessageReactions'
 import { MessageReply } from '@/components/MessageReply'
 import { MessageSearch } from '@/components/MessageSearch'
-import { EphemeralMessageToggle } from '@/components/EphemeralMessageToggle'
 import { MediaUploader } from '@/components/MediaUploader'
-import { MediaMessage } from '@/components/MediaMessage'
 import { MediaViewer } from '@/components/MediaViewer'
 import { VoiceRecorder } from '@/components/VoiceRecorder'
-import { VoiceMessage } from '@/components/VoiceMessage'
-import { AudioFilePlayer } from '@/components/AudioFilePlayer'
 import { ConversationInfo } from '@/components/ConversationInfo'
 import { useMessageReactions } from '@/hooks/useMessageReactions'
 import { useCall } from '@/context/CallContext'
 import { useNotifications } from '@/hooks/useNotifications'
 import { MessageContextMenu } from '@/components/MessageContextMenu'
-import { MessageHoverActions } from '@/components/MessageHoverActions'
 import { ChatBackgroundContextMenu } from '@/components/ChatBackgroundContextMenu'
 import { SelectionModeToolbar } from '@/components/SelectionModeToolbar'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -37,8 +31,6 @@ import { PinnedMessageBanner } from '@/components/PinnedMessageBanner'
 import { DeleteMessageDialog } from '@/components/DeleteMessageDialog'
 import { ForwardMessageModal } from '@/components/ForwardMessageModal'
 import { QuickReactionBar } from '@/components/QuickReactionBar'
-import { CallMessage } from '@/components/CallMessage'
-import { MessageItem } from '@/components/MessageItem'
 import { ChatHeader, CallLog, TimelineItem, MessageList } from './ChatViewPageComponents'
 
 const isEmojiOnly = (text: string): { isEmoji: boolean; emojiCount: number } => {
@@ -774,7 +766,7 @@ export function ChatViewPage() {
       }, 3000)
     }
     
-    window.addEventListener('supabase-reconnected', handleSupabaseReconnect)
+    globalThis.addEventListener('supabase-reconnected', handleSupabaseReconnect)
     
     // Handle call log created event
     const handleCallLogCreated = (event: CustomEvent) => {
@@ -783,7 +775,7 @@ export function ChatViewPage() {
       }
     }
     
-    window.addEventListener('call-log-created', handleCallLogCreated as EventListener)
+    globalThis.addEventListener('call-log-created', handleCallLogCreated as EventListener)
 
     return () => {
       clearTimeout(loadingTimeout)
@@ -795,8 +787,8 @@ export function ChatViewPage() {
       }
       unsubscribeFromConversation(conversationId)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
-      window.removeEventListener('supabase-reconnected', handleSupabaseReconnect)
-      window.removeEventListener('call-log-created', handleCallLogCreated as EventListener)
+      globalThis.removeEventListener('supabase-reconnected', handleSupabaseReconnect)
+      globalThis.removeEventListener('call-log-created', handleCallLogCreated as EventListener)
     }
   }, [conversationId, user?.id, permission, handleNewMessage, debouncedLoadData])
 
@@ -1332,7 +1324,7 @@ export function ChatViewPage() {
     setSending(true)
     
     // OPTIMISTIC UI: Add message to local state immediately for instant display
-    const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`
     const optimisticMessage: Message = {
       id: tempId,
       conversation_id: conversationId!,
@@ -1398,7 +1390,7 @@ export function ChatViewPage() {
         setMessages(prev => prev.map(m => m.id === tempId ? data[0] : m))
         await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conversationId!)
         // Dispatch event to update ChatsPage conversation list in real-time
-        window.dispatchEvent(new CustomEvent('message-sent-in-chat', {
+        globalThis.dispatchEvent(new CustomEvent('message-sent-in-chat', {
           detail: { conversationId, message: data[0] }
         }))
       } else if (error) {
@@ -1478,7 +1470,7 @@ export function ChatViewPage() {
         setMessages(prev => prev.map(m => m.id === tempId ? data : m))
         await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conversationId!)
         // Dispatch event to update ChatsPage conversation list in real-time
-        window.dispatchEvent(new CustomEvent('message-sent-in-chat', {
+        globalThis.dispatchEvent(new CustomEvent('message-sent-in-chat', {
           detail: { conversationId, message: data }
         }))
       } else {
@@ -1573,7 +1565,7 @@ export function ChatViewPage() {
       
       await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conversationId!)
       // Dispatch event to update ChatsPage conversation list in real-time
-      window.dispatchEvent(new CustomEvent('message-sent-in-chat', {
+      globalThis.dispatchEvent(new CustomEvent('message-sent-in-chat', {
         detail: { conversationId, message: { id: `temp-${Date.now()}`, conversation_id: conversationId, created_at: new Date().toISOString(), type: 'file' } }
       }))
     } finally {
@@ -1645,7 +1637,7 @@ export function ChatViewPage() {
         setMessages(prev => prev.map(m => m.id === tempId ? insertedMessage : m))
         await supabase.from('conversations').update({ last_message_at: now }).eq('id', conversationId!)
         // Dispatch event to update ChatsPage conversation list in real-time
-        window.dispatchEvent(new CustomEvent('message-sent-in-chat', {
+        globalThis.dispatchEvent(new CustomEvent('message-sent-in-chat', {
           detail: { conversationId, message: insertedMessage }
         }))
       } else if (error) {
@@ -2278,7 +2270,7 @@ export function ChatViewPage() {
         try {
           const response = await fetch(msg.media_url)
           const blob = await response.blob()
-          const url = window.URL.createObjectURL(blob)
+          const url = globalThis.URL.createObjectURL(blob)
           const a = document.createElement('a')
           a.href = url
           a.download = msg.file_name || `download-${Date.now()}`
@@ -2286,7 +2278,7 @@ export function ChatViewPage() {
           a.click()
           // Use remove() instead of parentNode.removeChild() as required by SonarQube
           a.remove()
-          window.URL.revokeObjectURL(url)
+          globalThis.URL.revokeObjectURL(url)
         } catch (error) {
           console.error('Error downloading:', error)
         }
@@ -2576,7 +2568,7 @@ export function ChatViewPage() {
                 setMessages(prev => prev.map(m => m.id === tempId ? data : m))
                 await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conversationId!)
                 // Dispatch event to update ChatsPage conversation list in real-time
-                window.dispatchEvent(new CustomEvent('message-sent-in-chat', {
+                globalThis.dispatchEvent(new CustomEvent('message-sent-in-chat', {
                   detail: { conversationId, message: data }
                 }))
               } else {

@@ -117,7 +117,7 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
   const [textContent, setTextContent] = useState<string | null>(null);
   const [pinchStartDistance, setPinchStartDistance] = useState<number | null>(null);
   const [pinchStartScale, setPinchStartScale] = useState<number>(1);
-  const containerRef = React.useRef<HTMLDivElement>(null);
+  const containerRef = React.useRef<HTMLButtonElement>(null);
   const pdfWrapperRef = React.useRef<HTMLDivElement>(null);
   
   const fileTypeInfo = getFileTypeInfo(file.name);
