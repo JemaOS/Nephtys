@@ -1164,15 +1164,6 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = React.memo((
         }
       }}
       aria-label={`Message de ${isOwn ? 'vous' : 'autre utilisateur'}`}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          if (isSelectionMode) {
-            handleSelectMessage(message.id)
-          }
-        }
-      }}
     >
       <MessageSideActions
         isOwn={isOwn}
@@ -1351,7 +1342,7 @@ export const MessageList: React.FC<MessageListProps> = React.memo(({
   messagesContentRef
 }) => {
   return (
-    <div
+    <section
       ref={messagesContainerRef}
       className={`flex-1 overflow-y-auto p-2 sm:p-3 md:p-4 space-y-2 md:pb-4 md:messages-container-mobile-reset ${
         (linkPreview || replyToMessage || isLoadingPreview)
@@ -1362,8 +1353,6 @@ export const MessageList: React.FC<MessageListProps> = React.memo(({
       onContextMenu={handleBackgroundContextMenu}
       onScroll={onScroll}
       aria-label="Liste des messages"
-      role="region"
-      tabIndex={0}
     >
       <div ref={messagesContentRef} className="flex flex-col min-h-full">
       {/* Loading indicator for infinite scroll */}
@@ -1443,6 +1432,6 @@ export const MessageList: React.FC<MessageListProps> = React.memo(({
         )
       })()}
       </div>
-    </div>
+    </section>
   )
 })

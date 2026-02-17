@@ -201,7 +201,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const [image, setImage] = useState<HTMLImageElement | null>(null);
   const [activeTool, setActiveTool] = useState<Tool>('none');
-  const [isDrawing, setIsDrawing] = useState(false);
+  const [, setIsDrawing] = useState(false);
   const [currentPath, setCurrentPath] = useState<DrawPath | null>(null);
   const [drawPaths, setDrawPaths] = useState<DrawPath[]>([]);
   const [textOverlays, setTextOverlays] = useState<TextOverlay[]>([]);
@@ -214,7 +214,6 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
   const [fontFamily, setFontFamily] = useState('Arial');
   const [selectedShape, setSelectedShape] = useState<Shape>('rectangle');
   const [shapeFilled, setShapeFilled] = useState(true);
-  const blurIntensity = 10;
   const [rotation, setRotation] = useState(0);
   const [flipH, setFlipH] = useState(false);
   const [flipV, setFlipV] = useState(false);
@@ -228,7 +227,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
   const [cropMode, setCropMode] = useState(false);
   const [cropStart, setCropStart] = useState<{ x: number; y: number } | null>(null);
   const [cropEnd, setCropEnd] = useState<{ x: number; y: number } | null>(null);
-  const [blurStart, setBlurStart] = useState<{ x: number; y: number } | null>(null);
+  const [, setBlurStart] = useState<{ x: number; y: number } | null>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
 
   // Calculate canvas size to fit container while maintaining aspect ratio
@@ -441,38 +440,6 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
     }
   }, [cropMode, cropStart, cropEnd, canvasSize]);
 
-  // Get canvas coordinates from mouse/touch event
-  const getCanvasCoords = useCallback((e: React.MouseEvent | React.TouchEvent | MouseEvent | TouchEvent): { x: number; y: number } | null => {
-    const canvas = canvasRef.current;
-    if (!canvas) return null;
-
-    const rect = canvas.getBoundingClientRect();
-    let clientX: number, clientY: number;
-
-    if ('touches' in e) {
-      // Handle touch events
-      if (e.touches.length > 0) {
-        clientX = e.touches[0].clientX;
-        clientY = e.touches[0].clientY;
-      } else if ('changedTouches' in e && e.changedTouches.length > 0) {
-        // For touchend events, use changedTouches
-        clientX = e.changedTouches[0].clientX;
-        clientY = e.changedTouches[0].clientY;
-      } else {
-        return null;
-      }
-    } else {
-      clientX = e.clientX;
-      clientY = e.clientY;
-    }
-
-    // Clamp coordinates to canvas bounds
-    const x = Math.max(0, Math.min(clientX - rect.left, rect.width));
-    const y = Math.max(0, Math.min(clientY - rect.top, rect.height));
-
-    return { x, y };
-  }, []);
-
   // Track if we're currently in a crop drag operation
   const isCroppingRef = useRef(false);
   const lastCropEndRef = useRef<{ x: number; y: number } | null>(null);
@@ -533,31 +500,11 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
     setShapeOverlays(prev => [...prev, newShape]);
   }, [selectedShape, selectedColor, shapeFilled]);
 
-  // Route pointer event to appropriate tool handler - extracted to reduce complexity
-  const routeToolHandler = useCallback((coords: { x: number; y: number }) => {
-    if (activeTool === 'draw') {
-      handleDrawStart(coords);
-    } else if (activeTool === 'crop' || cropMode) {
-      handleCropStart(coords);
-    } else if (activeTool === 'blur') {
-      handleBlurStart(coords);
-    } else if (activeTool === 'text') {
-      handleTextTool(coords);
-    } else if (activeTool === 'shape') {
-      handleShapeTool(coords);
-    }
-  }, [activeTool, cropMode, handleDrawStart, handleCropStart, handleBlurStart, handleTextTool, handleShapeTool]);
-
   // Rotation handlers
   const rotateLeft = () => setRotation((r) => (r - 90) % 360);
 
   // Flip handlers
   const toggleFlipH = () => setFlipH((prev) => !prev);
-  const toggleFlipV = () => setFlipV((prev) => !prev);
-
-  // Zoom handlers
-  const zoomIn = () => setZoom((z) => Math.min(z + 0.1, 3));
-  const zoomOut = () => setZoom((z) => Math.max(z - 0.1, 0.5));
 
   // Apply crop - wrapped in useCallback
   const applyCrop = useCallback(() => {

@@ -853,17 +853,19 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
         // Exit fullscreen
         await doExitFullscreen();
         setIsFullscreen(false);
-      } else {
-        // Enter fullscreen
-        if (mediaType === 'video' && videoRef.current) {
-          await enterVideoFullscreen();
-        } else {
-          // For images, use document fullscreen
-          const docSuccess = await tryDocumentFullscreen();
-          if (docSuccess) {
-            setIsFullscreen(true);
-          }
-        }
+        return;
+      }
+      
+      // Enter fullscreen
+      if (mediaType === 'video' && videoRef.current) {
+        await enterVideoFullscreen();
+        return;
+      }
+      
+      // For images, use document fullscreen
+      const docSuccess = await tryDocumentFullscreen();
+      if (docSuccess) {
+        setIsFullscreen(true);
       }
     } catch (error) {
       console.error('Fullscreen error:', error);
@@ -1036,7 +1038,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   const quickEmojis = ['❤️', '😂', '😮', '😢', '🙏', '👍'];
 
   // Focus the viewer on mount for keyboard accessibility
-  const viewerRef = useRef<HTMLButtonElement>(null);
+  const viewerRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (isOpen && viewerRef.current) {
       viewerRef.current.focus();
@@ -1046,9 +1048,9 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   if (!isOpen) return null;
 
   return (
-    <button
-      type="button"
+    <div
       ref={viewerRef}
+      role="dialog"
       aria-modal="true"
       aria-label="Visualiseur de média"
       className={`fixed inset-0 z-[200] bg-black flex flex-col media-viewer-fullscreen m-0 p-0 w-full h-full max-w-none max-h-none text-left ${
@@ -1130,7 +1132,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
       )}
 
       {/* Media content */}
-      <span
+      <div
         aria-label="Visualisation du média"
         className={`flex-1 flex items-center justify-center overflow-hidden media-content-container ${
           isLandscape && isMobile ? 'p-0' : 'p-4 md:p-8'
@@ -1209,7 +1211,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
             setIsPlaying={setIsPlaying}
           />
         )}
-      </span>
+      </div>
 
       {/* Media counter */}
       {allMedia && allMedia.length > 1 && (
@@ -1221,6 +1223,6 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
           {currentIndex + 1} / {allMedia.length}
         </div>
       )}
-    </button>
+    </div>
   );
 };

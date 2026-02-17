@@ -305,7 +305,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
   isMobile,
   showControls,
 }) => (
-  <span
+  <div
     ref={imageContainerRef}
     className={`relative flex items-center justify-center w-full h-full ${
       zoom > 1 ? 'cursor-grab' : 'cursor-default'
@@ -365,7 +365,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
         ← Glissez pour naviguer →
       </div>
     )}
-  </span>
+  </div>
 );
 
 interface VideoPlayerProps {
@@ -600,14 +600,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           lastClickTimeRef.current = now;
         }
       }}
-      role="button"
-      tabIndex={0}
       aria-label="Lecteur vidéo"
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          togglePlayPause();
-        }
-      }}
     >
       <div className="flex-1 flex items-center justify-center relative w-full h-full">
         <video
@@ -695,7 +688,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
       <div className="w-full h-16 bg-bg-hover rounded-lg flex items-center justify-center gap-1" aria-hidden="true">
         {Array.from({ length: 30 }).map((_, idx) => (
           <div
-            key={`waveform-bar-${idx}`}
+            key={`waveform-bar-${Math.random().toString(36).substr(2, 9)}-${idx}`}
             className={`w-1 bg-accent rounded-full transition-all ${
               isPlaying ? 'animate-pulse' : ''
             }`}

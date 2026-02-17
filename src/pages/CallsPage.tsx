@@ -990,101 +990,6 @@ export function CallsPage() {
 
   const filteredCalls = filterCalls(calls, searchQuery, user?.id)
 
-  // Helper to get favorite ID for a call - extracted to avoid ternary nest
-  const getFavoriteId = (call: CallLog): string => {
-    if (call.is_group_call) {
-      return call.conversation_id;
-    }
-    // For direct calls, determine the other user
-    const isOutgoing = call.caller_id === user?.id;
-    return isOutgoing ? call.callee_profile?.id : call.caller_profile?.id;
-  }
-
-  // Helper to check if a call is a favorite
-  const isFavorite = (call: CallLog): boolean => {
-    return favorites.includes(getFavoriteId(call))
-  }
-
-  // Helper to get display name for a call
-  const getCallDisplayName = (call: CallLog): string => {
-    if (call.is_group_call) {
-      return call.conversation_name || 'Groupe'
-    }
-    const isOutgoing = call.caller_id === user?.id
-    const otherProfile = isOutgoing ? call.callee_profile : call.caller_profile
-    return otherProfile?.display_name || otherProfile?.username || 'Utilisateur'
-  }
-
-  // Helper to get avatar URL for a call
-  const getCallAvatarUrl = (call: CallLog): string | null | undefined => {
-    if (call.is_group_call) {
-      return call.conversation_avatar
-    }
-    const isOutgoing = call.caller_id === user?.id
-    const otherProfile = isOutgoing ? call.callee_profile : call.caller_profile
-    return otherProfile?.avatar_url
-  }
-
-  // Helper to get call status text - extracted to avoid ternary nest
-  const getCallStatusText = (call: CallLog): string => {
-    if (call.is_group_call) {
-      return 'Appel de groupe';
-    }
-    // For direct calls, determine if outgoing or incoming
-    const isOutgoing = call.caller_id === user?.id;
-    return isOutgoing ? 'Appel sortant' : 'Appel entrant';
-  }
-
-  // Helper to get call type text
-  const getCallTypeText = (call: CallLog): string => {
-    if (call.is_group_call) {
-      return call.type === 'video' ? 'Appel vidéo de groupe' : 'Appel de groupe'
-    }
-    return call.type === 'video' ? 'Appel vidéo' : 'Appel vocal'
-  }
-
-  // Helper: Render call status display
-  const renderCallStatus = (call: CallLog): string => {
-    switch (call.status) {
-      case 'answered': return 'Répondu'
-      case 'missed': return 'Manqué'
-      case 'rejected': return 'Refusé'
-      case 'ended': return 'Terminé'
-      default: return 'Initié'
-    }
-  }
-
-  // Helper: Render avatar based on call details
-  const renderCallAvatar = (avatarUrl: string | null | undefined, isGroupCall: boolean, displayName: string) => {
-    if (avatarUrl) {
-      return <img src={avatarUrl} alt={displayName} className="w-20 h-20 rounded-full object-cover" />
-    }
-    if (isGroupCall) {
-      return (
-        <div className="w-20 h-20 rounded-full bg-gradient-to-br from-accent to-primary-600 flex items-center justify-center text-white">
-          <Users size={36} />
-        </div>
-      )
-    }
-    return (
-      <div className="w-20 h-20 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-2xl">
-        {displayName[0]?.toUpperCase()}
-      </div>
-    )
-  }
-
-  // Helper: Handle favorite button click
-  const handleFavoriteClick = (call: CallLog) => {
-    if (call.is_group_call) {
-      toggleFavorite(call.conversation_id, true)
-    } else {
-      const isOut = call.caller_id === user?.id
-      const otherProfile = isOut ? call.callee_profile : call.caller_profile
-      if (otherProfile) {
-        toggleFavorite(otherProfile.id, false)
-      }
-    }
-  }
 
   // Helper: Handle call back action
   const handleCallBack = async (call: CallLog) => {
@@ -1105,7 +1010,7 @@ export function CallsPage() {
   }
 
   // Helper functions for CallDetailsContent that need to be passed as props
-  const getCallDisplayNameHelper = (call: CallLog, userId: string | undefined): string => {
+  const getCallDisplayName = (call: CallLog, userId: string | undefined): string => {
     if (call.is_group_call) {
       return call.conversation_name || 'Groupe'
     }
@@ -1114,7 +1019,7 @@ export function CallsPage() {
     return otherProfile?.display_name || otherProfile?.username || 'Utilisateur'
   }
 
-  const getCallAvatarUrlHelper = (call: CallLog, userId: string | undefined): string | null | undefined => {
+  const getCallAvatarUrl = (call: CallLog, userId: string | undefined): string | null | undefined => {
     if (call.is_group_call) {
       return call.conversation_avatar
     }
@@ -1123,7 +1028,8 @@ export function CallsPage() {
     return otherProfile?.avatar_url
   }
 
-  const getCallStatusTextHelper = (call: CallLog, userId: string | undefined): string => {
+  // Consolidated helper for call status text - handles both group and direct calls
+  const getCallStatusText = (call: CallLog, userId: string | undefined): string => {
     if (call.is_group_call) {
       return 'Appel de groupe';
     }
@@ -1131,14 +1037,16 @@ export function CallsPage() {
     return isOutgoing ? 'Appel sortant' : 'Appel entrant';
   }
 
-  const getCallTypeTextHelper = (call: CallLog): string => {
+  // Consolidated helper for call type text
+  const getCallTypeText = (call: CallLog): string => {
     if (call.is_group_call) {
       return call.type === 'video' ? 'Appel vidéo de groupe' : 'Appel de groupe'
     }
     return call.type === 'video' ? 'Appel vidéo' : 'Appel vocal'
   }
 
-  const renderCallStatusHelper = (call: CallLog): string => {
+  // Consolidated helper for rendering call status
+  const renderCallStatus = (call: CallLog): string => {
     switch (call.status) {
       case 'answered': return 'Répondu'
       case 'missed': return 'Manqué'
@@ -1148,7 +1056,8 @@ export function CallsPage() {
     }
   }
 
-  const renderCallAvatarHelper = (avatarUrl: string | null | undefined, isGroupCall: boolean, displayName: string) => {
+  // Consolidated helper for rendering call avatar
+  const renderCallAvatar = (avatarUrl: string | null | undefined, isGroupCall: boolean, displayName: string) => {
     if (avatarUrl) {
       return <img src={avatarUrl} alt={displayName} className="w-20 h-20 rounded-full object-cover" />
     }
@@ -1166,7 +1075,7 @@ export function CallsPage() {
     )
   }
 
-  const getFavoriteIdHelper = (call: CallLog, userId: string | undefined): string | undefined => {
+  const getFavoriteId = (call: CallLog, userId: string | undefined): string | undefined => {
     if (call.is_group_call) {
       return call.conversation_id;
     }
@@ -1183,6 +1092,13 @@ export function CallsPage() {
     setSelectedCall: (call: CallLog | null) => void;
     handleCallBack: (call: CallLog) => void;
     formatCallDuration: (seconds: number | null) => string;
+    getCallDisplayName: (call: CallLog, userId: string | undefined) => string;
+    getCallAvatarUrl: (call: CallLog, userId: string | undefined) => string | null | undefined;
+    getCallStatusText: (call: CallLog, userId: string | undefined) => string;
+    getCallTypeText: (call: CallLog) => string;
+    renderCallStatus: (call: CallLog) => string;
+    renderCallAvatar: (avatarUrl: string | null | undefined, isGroupCall: boolean, displayName: string) => React.ReactNode;
+    getFavoriteId: (call: CallLog, userId: string | undefined) => string | undefined;
   }
 
   const CallDetailsContent: React.FC<CallDetailsContentProps> = ({
@@ -1193,15 +1109,22 @@ export function CallsPage() {
     navigate,
     setSelectedCall,
     handleCallBack,
-    formatCallDuration
+    formatCallDuration,
+    getCallDisplayName,
+    getCallAvatarUrl,
+    getCallStatusText,
+    getCallTypeText,
+    renderCallStatus,
+    renderCallAvatar,
+    getFavoriteId
   }) => {
     const isGroupCall = call.is_group_call
     
-    const displayName = getCallDisplayNameHelper(call, userId)
-    const avatarUrl = getCallAvatarUrlHelper(call, userId)
+    const displayName = getCallDisplayName(call, userId)
+    const avatarUrl = getCallAvatarUrl(call, userId)
     const isCallMissedOrRejected = call.status === 'missed' || call.status === 'rejected'
     const statusClass = isCallMissedOrRejected ? 'text-[#ea4335]' : 'text-primary-600 dark:text-primary-400'
-    const favoriteId = getFavoriteIdHelper(call, userId)
+    const favoriteId = getFavoriteId(call, userId)
     const isFavorite = favoriteId ? favorites.includes(favoriteId) : false
     
     const handleFavoriteClick = () => {
@@ -1221,14 +1144,14 @@ export function CallsPage() {
         {/* Contact Section */}
         <div className="bg-bg-hover rounded-2xl p-6">
           <div className="flex flex-col items-center gap-4">
-            {renderCallAvatarHelper(avatarUrl, isGroupCall, displayName)}
+            {renderCallAvatar(avatarUrl, isGroupCall, displayName)}
             <div className="text-center">
               <h3 className="text-lg font-medium text-text-primary mb-1 flex items-center justify-center gap-2">
                 {isGroupCall && <Users size={18} className="text-text-secondary" />}
                 {displayName}
               </h3>
               <p className="text-sm text-text-secondary">
-                {getCallStatusTextHelper(call, userId)}
+                {getCallStatusText(call, userId)}
               </p>
             </div>
           </div>
@@ -1242,7 +1165,7 @@ export function CallsPage() {
               {isGroupCall && <Users size={16} className="text-accent" />}
               {call.type === 'video' ? <Video size={16} className="text-accent" /> : <Phone size={16} className="text-accent" />}
               <span className="text-gray-800 dark:text-white">
-                {getCallTypeTextHelper(call)}
+                {getCallTypeText(call)}
               </span>
             </div>
           </div>
@@ -1262,7 +1185,7 @@ export function CallsPage() {
           <div className="flex items-center justify-between">
             <span className="text-text-secondary">Statut</span>
             <span className={statusClass}>
-              {renderCallStatusHelper(call)}
+              {renderCallStatus(call)}
             </span>
           </div>
         </div>
@@ -1565,6 +1488,13 @@ export function CallsPage() {
                 setSelectedCall={setSelectedCall}
                 handleCallBack={handleCallBack}
                 formatCallDuration={formatCallDuration}
+                getCallDisplayName={getCallDisplayName}
+                getCallAvatarUrl={getCallAvatarUrl}
+                getCallStatusText={getCallStatusText}
+                getCallTypeText={getCallTypeText}
+                renderCallStatus={renderCallStatus}
+                renderCallAvatar={renderCallAvatar}
+                getFavoriteId={getFavoriteId}
               />
             </div>
           </div>
@@ -1596,6 +1526,13 @@ export function CallsPage() {
                 setSelectedCall={setSelectedCall}
                 handleCallBack={handleCallBack}
                 formatCallDuration={formatCallDuration}
+                getCallDisplayName={getCallDisplayName}
+                getCallAvatarUrl={getCallAvatarUrl}
+                getCallStatusText={getCallStatusText}
+                getCallTypeText={getCallTypeText}
+                renderCallStatus={renderCallStatus}
+                renderCallAvatar={renderCallAvatar}
+                getFavoriteId={getFavoriteId}
               />
             </div>
           </div>
@@ -1628,7 +1565,7 @@ export function CallsPage() {
               </div>
 
           <div className="mt-8 flex items-center justify-center gap-2 text-text-secondary text-sm">
-            <svg width="16" height="20" viewBox="0 0 16 20" fill="currentColor">
+            <svg width="16" height="20" viewBox="0 0 16 20" fill="currentColor" aria-hidden="true">
               <path d="M13 7h-1V5c0-2.21-1.79-4-4-4S4 2.79 4 5v2H3c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2zm-5 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H4.9V5c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/>
             </svg>
             <span>Appels chiffrés de bout en bout</span>

@@ -406,13 +406,16 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
   };
 
   // Helper: Process a single file for upload - extracted to reduce complexity
-  const processSingleFile = async (
-    fileItem: { file: File; preview: string; type: 'image' | 'video' | 'file' | 'audio' },
-    userId: string,
-    totalFiles: number,
-    uploadedFiles: UploadedFileData[],
-    index: number
-  ): Promise<UploadedFileData | null> => {
+  interface ProcessSingleFileParams {
+    fileItem: { file: File; preview: string; type: 'image' | 'video' | 'file' | 'audio' };
+    userId: string;
+    totalFiles: number;
+    uploadedFiles: UploadedFileData[];
+    index: number;
+  }
+
+  const processSingleFile = async (params: ProcessSingleFileParams): Promise<UploadedFileData | null> => {
+    const { fileItem, userId, totalFiles, index } = params;
     const { file, type, preview } = fileItem;
     
     let fileToUpload: Blob = file;
@@ -494,13 +497,13 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       const totalFiles = selectedFiles.length;
 
       for (let i = 0; i < selectedFiles.length; i++) {
-        const uploadedFile = await processSingleFile(
-          selectedFiles[i],
-          user.id,
+        const uploadedFile = await processSingleFile({
+          fileItem: selectedFiles[i],
+          userId: user.id,
           totalFiles,
           uploadedFiles,
-          i
-        );
+          index: i
+        });
         
         if (uploadedFile) {
           uploadedFiles.push(uploadedFile);
@@ -610,53 +613,12 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
     return uploadedFile;
   };
 
-  // Camera functions
-  const startCamera = async (mode: 'photo' | 'video') => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' },
-        audio: mode === 'video'
-      });
-      setCameraStream(stream);
-      setCameraMode(mode);
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
-    } catch (error) {
-      console.error('Error accessing camera:', error);
-      alert('Impossible d\'accéder à la caméra. Vérifiez les permissions.');
-    }
-  };
-
   const stopCamera = () => {
     if (cameraStream) {
       cameraStream.getTracks().forEach(track => track.stop());
       setCameraStream(null);
     }
     setCameraMode(null);
-  };
-
-  const capturePhoto = () => {
-    if (videoRef.current && canvasRef.current) {
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.drawImage(video, 0, 0);
-        canvas.toBlob((blob) => {
-          if (blob) {
-            const file = new File([blob], `photo-${Date.now()}.jpg`, { type: 'image/jpeg' });
-            setSelectedFile(file);
-            setSelectedFileType('image');
-            setPreview(canvas.toDataURL('image/jpeg'));
-            onMediaSelect(file, 'image');
-            stopCamera();
-          }
-        }, 'image/jpeg', 0.9);
-      }
-    }
   };
 
   const handleCameraCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -983,18 +945,6 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
     }
   };
 
-  // Open image editor for existing preview
-  const openImageEditor = () => {
-    if (preview && selectedFile && (selectedFileType || getFileType(selectedFile)) === 'image') {
-      setImageToEdit({
-        url: preview,
-        fileName: selectedFile.name,
-        file: selectedFile,
-      });
-      setShowImageEditor(true);
-    }
-  };
-
   const handleEmojiClick = (emoji: string) => {
     if (onEmojiSelect) {
       onEmojiSelect(emoji);
@@ -1107,9 +1057,8 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
 
   // Load initial GIFs on mount
   useEffect(() => {
-    if (activeTab === 'gif') {
-      fetchGifs('trending');
-    }
+    if (activeTab !== 'gif') return;
+    fetchGifs('trending');
   }, [activeTab]);
 
   // Load stickers when category changes
@@ -1337,9 +1286,9 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-2">
-                  {gifs.map((gif, index) => (
+                  {gifs.map((gif) => (
                     <button
-                      key={`${gif.id}-${index}`}
+                      key={gif.id}
                       onClick={() => handleGifStickerSelect(gif, 'gif')}
                       className="relative aspect-video rounded-lg overflow-hidden bg-bg-hover hover:ring-2 hover:ring-accent transition-all"
                     >

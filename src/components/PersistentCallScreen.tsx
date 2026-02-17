@@ -81,21 +81,6 @@ export function PersistentCallScreen() {
       remoteVideoEnabled;
   }, [checkIsVideoCall, remoteStream, remoteVideoEnabled]);
 
-  // Helper: Handle drag start - extracted
-  const handleDragStart = useCallback((e: React.MouseEvent | React.TouchEvent) => {
-    if (!pipRef.current) return
-    
-    setIsDragging(true)
-    
-    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
-    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
-    
-    setDragOffset({
-      x: clientX - pipPosition.x,
-      y: clientY - pipPosition.y,
-    })
-  }, [pipPosition])
-
   // Helper: Handle drag move - extracted
   const handleDragMove = useCallback((e: MouseEvent | TouchEvent) => {
     if (!isDragging) return

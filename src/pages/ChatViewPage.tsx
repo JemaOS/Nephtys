@@ -943,10 +943,6 @@ export function ChatViewPage() {
       }
     }
   }, [loading, messages.length])
-  
-  const scrollToBottom = useCallback((behavior: 'smooth' | 'instant' = 'smooth') => {
-    messagesEndRef.current?.scrollIntoView({ behavior })
-  }, [])
 
   // Extract ternary for scroll behavior
   const getScrollBehavior = (): ScrollBehavior => {
@@ -1736,11 +1732,6 @@ export function ChatViewPage() {
       console.error('Error starting audio call:', error)
       alert(getAudioCallErrorMessage(error))
     }
-  }
-
-  const formatMessageTime = (timestamp: string) => {
-    const date = new Date(timestamp)
-    return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
   }
 
   // Context menu handlers

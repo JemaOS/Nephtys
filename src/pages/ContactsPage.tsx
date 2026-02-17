@@ -497,6 +497,26 @@ export function ContactsPage() {
   // Track ongoing conversation creation to prevent duplicates
   const creatingConversationRef = useRef<Set<string>>(new Set())
 
+  // Find conversation for a contact - extracted to reduce complexity
+  const findConversationForContact = async (contactId: string): Promise<string | null> => {
+    if (!user) return null;
+    
+    const cachedConversations = await offlineStorage.getConversations();
+    return findCachedConversation(cachedConversations, contactId === user.id, user.id, contactId);
+  };
+
+  // Check for existing conversation in database
+  const checkExistingConversation = async (contactId: string): Promise<string | null> => {
+    if (!user) return null;
+    return findExistingConversation(supabase, contactId === user.id, user.id, contactId);
+  };
+
+  // Create new conversation for contact
+  const createConversationForContact = async (contactId: string): Promise<string | null> => {
+    if (!user) return null;
+    return createNewConversationAndAddMembers(supabase, user.id, contactId, contactId === user.id);
+  };
+
   const createConversation = async (contactId: string) => {
     if (!user) return
 
@@ -507,19 +527,10 @@ export function ContactsPage() {
     }
 
     console.log('Creating conversation with contact:', contactId)
-    
-    // Cas spécial: "Saved Messages" (conversation avec soi-même)
-    const isSelfContact = contactId === user.id
 
     try {
       // OPTIMIZATION 1: Check IndexedDB cache first for instant navigation
-      const cachedConversations = await offlineStorage.getConversations()
-      const cachedConvId = await findCachedConversation(
-        cachedConversations,
-        isSelfContact,
-        user.id,
-        contactId
-      )
+      const cachedConvId = await findConversationForContact(contactId);
       
       if (cachedConvId) {
         console.log('Found conversation in cache, navigating immediately:', cachedConvId)
@@ -531,12 +542,7 @@ export function ContactsPage() {
       creatingConversationRef.current.add(contactId)
 
       // OPTIMIZATION 2: Single optimized query to find existing conversation
-      const existingConvId = await findExistingConversation(
-        supabase,
-        isSelfContact,
-        user.id,
-        contactId
-      )
+      const existingConvId = await checkExistingConversation(contactId);
 
       if (existingConvId) {
         console.log('Existing conversation found:', existingConvId)
@@ -546,12 +552,7 @@ export function ContactsPage() {
       }
 
       // OPTIMIZATION 3: Create conversation and navigate optimistically
-      const newConvId = await createNewConversationAndAddMembers(
-        supabase,
-        user.id,
-        contactId,
-        isSelfContact
-      )
+      const newConvId = await createConversationForContact(contactId);
 
       if (newConvId) {
         navigate(`/chat/${newConvId}`)
