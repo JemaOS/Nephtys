@@ -282,8 +282,8 @@ export const DocumentPreviewContent: React.FC<DocumentPreviewContentProps> = ({
   formatFileSize,
   getPreviewMessage,
 }) => (
-  <button
-    ref={containerRef as React.RefObject<HTMLButtonElement>}
+  <div
+    ref={containerRef as unknown as React.RefObject<HTMLDivElement>}
     className={`flex-1 overflow-auto bg-[#525659] flex justify-center select-none ${canPreview ? 'items-start' : 'items-center'}`}
     style={{ cursor: getCursorStyle() }}
     aria-label="Zone de prévisualisation du document - Appuyez sur Échap pour fermer"
