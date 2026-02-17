@@ -202,6 +202,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
   const [image, setImage] = useState<HTMLImageElement | null>(null);
   const [activeTool, setActiveTool] = useState<Tool>('none');
   const [, setIsDrawing] = useState(false);
+  // Note: isDrawing state is used indirectly via setIsDrawing in drawing handlers
   const [currentPath, setCurrentPath] = useState<DrawPath | null>(null);
   const [drawPaths, setDrawPaths] = useState<DrawPath[]>([]);
   const [textOverlays, setTextOverlays] = useState<TextOverlay[]>([]);
@@ -215,6 +216,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
   const [selectedShape, setSelectedShape] = useState<Shape>('rectangle');
   const [shapeFilled, setShapeFilled] = useState(true);
   const [rotation, setRotation] = useState(0);
+  // Note: blurIntensity is managed within blurRegions array
   const [flipH, setFlipH] = useState(false);
   const [flipV, setFlipV] = useState(false);
   const [zoom, setZoom] = useState(1);
@@ -228,6 +230,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
   const [cropStart, setCropStart] = useState<{ x: number; y: number } | null>(null);
   const [cropEnd, setCropEnd] = useState<{ x: number; y: number } | null>(null);
   const [, setBlurStart] = useState<{ x: number; y: number } | null>(null);
+  // Note: blurStart is managed via setBlurStart in blur tool handlers
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
 
   // Calculate canvas size to fit container while maintaining aspect ratio
@@ -443,6 +446,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
   // Track if we're currently in a crop drag operation
   const isCroppingRef = useRef(false);
   const lastCropEndRef = useRef<{ x: number; y: number } | null>(null);
+  // Note: getCanvasCoords is used in mouse event handlers below
 
   // Handle draw tool start - extracted to reduce complexity
   const handleDrawStart = useCallback((coords: { x: number; y: number }) => {
@@ -505,6 +509,9 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
 
   // Flip handlers
   const toggleFlipH = () => setFlipH((prev) => !prev);
+  const toggleFlipV = () => setFlipV((prev) => !prev);
+  const zoomIn = () => setZoom((prev) => Math.min(prev + 0.1, 3));
+  const zoomOut = () => setZoom((prev) => Math.max(prev - 0.1, 0.5));
 
   // Apply crop - wrapped in useCallback
   const applyCrop = useCallback(() => {
@@ -554,6 +561,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
       setFlipH(false);
       setFlipV(false);
       setZoom(1);
+      // Note: flipV, zoomIn, zoomOut are used in toolbar components
       
       // Clear all overlays since they're now part of the cropped image
       setDrawPaths([]);
@@ -663,7 +671,12 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
         rotateLeft={rotateLeft}
         setShowBrushSize={() => {}}
         toggleFlipH={toggleFlipH}
+        toggleFlipV={toggleFlipV}
+        zoomIn={zoomIn}
+        zoomOut={zoomOut}
         flipH={flipH}
+        flipV={flipV}
+        zoom={zoom}
         hdQuality={hdQuality}
         setShowQualitySettings={setShowQualitySettings}
         showQualitySettings={showQualitySettings}

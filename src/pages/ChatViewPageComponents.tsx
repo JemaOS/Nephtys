@@ -1163,7 +1163,6 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = React.memo((
           handleSelectMessage(message.id)
         }
       }}
-      aria-label={`Message de ${isOwn ? 'vous' : 'autre utilisateur'}`}
     >
       <MessageSideActions
         isOwn={isOwn}
@@ -1344,6 +1343,7 @@ export const MessageList: React.FC<MessageListProps> = React.memo(({
   return (
     <section
       ref={messagesContainerRef}
+      aria-label="Liste des messages"
       className={`flex-1 overflow-y-auto p-2 sm:p-3 md:p-4 space-y-2 md:pb-4 md:messages-container-mobile-reset ${
         (linkPreview || replyToMessage || isLoadingPreview)
           ? 'pb-[calc(56px+56px+env(safe-area-inset-bottom,0px)+100px)]'
@@ -1352,7 +1352,6 @@ export const MessageList: React.FC<MessageListProps> = React.memo(({
       style={getWallpaperStyle()}
       onContextMenu={handleBackgroundContextMenu}
       onScroll={onScroll}
-      aria-label="Liste des messages"
     >
       <div ref={messagesContentRef} className="flex flex-col min-h-full">
       {/* Loading indicator for infinite scroll */}
@@ -1363,7 +1362,7 @@ export const MessageList: React.FC<MessageListProps> = React.memo(({
       )}
       {/* "Load more" hint */}
       {!isLoadingMore && hasMoreMessages && messages.length > 0 && (
-        <div className="flex justify-center py-2 opacity-50">
+        <div className="flex justify-center py-2 opacity-50" aria-hidden="true">
           <span className="text-xs text-text-secondary">↓ Faire défiler vers le haut pour charger plus</span>
         </div>
       )}

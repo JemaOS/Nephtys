@@ -312,7 +312,12 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
     } ${isDragging ? 'cursor-grabbing' : ''}`}
     onMouseDown={handleMouseDown}
     onMouseMove={handleMouseMove}
-    aria-label="Visionneuse d'image"
+    onTouchStart={handleTouchStart}
+    onTouchMove={handleTouchMove}
+    onTouchEnd={handleTouchEnd}
+    tabIndex={0}
+    role="button"
+    aria-label="Visionneuse d'image - Double-cliquez pour réinitialiser le zoom"
     style={{
       transform: zoom <= 1 ? `translateX(${swipeOffset}px)` : 'none',
       transition: isSwipeActive ? 'none' : 'transform 0.15s ease-out',
@@ -587,7 +592,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   lastClickTimeRef,
 }) => {
   return (
-    <div
+    <button
+      type="button"
       className={`relative flex flex-col w-full h-full border-none bg-transparent p-0 ${isFullscreen ? 'bg-black' : ''}`}
       onClick={(e) => {
         // Smart click handling: Single click toggles play/pause immediately, double click toggles fullscreen
@@ -650,7 +656,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           videoRef={videoRef}
         />
       </div>
-    </div>
+    </button>
   );
 };
 
@@ -688,7 +694,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
       <div className="w-full h-16 bg-bg-hover rounded-lg flex items-center justify-center gap-1" aria-hidden="true">
         {Array.from({ length: 30 }).map((_, idx) => (
           <div
-            key={`waveform-bar-${Math.random().toString(36).substr(2, 9)}-${idx}`}
+            key={`waveform-bar-${idx}-${idx * 7}`}
             className={`w-1 bg-accent rounded-full transition-all ${
               isPlaying ? 'animate-pulse' : ''
             }`}

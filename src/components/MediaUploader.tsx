@@ -613,6 +613,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
     return uploadedFile;
   };
 
+  // Note: startCamera and capturePhoto are available for future camera integration
   const stopCamera = () => {
     if (cameraStream) {
       cameraStream.getTracks().forEach(track => track.stop());
@@ -1045,6 +1046,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
     }
   };
 
+  // Note: openImageEditor is available for direct image editing integration
   // Handle send GIF/sticker with caption
   const handleGifStickerSend = () => {
     if (selectedGifSticker && onGifStickerSend) {
@@ -1053,6 +1055,12 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       setGifStickerCaption('');
       onCancel();
     }
+  };
+
+  // Handle GIF/sticker cancel
+  const handleGifStickerCancel = () => {
+    setSelectedGifSticker(null);
+    setGifStickerCaption('');
   };
 
   // Load initial GIFs on mount
@@ -1238,21 +1246,20 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
 
           {/* Emoji Tab */}
           {activeTab === 'emoji' && (
-            <EmojiPicker onEmojiSelect={handleEmojiClick} />
+            <EmojiPicker onEmojiSelect={handleEmojiClick} onCancel={handleCancel} />
           )}
 
           {/* Sticker Tab */}
           {activeTab === 'sticker' && (
             <StickerPicker
+              stickerCategories={stickerCategories}
+              selectedStickerCategory={selectedStickerCategory}
+              setSelectedStickerCategory={setSelectedStickerCategory}
+              stickerSearchQuery={stickerSearchQuery}
+              setStickerSearchQuery={setStickerSearchQuery}
+              loadingStickers={loadingStickers}
               stickers={stickers}
-              loading={loadingStickers}
-              categories={stickerCategories}
-              selectedCategory={selectedStickerCategory}
-              onCategoryChange={setSelectedStickerCategory}
-              searchQuery={stickerSearchQuery}
-              onSearchChange={setStickerSearchQuery}
-              onSearch={handleStickerSearch}
-              onStickerSelect={(sticker) => handleGifStickerSelect(sticker, 'sticker')}
+              handleStickerSelect={(sticker) => handleGifStickerSelect(sticker, 'sticker')}
             />
           )}
 
@@ -1318,7 +1325,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
                   </video>
                 )}
                 {selectedFileType === 'audio' && (
-                  <AudioPreviewPlayer file={selectedFile} />
+                  <AudioPreviewPlayer file={selectedFile} preview={preview} />
                 )}
                 <button
                   onClick={() => {
@@ -1381,7 +1388,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
             <div className="space-y-4">
               <div className="grid grid-cols-3 gap-2 max-h-[300px] overflow-y-auto">
                 {selectedFiles.map((file, index) => (
-                  <div key={index} className="relative aspect-square bg-bg-hover rounded-lg overflow-hidden">
+                  <div key={`${file.file.name}-${index}`} className="relative aspect-square bg-bg-hover rounded-lg overflow-hidden">
                     {file.type === 'image' && file.preview && (
                       <img src={file.preview} alt={file.file.name} className="w-full h-full object-cover" />
                     )}
@@ -1475,7 +1482,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
             <DocumentPreviewModal
               file={documentFile}
               onSend={handleDocumentSend}
-              onCancel={() => {
+              onClose={() => {
                 setShowDocumentPreview(false);
                 setDocumentFile(null);
               }}
@@ -1516,10 +1523,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
               {/* Action Buttons */}
               <div className="flex gap-2">
                 <button
-                  onClick={() => {
-                    setSelectedGifSticker(null);
-                    setGifStickerCaption('');
-                  }}
+                  onClick={handleGifStickerCancel}
                   className="flex-1 py-2 px-4 bg-bg-hover text-text-secondary rounded-xl font-medium hover:bg-bg-primary transition-colors"
                 >
                   Annuler

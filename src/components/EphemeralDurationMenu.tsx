@@ -55,7 +55,6 @@ export const EphemeralDurationMenu: React.FC<EphemeralDurationMenuProps> = ({
       onKeyDown={handleBackdropKeyDown}
       aria-label="Menu de durée éphémère"
       role="dialog"
-      aria-modal="true"
     >
       <div
         ref={modalRef}

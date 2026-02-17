@@ -28,7 +28,12 @@ interface ImageEditorToolbarProps {
   rotateLeft: () => void;
   setShowBrushSize: (show: boolean) => void;
   toggleFlipH: () => void;
+  toggleFlipV?: () => void;
+  zoomIn?: () => void;
+  zoomOut?: () => void;
   flipH: boolean;
+  flipV?: boolean;
+  zoom?: number;
   hdQuality: boolean;
   setShowQualitySettings: (show: boolean) => void;
   showQualitySettings: boolean;
@@ -43,7 +48,12 @@ export const ImageEditorToolbar: React.FC<ImageEditorToolbarProps> = ({
   rotateLeft,
   setShowBrushSize,
   toggleFlipH,
+  toggleFlipV,
+  zoomIn,
+  zoomOut,
   flipH,
+  flipV,
+  zoom,
   hdQuality,
   setShowQualitySettings,
   showQualitySettings,

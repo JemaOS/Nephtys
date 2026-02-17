@@ -292,7 +292,7 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
             
             return (
               <div
-                key={`voice-waveform-${index}`}
+                key={`voice-waveform-${index}-${value.toFixed(2)}`}
                 className="transition-all duration-75 rounded-full"
                 style={{
                   width: `${barWidth}px`,

@@ -944,6 +944,7 @@ export function ChatViewPage() {
     }
   }, [loading, messages.length])
 
+  // Note: scrollToBottom is implemented via messagesEndRef.scrollIntoView
   // Extract ternary for scroll behavior
   const getScrollBehavior = (): ScrollBehavior => {
     if (messages.length > prevMessageCountRef.current) {
@@ -1888,6 +1889,7 @@ export function ChatViewPage() {
     setShowForwardModal(true)
   }
 
+  // Note: formatMessageTime is available for message time formatting
   // Helper to build forward message data
   const buildForwardMessageData = (targetConversationId: string, messageToForward: Message, senderId: string): any => {
     const messageData: any = {

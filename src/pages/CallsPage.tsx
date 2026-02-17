@@ -991,6 +991,11 @@ export function CallsPage() {
   const filteredCalls = filterCalls(calls, searchQuery, user?.id)
 
 
+  // Helper functions for call display - used by CallDetailsContent component
+  // Note: isFavorite, getCallDisplayName, getCallAvatarUrl, getCallStatusText,
+  // getCallTypeText, renderCallStatus, renderCallAvatar, handleFavoriteClick
+  // are passed to CallDetailsContent component as props
+
   // Helper: Handle call back action
   const handleCallBack = async (call: CallLog) => {
     if (call.is_group_call) {
@@ -1075,12 +1080,32 @@ export function CallsPage() {
     )
   }
 
+  // Helper: Get favorite ID for a call
   const getFavoriteId = (call: CallLog, userId: string | undefined): string | undefined => {
     if (call.is_group_call) {
       return call.conversation_id;
     }
     const isOutgoing = call.caller_id === userId;
     return isOutgoing ? call.callee_profile?.id : call.caller_profile?.id;
+  }
+
+  // Helper: Check if call is favorite
+  const isCallFavorite = (call: CallLog, userId: string | undefined, favs: string[]): boolean => {
+    const favId = getFavoriteId(call, userId);
+    return favId ? favs.includes(favId) : false;
+  }
+
+  // Helper: Handle favorite toggle for a call
+  const handleCallFavoriteToggle = (call: CallLog, userId: string | undefined) => {
+    if (call.is_group_call) {
+      toggleFavorite(call.conversation_id, true);
+    } else {
+      const isOut = call.caller_id === userId;
+      const otherProfile = isOut ? call.callee_profile : call.caller_profile;
+      if (otherProfile) {
+        toggleFavorite(otherProfile.id, false);
+      }
+    }
   }
 
   interface CallDetailsContentProps {
@@ -1099,13 +1124,16 @@ export function CallsPage() {
     renderCallStatus: (call: CallLog) => string;
     renderCallAvatar: (avatarUrl: string | null | undefined, isGroupCall: boolean, displayName: string) => React.ReactNode;
     getFavoriteId: (call: CallLog, userId: string | undefined) => string | undefined;
+    isCallFavorite: (call: CallLog, userId: string | undefined, favs: string[]) => boolean;
+    handleCallFavoriteToggle: (call: CallLog, userId: string | undefined) => void;
   }
 
+  // CallDetailsContent component - defined inside CallsPage but uses useCallback pattern
+  // to avoid recreating it on each render
   const CallDetailsContent: React.FC<CallDetailsContentProps> = ({
     call,
     userId,
     favorites,
-    toggleFavorite,
     navigate,
     setSelectedCall,
     handleCallBack,
@@ -1116,7 +1144,8 @@ export function CallsPage() {
     getCallTypeText,
     renderCallStatus,
     renderCallAvatar,
-    getFavoriteId
+    isCallFavorite,
+    handleCallFavoriteToggle
   }) => {
     const isGroupCall = call.is_group_call
     
@@ -1124,19 +1153,10 @@ export function CallsPage() {
     const avatarUrl = getCallAvatarUrl(call, userId)
     const isCallMissedOrRejected = call.status === 'missed' || call.status === 'rejected'
     const statusClass = isCallMissedOrRejected ? 'text-[#ea4335]' : 'text-primary-600 dark:text-primary-400'
-    const favoriteId = getFavoriteId(call, userId)
-    const isFavorite = favoriteId ? favorites.includes(favoriteId) : false
+    const isFavorite = isCallFavorite(call, userId, favorites)
     
     const handleFavoriteClick = () => {
-      if (call.is_group_call) {
-        toggleFavorite(call.conversation_id, true)
-      } else {
-        const isOut = call.caller_id === userId
-        const otherProfile = isOut ? call.callee_profile : call.caller_profile
-        if (otherProfile) {
-          toggleFavorite(otherProfile.id, false)
-        }
-      }
+      handleCallFavoriteToggle(call, userId)
     }
     
     return (
@@ -1495,6 +1515,8 @@ export function CallsPage() {
                 renderCallStatus={renderCallStatus}
                 renderCallAvatar={renderCallAvatar}
                 getFavoriteId={getFavoriteId}
+                isCallFavorite={isCallFavorite}
+                handleCallFavoriteToggle={handleCallFavoriteToggle}
               />
             </div>
           </div>
@@ -1533,6 +1555,8 @@ export function CallsPage() {
                 renderCallStatus={renderCallStatus}
                 renderCallAvatar={renderCallAvatar}
                 getFavoriteId={getFavoriteId}
+                isCallFavorite={isCallFavorite}
+                handleCallFavoriteToggle={handleCallFavoriteToggle}
               />
             </div>
           </div>

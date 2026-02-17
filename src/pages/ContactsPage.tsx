@@ -218,6 +218,24 @@ const findExistingConversation = async (
   }
 };
 
+// Helper: Find or create conversation (unified method)
+const findOrCreateConversation = async (
+  supabaseClient: any,
+  userId: string,
+  contactId: string
+): Promise<string | null> => {
+  const isSelfContact = contactId === userId;
+  
+  // Try to find existing conversation
+  const existingId = await findExistingConversation(supabaseClient, isSelfContact, userId, contactId);
+  if (existingId) {
+    return existingId;
+  }
+  
+  // Create new conversation if not found
+  return createNewConversationAndAddMembers(supabaseClient, userId, contactId, isSelfContact);
+};
+
 // Helper: Create new conversation and add members (moved to module level to reduce complexity)
 const createNewConversationAndAddMembers = async (
   supabaseClient: any,
@@ -459,24 +477,8 @@ export function ContactsPage() {
       }
 
       // Créer automatiquement une conversation avec ce contact
-      // Cas spécial: "Saved Messages" (conversation avec soi-même)
-      const isSelfContact = profileData.id === user.id
-      
       // Find or create conversation using helpers
-      let existingConversationId: string | null = null
-      
-      if (isSelfContact) {
-        const result = await findSavedMessagesConversation(supabase, user.id)
-        existingConversationId = result.conversationId
-      } else {
-        const result = await findDirectConversation(supabase, user.id, profileData.id)
-        existingConversationId = result.conversationId
-      }
-
-      // Si pas de conversation existante, en créer une nouvelle
-      if (!existingConversationId) {
-        existingConversationId = await createNewConversation(supabase, user.id, profileData.id, isSelfContact)
-      }
+      const existingConversationId = await findOrCreateConversation(supabase, user.id, profileData.id)
       
       // Naviguer vers la conversation créée ou existante
       if (existingConversationId) {

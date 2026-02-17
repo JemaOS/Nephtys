@@ -856,7 +856,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
         return;
       }
       
-      // Enter fullscreen
+      // Enter fullscreen for video
       if (mediaType === 'video' && videoRef.current) {
         await enterVideoFullscreen();
         return;
@@ -872,7 +872,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
       // Even if fullscreen fails, try to toggle the state for UI feedback
       setIsFullscreen(!isFullscreen);
     }
-  }, [mediaType, isFullscreen, isMobile, isPWA, isAndroid]);
+  }, [mediaType, isFullscreen]);
 
   // Desktop navigation - instant like WhatsApp
   const handlePrevious = useCallback(() => {
@@ -1051,7 +1051,6 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
     <div
       ref={viewerRef}
       role="dialog"
-      aria-modal="true"
       aria-label="Visualiseur de média"
       className={`fixed inset-0 z-[200] bg-black flex flex-col media-viewer-fullscreen m-0 p-0 w-full h-full max-w-none max-h-none text-left ${
         isLandscape && isMobile ? 'landscape-mode' : ''

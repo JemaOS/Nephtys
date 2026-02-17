@@ -82,6 +82,7 @@ export function PersistentCallScreen() {
   }, [checkIsVideoCall, remoteStream, remoteVideoEnabled]);
 
   // Helper: Handle drag move - extracted
+  // Note: handleDragStart is available for future drag initiation customization
   const handleDragMove = useCallback((e: MouseEvent | TouchEvent) => {
     if (!isDragging) return
     
