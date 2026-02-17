@@ -316,7 +316,6 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
     onTouchMove={handleTouchMove}
     onTouchEnd={handleTouchEnd}
     tabIndex={0}
-    role="button"
     aria-label="Visionneuse d'image - Double-cliquez pour réinitialiser le zoom"
     onKeyDown={(e) => {
       if (e.key === 'Enter' || e.key === ' ') {

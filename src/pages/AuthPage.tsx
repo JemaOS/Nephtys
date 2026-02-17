@@ -5,6 +5,9 @@ import { useState } from 'react'
 import { useAuth } from '@/context/AuthContext'
 import { Lock, User, Shield, Zap, EyeOff } from 'lucide-react'
 
+// Type alias for auth mode
+type AuthMode = 'signin' | 'signup' | 'guest'
+
 // Styles CSS pour empêcher le navigateur de changer les couleurs en mode autofill
 const autofillStyles = `
   /* Empêche le navigateur de changer la couleur de fond en autofill */
@@ -26,28 +29,28 @@ const autofillStyles = `
 `
 
 // Helper function to get auth title based on mode
-const getAuthTitle = (mode: 'signin' | 'signup' | 'guest'): string => {
+const getAuthTitle = (mode: AuthMode): string => {
   if (mode === 'guest') return 'Mode éphémère';
   if (mode === 'signin') return 'Connexion';
   return 'Créer un compte';
 }
 
 // Helper function to get auth subtitle based on mode
-const getAuthSubtitle = (mode: 'signin' | 'signup' | 'guest'): string => {
+const getAuthSubtitle = (mode: AuthMode): string => {
   if (mode === 'guest') return 'Session temporaire sans compte';
   if (mode === 'signin') return 'Accédez à vos conversations';
   return 'Rejoignez Nephtys';
 }
 
 // Helper function to get auth button text based on mode
-const getAuthButtonText = (mode: 'signin' | 'signup' | 'guest'): string => {
+const getAuthButtonText = (mode: AuthMode): string => {
   if (mode === 'guest') return 'Démarrer en mode éphémère';
   if (mode === 'signin') return 'Se connecter';
   return 'Créer le compte';
 }
 
 export function AuthPage() {
-  const [mode, setMode] = useState<'signin' | 'signup' | 'guest'>('signin')
+  const [mode, setMode] = useState<AuthMode>('signin')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)

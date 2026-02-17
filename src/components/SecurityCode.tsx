@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Shield, Check, Copy } from 'lucide-react';
-import { e2eeManager } from '@/lib/encryption';
+import { generateSafetyNumber } from '@/lib/crypto';
 
 interface SecurityCodeProps {
   myPublicKey: string;
@@ -23,12 +23,12 @@ export const SecurityCode: React.FC<SecurityCodeProps> = ({
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    generateSafetyNumber();
+    generateSafetyNumberHandler();
   }, [myPublicKey, otherPublicKey]);
 
-  const generateSafetyNumber = async () => {
+  const generateSafetyNumberHandler = async () => {
     try {
-      const number = await e2eeManager.generateSafetyNumber(myPublicKey, otherPublicKey);
+      const number = await generateSafetyNumber(myPublicKey, otherPublicKey);
       setSafetyNumber(number);
     } catch (error) {
       console.error('Error generating safety number:', error);

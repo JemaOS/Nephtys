@@ -278,7 +278,7 @@ export class GroupCallManager {
     const participant = this.participants.get(participantId);
     let peerConnection = participant?.peerConnection;
     
-    if (!peerConnection) {
+    if (peerConnection === undefined) {
       peerConnection = await this.createPeerConnection(participantId);
       
       // Fetch participant profile from database
@@ -373,7 +373,10 @@ export class GroupCallManager {
       if (!this.iceCandidateQueues.has(participantId)) {
         this.iceCandidateQueues.set(participantId, []);
       }
-      this.iceCandidateQueues.get(participantId)!.push(signal.data);
+      const queue = this.iceCandidateQueues.get(participantId);
+      if (queue) {
+        queue.push(signal.data);
+      }
       return;
     }
 
@@ -416,10 +419,10 @@ export class GroupCallManager {
     const participantId = signal.from;
     const participant = this.participants.get(participantId);
     if (participant) {
-      if (typeof signal.data.video !== 'undefined') {
+      if (signal.data.video !== undefined) {
         participant.videoEnabled = signal.data.video;
       }
-      if (typeof signal.data.audio !== 'undefined') {
+      if (signal.data.audio !== undefined) {
         participant.audioEnabled = signal.data.audio;
       }
       this.participants.set(participantId, participant);
@@ -456,8 +459,9 @@ export class GroupCallManager {
 
     // Add local tracks to the connection
     if (this.localStream) {
-      this.localStream.getTracks().forEach(track => {
-        peerConnection.addTrack(track, this.localStream!);
+      const localStream = this.localStream;
+      localStream.getTracks().forEach(track => {
+        peerConnection.addTrack(track, localStream);
       });
     }
 
@@ -553,8 +557,9 @@ export class GroupCallManager {
       try {
         // 1. Stop old tracks FIRST
         const oldTracks = this.localStream.getVideoTracks();
+        const localStream = this.localStream;
         oldTracks.forEach(t => {
-          this.localStream!.removeTrack(t);
+          localStream.removeTrack(t);
           t.stop();
         });
 
@@ -608,7 +613,10 @@ export class GroupCallManager {
           participant.peerConnection.removeTrack(videoSender);
         }
         
-        participant.peerConnection.addTrack(newTrack, this.localStream!);
+        const localStream = this.localStream;
+        if (localStream) {
+          participant.peerConnection.addTrack(newTrack, localStream);
+        }
         
         // Create and send offer
         try {

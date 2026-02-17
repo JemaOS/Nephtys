@@ -364,6 +364,9 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
   const handleDownload = async () => {
     try {
       const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
       const blob = await response.blob();
       
       // Determine file extension from MIME type or URL

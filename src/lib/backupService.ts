@@ -117,7 +117,7 @@ export async function encryptData(data: string, password: string): Promise<strin
   const encoder = new TextEncoder()
   const saltArray = crypto.getRandomValues(new Uint8Array(16))
   const ivArray = crypto.getRandomValues(new Uint8Array(12))
-  const key = await deriveKey(password, saltArray.buffer as ArrayBuffer)
+  const key = await deriveKey(password, saltArray.buffer)
   
   const encrypted = await crypto.subtle.encrypt(
     { name: 'AES-GCM', iv: ivArray },
@@ -161,7 +161,7 @@ export async function decryptData(encryptedData: string, password: string): Prom
     
     console.log('Decryption: Salt:', saltArray.length, 'IV:', ivArray.length, 'Data:', dataArray.length)
     
-    const key = await deriveKey(password, saltArray.buffer as ArrayBuffer)
+    const key = await deriveKey(password, saltArray.buffer)
     console.log('Decryption: Key derived')
     
     const decrypted = await crypto.subtle.decrypt(
@@ -494,8 +494,8 @@ export async function importBackupFromFile(
     
     reader.onload = async (e) => {
       try {
-        const encryptedData = e.target?.result as string
-        const decrypted = await decryptData(encryptedData, encryptionPassword)
+        const text = await file.text()
+    const decrypted = await decryptData(text, encryptionPassword)
         
         if (!decrypted) {
           reject(new Error('Mot de passe incorrect ou fichier corrompu'))
@@ -512,12 +512,12 @@ export async function importBackupFromFile(
         
         resolve(backupData)
       } catch (error) {
+        console.error('Error reading backup file:', error)
         reject(new Error('Erreur lors de la lecture du fichier'))
       }
     }
     
     reader.onerror = () => reject(new Error('Erreur lors de la lecture du fichier'))
-    reader.readAsText(file)
   })
 }
 

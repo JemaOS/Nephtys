@@ -28,7 +28,7 @@ import { sha256 } from '@noble/hashes/sha256';
 import { hmac } from '@noble/hashes/hmac';
 import { sign, verify, generateSigningKeyPair, Ed25519KeyPair } from './signatures';
 import { hkdf } from './hkdf';
-import { E2EEMessagingService, getMessagingService, EncryptedMessagePayload } from './messagingService';
+import { E2EEMessagingService, getMessagingService } from './messagingService';
 
 /**
  * Sender Key for group encryption

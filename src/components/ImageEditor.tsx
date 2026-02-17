@@ -201,8 +201,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const [image, setImage] = useState<HTMLImageElement | null>(null);
   const [activeTool, setActiveTool] = useState<Tool>('none');
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [_isDrawing, setIsDrawing] = useState(false);
+  const [, setIsDrawing] = useState(false);
   const [currentPath, setCurrentPath] = useState<DrawPath | null>(null);
   const [drawPaths, setDrawPaths] = useState<DrawPath[]>([]);
   const [textOverlays, setTextOverlays] = useState<TextOverlay[]>([]);
@@ -229,8 +228,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
   const [cropMode, setCropMode] = useState(false);
   const [cropStart, setCropStart] = useState<{ x: number; y: number } | null>(null);
   const [cropEnd, setCropEnd] = useState<{ x: number; y: number } | null>(null);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [_blurStart, setBlurStart] = useState<{ x: number; y: number } | null>(null);
+  const [, setBlurStart] = useState<{ x: number; y: number } | null>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
 
   // Calculate canvas size to fit container while maintaining aspect ratio
@@ -449,7 +447,6 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
   // Note: getCanvasCoords is used in mouse event handlers below
 
   // Handle draw tool start - extracted to reduce complexity
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleDrawStart = useCallback((coords: { x: number; y: number }) => {
     setIsDrawing(true);
     setCurrentPath({
@@ -460,7 +457,6 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
   }, [selectedColor, brushSize]);
 
   // Handle crop tool start - extracted to reduce complexity
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleCropStart = useCallback((coords: { x: number; y: number }) => {
     isCroppingRef.current = true;
     setCropStart(coords);
@@ -469,13 +465,11 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
   }, []);
 
   // Handle blur tool start - extracted to reduce complexity
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleBlurStart = useCallback((coords: { x: number; y: number }) => {
     setBlurStart(coords);
   }, []);
 
   // Handle text tool - add new text overlay - extracted to reduce complexity
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleTextTool = useCallback((coords: { x: number; y: number }) => {
     const newText: TextOverlay = {
       id: Date.now().toString(),
@@ -493,7 +487,6 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
   }, [fontSize, selectedColor, fontFamily]);
 
   // Handle shape tool - add new shape overlay - extracted to reduce complexity
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleShapeTool = useCallback((coords: { x: number; y: number }) => {
     const newShape: ShapeOverlay = {
       id: Date.now().toString(),

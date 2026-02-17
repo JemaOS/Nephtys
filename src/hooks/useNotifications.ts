@@ -46,7 +46,7 @@ export const useNotifications = (): UseNotificationsReturn => {
       setPermission(result);
       return result === 'granted';
     } catch (error) {
-      // Error requesting notification permission
+      console.error('Error requesting notification permission:', error);
       return false;
     }
   };

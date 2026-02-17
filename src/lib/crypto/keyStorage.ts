@@ -272,7 +272,7 @@ export class SecureKeyStorage {
     if (!this.db) throw new Error('Database not open');
     
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(STORE_METADATA, 'readonly');
+      const transaction = this.db.transaction(STORE_METADATA, 'readonly');
       const store = transaction.objectStore(STORE_METADATA);
       const request = store.get('metadata');
       
@@ -291,7 +291,7 @@ export class SecureKeyStorage {
     if (!this.db) throw new Error('Database not open');
     
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(STORE_METADATA, 'readwrite');
+      const transaction = this.db.transaction(STORE_METADATA, 'readwrite');
       const store = transaction.objectStore(STORE_METADATA);
       const request = store.put({ id: 'metadata', data: metadata });
       
@@ -428,7 +428,7 @@ export class SecureKeyStorage {
     if (!this.db) throw new Error('Database not open');
     
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(STORE_KEY_BUNDLE, 'readwrite');
+      const transaction = this.db.transaction(STORE_KEY_BUNDLE, 'readwrite');
       const store = transaction.objectStore(STORE_KEY_BUNDLE);
       const request = store.put({ id: 'bundle', data: bundle });
       
@@ -444,7 +444,7 @@ export class SecureKeyStorage {
     if (!this.db) throw new Error('Database not open');
     
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(STORE_KEY_BUNDLE, 'readonly');
+      const transaction = this.db.transaction(STORE_KEY_BUNDLE, 'readonly');
       const store = transaction.objectStore(STORE_KEY_BUNDLE);
       const request = store.get('bundle');
       
@@ -553,7 +553,7 @@ export class SecureKeyStorage {
     if (!this.db) throw new Error('Database not open');
     
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(STORE_SESSIONS, 'readwrite');
+      const transaction = this.db.transaction(STORE_SESSIONS, 'readwrite');
       const store = transaction.objectStore(STORE_SESSIONS);
       const request = store.put(session);
       
@@ -613,7 +613,7 @@ export class SecureKeyStorage {
     if (!this.db) throw new Error('Database not open');
     
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(STORE_SESSIONS, 'readonly');
+      const transaction = this.db.transaction(STORE_SESSIONS, 'readonly');
       const store = transaction.objectStore(STORE_SESSIONS);
       const request = store.get(peerId);
       
@@ -631,7 +631,7 @@ export class SecureKeyStorage {
     if (!this.db) throw new Error('Database not open');
     
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(STORE_SESSIONS, 'readwrite');
+      const transaction = this.db.transaction(STORE_SESSIONS, 'readwrite');
       const store = transaction.objectStore(STORE_SESSIONS);
       const request = store.delete(peerId);
       
@@ -652,7 +652,7 @@ export class SecureKeyStorage {
     if (!this.db) throw new Error('Database not open');
     
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(STORE_SESSIONS, 'readonly');
+      const transaction = this.db.transaction(STORE_SESSIONS, 'readonly');
       const store = transaction.objectStore(STORE_SESSIONS);
       const request = store.getAllKeys();
       
@@ -695,7 +695,7 @@ export class SecureKeyStorage {
     if (!this.db) return;
     
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(storeName, 'readwrite');
+      const transaction = this.db.transaction(storeName, 'readwrite');
       const store = transaction.objectStore(storeName);
       const request = store.clear();
       
@@ -824,7 +824,7 @@ export class SecureKeyStorage {
     
     // Derive backup key
     const backupInfo = new TextEncoder().encode('anu-backup-key');
-    const backupKeyMaterial = hkdf(this.salt!, new Uint8Array(32), backupInfo, 32);
+    const backupKeyMaterial = hkdf(this.salt as Uint8Array, new Uint8Array(32), backupInfo, 32);
     
     const backupKeyBuffer = new ArrayBuffer(backupKeyMaterial.length);
     new Uint8Array(backupKeyBuffer).set(backupKeyMaterial);

@@ -78,6 +78,9 @@ const getDocumentIconConfig = (extension: string): { bgColor: string; icon: Reac
 // Type alias for media file types
 export type MediaFileType = 'image' | 'video' | 'file' | 'audio';
 
+// Type alias for upload file type (same as media file type)
+export type UploadFileType = MediaFileType;
+
 // Helper function to get folder name based on file type - extracted to avoid ternary nest
 const getFolderForFileType = (type: MediaFileType): string => {
   if (type === 'image') return 'images';
@@ -129,10 +132,20 @@ const normalizeTenorResult = (result: any) => {
   return result;
 };
 
-// Type alias for upload file type
-type UploadFileType = 'image' | 'video' | 'file' | 'audio';
 
 interface UploadedFileData {
+  url: string;
+  type: UploadFileType;
+  fileName: string;
+  fileSize: number;
+  width?: number;
+  height?: number;
+  thumbnail?: string;
+  duration?: number;
+}
+
+// Interface for upload complete parameters
+export interface UploadCompleteParams {
   url: string;
   type: UploadFileType;
   fileName: string;
@@ -197,9 +210,6 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
   const videoInputRef = useRef<HTMLInputElement>(null);
   const audioInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
-  // Note: videoRef is reserved for future camera video preview functionality
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const getFileType = (file: File): 'image' | 'video' | 'file' | 'audio' => {
@@ -1088,13 +1098,16 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
   // Handle sticker search
   // Note: This handler is reserved for future sticker search by text input
   // Currently stickers are fetched by category selection
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleStickerSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (stickerSearchQuery.trim()) {
       fetchStickers(stickerSearchQuery.trim());
     }
   };
+
+  // Use handleStickerSearch to avoid unused variable warning
+  // This ensures the function is referenced even if not directly used in current UI
+  void handleStickerSearch;
 
   // Render the component
   return (

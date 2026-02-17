@@ -33,7 +33,6 @@ import {
   getMessagingService 
 } from './messagingService';
 import { sign } from './signatures';
-import { hkdf } from './hkdf';
 
 /**
  * Migration result containing new keys and migration token

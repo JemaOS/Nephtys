@@ -21,7 +21,7 @@ const getCache = <T,>(key: string): T | null => {
         return data as T
       }
     }
-  } catch (e) {
+  } catch {
     // Ignore cache errors
   }
   return null
@@ -33,7 +33,7 @@ const setCache = <T,>(key: string, data: T) => {
       data,
       timestamp: Date.now()
     }))
-  } catch (e) {
+  } catch {
     // Ignore cache errors (quota exceeded, etc.)
   }
 }

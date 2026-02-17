@@ -1,5 +1,5 @@
 import React from 'react'
-import { ArrowLeft, CheckCheck, Trash2, UserPlus, Search, Phone, Video, PhoneIncoming, PhoneOutgoing, PhoneMissed, Users, Star, Check, MessageCircle, X } from 'lucide-react'
+import { ArrowLeft, CheckCheck, Trash2, UserPlus, Search, Phone, Video, PhoneIncoming, PhoneOutgoing, PhoneMissed, Users, Check } from 'lucide-react'
 import { formatCallDuration, formatCallDate } from './CallsPage'
 
 // Helper to get display name and avatar

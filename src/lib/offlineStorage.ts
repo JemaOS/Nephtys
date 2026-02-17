@@ -134,7 +134,7 @@ class OfflineStorage {
         localStorage.removeItem(LS_CONVERSATIONS_KEY);
         localStorage.removeItem(LS_CONVERSATIONS_TIMESTAMP_KEY);
       } catch (e) {
-        // Ignore
+        console.error('Error clearing localStorage:', e);
       }
     }
   }
@@ -186,7 +186,7 @@ class OfflineStorage {
           localStorage.removeItem(LS_CONVERSATIONS_KEY);
           localStorage.removeItem(LS_CONVERSATIONS_TIMESTAMP_KEY);
         } catch (e) {
-          // Ignore
+          console.error('Error clearing localStorage:', e);
         }
       }
     }
@@ -199,7 +199,7 @@ class OfflineStorage {
     }
 
     // Check if IndexedDB is available
-    if (!('indexedDB' in window)) {
+    if (!('indexedDB' in globalThis)) {
       this.initFailed = true;
       return;
     }
@@ -262,6 +262,7 @@ class OfflineStorage {
           resolve();
         };
       } catch (error) {
+        console.error('Error in IndexedDB init:', error);
         clearTimeout(timeoutId);
         this.initFailed = true;
         resolve();
@@ -565,7 +566,7 @@ class OfflineStorage {
       localStorage.removeItem(LS_CONVERSATIONS_KEY);
       localStorage.removeItem(LS_CONVERSATIONS_TIMESTAMP_KEY);
     } catch (e) {
-      // Ignore localStorage errors
+      console.error('Error clearing localStorage:', e);
     }
     
     const ready = await this.ensureReady();

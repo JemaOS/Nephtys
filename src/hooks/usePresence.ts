@@ -1,7 +1,7 @@
 // Copyright (c) 2025 Jema Technology.
 // Distributed under the license specified in the root directory of this project.
 
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { RealtimeChannel } from '@supabase/supabase-js'
 
@@ -26,40 +26,12 @@ let heartbeatInterval: NodeJS.Timeout | null = null
 
 // Update last_seen in database periodically
 const updateLastSeen = async (userId: string) => {
-  try {
-    // TODO: Enable this when 'is_online' and 'last_seen' columns are added to profiles table
-    // Currently disabled to prevent 400 Bad Request errors
-    /*
-    await supabase
-      .from('profiles')
-      .update({
-        is_online: true,
-        last_seen: new Date().toISOString()
-      })
-      .eq('id', userId)
-    */
-  } catch (error) {
-    console.error('Error updating last_seen:', error)
-  }
+  // Database columns 'is_online' and 'last_seen' not yet available
 }
 
 // Set user as offline in database
 const setOffline = async (userId: string) => {
-  try {
-    // TODO: Enable this when 'is_online' and 'last_seen' columns are added to profiles table
-    // Currently disabled to prevent 400 Bad Request errors
-    /*
-    await supabase
-      .from('profiles')
-      .update({
-        is_online: false,
-        last_seen: new Date().toISOString()
-      })
-      .eq('id', userId)
-    */
-  } catch (error) {
-    console.error('Error setting offline:', error)
-  }
+  // Database columns 'is_online' and 'last_seen' not yet available
 }
 
 // Initialize global presence tracking

@@ -92,11 +92,11 @@ export const useOfflineSync = (conversationId?: string): UseOfflineSyncReturn =>
             SYNC_TIMEOUT
           );
 
-          if (!error) {
+          if (error) {
+            // Failed to sync message
+          } else {
             // Successfully sent, remove from local storage
             await offlineStorage.deletePendingMessage(pending.tempId);
-          } else {
-            // Failed to sync message
           }
         } catch {
           // Continue with next message, don't break the loop

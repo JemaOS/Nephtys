@@ -5,7 +5,7 @@ import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { MainLayout } from '@/components/MainLayout'
 import { ConversationContextMenu } from '@/components/ConversationContextMenu'
-import { supabase, Conversation, Profile, Message } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { offlineStorage } from '@/lib/offlineStorage'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -235,7 +235,7 @@ export function ChatsPage() {
         console.error(`Error loading ${type}:`, error)
         if (type === 'members') {
           // Dispatch connection lost event if all retries failed
-          window.dispatchEvent(new CustomEvent('supabase-connection-lost'))
+          globalThis.dispatchEvent(new CustomEvent('supabase-connection-lost'))
         }
         return
       }
@@ -476,7 +476,7 @@ export function ChatsPage() {
     longPressTriggeredRef.current = false
     longPressTimerRef.current = setTimeout(() => {
       longPressTriggeredRef.current = true
-      if (!isSelectionMode) {
+      if (isSelectionMode) {
         enterSelectionMode(conversationId)
       } else {
         toggleConversationSelection(conversationId)

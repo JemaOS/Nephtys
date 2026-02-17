@@ -68,9 +68,13 @@ export function supportsInsertableStreams(): boolean {
     return true;
   }
   
+  if (typeof globalThis !== 'undefined' && 'RTCRtpScriptTransform' in globalThis) {
+    return true;
+  }
+  
   // Check for the older createEncodedStreams API (Chrome)
-  if (typeof RTCRtpSender !== 'undefined' && 
-      'createEncodedStreams' in RTCRtpSender.prototype) {
+  if (typeof globalThis.RTCRtpSender !== 'undefined' && 
+      'createEncodedStreams' in globalThis.RTCRtpSender.prototype) {
     return true;
   }
   

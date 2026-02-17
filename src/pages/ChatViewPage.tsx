@@ -130,7 +130,7 @@ const setCache = <T,>(key: string, data: T) => {
       data,
       timestamp: Date.now()
     }))
-  } catch (e) {
+  } catch {
     // Ignore cache errors (quota exceeded, etc.)
   }
 }

@@ -46,7 +46,7 @@ export function useSupabaseReconnect(userId: string | null) {
       }
 
       // Dispatch event for components to refresh if needed
-      window.dispatchEvent(new CustomEvent('supabase-reconnected', {
+      globalThis.dispatchEvent(new CustomEvent('supabase-reconnected', {
         detail: { timestamp: Date.now() }
       }))
 
@@ -79,11 +79,11 @@ export function useSupabaseReconnect(userId: string | null) {
     if (!userId) return
 
     document.addEventListener('visibilitychange', handleVisibilityChange)
-    window.addEventListener('online', handleOnline)
+    globalThis.addEventListener('online', handleOnline)
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange)
-      window.removeEventListener('online', handleOnline)
+      globalThis.removeEventListener('online', handleOnline)
     }
   }, [userId, handleVisibilityChange, handleOnline])
 
@@ -102,7 +102,7 @@ export function useOnSupabaseReconnect(callback: () => void) {
       callback()
     }
 
-    window.addEventListener('supabase-reconnected', handler)
-    return () => window.removeEventListener('supabase-reconnected', handler)
+    globalThis.addEventListener('supabase-reconnected', handler)
+    return () => globalThis.removeEventListener('supabase-reconnected', handler)
   }, [callback])
 }

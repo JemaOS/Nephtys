@@ -20,7 +20,7 @@
  * @module crypto/__tests__/securityTests
  */
 
-import { describe, test, expect, beforeEach, afterEach } from 'vitest';
+import { describe, test, expect, beforeEach } from 'vitest';
 
 // Import all crypto modules
 import {
@@ -39,8 +39,6 @@ import {
   // Double Ratchet
   ratchetInitAlice,
   ratchetInitBob,
-  ratchetEncrypt,
-  ratchetDecrypt,
   encryptMessage,
   decryptMessage,
   serializeRatchetState,
@@ -58,8 +56,6 @@ import {
   
   // HKDF
   hkdf,
-  hkdfExtract,
-  hkdfExpand,
   kdfRK,
   kdfCK,
   
@@ -110,8 +106,8 @@ function arraysEqual(a: Uint8Array, b: Uint8Array): boolean {
  * Check if a Uint8Array contains all zeros
  */
 function isAllZeros(arr: Uint8Array): boolean {
-  for (let i = 0; i < arr.length; i++) {
-    if (arr[i] !== 0) return false;
+  for (const byte of arr) {
+    if (byte !== 0) return false;
   }
   return true;
 }
@@ -724,7 +720,7 @@ describe('Message Encryption', () => {
       
       // Ciphertext should have high entropy (appear random)
       const entropy = calculateEntropy(ciphertext.slice(0, -16)); // Exclude tag
-      expect(entropy).toBeGreaterThan(7.0);
+      expect(entropy).toBeGreaterThan(7);
     });
     
     test('same plaintext produces different ciphertext with different nonce', () => {

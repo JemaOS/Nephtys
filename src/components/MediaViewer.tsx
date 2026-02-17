@@ -1025,8 +1025,8 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
         });
         onShare?.();
       } catch (error) {
-        // User cancelled share or share failed - no action needed
-        console.log('Share cancelled');
+        // User cancelled share or share failed - log for debugging
+        console.log('Share cancelled or failed:', error);
       }
     } else {
       // Fallback: copy URL to clipboard
@@ -1060,6 +1060,13 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
     <div
       ref={viewerRef}
       aria-label="Visualiseur de média"
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          setShowControls(true);
+        }
+      }}
       className={`fixed inset-0 z-[200] bg-black flex flex-col media-viewer-fullscreen m-0 p-0 w-full h-full max-w-none max-h-none text-left ${landscapeModeClass} ${fullscreenActiveClass} ${cursorNoneClass}`}
       onClick={() => setShowControls(true)}
       onMouseMove={handleContainerMouseMove}
@@ -1134,6 +1141,13 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
       {/* Media content */}
       <div
         aria-label="Visualisation du média"
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            handleMouseUp();
+          }
+        }}
         className={`flex-1 flex items-center justify-center overflow-hidden media-content-container ${
           isLandscape && isMobile ? 'p-0' : 'p-4 md:p-8'
         }`}

@@ -42,7 +42,6 @@ import {
   deserializeEncryptedMessage
 } from './doubleRatchet';
 import { sign, verify, generateSigningKeyPair, Ed25519KeyPair } from './signatures';
-import { hkdf } from './hkdf';
 
 /**
  * Encrypted message payload for transmission
@@ -142,7 +141,7 @@ export class E2EEMessagingService {
       // Try to load existing key bundle
       this.keyBundle = await this.keyStorage.getKeyBundle();
       
-      if (!this.keyBundle) {
+      if (this.keyBundle) {
         // Generate new key bundle
         console.log('[MessagingService] Generating new key bundle...');
         this.keyBundle = generateKeyBundle(100);

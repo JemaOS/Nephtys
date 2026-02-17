@@ -84,8 +84,26 @@ export {
   deserializePublicKeyBundle
 } from './x3dh';
 
-// Import for internal use
-import { generateX25519KeyPair as _generateX25519KeyPair } from './x3dh';
+// Import for internal use - consolidated from x3dh
+import { 
+  generateX25519KeyPair as _generateX25519KeyPair,
+  generateKeyBundle as _generateKeyBundle,
+  getPublicKeyBundle as _getPublicKeyBundle,
+  x3dhInitiator as _x3dhInitiator,
+  x3dhResponder as _x3dhResponder,
+  KeyBundle,
+  PublicKeyBundle,
+  X25519KeyPair
+} from './x3dh';
+
+import {
+  ratchetInitAlice as _ratchetInitAlice,
+  ratchetInitBob as _ratchetInitBob,
+  encryptMessage as _encryptMessage,
+  decryptMessage as _decryptMessage,
+  RatchetState,
+  EncryptedMessage
+} from './doubleRatchet';
 
 export type {
   X25519KeyPair,
@@ -116,7 +134,8 @@ export {
   decryptMessage,
   serializeEncryptedMessage,
   deserializeEncryptedMessage,
-  createSession
+  createSessionAsInitiator,
+  createSessionAsResponder
 } from './doubleRatchet';
 
 export type {
@@ -278,7 +297,7 @@ export function hexToBytes(hex: string): Uint8Array {
   
   const bytes = new Uint8Array(hex.length / 2);
   for (let i = 0; i < bytes.length; i++) {
-    bytes[i] = Number.parseInt(hex.substr(i * 2, 2), 16);
+    bytes[i] = Number.parseInt(hex.substring(i * 2, i * 2 + 2), 16);
   }
   return bytes;
 }
@@ -321,24 +340,7 @@ export function secureClear(data: Uint8Array): void {
 // High-Level Session Management
 // ============================================================================
 
-import {
-  generateKeyBundle as _generateKeyBundle,
-  getPublicKeyBundle as _getPublicKeyBundle,
-  x3dhInitiator as _x3dhInitiator,
-  x3dhResponder as _x3dhResponder,
-  KeyBundle,
-  PublicKeyBundle,
-  X25519KeyPair
-} from './x3dh';
-
-import {
-  ratchetInitAlice as _ratchetInitAlice,
-  ratchetInitBob as _ratchetInitBob,
-  encryptMessage as _encryptMessage,
-  decryptMessage as _decryptMessage,
-  RatchetState,
-  EncryptedMessage
-} from './doubleRatchet';
+// Note: x3dh and doubleRatchet imports already done at top of file
 
 /**
  * Complete E2EE Session for a conversation

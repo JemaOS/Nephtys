@@ -23,7 +23,7 @@ import { x25519 } from '@noble/curves/ed25519';
 import { randomBytes } from '@noble/hashes/utils';
 import { gcm } from '@noble/ciphers/aes';
 import { kdfRK, kdfCK, deriveMessageKeys, deriveHeaderKeys } from './hkdf';
-import { generateX25519KeyPair, X25519KeyPair, KeyPair } from './x3dh';
+import { generateX25519KeyPair, KeyPair } from './x3dh';
 
 /**
  * Maximum number of skipped message keys to store
@@ -366,7 +366,7 @@ function skipMessageKeys(state: RatchetState, until: number): RatchetState {
     newState.CKr = CKr;
     
     // Store the skipped message key
-    const key = makeSkippedKey(newState.DHr!, newState.Nr);
+    const key = makeSkippedKey(newState.DHr as Uint8Array, newState.Nr);
     newState.MKSKIPPED.set(key, mk);
     
     newState.Nr++;
@@ -536,7 +536,7 @@ function bytesToHex(bytes: Uint8Array): string {
 function hexToBytes(hex: string): Uint8Array {
   const bytes = new Uint8Array(hex.length / 2);
   for (let i = 0; i < bytes.length; i++) {
-    bytes[i] = Number.parseInt(hex.substr(i * 2, 2), 16);
+    bytes[i] = Number.parseInt(hex.substring(i * 2, i * 2 + 2), 16);
   }
   return bytes;
 }

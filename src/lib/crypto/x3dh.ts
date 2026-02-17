@@ -27,7 +27,6 @@
  */
 
 import { x25519 } from '@noble/curves/ed25519';
-import { ed25519 } from '@noble/curves/ed25519';
 import { randomBytes } from '@noble/hashes/utils';
 import { hkdf } from './hkdf';
 import { sign, verify, generateSigningKeyPair, Ed25519KeyPair } from './signatures';
@@ -539,11 +538,13 @@ export function serializePublicKeyBundle(bundle: PublicKeyBundle): Uint8Array {
   ];
   
   if (bundle.oneTimePreKey && bundle.oneTimePreKeyId !== undefined) {
-    parts.push(new Uint8Array([1])); // Has OTK flag
-    parts.push(bundle.oneTimePreKey);
-    parts.push(new Uint8Array(new Uint32Array([bundle.oneTimePreKeyId]).buffer));
+    parts.push(
+      new Uint8Array([1]),
+      bundle.oneTimePreKey,
+      new Uint8Array(new Uint32Array([bundle.oneTimePreKeyId]).buffer)
+    );
   } else {
-    parts.push(new Uint8Array([0])); // No OTK flag
+    parts.push(new Uint8Array([0]));
   }
   
   return concatenateBytes(...parts);

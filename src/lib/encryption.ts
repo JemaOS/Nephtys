@@ -40,7 +40,7 @@ export class E2EEManager {
   // Générer une paire de clés (publique/privée)
   async generateKeyPair(): Promise<{ publicKey: string; privateKey: string }> {
     try {
-      this.keyPair = await window.crypto.subtle.generateKey(
+      this.keyPair = await globalThis.crypto.subtle.generateKey(
         {
           name: 'ECDH',
           namedCurve: 'P-256',
@@ -50,8 +50,8 @@ export class E2EEManager {
       );
 
       // Exporter les clés
-      const publicKeyBuffer = await window.crypto.subtle.exportKey('spki', this.keyPair.publicKey);
-      const privateKeyBuffer = await window.crypto.subtle.exportKey('pkcs8', this.keyPair.privateKey);
+      const publicKeyBuffer = await globalThis.crypto.subtle.exportKey('spki', this.keyPair.publicKey);
+      const privateKeyBuffer = await globalThis.crypto.subtle.exportKey('pkcs8', this.keyPair.privateKey);
 
       return {
         publicKey: this.arrayBufferToBase64(publicKeyBuffer),
@@ -66,7 +66,7 @@ export class E2EEManager {
   // Importer une clé publique
   async importPublicKey(publicKeyBase64: string): Promise<CryptoKey> {
     const publicKeyBuffer = this.base64ToArrayBuffer(publicKeyBase64);
-    return await window.crypto.subtle.importKey(
+    return await globalThis.crypto.subtle.importKey(
       'spki',
       publicKeyBuffer,
       {
@@ -87,7 +87,7 @@ export class E2EEManager {
     try {
       const otherPublicKey = await this.importPublicKey(otherPublicKeyBase64);
 
-      const sharedSecret = await window.crypto.subtle.deriveBits(
+      const sharedSecret = await globalThis.crypto.subtle.deriveBits(
         {
           name: 'ECDH',
           public: otherPublicKey,
@@ -97,7 +97,7 @@ export class E2EEManager {
       );
 
       // Créer une clé AES-GCM à partir du secret partagé
-      const sharedKey = await window.crypto.subtle.importKey(
+      const sharedKey = await globalThis.crypto.subtle.importKey(
         'raw',
         sharedSecret,
         {
@@ -124,14 +124,14 @@ export class E2EEManager {
 
     try {
       // Générer un IV aléatoire
-      const iv = window.crypto.getRandomValues(new Uint8Array(12));
+      const iv = globalThis.crypto.getRandomValues(new Uint8Array(12));
 
       // Encoder le message
       const encoder = new TextEncoder();
       const data = encoder.encode(message);
 
       // Chiffrer
-      const encryptedBuffer = await window.crypto.subtle.encrypt(
+      const encryptedBuffer = await globalThis.crypto.subtle.encrypt(
         {
           name: 'AES-GCM',
           iv: iv,
@@ -162,7 +162,7 @@ export class E2EEManager {
       const iv = this.base64ToArrayBuffer(ivBase64);
 
       // Déchiffrer
-      const decryptedBuffer = await window.crypto.subtle.decrypt(
+      const decryptedBuffer = await globalThis.crypto.subtle.decrypt(
         {
           name: 'AES-GCM',
           iv: iv,
@@ -186,7 +186,7 @@ export class E2EEManager {
     const encoder = new TextEncoder();
     const data = encoder.encode(combined);
 
-    const hashBuffer = await window.crypto.subtle.digest('SHA-256', data);
+    const hashBuffer = await globalThis.crypto.subtle.digest('SHA-256', data);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 
@@ -229,7 +229,7 @@ export class E2EEManager {
   async getPublicKey(): Promise<string | null> {
     if (!this.keyPair) return null;
     try {
-      const publicKeyBuffer = await window.crypto.subtle.exportKey('spki', this.keyPair.publicKey);
+      const publicKeyBuffer = await globalThis.crypto.subtle.exportKey('spki', this.keyPair.publicKey);
       return this.arrayBufferToBase64(publicKeyBuffer);
     } catch {
       return null;
@@ -257,6 +257,7 @@ export class E2EEManager {
 /**
  * @deprecated Use getMessagingService() from ./crypto/messagingService instead
  */
+// eslint-disable-next-line deprecation
 export const e2eeManager = new E2EEManager();
 
 // ============================================================================
@@ -295,6 +296,7 @@ export async function decryptLegacyMessage(
   ivBase64: string,
   userId: string
 ): Promise<string> {
+  // eslint-disable-next-line deprecation
   return e2eeManager.decryptMessage(encryptedBase64, ivBase64, userId);
 }
 
@@ -311,9 +313,10 @@ export async function migrateLegacyMessage(
   legacyEncrypted: { encrypted: string; iv: string },
   userId: string,
   newEncryptFn: (plaintext: string) => Promise<unknown>
-): Promise<unknown | null> {
+): Promise<unknown> {
   try {
     // Decrypt with legacy system
+    // eslint-disable-next-line deprecation
     const plaintext = await e2eeManager.decryptMessage(
       legacyEncrypted.encrypted,
       legacyEncrypted.iv,
@@ -324,6 +327,7 @@ export async function migrateLegacyMessage(
     return await newEncryptFn(plaintext);
   } catch (error) {
     console.error('Failed to migrate legacy message:', error);
+    // eslint-disable-next-line deprecation
     return null;
   }
 }

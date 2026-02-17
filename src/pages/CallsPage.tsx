@@ -8,8 +8,8 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { useCall } from '@/context/CallContext'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { Phone, Video, PhoneIncoming, PhoneOutgoing, PhoneMissed, Search, Star, Link2, Plus, MessageCircle, X, Trash2, UserPlus, Check, ArrowLeft, CheckCheck, Users } from 'lucide-react'
-import { CallsSelectionHeader, CallsHeader, CallsList, CallContextMenu, CallItem } from './CallsPageComponents'
+import { Phone, Video, Search, Star, Link2, MessageCircle, X, Trash2, UserPlus, Check, ArrowLeft, CheckCheck, Users } from 'lucide-react'
+import { CallItem } from './CallsPageComponents'
 
 // Cache helpers for instant display like WhatsApp
 const CACHE_PREFIX = 'anu_cache_'
@@ -24,7 +24,7 @@ const getCache = <T,>(key: string): T | null => {
         return data as T
       }
     }
-  } catch (e) {
+  } catch {
     // Ignore cache errors
   }
   return null
@@ -36,7 +36,7 @@ const setCache = <T,>(key: string, data: T) => {
       data,
       timestamp: Date.now()
     }))
-  } catch (e) {
+  } catch {
     // Ignore cache errors (quota exceeded, etc.)
   }
 }
@@ -632,7 +632,7 @@ export function CallsPage() {
       await loadContacts()
       setShowAddContactModal(false)
       setUsernameToAdd('')
-    } catch (err) {
+    } catch {
       setAddContactError('Erreur inattendue')
     } finally {
       setAddContactLoading(false)
@@ -963,7 +963,7 @@ export function CallsPage() {
     const randomBytes = new Uint8Array(8);
     crypto.getRandomValues(randomBytes);
     const randomString = Array.from(randomBytes, (byte) => byte.toString(16).padStart(2, '0')).join('').substring(0, 8);
-    const callLink = `${window.location.origin}/call/${randomString}`
+    const callLink = `${globalThis.location.origin}/call/${randomString}`
     navigator.clipboard.writeText(callLink)
     alert(`Lien d'appel copié !\n${callLink}`)
   }

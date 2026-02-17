@@ -31,10 +31,6 @@ export class WebRTCManager {
   private onNegotiationNeededCallback: (() => void) | null = null;
   private onIceConnectionStateChangeCallback: ((state: RTCIceConnectionState) => void) | null = null;
 
-  constructor() {
-    this.peerConnection = null;
-  }
-
   async initializeCall(config: CallConfig): Promise<MediaStream> {
     try {
       console.log('🎥 WebRTC: initializeCall start');
@@ -73,8 +69,9 @@ export class WebRTCManager {
       });
 
       // Ajouter les tracks locaux
+      const localStream = this.localStream;
       this.localStream.getTracks().forEach(track => {
-        const sender = this.peerConnection!.addTrack(track, this.localStream!);
+        const sender = this.peerConnection!.addTrack(track, localStream);
         
         // Increase video bitrate if possible
         if (track.kind === 'video') {
@@ -297,10 +294,11 @@ export class WebRTCManager {
         console.log('🎥 WebRTC: New video track obtained, id:', newTrack.id, 'readyState:', newTrack.readyState);
         
         // Remove old tracks from local stream
-        const oldTracks = this.localStream.getVideoTracks();
+        const localStream = this.localStream;
+        const oldTracks = localStream.getVideoTracks();
         oldTracks.forEach(t => {
           console.log('🎥 WebRTC: Removing old track from local stream, id:', t.id);
-          this.localStream!.removeTrack(t);
+          localStream.removeTrack(t);
           t.stop();
         });
         

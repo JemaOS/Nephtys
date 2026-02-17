@@ -15,7 +15,7 @@ export const EphemeralDurationMenu: React.FC<EphemeralDurationMenuProps> = ({
   onSelectDuration,
 }) => {
   // Move useRef before early return to comply with React Hooks rules
-  const modalRef = React.useRef<HTMLDivElement>(null);
+  const modalRef = React.useRef<HTMLDialogElement>(null);
   
   if (!isOpen) return null;
 
@@ -52,15 +52,16 @@ export const EphemeralDurationMenu: React.FC<EphemeralDurationMenuProps> = ({
     <div
       className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4"
       onClick={handleBackdropClick}
+      onKeyDown={handleBackdropKeyDown}
+      role="button"
+      tabIndex={0}
       aria-label="Menu de durée éphémère"
     >
-      <div
+      <dialog
         ref={modalRef}
         className="bg-bg-surface w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden"
-        role="dialog"
         aria-modal="true"
         aria-labelledby="ephemeral-dialog-title"
-        onKeyDown={handleBackdropKeyDown}
       >
         <div className="p-4 border-b border-bg-hover">
           <h4 id="ephemeral-dialog-title" className="text-base font-medium text-text-primary">Durée des messages</h4>
@@ -85,7 +86,7 @@ export const EphemeralDurationMenu: React.FC<EphemeralDurationMenuProps> = ({
             Annuler
           </button>
         </div>
-      </div>
+      </dialog>
     </div>
   );
 };
