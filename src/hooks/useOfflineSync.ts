@@ -4,6 +4,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { offlineStorage } from '@/lib/offlineStorage';
+import type { OfflineMessage } from '@/lib/offlineStorage';
 
 // Timeout for sync operations
 const SYNC_TIMEOUT = 10000;
@@ -186,8 +187,7 @@ export const useOfflineSync = (conversationId?: string): UseOfflineSyncReturn =>
           filter: `conversation_id=eq.${conversationId}`,
         }, async (payload) => {
           try {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            await offlineStorage.saveMessage(payload.new as any);
+            await offlineStorage.saveMessage(payload.new as OfflineMessage);
           } catch {
             // Error saving message offline
           }

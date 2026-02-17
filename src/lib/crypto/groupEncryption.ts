@@ -26,7 +26,7 @@ import { randomBytes } from '@noble/hashes/utils';
 import { gcm } from '@noble/ciphers/aes';
 import { sha256 } from '@noble/hashes/sha256';
 import { hmac } from '@noble/hashes/hmac';
-import { sign, verify, generateSigningKeyPair, Ed25519KeyPair } from './signatures';
+import { sign, verify, generateSigningKeyPair } from './signatures';
 import { hkdf } from './hkdf';
 import { E2EEMessagingService, getMessagingService } from './messagingService';
 
@@ -262,7 +262,7 @@ export class GroupEncryptionManager {
     // Create group state
     const groupState: GroupState = {
       groupId,
-      members: new Set([...memberIds, this.userId!]),
+      members: new Set([...memberIds, this.userId]),
       ownSenderKey,
       memberSenderKeys: new Map(),
       createdAt: Date.now(),
@@ -409,16 +409,16 @@ export class GroupEncryptionManager {
     // Sign the message
     const signatureData = new Uint8Array([
       ...new TextEncoder().encode(groupId),
-      ...new TextEncoder().encode(this.userId!),
+      ...new TextEncoder().encode(this.userId),
       ...new Uint8Array(new Uint32Array([currentIteration]).buffer),
       ...ciphertext
     ]);
     
-    const signature = sign(signatureData, group.ownSenderKey.privateSigningKey!);
+    const signature = sign(signatureData, group.ownSenderKey.privateSigningKey);
     
     return {
       groupId,
-      senderId: this.userId!,
+      senderId: this.userId,
       iteration: currentIteration,
       ciphertext,
       signature,
@@ -524,7 +524,7 @@ export class GroupEncryptionManager {
       const ownSenderKey = generateSenderKey();
       group = {
         groupId,
-        members: new Set([this.userId!, senderId]),
+        members: new Set([senderId, this.userId]),
         ownSenderKey,
         memberSenderKeys: new Map(),
         createdAt: Date.now(),

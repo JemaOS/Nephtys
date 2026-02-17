@@ -37,9 +37,7 @@ import {
   ratchetEncrypt, 
   ratchetDecrypt, 
   RatchetState,
-  EncryptedMessage,
-  serializeEncryptedMessage,
-  deserializeEncryptedMessage
+  EncryptedMessage
 } from './doubleRatchet';
 import { sign, verify, generateSigningKeyPair, Ed25519KeyPair } from './signatures';
 

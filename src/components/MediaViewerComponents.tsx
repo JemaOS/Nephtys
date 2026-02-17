@@ -280,7 +280,7 @@ interface ImageViewerProps {
   handleTouchMove: (e: React.TouchEvent) => void;
   handleTouchEnd: (e: React.TouchEvent) => void;
   handleResetZoom: () => void;
-  imageContainerRef: React.RefObject<HTMLDivElement>;
+  imageContainerRef: React.RefObject<HTMLButtonElement>;
   allMedia?: any[];
   isMobile: boolean;
   showControls: boolean;
@@ -305,23 +305,19 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
   isMobile,
   showControls,
 }) => (
-  <div
+  <button
+    type="button"
     ref={imageContainerRef}
-    className={`relative flex items-center justify-center w-full h-full ${
+    className={`relative flex items-center justify-center w-full h-full border-none bg-transparent p-0 ${
       zoom > 1 ? 'cursor-grab' : 'cursor-default'
     } ${isDragging ? 'cursor-grabbing' : ''}`}
     onMouseDown={handleMouseDown}
     onMouseMove={handleMouseMove}
+    onMouseUp={handleMouseUp}
     onTouchStart={handleTouchStart}
     onTouchMove={handleTouchMove}
     onTouchEnd={handleTouchEnd}
-    tabIndex={0}
     aria-label="Visionneuse d'image - Double-cliquez pour réinitialiser le zoom"
-    onKeyDown={(e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        handleResetZoom();
-      }
-    }}
     style={{
       transform: zoom <= 1 ? `translateX(${swipeOffset}px)` : 'none',
       transition: isSwipeActive ? 'none' : 'transform 0.15s ease-out',
@@ -374,7 +370,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
         ← Glissez pour naviguer →
       </div>
     )}
-  </div>
+  </button>
 );
 
 interface VideoPlayerProps {

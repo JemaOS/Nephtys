@@ -88,7 +88,6 @@ export {
 import { 
   generateX25519KeyPair as _generateX25519KeyPair,
   generateKeyBundle as _generateKeyBundle,
-  getPublicKeyBundle as _getPublicKeyBundle,
   x3dhInitiator as _x3dhInitiator,
   x3dhResponder as _x3dhResponder,
   KeyBundle,

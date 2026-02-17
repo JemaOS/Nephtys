@@ -71,7 +71,7 @@ export class WebRTCManager {
       // Ajouter les tracks locaux
       const localStream = this.localStream;
       this.localStream.getTracks().forEach(track => {
-        const sender = this.peerConnection!.addTrack(track, localStream);
+        const sender = this.peerConnection.addTrack(track, localStream);
         
         // Increase video bitrate if possible
         if (track.kind === 'video') {

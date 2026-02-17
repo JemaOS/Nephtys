@@ -140,7 +140,7 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
     if (webAudioSourceRef.current) {
       try {
         webAudioSourceRef.current.stop();
-      } catch (e) {
+      } catch {
         // Audio source might already be stopped - this is expected
         console.log('Audio source already stopped or invalid');
       }

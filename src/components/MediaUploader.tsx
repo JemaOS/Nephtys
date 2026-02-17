@@ -75,11 +75,8 @@ const getDocumentIconConfig = (extension: string): { bgColor: string; icon: Reac
   };
 };
 
-// Type alias for media file types
+// Type for media file types
 export type MediaFileType = 'image' | 'video' | 'file' | 'audio';
-
-// Type alias for upload file type (same as media file type)
-export type UploadFileType = MediaFileType;
 
 // Helper function to get folder name based on file type - extracted to avoid ternary nest
 const getFolderForFileType = (type: MediaFileType): string => {
@@ -135,7 +132,7 @@ const normalizeTenorResult = (result: any) => {
 
 interface UploadedFileData {
   url: string;
-  type: UploadFileType;
+  type: MediaFileType;
   fileName: string;
   fileSize: number;
   width?: number;
@@ -144,10 +141,10 @@ interface UploadedFileData {
   duration?: number;
 }
 
-// Interface for upload complete parameters
+// Interface for upload complete parameters - kept for backwards compatibility
 export interface UploadCompleteParams {
   url: string;
-  type: UploadFileType;
+  type: MediaFileType;
   fileName: string;
   fileSize: number;
   width?: number;
@@ -157,8 +154,8 @@ export interface UploadCompleteParams {
 }
 
 interface MediaUploaderProps {
-  onMediaSelect: (selectedFile: globalThis.File, type: UploadFileType) => void;
-  onUploadComplete: (url: string, type: UploadFileType, fileName: string, fileSize: number, width?: number, height?: number, thumbnail?: string, duration?: number) => void;
+  onMediaSelect: (selectedFile: globalThis.File, type: MediaFileType) => void;
+  onUploadComplete: (url: string, type: MediaFileType, fileName: string, fileSize: number, width?: number, height?: number, thumbnail?: string, duration?: number) => void;
   onMultipleUploadComplete?: (files: UploadedFileData[]) => void;
   onCancel: () => void;
   onEmojiSelect?: (emoji: string) => void;
@@ -177,7 +174,8 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
   const [selectedFileType, setSelectedFileType] = useState<'image' | 'video' | 'file' | 'audio' | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   // Multiple files selection state
-  const [selectedFiles, setSelectedFiles] = useState<Array<{ file: File; preview: string; type: 'image' | 'video' | 'file' | 'audio' }>>([]);
+  type FileSelection = { file: File; preview: string; type: MediaFileType };
+  const [selectedFiles, setSelectedFiles] = useState<FileSelection[]>([]);
   const [multipleSelectionMode, setMultipleSelectionMode] = useState(false);
   const [multipleCaption, setMultipleCaption] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -1104,10 +1102,6 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       fetchStickers(stickerSearchQuery.trim());
     }
   };
-
-  // Use handleStickerSearch to avoid unused variable warning
-  // This ensures the function is referenced even if not directly used in current UI
-  void handleStickerSearch;
 
   // Render the component
   return (

@@ -201,7 +201,6 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const [image, setImage] = useState<HTMLImageElement | null>(null);
   const [activeTool, setActiveTool] = useState<Tool>('none');
-  const [, setIsDrawing] = useState(false);
   const [currentPath, setCurrentPath] = useState<DrawPath | null>(null);
   const [drawPaths, setDrawPaths] = useState<DrawPath[]>([]);
   const [textOverlays, setTextOverlays] = useState<TextOverlay[]>([]);
@@ -443,12 +442,10 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
 
   // Track if we're currently in a crop drag operation
   const isCroppingRef = useRef(false);
-  const lastCropEndRef = useRef<{ x: number; y: number } | null>(null);
   // Note: getCanvasCoords is used in mouse event handlers below
 
   // Handle draw tool start - extracted to reduce complexity
   const handleDrawStart = useCallback((coords: { x: number; y: number }) => {
-    setIsDrawing(true);
     setCurrentPath({
       points: [coords],
       color: selectedColor,
@@ -461,7 +458,6 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
     isCroppingRef.current = true;
     setCropStart(coords);
     setCropEnd(coords);
-    lastCropEndRef.current = coords;
   }, []);
 
   // Handle blur tool start - extracted to reduce complexity
@@ -585,7 +581,6 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
       setCropEnd(null);
       setActiveTool('none');
       isCroppingRef.current = false;
-      lastCropEndRef.current = null;
     };
     
     // Convert the temp canvas to a data URL and load it as the new image
@@ -599,7 +594,6 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
     setCropEnd(null);
     setActiveTool('none');
     isCroppingRef.current = false;
-    lastCropEndRef.current = null;
     
     // Clear the overlay canvas
     const overlayCanvas = overlayCanvasRef.current;

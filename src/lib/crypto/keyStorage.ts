@@ -824,7 +824,7 @@ export class SecureKeyStorage {
     
     // Derive backup key
     const backupInfo = new TextEncoder().encode('anu-backup-key');
-    const backupKeyMaterial = hkdf(this.salt as Uint8Array, new Uint8Array(32), backupInfo, 32);
+    const backupKeyMaterial = hkdf(this.salt, new Uint8Array(32), backupInfo, 32);
     
     const backupKeyBuffer = new ArrayBuffer(backupKeyMaterial.length);
     new Uint8Array(backupKeyBuffer).set(backupKeyMaterial);

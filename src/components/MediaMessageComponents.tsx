@@ -145,11 +145,8 @@ export const formatMessageTimestamp = (ts: string): string => {
   return new Date(ts).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 };
 
-// Type alias for message status
+// Type for message status
 export type MessageStatus = 'sent' | 'delivered' | 'read';
-
-// Media timestamp overlay status uses the same type alias
-export type MediaTimestampStatus = MessageStatus;
 
 // Helper function to render status check SVG
 export const renderStatusCheckmark = (status?: MessageStatus): React.ReactNode => {
@@ -210,7 +207,7 @@ export const getDocumentTypeIcon = (extension: string, bgColor: string, defaultI
 // Helper component for timestamp overlay inside media
 export const MediaTimestampOverlay: React.FC<{
   timestamp: string;
-  status?: MediaTimestampStatus;
+  status?: 'sent' | 'delivered' | 'read';
   isOwn: boolean;
 }> = ({ timestamp, status, isOwn }) => {
   const formatTime = (ts: string) => {
@@ -257,9 +254,6 @@ export const MediaTimestampOverlay: React.FC<{
   );
 };
 
-// Type alias for image renderer status
-export type ImageRendererStatus = MessageStatus;
-
 // Extracted Image renderer component
 export const ImageRenderer: React.FC<{
   url: string;
@@ -271,7 +265,7 @@ export const ImageRenderer: React.FC<{
   imageLoaded: boolean;
   imageError: boolean;
   timestamp: string;
-  status?: ImageRendererStatus;
+  status?: 'sent' | 'delivered' | 'read';
   isOwn: boolean;
   isStarred: boolean;
   showHoverActions: boolean;
@@ -382,16 +376,13 @@ export const ImageRenderer: React.FC<{
   );
 };
 
-// Type alias for video renderer status
-export type VideoRendererStatus = MessageStatus;
-
 // Extracted Video renderer component
 export const VideoRenderer: React.FC<{
   url: string;
   caption?: string;
   videoDuration: string;
   timestamp: string;
-  status?: VideoRendererStatus;
+  status?: 'sent' | 'delivered' | 'read';
   isOwn: boolean;
   showHoverActions: boolean;
   onOpenMenu?: (e: React.MouseEvent) => void;

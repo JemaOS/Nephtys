@@ -64,16 +64,12 @@ const HEADER_SIZE = KEY_ID_SIZE + IV_SIZE;  // Total header size
  */
 export function supportsInsertableStreams(): boolean {
   // Check for the newer RTCRtpScriptTransform API
-  if (typeof window !== 'undefined' && 'RTCRtpScriptTransform' in window) {
-    return true;
-  }
-  
   if (typeof globalThis !== 'undefined' && 'RTCRtpScriptTransform' in globalThis) {
     return true;
   }
   
   // Check for the older createEncodedStreams API (Chrome)
-  if (typeof globalThis.RTCRtpSender !== 'undefined' && 
+  if (globalThis.RTCRtpSender !== undefined && 
       'createEncodedStreams' in globalThis.RTCRtpSender.prototype) {
     return true;
   }
@@ -501,7 +497,7 @@ export class WebRTCE2EEManager {
     
     const transformStream = new TransformStream({
       transform: async (frame, controller) => {
-        await this.senderTransform!.encryptFrame(frame, controller);
+        await this.senderTransform.encryptFrame(frame, controller);
       }
     });
     
@@ -550,7 +546,7 @@ export class WebRTCE2EEManager {
     
     const transformStream = new TransformStream({
       transform: async (frame, controller) => {
-        await this.receiverTransform!.decryptFrame(frame, controller);
+        await this.receiverTransform.decryptFrame(frame, controller);
       }
     });
     

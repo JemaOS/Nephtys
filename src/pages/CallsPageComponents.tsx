@@ -1,6 +1,24 @@
 import React from 'react'
-import { ArrowLeft, CheckCheck, Trash2, UserPlus, Search, Phone, Video, PhoneIncoming, PhoneOutgoing, PhoneMissed, Users, Check } from 'lucide-react'
+import { ArrowLeft, CheckCheck, Trash2, UserPlus, Search, Phone, Video, PhoneIncoming, PhoneOutgoing, PhoneMissed, Users, Check, Star, MessageCircle } from 'lucide-react'
 import { formatCallDuration, formatCallDate } from './CallsPage'
+
+// CallLog type from CallsPage
+export interface CallLog {
+  id: string
+  conversation_id: string
+  caller_id: string
+  callee_id: string | null
+  type: 'audio' | 'video'
+  status: 'initiated' | 'answered' | 'missed' | 'rejected' | 'ended'
+  started_at: string
+  ended_at: string | null
+  duration: number | null
+  caller_profile?: any
+  callee_profile?: any
+  is_group_call?: boolean
+  conversation_name?: string
+  conversation_avatar?: string
+}
 
 // Helper to get display name and avatar
 const getCallDisplayInfo = (call: any, user: any) => {
@@ -89,7 +107,17 @@ export const CallItem = ({
   call: any;
   user: any;
   isSelected: boolean;
-  selectedCall: any | null;
+  selectedCall: {
+    id: string;
+    conversation_id: string;
+    caller_id: string;
+    callee_id: string | null;
+    type: 'audio' | 'video';
+    status: 'initiated' | 'answered' | 'missed' | 'rejected' | 'ended';
+    started_at: string;
+    ended_at: string | null;
+    duration: number | null;
+  } | null;
   isSelectionMode: boolean;
   onClick: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
@@ -422,6 +450,139 @@ export const CallContextMenu = ({
         >
           <Video size={20} />
           <span>Appel vidéo</span>
+        </button>
+      </div>
+    </>
+  )
+}
+
+// CallDetailsContent component - extracted from CallsPage to avoid nested component definition
+export interface CallDetailsContentProps {
+  call: CallLog;
+  userId: string | undefined;
+  favorites: string[];
+  toggleFavorite: (id: string, isGroup: boolean) => void;
+  navigate: (path: string) => void;
+  setSelectedCall: (call: CallLog | null) => void;
+  handleCallBack: (call: CallLog) => void;
+  formatCallDuration: (seconds: number | null) => string;
+  getCallDisplayName: (call: CallLog, userId: string | undefined) => string;
+  getCallAvatarUrl: (call: CallLog, userId: string | undefined) => string | null | undefined;
+  getCallStatusText: (call: CallLog, userId: string | undefined) => string;
+  getCallTypeText: (call: CallLog) => string;
+  renderCallStatus: (call: CallLog) => string;
+  renderCallAvatar: (avatarUrl: string | null | undefined, isGroupCall: boolean, displayName: string) => React.ReactNode;
+  isCallFavorite: (call: CallLog, userId: string | undefined, favs: string[]) => boolean;
+  handleCallFavoriteToggle: (call: CallLog, userId: string | undefined) => void;
+}
+
+export const CallDetailsContent: React.FC<CallDetailsContentProps> = ({
+  call,
+  userId,
+  favorites,
+  navigate,
+  setSelectedCall,
+  handleCallBack,
+  formatCallDuration,
+  getCallDisplayName,
+  getCallAvatarUrl,
+  getCallStatusText,
+  getCallTypeText,
+  renderCallStatus,
+  renderCallAvatar,
+  isCallFavorite,
+  handleCallFavoriteToggle
+}) => {
+  const isGroupCall = call.is_group_call
+  
+  const displayName = getCallDisplayName(call, userId)
+  const avatarUrl = getCallAvatarUrl(call, userId)
+  const isCallMissedOrRejected = call.status === 'missed' || call.status === 'rejected'
+  const statusClass = isCallMissedOrRejected ? 'text-[#ea4335]' : 'text-primary-600 dark:text-primary-400'
+  const isFavorite = isCallFavorite(call, userId, favorites)
+  
+  const handleFavoriteClick = () => {
+    handleCallFavoriteToggle(call, userId)
+  }
+  
+  return (
+    <>
+      {/* Contact Section */}
+      <div className="bg-bg-hover rounded-2xl p-6">
+        <div className="flex flex-col items-center gap-4">
+          {renderCallAvatar(avatarUrl, isGroupCall, displayName)}
+          <div className="text-center">
+            <h3 className="text-lg font-medium text-text-primary mb-1 flex items-center justify-center gap-2">
+              {isGroupCall && <Users size={18} className="text-text-secondary" />}
+              {displayName}
+            </h3>
+            <p className="text-sm text-text-secondary">
+              {getCallStatusText(call, userId)}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Details Section */}
+      <div className="bg-bg-hover rounded-2xl p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <span className="text-text-secondary">Type</span>
+          <div className="flex items-center gap-2">
+            {isGroupCall && <Users size={16} className="text-accent" />}
+            {call.type === 'video' ? <Video size={16} className="text-accent" /> : <Phone size={16} className="text-accent" />}
+            <span className="text-gray-800 dark:text-white">
+              {getCallTypeText(call)}
+            </span>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <span className="text-text-secondary">Date</span>
+          <span className="text-gray-800 dark:text-white text-sm">{new Date(call.started_at).toLocaleString('fr-FR')}</span>
+        </div>
+
+        {call.duration !== null && (
+          <div className="flex items-center justify-between">
+            <span className="text-text-secondary">Durée</span>
+            <span className="text-gray-800 dark:text-white">{formatCallDuration(call.duration)}</span>
+          </div>
+        )}
+
+        <div className="flex items-center justify-between">
+          <span className="text-text-secondary">Statut</span>
+          <span className={statusClass}>
+            {renderCallStatus(call)}
+          </span>
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div className="space-y-3">
+        {/* Favoris */}
+        <button
+          onClick={handleFavoriteClick}
+          className="w-full py-3 rounded-xl bg-bg-hover hover:bg-bg-surface text-text-primary font-medium flex items-center justify-center gap-2"
+        >
+          <Star size={20} className={isFavorite ? 'fill-[#6b6fdb] text-accent' : ''} />
+          {isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
+        </button>
+        <button
+          onClick={() => {
+            navigate(`/chat/${call.conversation_id}`)
+            setSelectedCall(null)
+          }}
+          className="w-full py-3 rounded-xl bg-accent hover:bg-[#5a5ec9] text-white font-medium flex items-center justify-center gap-2"
+        >
+          <MessageCircle size={20} />
+          Ouvrir la conversation
+        </button>
+        {/* Rappeler */}
+        <button
+          onClick={() => handleCallBack(call)}
+          className="w-full py-3 rounded-xl bg-bg-hover hover:bg-bg-surface text-text-primary font-medium flex items-center justify-center gap-2"
+        >
+          <Phone size={20} />
+          Rappeler
         </button>
       </div>
     </>

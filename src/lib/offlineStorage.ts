@@ -21,7 +21,7 @@ const LS_CACHE_MAX_AGE = 24 * 60 * 60 * 1000; // 24 hours max cache age
 // Timeout for IndexedDB operations
 const DB_TIMEOUT = 3000;
 
-interface OfflineMessage {
+export interface OfflineMessage {
   id: string;
   conversation_id: string;
   sender_id: string;
@@ -70,6 +70,7 @@ class OfflineStorage {
   private initFailed = false;
 
   // In-memory cache for instant access (survives navigation, not page refresh)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private readonly memoryCache: {
     conversations: any[] | null;
     messages: Map<string, any[]>;
@@ -128,7 +129,7 @@ class OfflineStorage {
           this.memoryCache.conversations = conversations;
         }
       }
-    } catch (error) {
+    } catch {
       // Clear corrupted cache
       try {
         localStorage.removeItem(LS_CONVERSATIONS_KEY);
@@ -140,6 +141,7 @@ class OfflineStorage {
   }
   
   // Save conversations to localStorage (for instant load on page refresh)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private saveToLocalStorage(conversations: any[]): void {
     try {
       // Only save essential data to keep localStorage small
@@ -286,19 +288,15 @@ class OfflineStorage {
       return;
     }
     
-    return new Promise((resolve, reject) => {
-      try {
-        const transaction = this.db!.transaction([MESSAGES_STORE], 'readwrite');
-        const store = transaction.objectStore(MESSAGES_STORE);
-        const request = store.put(message);
+    return new Promise((resolve) => {
+      const transaction = this.db!.transaction([MESSAGES_STORE], 'readwrite');
+      const store = transaction.objectStore(MESSAGES_STORE);
+      const request = store.put(message);
 
-        request.onsuccess = () => resolve();
-        request.onerror = () => {
-          resolve(); // Don't reject, just log
-        };
-      } catch (error) {
-        resolve();
-      }
+      request.onsuccess = () => resolve();
+      request.onerror = () => {
+        resolve(); // Don't reject, just log
+      };
     });
   }
 
@@ -325,20 +323,16 @@ class OfflineStorage {
       return;
     }
     
-    return new Promise((resolve, reject) => {
-      try {
-        const transaction = this.db!.transaction([MESSAGES_STORE], 'readwrite');
-        const store = transaction.objectStore(MESSAGES_STORE);
+    return new Promise((resolve) => {
+      const transaction = this.db!.transaction([MESSAGES_STORE], 'readwrite');
+      const store = transaction.objectStore(MESSAGES_STORE);
 
-        messages.forEach(message => store.put(message));
+      messages.forEach(message => store.put(message));
 
-        transaction.oncomplete = () => resolve();
-        transaction.onerror = () => {
-          resolve();
-        };
-      } catch (error) {
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => {
         resolve();
-      }
+      };
     });
   }
 
@@ -354,19 +348,15 @@ class OfflineStorage {
     }
     
     return new Promise((resolve) => {
-      try {
-        const transaction = this.db!.transaction([MESSAGES_STORE], 'readonly');
-        const store = transaction.objectStore(MESSAGES_STORE);
-        const index = store.index('conversation_id');
-        const request = index.getAll(conversationId);
+      const transaction = this.db!.transaction([MESSAGES_STORE], 'readonly');
+      const store = transaction.objectStore(MESSAGES_STORE);
+      const index = store.index('conversation_id');
+      const request = index.getAll(conversationId);
 
-        request.onsuccess = () => resolve(request.result || []);
-        request.onerror = () => {
-          resolve([]);
-        };
-      } catch (error) {
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => {
         resolve([]);
-      }
+      };
     });
   }
 
@@ -377,18 +367,14 @@ class OfflineStorage {
     }
     
     return new Promise((resolve) => {
-      try {
-        const transaction = this.db!.transaction([MESSAGES_STORE], 'readwrite');
-        const store = transaction.objectStore(MESSAGES_STORE);
-        const request = store.delete(messageId);
+      const transaction = this.db!.transaction([MESSAGES_STORE], 'readwrite');
+      const store = transaction.objectStore(MESSAGES_STORE);
+      const request = store.delete(messageId);
 
-        request.onsuccess = () => resolve();
-        request.onerror = () => {
-          resolve();
-        };
-      } catch (error) {
+      request.onsuccess = () => resolve();
+      request.onerror = () => {
         resolve();
-      }
+      };
     });
   }
 
@@ -400,18 +386,14 @@ class OfflineStorage {
     }
     
     return new Promise((resolve) => {
-      try {
-        const transaction = this.db!.transaction([PENDING_STORE], 'readwrite');
-        const store = transaction.objectStore(PENDING_STORE);
-        const request = store.put(message);
+      const transaction = this.db!.transaction([PENDING_STORE], 'readwrite');
+      const store = transaction.objectStore(PENDING_STORE);
+      const request = store.put(message);
 
-        request.onsuccess = () => resolve();
-        request.onerror = () => {
-          resolve();
-        };
-      } catch (error) {
+      request.onsuccess = () => resolve();
+      request.onerror = () => {
         resolve();
-      }
+      };
     });
   }
 
@@ -422,18 +404,14 @@ class OfflineStorage {
     }
     
     return new Promise((resolve) => {
-      try {
-        const transaction = this.db!.transaction([PENDING_STORE], 'readonly');
-        const store = transaction.objectStore(PENDING_STORE);
-        const request = store.getAll();
+      const transaction = this.db!.transaction([PENDING_STORE], 'readonly');
+      const store = transaction.objectStore(PENDING_STORE);
+      const request = store.getAll();
 
-        request.onsuccess = () => resolve(request.result || []);
-        request.onerror = () => {
-          resolve([]);
-        };
-      } catch (error) {
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => {
         resolve([]);
-      }
+      };
     });
   }
 
@@ -444,22 +422,19 @@ class OfflineStorage {
     }
     
     return new Promise((resolve) => {
-      try {
-        const transaction = this.db!.transaction([PENDING_STORE], 'readwrite');
-        const store = transaction.objectStore(PENDING_STORE);
-        const request = store.delete(tempId);
+      const transaction = this.db!.transaction([PENDING_STORE], 'readwrite');
+      const store = transaction.objectStore(PENDING_STORE);
+      const request = store.delete(tempId);
 
-        request.onsuccess = () => resolve();
-        request.onerror = () => {
-          resolve();
-        };
-      } catch (error) {
+      request.onsuccess = () => resolve();
+      request.onerror = () => {
         resolve();
-      }
+      };
     });
   }
 
   // Conversations operations
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async saveConversation(conversation: any): Promise<void> {
     const ready = await this.ensureReady();
     if (!ready) {
@@ -467,21 +442,18 @@ class OfflineStorage {
     }
     
     return new Promise((resolve) => {
-      try {
-        const transaction = this.db!.transaction([CONVERSATIONS_STORE], 'readwrite');
-        const store = transaction.objectStore(CONVERSATIONS_STORE);
-        const request = store.put(conversation);
+      const transaction = this.db!.transaction([CONVERSATIONS_STORE], 'readwrite');
+      const store = transaction.objectStore(CONVERSATIONS_STORE);
+      const request = store.put(conversation);
 
-        request.onsuccess = () => resolve();
-        request.onerror = () => {
-          resolve();
-        };
-      } catch (error) {
+      request.onsuccess = () => resolve();
+      request.onerror = () => {
         resolve();
-      }
+      };
     });
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async saveConversations(conversations: any[]): Promise<void> {
     // Always update memory cache immediately (instant)
     this.memoryCache.conversations = conversations;
@@ -496,33 +468,31 @@ class OfflineStorage {
     }
     
     return new Promise((resolve) => {
-      try {
-        const transaction = this.db!.transaction([CONVERSATIONS_STORE], 'readwrite');
-        const store = transaction.objectStore(CONVERSATIONS_STORE);
+      const transaction = this.db!.transaction([CONVERSATIONS_STORE], 'readwrite');
+      const store = transaction.objectStore(CONVERSATIONS_STORE);
 
-        // Clear existing conversations first to ensure fresh data
-        store.clear();
+      // Clear existing conversations first to ensure fresh data
+      store.clear();
 
-        // Add all new conversations
-        conversations.forEach(conversation => store.put(conversation));
+      // Add all new conversations
+      conversations.forEach(conversation => store.put(conversation));
 
-        transaction.oncomplete = () => {
-          resolve();
-        };
-        transaction.onerror = () => {
-          resolve();
-        };
-      } catch (error) {
+      transaction.oncomplete = () => {
         resolve();
-      }
+      };
+      transaction.onerror = () => {
+        resolve();
+      };
     });
   }
 
   // Synchronous method to get conversations from memory cache (instant)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   getConversationsSync(): any[] | null {
     return this.memoryCache.conversations;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async getConversations(): Promise<any[]> {
     // First, check memory cache (instant)
     if (this.memoryCache.conversations !== null) {
@@ -535,23 +505,19 @@ class OfflineStorage {
     }
     
     return new Promise((resolve) => {
-      try {
-        const transaction = this.db!.transaction([CONVERSATIONS_STORE], 'readonly');
-        const store = transaction.objectStore(CONVERSATIONS_STORE);
-        const request = store.getAll();
+      const transaction = this.db!.transaction([CONVERSATIONS_STORE], 'readonly');
+      const store = transaction.objectStore(CONVERSATIONS_STORE);
+      const request = store.getAll();
 
-        request.onsuccess = () => {
-          const result = request.result || [];
-          // Update memory cache
-          this.memoryCache.conversations = result;
-          resolve(result);
-        };
-        request.onerror = () => {
-          resolve([]);
-        };
-      } catch (error) {
+      request.onsuccess = () => {
+        const result = request.result || [];
+        // Update memory cache
+        this.memoryCache.conversations = result;
+        resolve(result);
+      };
+      request.onerror = () => {
         resolve([]);
-      }
+      };
     });
   }
 
@@ -575,23 +541,19 @@ class OfflineStorage {
     }
     
     return new Promise((resolve) => {
-      try {
-        const transaction = this.db!.transaction(
-          [MESSAGES_STORE, CONVERSATIONS_STORE, PENDING_STORE],
-          'readwrite'
-        );
+      const transaction = this.db!.transaction(
+        [MESSAGES_STORE, CONVERSATIONS_STORE, PENDING_STORE],
+        'readwrite'
+      );
 
-        transaction.objectStore(MESSAGES_STORE).clear();
-        transaction.objectStore(CONVERSATIONS_STORE).clear();
-        transaction.objectStore(PENDING_STORE).clear();
+      transaction.objectStore(MESSAGES_STORE).clear();
+      transaction.objectStore(CONVERSATIONS_STORE).clear();
+      transaction.objectStore(PENDING_STORE).clear();
 
-        transaction.oncomplete = () => resolve();
-        transaction.onerror = () => {
-          resolve();
-        };
-      } catch (error) {
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => {
         resolve();
-      }
+      };
     });
   }
 
@@ -621,21 +583,17 @@ class OfflineStorage {
     }
     
     return new Promise((resolve) => {
-      try {
-        const transaction = this.db!.transaction([PROFILES_STORE], 'readwrite');
-        const store = transaction.objectStore(PROFILES_STORE);
+      const transaction = this.db!.transaction([PROFILES_STORE], 'readwrite');
+      const store = transaction.objectStore(PROFILES_STORE);
 
-        profiles.forEach(profile => store.put(profile));
+      profiles.forEach(profile => store.put(profile));
 
-        transaction.oncomplete = () => {
-          resolve();
-        };
-        transaction.onerror = () => {
-          resolve();
-        };
-      } catch (error) {
+      transaction.oncomplete = () => {
         resolve();
-      }
+      };
+      transaction.onerror = () => {
+        resolve();
+      };
     });
   }
 
@@ -681,22 +639,18 @@ class OfflineStorage {
     if (!ready) return null;
     
     return new Promise((resolve) => {
-      try {
-        const transaction = this.db!.transaction([PROFILES_STORE], 'readonly');
-        const store = transaction.objectStore(PROFILES_STORE);
-        const request = store.get(userId);
+      const transaction = this.db!.transaction([PROFILES_STORE], 'readonly');
+      const store = transaction.objectStore(PROFILES_STORE);
+      const request = store.get(userId);
 
-        request.onsuccess = () => {
-          if (request.result) {
-            // Update memory cache
-            this.memoryCache.profiles.set(userId, request.result);
-          }
-          resolve(request.result || null);
-        };
-        request.onerror = () => resolve(null);
-      } catch {
-        resolve(null);
-      }
+      request.onsuccess = () => {
+        if (request.result) {
+          // Update memory cache
+          this.memoryCache.profiles.set(userId, request.result);
+        }
+        resolve(request.result || null);
+      };
+      request.onerror = () => resolve(null);
     });
   }
 
@@ -721,34 +675,30 @@ class OfflineStorage {
     if (!ready) return result;
     
     return new Promise((resolve) => {
-      try {
-        const transaction = this.db!.transaction([PROFILES_STORE], 'readonly');
-        const store = transaction.objectStore(PROFILES_STORE);
-        
-        let completed = 0;
-        
-        for (const userId of missingIds) {
-          const request = store.get(userId);
-          request.onsuccess = () => {
-            if (request.result) {
-              result.set(userId, request.result);
-              // Update memory cache
-              this.memoryCache.profiles.set(userId, request.result);
-            }
-            completed++;
-            if (completed === missingIds.length) {
-              resolve(result);
-            }
-          };
-          request.onerror = () => {
-            completed++;
-            if (completed === missingIds.length) {
-              resolve(result);
-            }
-          };
-        }
-      } catch {
-        resolve(result);
+      const transaction = this.db!.transaction([PROFILES_STORE], 'readonly');
+      const store = transaction.objectStore(PROFILES_STORE);
+      
+      let completed = 0;
+      
+      for (const userId of missingIds) {
+        const request = store.get(userId);
+        request.onsuccess = () => {
+          if (request.result) {
+            result.set(userId, request.result);
+            // Update memory cache
+            this.memoryCache.profiles.set(userId, request.result);
+          }
+          completed++;
+          if (completed === missingIds.length) {
+            resolve(result);
+          }
+        };
+        request.onerror = () => {
+          completed++;
+          if (completed === missingIds.length) {
+            resolve(result);
+          }
+        };
       }
     });
   }

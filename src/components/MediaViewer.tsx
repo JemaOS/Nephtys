@@ -191,7 +191,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   const videoRef = useRef<HTMLVideoElement>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
-  const imageContainerRef = useRef<HTMLDivElement>(null);
+  const imageContainerRef = useRef<HTMLButtonElement>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const swipeVelocityRef = useRef<number>(0);
   const lastTouchTimeRef = useRef<number>(0);
@@ -1060,7 +1060,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
     <div
       ref={viewerRef}
       aria-label="Visualiseur de média"
-      role="button"
+      role="application"
       tabIndex={0}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -1141,13 +1141,6 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
       {/* Media content */}
       <div
         aria-label="Visualisation du média"
-        role="button"
-        tabIndex={0}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            handleMouseUp();
-          }
-        }}
         className={`flex-1 flex items-center justify-center overflow-hidden media-content-container ${
           isLandscape && isMobile ? 'p-0' : 'p-4 md:p-8'
         }`}

@@ -9,7 +9,7 @@ import { useAuth } from '@/context/AuthContext'
 import { useCall } from '@/context/CallContext'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { Phone, Video, Search, Star, Link2, MessageCircle, X, Trash2, UserPlus, Check, ArrowLeft, CheckCheck, Users } from 'lucide-react'
-import { CallItem } from './CallsPageComponents'
+import { CallItem, CallDetailsContent } from './CallsPageComponents'
 
 // Cache helpers for instant display like WhatsApp
 const CACHE_PREFIX = 'anu_cache_'
@@ -181,10 +181,10 @@ export function CallsPage() {
     longPressTriggeredRef.current = false
     longPressTimerRef.current = setTimeout(() => {
       longPressTriggeredRef.current = true
-      if (!isSelectionMode) {
-        enterSelectionMode(callId)
-      } else {
+      if (isSelectionMode) {
         toggleCallSelection(callId)
+      } else {
+        enterSelectionMode(callId)
       }
       // Vibrate on mobile if supported (WhatsApp-like feedback)
       if (navigator.vibrate) {
@@ -1108,139 +1108,6 @@ export function CallsPage() {
     }
   }
 
-  interface CallDetailsContentProps {
-    call: CallLog;
-    userId: string | undefined;
-    favorites: string[];
-    toggleFavorite: (id: string, isGroup: boolean) => void;
-    navigate: (path: string) => void;
-    setSelectedCall: (call: CallLog | null) => void;
-    handleCallBack: (call: CallLog) => void;
-    formatCallDuration: (seconds: number | null) => string;
-    getCallDisplayName: (call: CallLog, userId: string | undefined) => string;
-    getCallAvatarUrl: (call: CallLog, userId: string | undefined) => string | null | undefined;
-    getCallStatusText: (call: CallLog, userId: string | undefined) => string;
-    getCallTypeText: (call: CallLog) => string;
-    renderCallStatus: (call: CallLog) => string;
-    renderCallAvatar: (avatarUrl: string | null | undefined, isGroupCall: boolean, displayName: string) => React.ReactNode;
-    getFavoriteId: (call: CallLog, userId: string | undefined) => string | undefined;
-    isCallFavorite: (call: CallLog, userId: string | undefined, favs: string[]) => boolean;
-    handleCallFavoriteToggle: (call: CallLog, userId: string | undefined) => void;
-  }
-
-  // CallDetailsContent component - Module-level to avoid recreating on each render
-  const CallDetailsContent: React.FC<CallDetailsContentProps> = ({
-    call,
-    userId,
-    favorites,
-    navigate,
-    setSelectedCall,
-    handleCallBack,
-    formatCallDuration,
-    getCallDisplayName,
-    getCallAvatarUrl,
-    getCallStatusText,
-    getCallTypeText,
-    renderCallStatus,
-    renderCallAvatar,
-    isCallFavorite,
-    handleCallFavoriteToggle
-  }) => {
-    const isGroupCall = call.is_group_call
-    
-    const displayName = getCallDisplayName(call, userId)
-    const avatarUrl = getCallAvatarUrl(call, userId)
-    const isCallMissedOrRejected = call.status === 'missed' || call.status === 'rejected'
-    const statusClass = isCallMissedOrRejected ? 'text-[#ea4335]' : 'text-primary-600 dark:text-primary-400'
-    const isFavorite = isCallFavorite(call, userId, favorites)
-    
-    const handleFavoriteClick = () => {
-      handleCallFavoriteToggle(call, userId)
-    }
-    
-    return (
-      <>
-        {/* Contact Section */}
-        <div className="bg-bg-hover rounded-2xl p-6">
-          <div className="flex flex-col items-center gap-4">
-            {renderCallAvatar(avatarUrl, isGroupCall, displayName)}
-            <div className="text-center">
-              <h3 className="text-lg font-medium text-text-primary mb-1 flex items-center justify-center gap-2">
-                {isGroupCall && <Users size={18} className="text-text-secondary" />}
-                {displayName}
-              </h3>
-              <p className="text-sm text-text-secondary">
-                {getCallStatusText(call, userId)}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Details Section */}
-        <div className="bg-bg-hover rounded-2xl p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-text-secondary">Type</span>
-            <div className="flex items-center gap-2">
-              {isGroupCall && <Users size={16} className="text-accent" />}
-              {call.type === 'video' ? <Video size={16} className="text-accent" /> : <Phone size={16} className="text-accent" />}
-              <span className="text-gray-800 dark:text-white">
-                {getCallTypeText(call)}
-              </span>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <span className="text-text-secondary">Date</span>
-            <span className="text-gray-800 dark:text-white text-sm">{new Date(call.started_at).toLocaleString('fr-FR')}</span>
-          </div>
-
-          {call.duration !== null && (
-            <div className="flex items-center justify-between">
-              <span className="text-text-secondary">Durée</span>
-              <span className="text-gray-800 dark:text-white">{formatCallDuration(call.duration)}</span>
-            </div>
-          )}
-
-          <div className="flex items-center justify-between">
-            <span className="text-text-secondary">Statut</span>
-            <span className={statusClass}>
-              {renderCallStatus(call)}
-            </span>
-          </div>
-        </div>
-
-        {/* Actions */}
-        <div className="space-y-3">
-          {/* Favoris */}
-          <button
-            onClick={handleFavoriteClick}
-            className="w-full py-3 rounded-xl bg-bg-hover hover:bg-bg-surface text-text-primary font-medium flex items-center justify-center gap-2"
-          >
-            <Star size={20} className={isFavorite ? 'fill-[#6b6fdb] text-accent' : ''} />
-            {isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
-          </button>
-          <button
-            onClick={() => {
-              navigate(`/chat/${call.conversation_id}`)
-              setSelectedCall(null)
-            }}
-            className="w-full py-3 rounded-xl bg-accent hover:bg-[#5a5ec9] text-white font-medium flex items-center justify-center gap-2"
-          >
-            <MessageCircle size={20} />
-            Ouvrir la conversation
-          </button>
-          {/* Rappeler */}
-          <button
-            onClick={() => handleCallBack(call)}
-            className="w-full py-3 rounded-xl bg-bg-hover hover:bg-bg-surface text-text-primary font-medium flex items-center justify-center gap-2"
-          >
-            <Phone size={20} />
-            Rappeler
-          </button>
-        </div>
-      </>
-    )
-  }
   // Select all calls (must be after filteredCalls is defined)
   const selectAllCalls = useCallback(() => {
     const allCallIds = new Set(filteredCalls.map(call => call.id))
@@ -1521,7 +1388,6 @@ export function CallsPage() {
                 getCallTypeText={getCallTypeText}
                 renderCallStatus={renderCallStatus}
                 renderCallAvatar={renderCallAvatar}
-                getFavoriteId={getFavoriteId}
                 isCallFavorite={isCallFavorite}
                 handleCallFavoriteToggle={handleCallFavoriteToggle}
               />
@@ -1561,7 +1427,6 @@ export function CallsPage() {
                 getCallTypeText={getCallTypeText}
                 renderCallStatus={renderCallStatus}
                 renderCallAvatar={renderCallAvatar}
-                getFavoriteId={getFavoriteId}
                 isCallFavorite={isCallFavorite}
                 handleCallFavoriteToggle={handleCallFavoriteToggle}
               />

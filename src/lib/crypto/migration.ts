@@ -19,17 +19,12 @@
  */
 
 import { 
-  generateKeyBundle, 
-  getPublicKeyBundle, 
-  PublicKeyBundle,
-  KeyBundle 
+  PublicKeyBundle
 } from './x3dh';
 import { 
-  SecureKeyStorage, 
   getSecureKeyStorage 
 } from './keyStorage';
 import { 
-  E2EEMessagingService, 
   getMessagingService 
 } from './messagingService';
 import { sign } from './signatures';
