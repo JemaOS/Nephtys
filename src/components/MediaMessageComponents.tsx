@@ -207,7 +207,7 @@ export const getDocumentTypeIcon = (extension: string, bgColor: string, defaultI
 // Helper component for timestamp overlay inside media
 export const MediaTimestampOverlay: React.FC<{
   timestamp: string;
-  status?: 'sent' | 'delivered' | 'read';
+  status?: MessageStatus;
   isOwn: boolean;
 }> = ({ timestamp, status, isOwn }) => {
   const formatTime = (ts: string) => {
@@ -265,7 +265,7 @@ export const ImageRenderer: React.FC<{
   imageLoaded: boolean;
   imageError: boolean;
   timestamp: string;
-  status?: 'sent' | 'delivered' | 'read';
+  status?: MessageStatus;
   isOwn: boolean;
   isStarred: boolean;
   showHoverActions: boolean;
@@ -382,7 +382,7 @@ export const VideoRenderer: React.FC<{
   caption?: string;
   videoDuration: string;
   timestamp: string;
-  status?: 'sent' | 'delivered' | 'read';
+  status?: MessageStatus;
   isOwn: boolean;
   showHoverActions: boolean;
   onOpenMenu?: (e: React.MouseEvent) => void;
@@ -455,7 +455,7 @@ interface FileMessageProps {
   fileName?: string;
   fileSize?: number;
   timestamp: string;
-  status?: 'sent' | 'delivered' | 'read';
+  status?: MessageStatus;
   isOwn: boolean;
   thumbnail?: string;
   caption?: string;

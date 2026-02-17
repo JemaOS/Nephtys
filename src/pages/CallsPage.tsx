@@ -8,7 +8,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { useCall } from '@/context/CallContext'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { Phone, Video, Search, Star, Link2, MessageCircle, X, Trash2, UserPlus, Check, ArrowLeft, CheckCheck, Users } from 'lucide-react'
+import { Phone, Video, Search, Star, Link2, X, Trash2, UserPlus, Check, ArrowLeft, CheckCheck, Users } from 'lucide-react'
 import { CallItem, CallDetailsContent } from './CallsPageComponents'
 
 // Cache helpers for instant display like WhatsApp
@@ -1377,7 +1377,6 @@ export function CallsPage() {
                 call={selectedCall}
                 userId={user?.id}
                 favorites={favorites}
-                toggleFavorite={toggleFavorite}
                 navigate={navigate}
                 setSelectedCall={setSelectedCall}
                 handleCallBack={handleCallBack}
@@ -1416,7 +1415,6 @@ export function CallsPage() {
                 call={selectedCall}
                 userId={user?.id}
                 favorites={favorites}
-                toggleFavorite={toggleFavorite}
                 navigate={navigate}
                 setSelectedCall={setSelectedCall}
                 handleCallBack={handleCallBack}

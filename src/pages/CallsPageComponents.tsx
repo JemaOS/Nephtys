@@ -317,12 +317,12 @@ export const CallsList = ({
   user
 }: {
   loading: boolean;
-  filteredCalls: any[];
+  filteredCalls: CallLog[];
   selectedCalls: Set<string>;
-  selectedCall: any | null;
+  selectedCall: CallLog | null;
   isSelectionMode: boolean;
-  handleCallClick: (call: any) => void;
-  handleCallContextMenu: (e: React.MouseEvent, call: any) => void;
+  handleCallClick: (call: CallLog) => void;
+  handleCallContextMenu: (e: React.MouseEvent, call: CallLog) => void;
   handleTouchStart: (callId: string) => void;
   handleTouchEnd: () => void;
   handleTouchMove: () => void;
@@ -381,7 +381,7 @@ export const CallContextMenu = ({
   handleDeleteCall,
   handleCallFromContextMenu
 }: {
-  contextMenuCall: any | null;
+  contextMenuCall: CallLog | null;
   contextMenuPosition: { x: number; y: number } | null;
   handleCloseContextMenu: () => void;
   enterSelectionMode: (callId: string) => void;
@@ -461,7 +461,6 @@ export interface CallDetailsContentProps {
   call: CallLog;
   userId: string | undefined;
   favorites: string[];
-  toggleFavorite: (id: string, isGroup: boolean) => void;
   navigate: (path: string) => void;
   setSelectedCall: (call: CallLog | null) => void;
   handleCallBack: (call: CallLog) => void;

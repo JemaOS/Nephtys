@@ -1057,14 +1057,19 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   const cursorNoneClass = showControls ? '' : 'cursor-none';
 
   return (
+    // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
     <div
       ref={viewerRef}
       aria-label="Visualiseur de média"
-      role="application"
-      tabIndex={0}
+      role="dialog"
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           setShowControls(true);
+        }
+      }}
+      onKeyUp={(e) => {
+        if (e.key === 'Escape') {
+          onClose();
         }
       }}
       className={`fixed inset-0 z-[200] bg-black flex flex-col media-viewer-fullscreen m-0 p-0 w-full h-full max-w-none max-h-none text-left ${landscapeModeClass} ${fullscreenActiveClass} ${cursorNoneClass}`}
@@ -1139,6 +1144,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
       )}
 
       {/* Media content */}
+      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
       <div
         aria-label="Visualisation du média"
         className={`flex-1 flex items-center justify-center overflow-hidden media-content-container ${

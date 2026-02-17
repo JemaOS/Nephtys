@@ -366,7 +366,7 @@ function skipMessageKeys(state: RatchetState, until: number): RatchetState {
     newState.CKr = CKr;
     
     // Store the skipped message key
-    const key = makeSkippedKey(newState.DHr!, newState.Nr);
+    const key = makeSkippedKey(newState.DHr, newState.Nr);
     newState.MKSKIPPED.set(key, mk);
     
     newState.Nr++;

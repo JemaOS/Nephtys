@@ -39,7 +39,7 @@ import {
   RatchetState,
   EncryptedMessage
 } from './doubleRatchet';
-import { sign, verify, generateSigningKeyPair, Ed25519KeyPair } from './signatures';
+import { sign, verify } from './signatures';
 
 /**
  * Encrypted message payload for transmission

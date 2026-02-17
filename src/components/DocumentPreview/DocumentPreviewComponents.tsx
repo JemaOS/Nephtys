@@ -283,12 +283,12 @@ export const DocumentPreviewContent: React.FC<DocumentPreviewContentProps> = ({
   getPreviewMessage,
 }) => (
   <div
-    ref={containerRef}
-    role="button"
-    tabIndex={0}
-    aria-label="Zone de prévisualisation du document - Appuyez sur Échap pour fermer"
+    ref={containerRef as React.RefObject<HTMLDivElement>}
     className={`flex-1 overflow-auto bg-[#525659] flex justify-center select-none ${canPreview ? 'items-start' : 'items-center'}`}
     style={{ cursor: getCursorStyle() }}
+    aria-label="Zone de prévisualisation du document - Appuyez sur Échap pour fermer"
+    role="button"
+    tabIndex={0}
     onMouseDown={isPDF ? handleMouseDown : undefined}
     onTouchStart={handleTouchStart}
     onTouchMove={handleTouchMove}

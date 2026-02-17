@@ -78,6 +78,9 @@ const getDocumentIconConfig = (extension: string): { bgColor: string; icon: Reac
 // Type for media file types
 export type MediaFileType = 'image' | 'video' | 'file' | 'audio';
 
+// Type alias for file type categories (used in getFileType return type)
+type FileTypeCategory = 'image' | 'video' | 'file' | 'audio';
+
 // Helper function to get folder name based on file type - extracted to avoid ternary nest
 const getFolderForFileType = (type: MediaFileType): string => {
   if (type === 'image') return 'images';
@@ -210,7 +213,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  const getFileType = (file: File): 'image' | 'video' | 'file' | 'audio' => {
+  const getFileType = (file: File): FileTypeCategory => {
     if (file.type.startsWith('image/')) return 'image';
     if (file.type.startsWith('video/')) return 'video';
     if (file.type.startsWith('audio/')) return 'audio';
@@ -1093,15 +1096,8 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
     }
   };
 
-  // Handle sticker search
-  // Note: This handler is reserved for future sticker search by text input
-  // Currently stickers are fetched by category selection
-  const handleStickerSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (stickerSearchQuery.trim()) {
-      fetchStickers(stickerSearchQuery.trim());
-    }
-  };
+// Handle sticker search - placeholder for future text search functionality
+  // Currently stickers are fetched by category selection (see handleStickerSelect in StickerPicker)
 
   // Render the component
   return (

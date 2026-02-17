@@ -33,32 +33,20 @@ export const EphemeralDurationMenu: React.FC<EphemeralDurationMenuProps> = ({
     </button>
   );
 
-  const handleBackdropClick = (e: React.MouseEvent) => {
-    if (modalRef.current && !modalRef.current.contains(e.target as Node)) {
-      onClose();
-    }
-  };
-
-  const handleBackdropKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      onClose();
-    }
-    if (e.key === 'Escape') {
-      onClose();
-    }
-  };
-
   return (
     <div
       className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4"
-      onClick={handleBackdropClick}
-      aria-label="Fermer le menu"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="ephemeral-dialog-title"
     >
+      {/* Backdrop as button for proper keyboard handling */}
       <button
         className="absolute inset-0 w-full h-full bg-transparent border-none cursor-default"
         onClick={onClose}
-        aria-label="Fermer"
+        aria-label="Fermer le menu"
       />
+      
       <dialog
         ref={modalRef}
         className="bg-bg-surface w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden"

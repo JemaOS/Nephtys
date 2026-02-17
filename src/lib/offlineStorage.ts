@@ -289,7 +289,7 @@ class OfflineStorage {
     }
     
     return new Promise((resolve) => {
-      const transaction = this.db!.transaction([MESSAGES_STORE], 'readwrite');
+      const transaction = this.db.transaction([MESSAGES_STORE], 'readwrite');
       const store = transaction.objectStore(MESSAGES_STORE);
       const request = store.put(message);
 
@@ -324,7 +324,7 @@ class OfflineStorage {
     }
     
     return new Promise((resolve) => {
-      const transaction = this.db!.transaction([MESSAGES_STORE], 'readwrite');
+      const transaction = this.db.transaction([MESSAGES_STORE], 'readwrite');
       const store = transaction.objectStore(MESSAGES_STORE);
 
       messages.forEach(message => store.put(message));
@@ -339,7 +339,7 @@ class OfflineStorage {
   async getMessages(conversationId: string): Promise<OfflineMessage[]> {
     // Check memory cache first (instant)
     if (this.memoryCache.messages.has(conversationId)) {
-      return this.memoryCache.messages.get(conversationId)!;
+      return this.memoryCache.messages.get(conversationId);
     }
 
     const ready = await this.ensureReady();
@@ -348,7 +348,7 @@ class OfflineStorage {
     }
     
     return new Promise((resolve) => {
-      const transaction = this.db!.transaction([MESSAGES_STORE], 'readonly');
+      const transaction = this.db.transaction([MESSAGES_STORE], 'readonly');
       const store = transaction.objectStore(MESSAGES_STORE);
       const index = store.index('conversation_id');
       const request = index.getAll(conversationId);
@@ -367,7 +367,7 @@ class OfflineStorage {
     }
     
     return new Promise((resolve) => {
-      const transaction = this.db!.transaction([MESSAGES_STORE], 'readwrite');
+      const transaction = this.db.transaction([MESSAGES_STORE], 'readwrite');
       const store = transaction.objectStore(MESSAGES_STORE);
       const request = store.delete(messageId);
 
@@ -386,7 +386,7 @@ class OfflineStorage {
     }
     
     return new Promise((resolve) => {
-      const transaction = this.db!.transaction([PENDING_STORE], 'readwrite');
+      const transaction = this.db.transaction([PENDING_STORE], 'readwrite');
       const store = transaction.objectStore(PENDING_STORE);
       const request = store.put(message);
 
@@ -404,7 +404,7 @@ class OfflineStorage {
     }
     
     return new Promise((resolve) => {
-      const transaction = this.db!.transaction([PENDING_STORE], 'readonly');
+      const transaction = this.db.transaction([PENDING_STORE], 'readonly');
       const store = transaction.objectStore(PENDING_STORE);
       const request = store.getAll();
 
@@ -422,7 +422,7 @@ class OfflineStorage {
     }
     
     return new Promise((resolve) => {
-      const transaction = this.db!.transaction([PENDING_STORE], 'readwrite');
+      const transaction = this.db.transaction([PENDING_STORE], 'readwrite');
       const store = transaction.objectStore(PENDING_STORE);
       const request = store.delete(tempId);
 
@@ -442,7 +442,7 @@ class OfflineStorage {
     }
     
     return new Promise((resolve) => {
-      const transaction = this.db!.transaction([CONVERSATIONS_STORE], 'readwrite');
+      const transaction = this.db.transaction([CONVERSATIONS_STORE], 'readwrite');
       const store = transaction.objectStore(CONVERSATIONS_STORE);
       const request = store.put(conversation);
 
@@ -468,7 +468,7 @@ class OfflineStorage {
     }
     
     return new Promise((resolve) => {
-      const transaction = this.db!.transaction([CONVERSATIONS_STORE], 'readwrite');
+      const transaction = this.db.transaction([CONVERSATIONS_STORE], 'readwrite');
       const store = transaction.objectStore(CONVERSATIONS_STORE);
 
       // Clear existing conversations first to ensure fresh data
@@ -505,7 +505,7 @@ class OfflineStorage {
     }
     
     return new Promise((resolve) => {
-      const transaction = this.db!.transaction([CONVERSATIONS_STORE], 'readonly');
+      const transaction = this.db.transaction([CONVERSATIONS_STORE], 'readonly');
       const store = transaction.objectStore(CONVERSATIONS_STORE);
       const request = store.getAll();
 
@@ -541,7 +541,7 @@ class OfflineStorage {
     }
     
     return new Promise((resolve) => {
-      const transaction = this.db!.transaction(
+      const transaction = this.db.transaction(
         [MESSAGES_STORE, CONVERSATIONS_STORE, PENDING_STORE],
         'readwrite'
       );
@@ -583,7 +583,7 @@ class OfflineStorage {
     }
     
     return new Promise((resolve) => {
-      const transaction = this.db!.transaction([PROFILES_STORE], 'readwrite');
+      const transaction = this.db.transaction([PROFILES_STORE], 'readwrite');
       const store = transaction.objectStore(PROFILES_STORE);
 
       profiles.forEach(profile => store.put(profile));
@@ -604,7 +604,7 @@ class OfflineStorage {
   getCachedProfile(userId: string): CachedProfile | null {
     // First check memory cache (fastest)
     if (this.memoryCache.profiles.has(userId)) {
-      return this.memoryCache.profiles.get(userId)!;
+      return this.memoryCache.profiles.get(userId);
     }
     return null;
   }
@@ -632,14 +632,14 @@ class OfflineStorage {
   async getProfileFromDB(userId: string): Promise<CachedProfile | null> {
     // Check memory cache first
     if (this.memoryCache.profiles.has(userId)) {
-      return this.memoryCache.profiles.get(userId)!;
+      return this.memoryCache.profiles.get(userId);
     }
     
     const ready = await this.ensureReady();
     if (!ready) return null;
     
     return new Promise((resolve) => {
-      const transaction = this.db!.transaction([PROFILES_STORE], 'readonly');
+      const transaction = this.db.transaction([PROFILES_STORE], 'readonly');
       const store = transaction.objectStore(PROFILES_STORE);
       const request = store.get(userId);
 
@@ -663,7 +663,7 @@ class OfflineStorage {
     // First check memory cache
     for (const userId of userIds) {
       if (this.memoryCache.profiles.has(userId)) {
-        result.set(userId, this.memoryCache.profiles.get(userId)!);
+        result.set(userId, this.memoryCache.profiles.get(userId));
       }
     }
     
@@ -675,7 +675,7 @@ class OfflineStorage {
     if (!ready) return result;
     
     return new Promise((resolve) => {
-      const transaction = this.db!.transaction([PROFILES_STORE], 'readonly');
+      const transaction = this.db.transaction([PROFILES_STORE], 'readonly');
       const store = transaction.objectStore(PROFILES_STORE);
       
       let completed = 0;

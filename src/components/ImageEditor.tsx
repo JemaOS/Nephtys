@@ -227,7 +227,6 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
   const [cropMode, setCropMode] = useState(false);
   const [cropStart, setCropStart] = useState<{ x: number; y: number } | null>(null);
   const [cropEnd, setCropEnd] = useState<{ x: number; y: number } | null>(null);
-  const [, setBlurStart] = useState<{ x: number; y: number } | null>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
 
   // Calculate canvas size to fit container while maintaining aspect ratio
@@ -442,61 +441,6 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
 
   // Track if we're currently in a crop drag operation
   const isCroppingRef = useRef(false);
-  // Note: getCanvasCoords is used in mouse event handlers below
-
-  // Handle draw tool start - extracted to reduce complexity
-  const handleDrawStart = useCallback((coords: { x: number; y: number }) => {
-    setCurrentPath({
-      points: [coords],
-      color: selectedColor,
-      width: brushSize,
-    });
-  }, [selectedColor, brushSize]);
-
-  // Handle crop tool start - extracted to reduce complexity
-  const handleCropStart = useCallback((coords: { x: number; y: number }) => {
-    isCroppingRef.current = true;
-    setCropStart(coords);
-    setCropEnd(coords);
-  }, []);
-
-  // Handle blur tool start - extracted to reduce complexity
-  const handleBlurStart = useCallback((coords: { x: number; y: number }) => {
-    setBlurStart(coords);
-  }, []);
-
-  // Handle text tool - add new text overlay - extracted to reduce complexity
-  const handleTextTool = useCallback((coords: { x: number; y: number }) => {
-    const newText: TextOverlay = {
-      id: Date.now().toString(),
-      text: 'Texte',
-      x: coords.x,
-      y: coords.y,
-      fontSize,
-      color: selectedColor,
-      fontFamily,
-      rotation: 0,
-    };
-    setTextOverlays(prev => [...prev, newText]);
-    setEditingText(newText.id);
-    setNewTextInput('Texte');
-  }, [fontSize, selectedColor, fontFamily]);
-
-  // Handle shape tool - add new shape overlay - extracted to reduce complexity
-  const handleShapeTool = useCallback((coords: { x: number; y: number }) => {
-    const newShape: ShapeOverlay = {
-      id: Date.now().toString(),
-      type: selectedShape,
-      x: coords.x,
-      y: coords.y,
-      width: 100,
-      height: 100,
-      color: selectedColor,
-      filled: shapeFilled,
-      rotation: 0,
-    };
-    setShapeOverlays(prev => [...prev, newShape]);
-  }, [selectedShape, selectedColor, shapeFilled]);
 
   // Rotation handlers
   const rotateLeft = () => setRotation((r) => (r - 90) % 360);

@@ -49,11 +49,8 @@ export function PersistentCallScreen() {
     return { x: 0, y: 0 }
   })
   const [isDragging, setIsDragging] = useState(false)
-  // dragOffset is used in handleDragMove via closure
-  const dragOffsetState = useState({ x: 0, y: 0 })
-  const dragOffset = dragOffsetState[0]
-  // pipRef is reserved for future PiP (Picture-in-Picture) API integration
-  const pipRef = useRef<HTMLDivElement>(null)
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
+  // pipRef was reserved for future PiP (Picture-in-Picture) API integration - now removed as unused
 
   // Helper: Get caller info - extracted to reduce complexity
   const getCallerInfo = useCallback(() => {

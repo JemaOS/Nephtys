@@ -9,7 +9,7 @@ import { MainLayout } from '@/components/MainLayout'
 import { supabase, Message, Conversation, Profile, onBroadcastMessage, sendBroadcastMessage } from '@/lib/supabase'
 import { offlineStorage } from '@/lib/offlineStorage'
 import { useUserPresence } from '@/hooks/usePresence'
-import { ArrowLeft, Send, Phone, Video, MoreVertical, Search, Smile, Mic, Plus, Reply, UserPlus, Archive, Trash2, Bell, BellOff, Lock, Star, Forward, Pin, Info, Share2, Copy } from 'lucide-react'
+import { Send, Mic, Plus, Star, Copy } from 'lucide-react'
 import { EmojiPicker } from '@/components/EmojiPicker'
 import { MessageReactions } from '@/components/MessageReactions'
 import { MessageReply } from '@/components/MessageReply'
@@ -56,28 +56,28 @@ const isEmojiOnly = (text: string): { isEmoji: boolean; emojiCount: number } => 
   // - Zodiac symbols (♈♉♊♋♌♍♎♏♐♑♒♓⛎)
   // - Misc symbols with emoji property
   const emojiPattern = new RegExp(
-    '(?:' +
+    String.raw`(?:` +
       // Emoji Presentation or Emoji with optional VS16
-      '(?:\\p{Emoji_Presentation}|\\p{Extended_Pictographic})' +
+      String.raw`(?:\p{Emoji_Presentation}|\p{Extended_Pictographic})` +
       '|' +
       // Regional indicators (flags)
-      '(?:\\p{Regional_Indicator}{2})' +
+      String.raw`(?:\p{Regional_Indicator}{2})` +
       '|' +
       // Keycap digits (#*0-9)
-      '(?:[\\u0023\\u002A\\u0030-\\u0039]\\uFE0F?\\u20E3)' +
+      String.raw`(?:[\u0023\u002A\u0030-\u0039]\uFE0F?\u20E3)` +
       '|' +
       // Digits with variation selector
-      '(?:[\\u0030-\\u0039]\\uFE0F\\u20E3)' +
+      String.raw`(?:[\u0030-\u0039]\uFE0F\u20E3)` +
       '|' +
       // Zodiac - moved outside character class to avoid surrogate pair issues
-      '(?:[♈-♓⛎])' +
-    ')' +
+      String.raw`(?:[♈-♓⛎])` +
+    String.raw`)` +
     // Optional ZWJ sequences and modifiers
-    '(?:' +
-      '\\u200D(?:\\p{Emoji_Presentation}|\\p{Extended_Pictographic})' +
+    String.raw`(?:` +
+      String.raw`\u200D(?:\p{Emoji_Presentation}|\p{Extended_Pictographic})` +
       '|' +
-      '\\p{Emoji_Modifier}' +
-    ')*' +
+      String.raw`\p{Emoji_Modifier}` +
+    String.raw`)*` +
     '/gu'
   )
   
@@ -118,7 +118,7 @@ const getCache = <T,>(key: string): T | null => {
         return data as T
       }
     }
-  } catch (e) {
+  } catch {
     // Ignore cache errors
   }
   return null
@@ -320,8 +320,7 @@ export function ChatViewPage() {
   } | null>(null)
   
   // State for media viewer with navigation support
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [, setMediaViewerState] = useState<{
+  const [mediaViewerState, setMediaViewerState] = useState<{
     isOpen: boolean;
     currentIndex: number;
   }>({ isOpen: false, currentIndex: 0 })
