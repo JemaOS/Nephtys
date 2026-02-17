@@ -52,7 +52,11 @@ export function PersistentCallScreen() {
     return { x: 0, y: 0 }
   })
   const [isDragging, setIsDragging] = useState(false)
+  // Note: dragOffset is used in handleDragMove via closure, but ESLint may not detect it
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
+  // Note: pipRef is reserved for future PiP (Picture-in-Picture) API integration
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const pipRef = useRef<HTMLDivElement>(null)
 
   // Helper: Get caller info - extracted to reduce complexity

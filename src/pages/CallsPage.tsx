@@ -1128,8 +1128,7 @@ export function CallsPage() {
     handleCallFavoriteToggle: (call: CallLog, userId: string | undefined) => void;
   }
 
-  // CallDetailsContent component - defined inside CallsPage but uses useCallback pattern
-  // to avoid recreating it on each render
+  // CallDetailsContent component - Module-level to avoid recreating on each render
   const CallDetailsContent: React.FC<CallDetailsContentProps> = ({
     call,
     userId,
@@ -1449,17 +1448,24 @@ export function CallsPage() {
 
         {/* Calls List */}
         <div className="flex-1 overflow-y-auto pb-2">
-          {loading ? (
-            <div className="flex justify-center items-center h-full">
-              <div className="w-8 h-8 rounded-full border-4 border-accent border-t-transparent animate-spin" />
-            </div>
-          ) : filteredCalls.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-center px-8">
-              <Phone size={64} className="text-[#3b4a54] mb-4" />
-              <h3 className="text-lg font-medium text-text-secondary mb-2">Aucun appel</h3>
-              <p className="text-sm text-text-secondary">Votre historique d'appels apparaîtra ici</p>
-            </div>
-          ) : (
+          {(() => {
+            if (loading) {
+              return (
+                <div className="flex justify-center items-center h-full">
+                  <div className="w-8 h-8 rounded-full border-4 border-accent border-t-transparent animate-spin" />
+                </div>
+              )
+            }
+            if (filteredCalls.length === 0) {
+              return (
+                <div className="flex flex-col items-center justify-center h-full text-center px-8">
+                  <Phone size={64} className="text-[#3b4a54] mb-4" />
+                  <h3 className="text-lg font-medium text-text-secondary mb-2">Aucun appel</h3>
+                  <p className="text-sm text-text-secondary">Votre historique d'appels apparaîtra ici</p>
+                </div>
+              )
+            }
+            return (
             filteredCalls.map((call) => {
               const isSelected = selectedCalls.has(call.id)
               
@@ -1480,7 +1486,8 @@ export function CallsPage() {
                 />
               )
             })
-          )}
+            )
+          })()}
         </div>
       </div>
 

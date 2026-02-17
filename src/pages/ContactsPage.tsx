@@ -218,30 +218,10 @@ const findExistingConversation = async (
   }
 };
 
-// Helper: Find or create conversation (unified method)
-const findOrCreateConversation = async (
+// Helper: Create new self conversation and add members
+const createNewSelfConversationAndAddMembers = async (
   supabaseClient: any,
-  userId: string,
-  contactId: string
-): Promise<string | null> => {
-  const isSelfContact = contactId === userId;
-  
-  // Try to find existing conversation
-  const existingId = await findExistingConversation(supabaseClient, isSelfContact, userId, contactId);
-  if (existingId) {
-    return existingId;
-  }
-  
-  // Create new conversation if not found
-  return createNewConversationAndAddMembers(supabaseClient, userId, contactId, isSelfContact);
-};
-
-// Helper: Create new conversation and add members (moved to module level to reduce complexity)
-const createNewConversationAndAddMembers = async (
-  supabaseClient: any,
-  userId: string,
-  contactId: string,
-  isSelfContact: boolean
+  userId: string
 ): Promise<string | null> => {
   const { data: conversation, error: convError } = await supabaseClient
     .from('conversations')
@@ -250,7 +230,7 @@ const createNewConversationAndAddMembers = async (
       created_by: userId,
       is_encrypted: true,
       last_message_at: new Date().toISOString(),
-      name: isSelfContact ? 'Messages enregistrés' : null,
+      name: 'Messages enregistrés',
     })
     .select()
     .maybeSingle();
@@ -266,20 +246,11 @@ const createNewConversationAndAddMembers = async (
   // Add members in background (non-blocking)
   const addMembers = async () => {
     try {
-      if (isSelfContact) {
-        await supabaseClient
-          .from('conversation_members')
-          .insert([
-            { conversation_id: conversation.id, user_id: userId, role: 'admin', is_active: true }
-          ]);
-      } else {
-        await supabaseClient
-          .from('conversation_members')
-          .insert([
-            { conversation_id: conversation.id, user_id: userId, role: 'admin', is_active: true },
-            { conversation_id: conversation.id, user_id: contactId, role: 'member', is_active: true }
-          ]);
-      }
+      await supabaseClient
+        .from('conversation_members')
+        .insert([
+          { conversation_id: conversation.id, user_id: userId, role: 'admin', is_active: true }
+        ]);
       console.log('Members added successfully');
     } catch (err) {
       console.error('Error adding members:', err);
@@ -289,6 +260,83 @@ const createNewConversationAndAddMembers = async (
   // Execute in background without awaiting
   addMembers();
   return conversation.id;
+};
+
+// Helper: Create new direct conversation and add members
+const createNewDirectConversationAndAddMembers = async (
+  supabaseClient: any,
+  userId: string,
+  contactId: string
+): Promise<string | null> => {
+  const { data: conversation, error: convError } = await supabaseClient
+    .from('conversations')
+    .insert({
+      type: 'direct',
+      created_by: userId,
+      is_encrypted: true,
+      last_message_at: new Date().toISOString(),
+      name: null,
+    })
+    .select()
+    .maybeSingle();
+
+  if (convError || !conversation) {
+    console.error('Error creating conversation:', convError);
+    return null;
+  }
+
+  // Navigate immediately (optimistic)
+  console.log('Conversation created, navigating immediately:', conversation.id);
+
+  // Add members in background (non-blocking)
+  const addMembers = async () => {
+    try {
+      await supabaseClient
+        .from('conversation_members')
+        .insert([
+          { conversation_id: conversation.id, user_id: userId, role: 'admin', is_active: true },
+          { conversation_id: conversation.id, user_id: contactId, role: 'member', is_active: true }
+        ]);
+      console.log('Members added successfully');
+    } catch (err) {
+      console.error('Error adding members:', err);
+    }
+  };
+  
+  // Execute in background without awaiting
+  addMembers();
+  return conversation.id;
+};
+
+// Helper: Find or create self conversation (Saved Messages)
+const findOrCreateSelfConversation = async (
+  supabaseClient: any,
+  userId: string
+): Promise<string | null> => {
+  // Try to find existing conversation
+  const existingId = await findSelfConversation(supabaseClient, userId);
+  if (existingId) {
+    return existingId;
+  }
+  
+  // Create new self conversation if not found
+  return createNewSelfConversationAndAddMembers(supabaseClient, userId);
+};
+
+// Helper: Find or create direct conversation with a contact
+const findOrCreateDirectConversation = async (
+  supabaseClient: any,
+  userId: string,
+  contactId: string
+): Promise<string | null> => {
+  // Try to find existing conversation
+  const existingId = await findDirectConversationWithContact(supabaseClient, userId, contactId);
+  if (existingId) {
+    return existingId;
+  }
+  
+  // Create new direct conversation if not found
+  return createNewDirectConversationAndAddMembers(supabaseClient, userId, contactId);
 };
 
 export function ContactsPage() {
@@ -478,7 +526,12 @@ export function ContactsPage() {
 
       // Créer automatiquement une conversation avec ce contact
       // Find or create conversation using helpers
-      const existingConversationId = await findOrCreateConversation(supabase, user.id, profileData.id)
+      let existingConversationId: string | null;
+      if (profileData.id === user.id) {
+        existingConversationId = await findOrCreateSelfConversation(supabase, user.id);
+      } else {
+        existingConversationId = await findOrCreateDirectConversation(supabase, user.id, profileData.id);
+      }
       
       // Naviguer vers la conversation créée ou existante
       if (existingConversationId) {
@@ -516,7 +569,11 @@ export function ContactsPage() {
   // Create new conversation for contact
   const createConversationForContact = async (contactId: string): Promise<string | null> => {
     if (!user) return null;
-    return createNewConversationAndAddMembers(supabase, user.id, contactId, contactId === user.id);
+    if (contactId === user.id) {
+      return createNewSelfConversationAndAddMembers(supabase, user.id);
+    } else {
+      return createNewDirectConversationAndAddMembers(supabase, user.id, contactId);
+    }
   };
 
   const createConversation = async (contactId: string) => {

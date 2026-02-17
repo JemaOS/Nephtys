@@ -1050,17 +1050,11 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   return (
     <div
       ref={viewerRef}
-      role="dialog"
       aria-label="Visualiseur de média"
       className={`fixed inset-0 z-[200] bg-black flex flex-col media-viewer-fullscreen m-0 p-0 w-full h-full max-w-none max-h-none text-left ${
         isLandscape && isMobile ? 'landscape-mode' : ''
       } ${isFullscreen ? 'fullscreen-active' : ''} ${!showControls ? 'cursor-none' : ''}`}
       onClick={() => setShowControls(true)}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          setShowControls(true);
-        }
-      }}
       onMouseMove={handleContainerMouseMove}
       style={{
         // Ensure the viewer takes full screen on mobile in any orientation

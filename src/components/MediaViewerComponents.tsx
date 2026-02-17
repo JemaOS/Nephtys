@@ -318,6 +318,11 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
     tabIndex={0}
     role="button"
     aria-label="Visionneuse d'image - Double-cliquez pour réinitialiser le zoom"
+    onKeyDown={(e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        handleResetZoom();
+      }
+    }}
     style={{
       transform: zoom <= 1 ? `translateX(${swipeOffset}px)` : 'none',
       transition: isSwipeActive ? 'none' : 'transform 0.15s ease-out',

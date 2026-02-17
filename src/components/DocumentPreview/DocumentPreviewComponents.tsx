@@ -284,6 +284,7 @@ export const DocumentPreviewContent: React.FC<DocumentPreviewContentProps> = ({
 }) => (
   <div
     ref={containerRef}
+    role="document"
     aria-label="Zone de prévisualisation du document - Appuyez sur Échap pour fermer"
     className={`flex-1 overflow-auto bg-[#525659] flex justify-center select-none ${canPreview ? 'items-start' : 'items-center'}`}
     style={{ cursor: getCursorStyle() }}
@@ -297,7 +298,6 @@ export const DocumentPreviewContent: React.FC<DocumentPreviewContentProps> = ({
         onClose();
       }
     }}
-    tabIndex={0}
   >
     {loading && (
       <div className="flex items-center justify-center h-full w-full">

@@ -1174,7 +1174,7 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = React.memo((
         setQuickReactionBar={setQuickReactionBar}
       />
       
-      <section
+      <div
         className={`max-w-[85%] sm:max-w-[75%] md:max-w-[70%] lg:max-w-[65%] relative group`}
         data-message-id={message.id}
         onContextMenu={(e) => {
@@ -1184,6 +1184,7 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = React.memo((
           }
           handleContextMenu(e, message)
         }}
+        role="region"
         aria-label="Contenu du message"
       >
         <MessageContent
@@ -1231,7 +1232,7 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = React.memo((
         {messageReactions.length > 0 && (
           <MessageReactions reactions={messageReactions} currentUserId={user?.id || ''} onReactionClick={(emoji) => addReaction(message.id, emoji)} onReactionRemove={(emoji) => removeReaction(message.id, emoji)} />
         )}
-      </section>
+      </div>
       
       {!isOwn && (
         <MessageSideActions

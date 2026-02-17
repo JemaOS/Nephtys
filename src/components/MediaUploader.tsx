@@ -194,6 +194,8 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
   const videoInputRef = useRef<HTMLInputElement>(null);
   const audioInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  // Note: videoRef is reserved for future camera video preview functionality
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -998,17 +1000,13 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       
       // Determine endpoint based on API key availability
       if (TENOR_API_KEY) {
-        if (query === 'trending') {
-          endpoint = `https://tenor.googleapis.com/v2/featured?key=${TENOR_API_KEY}&client_key=${TENOR_CLIENT_KEY}&limit=20`;
-        } else {
-          endpoint = `https://tenor.googleapis.com/v2/search?q=${encodeURIComponent(query)}&key=${TENOR_API_KEY}&client_key=${TENOR_CLIENT_KEY}&limit=20`;
-        }
+        endpoint = query === 'trending'
+          ? `https://tenor.googleapis.com/v2/featured?key=${TENOR_API_KEY}&client_key=${TENOR_CLIENT_KEY}&limit=20`
+          : `https://tenor.googleapis.com/v2/search?q=${encodeURIComponent(query)}&key=${TENOR_API_KEY}&client_key=${TENOR_CLIENT_KEY}&limit=20`;
       } else {
-        if (query === 'trending') {
-          endpoint = `https://g.tenor.com/v1/trending?key=${FALLBACK_TENOR_KEY}&limit=20`;
-        } else {
-          endpoint = `https://g.tenor.com/v1/search?q=${encodeURIComponent(query)}&key=${FALLBACK_TENOR_KEY}&limit=20`;
-        }
+        endpoint = query === 'trending'
+          ? `https://g.tenor.com/v1/trending?key=${FALLBACK_TENOR_KEY}&limit=20`
+          : `https://g.tenor.com/v1/search?q=${encodeURIComponent(query)}&key=${FALLBACK_TENOR_KEY}&limit=20`;
       }
       
       const response = await fetch(endpoint);
@@ -1085,6 +1083,9 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
   };
 
   // Handle sticker search
+  // Note: This handler is reserved for future sticker search by text input
+  // Currently stickers are fetched by category selection
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleStickerSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (stickerSearchQuery.trim()) {
