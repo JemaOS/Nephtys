@@ -312,7 +312,6 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
     } ${isDragging ? 'cursor-grabbing' : ''}`}
     onMouseDown={handleMouseDown}
     onMouseMove={handleMouseMove}
-    role="region"
     aria-label="Visionneuse d'image"
     style={{
       transform: zoom <= 1 ? `translateX(${swipeOffset}px)` : 'none',
@@ -694,7 +693,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
       <div className="w-full h-16 bg-bg-hover rounded-lg flex items-center justify-center gap-1" aria-hidden="true">
         {Array.from({ length: 30 }).map((_, idx) => (
           <div
-            key={`waveform-${idx}`}
+            key={`waveform-bar-${idx}`}
             className={`w-1 bg-accent rounded-full transition-all ${
               isPlaying ? 'animate-pulse' : ''
             }`}

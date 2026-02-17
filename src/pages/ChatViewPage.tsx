@@ -937,7 +937,8 @@ export function ChatViewPage() {
     if (!loading && messages.length > 0 && hasScrolledInitially.current) {
       if (messages.length > prevMessageCountRef.current) {
         // New message added - scroll smoothly
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+        const behavior = getScrollBehavior()
+        messagesEndRef.current?.scrollIntoView({ behavior })
         prevMessageCountRef.current = messages.length
       }
     }
@@ -946,6 +947,14 @@ export function ChatViewPage() {
   const scrollToBottom = useCallback((behavior: 'smooth' | 'instant' = 'smooth') => {
     messagesEndRef.current?.scrollIntoView({ behavior })
   }, [])
+
+  // Extract ternary for scroll behavior
+  const getScrollBehavior = (): ScrollBehavior => {
+    if (messages.length > prevMessageCountRef.current) {
+      return 'smooth'
+    }
+    return 'instant'
+  }
 
   // Debounced function to fetch link preview
   const debouncedFetchPreview = useCallback(
@@ -1586,11 +1595,14 @@ export function ChatViewPage() {
     try {
       // Determine the correct file extension based on the blob's MIME type
       const mimeType = audioBlob.type
-      const fileExtension = mimeType.includes('ogg')
-        ? 'ogg'
-        : mimeType.includes('mp4') || mimeType.includes('aac')
-          ? 'm4a'
-          : 'webm'
+      let fileExtension: string
+      if (mimeType.includes('ogg')) {
+        fileExtension = 'ogg'
+      } else if (mimeType.includes('mp4') || mimeType.includes('aac')) {
+        fileExtension = 'm4a'
+      } else {
+        fileExtension = 'webm'
+      }
       const fileName = `${user.id}/${Date.now()}.${fileExtension}`
       const { error: uploadError } = await supabase.storage.from('media').upload(fileName, audioBlob, {
         cacheControl: '3600',
@@ -1726,7 +1738,6 @@ export function ChatViewPage() {
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const formatMessageTime = (timestamp: string) => {
     const date = new Date(timestamp)
     return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })

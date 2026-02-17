@@ -941,6 +941,11 @@ export function CallsPage() {
         .eq('id', otherUserId)
         .single()
 
+      if (!profile) {
+        console.error('Profile not found for user:', otherUserId)
+        return
+      }
+
       try {
         await startCall(otherUserId, contextMenuCall.conversation_id, {
           audio: true,
@@ -1092,14 +1097,12 @@ export function CallsPage() {
         setSelectedCall(null)
       } catch (error) {
         console.error('Erreur lors du rappel de groupe:', error)
-        alert('Impossible de \'appel de groupe')
+        alert('Impossible de démarrer l\'appel de groupe')
       }
     } else {
       handleRecall()
     }
   }
-
-  // CallDetailsContent component moved outside of CallsPage component
 
   // Helper functions for CallDetailsContent that need to be passed as props
   const getCallDisplayNameHelper = (call: CallLog, userId: string | undefined): string => {
@@ -1163,7 +1166,7 @@ export function CallsPage() {
     )
   }
 
-  const getFavoriteIdHelper = (call: CallLog, userId: string | undefined): string => {
+  const getFavoriteIdHelper = (call: CallLog, userId: string | undefined): string | undefined => {
     if (call.is_group_call) {
       return call.conversation_id;
     }
@@ -1198,7 +1201,8 @@ export function CallsPage() {
     const avatarUrl = getCallAvatarUrlHelper(call, userId)
     const isCallMissedOrRejected = call.status === 'missed' || call.status === 'rejected'
     const statusClass = isCallMissedOrRejected ? 'text-[#ea4335]' : 'text-primary-600 dark:text-primary-400'
-    const isFavorite = favorites.includes(getFavoriteIdHelper(call, userId) || '')
+    const favoriteId = getFavoriteIdHelper(call, userId)
+    const isFavorite = favoriteId ? favorites.includes(favoriteId) : false
     
     const handleFavoriteClick = () => {
       if (call.is_group_call) {

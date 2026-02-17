@@ -190,14 +190,14 @@ export function PersistentCallScreen() {
   }, [remoteStream, videoEnabled, remoteVideoEnabled])
 
   // Toggle speaker (simulated for now as setSinkId is experimental/limited)
-  const toggleSpeaker = (...args: any[]) => {
-    setIsSpeakerOn(!isSpeakerOn)
+  const toggleSpeaker = useCallback(() => {
+    setIsSpeakerOn((prev) => !prev)
     // In a real implementation with supported browser, we would use:
     // const audio = remoteAudioRef.current as any
     // if (audio && audio.setSinkId) {
     //   audio.setSinkId(isSpeakerOn ? 'earpiece-id' : 'speaker-id')
     // }
-  }
+  }, [])
 
   if (!isInCall && !isRinging && !isCalling) {
     return null

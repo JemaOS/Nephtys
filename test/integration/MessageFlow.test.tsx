@@ -223,8 +223,8 @@ describe('MessageFlow', () => {
   });
 
   it('should display messages', async () => {
-    // Mock messages data for display
-    [
+    // Mock messages data for display - stored in variable for potential future use
+    const mockMessages = [
       {
         id: 'msg-1',
         content: 'Hello there',
@@ -242,6 +242,8 @@ describe('MessageFlow', () => {
         status: 'read',
       },
     ];
+    // Use mockMessages to set up the mock response
+    mocks.mockMaybeSingle.mockResolvedValue({ data: mockMessages[0], error: null });
 
     // Mock messages query
     mocks.mockLimit.mockReturnValue({

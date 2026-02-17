@@ -213,12 +213,12 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
   const [emojiOverlays, setEmojiOverlays] = useState<EmojiOverlay[]>([]);
   const [blurRegions, setBlurRegions] = useState<BlurRegion[]>([]);
   const [selectedColor, setSelectedColor] = useState('#ff0000');
-  const [brushSize] = useState(4);
-  const [fontSize] = useState(32);
+  const brushSize = 4;
+  const fontSize = 32;
   const [fontFamily, setFontFamily] = useState('Arial');
   const [selectedShape, setSelectedShape] = useState<Shape>('rectangle');
   const [shapeFilled, setShapeFilled] = useState(true);
-  const [blurIntensity] = useState(10);
+  const blurIntensity = 10;
   const [rotation, setRotation] = useState(0);
   const [flipH, setFlipH] = useState(false);
   const [flipV, setFlipV] = useState(false);
@@ -556,8 +556,8 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
   const rotateLeft = () => setRotation((r) => (r - 90) % 360);
 
   // Flip handlers
-  const toggleFlipH = () => setFlipH(!flipH);
-  const toggleFlipV = () => setFlipV(!flipV);
+  const toggleFlipH = () => setFlipH((prev) => !prev);
+  const toggleFlipV = () => setFlipV((prev) => !prev);
 
   // Zoom handlers
   const zoomIn = () => setZoom((z) => Math.min(z + 0.1, 3));
@@ -778,7 +778,11 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
             ref={canvasRef}
             className="max-w-full max-h-full rounded-lg shadow-lg"
             style={{
-              cursor: activeTool === 'draw' ? 'crosshair' : (activeTool === 'crop' || cropMode) ? 'crosshair' : 'default',
+              cursor: (() => {
+                if (activeTool === 'draw') return 'crosshair';
+                if (activeTool === 'crop' || cropMode) return 'crosshair';
+                return 'default';
+              })(),
               touchAction: 'none',
               userSelect: 'none',
             }}

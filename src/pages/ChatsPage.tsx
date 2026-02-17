@@ -288,8 +288,7 @@ export function ChatsPage() {
   }, [user, hasLoadedFromCache, handleCachedUpdate, handleFullUpdate])
 
   // Legacy function name for compatibility with existing code
-  const loadConversations = useCallback(() => loadConversationsFromServer(true), [loadConversationsFromServer])
-  // Avoid using loadConversations directly as it doesn't provide additional value over loadConversationsFromServer
+  // Note: loadConversations is kept for backward compatibility but loadConversationsFromServer is preferred
 
   // Load from cache first, then sync with server (WhatsApp-like behavior)
   const loadConversationsWithCacheFirst = useCallback(async () => {

@@ -206,26 +206,26 @@ const findDirectConversationWithContact = async (
 };
 
 const findExistingConversation = async (
-  supabase: any,
+  supabaseClient: any,
   isSelfContact: boolean,
   userId: string,
   contactId: string
 ): Promise<string | null> => {
   if (isSelfContact) {
-    return findSelfConversation(supabase, userId);
+    return findSelfConversation(supabaseClient, userId);
   } else {
-    return findDirectConversationWithContact(supabase, userId, contactId);
+    return findDirectConversationWithContact(supabaseClient, userId, contactId);
   }
 };
 
 // Helper: Create new conversation and add members (moved to module level to reduce complexity)
 const createNewConversationAndAddMembers = async (
-  supabase: any,
+  supabaseClient: any,
   userId: string,
   contactId: string,
   isSelfContact: boolean
 ): Promise<string | null> => {
-  const { data: conversation, error: convError } = await supabase
+  const { data: conversation, error: convError } = await supabaseClient
     .from('conversations')
     .insert({
       type: 'direct',
@@ -249,13 +249,13 @@ const createNewConversationAndAddMembers = async (
   const addMembers = async () => {
     try {
       if (isSelfContact) {
-        await supabase
+        await supabaseClient
           .from('conversation_members')
           .insert([
             { conversation_id: conversation.id, user_id: userId, role: 'admin', is_active: true }
           ]);
       } else {
-        await supabase
+        await supabaseClient
           .from('conversation_members')
           .insert([
             { conversation_id: conversation.id, user_id: userId, role: 'admin', is_active: true },

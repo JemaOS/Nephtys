@@ -1164,8 +1164,7 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = React.memo((
         }
       }}
       aria-label={`Message de ${isOwn ? 'vous' : 'autre utilisateur'}`}
-      // tabIndex is appropriate here - message items need keyboard navigation for accessibility
-      // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
+      role="button"
       tabIndex={0}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -1185,7 +1184,7 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = React.memo((
         setQuickReactionBar={setQuickReactionBar}
       />
       
-      <div
+      <section
         className={`max-w-[85%] sm:max-w-[75%] md:max-w-[70%] lg:max-w-[65%] relative group`}
         data-message-id={message.id}
         onContextMenu={(e) => {
@@ -1242,7 +1241,7 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = React.memo((
         {messageReactions.length > 0 && (
           <MessageReactions reactions={messageReactions} currentUserId={user?.id || ''} onReactionClick={(emoji) => addReaction(message.id, emoji)} onReactionRemove={(emoji) => removeReaction(message.id, emoji)} />
         )}
-      </div>
+      </section>
       
       {!isOwn && (
         <MessageSideActions
@@ -1363,8 +1362,7 @@ export const MessageList: React.FC<MessageListProps> = React.memo(({
       onContextMenu={handleBackgroundContextMenu}
       onScroll={onScroll}
       aria-label="Liste des messages"
-      // tabIndex is appropriate here - message list needs keyboard navigation for accessibility
-      // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
+      role="region"
       tabIndex={0}
     >
       <div ref={messagesContentRef} className="flex flex-col min-h-full">

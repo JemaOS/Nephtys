@@ -1035,7 +1035,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   const quickEmojis = ['❤️', '😂', '😮', '😢', '🙏', '👍'];
 
   // Focus the viewer on mount for keyboard accessibility
-  const viewerRef = useRef<HTMLDialogElement>(null);
+  const viewerRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (isOpen && viewerRef.current) {
       viewerRef.current.focus();
@@ -1045,8 +1045,11 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   if (!isOpen) return null;
 
   return (
-    <dialog
+    <div
       ref={viewerRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Visualiseur de média"
       className={`fixed inset-0 z-[200] bg-black flex flex-col media-viewer-fullscreen m-0 p-0 w-full h-full max-w-none max-h-none ${
         isLandscape && isMobile ? 'landscape-mode' : ''
       } ${isFullscreen ? 'fullscreen-active' : ''} ${!showControls ? 'cursor-none' : ''}`}
@@ -1057,10 +1060,6 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
         }
       }}
       onMouseMove={handleContainerMouseMove}
-      aria-modal="true"
-      aria-label="Visualiseur de média"
-      role="dialog"
-      open
       style={{
         // Ensure the viewer takes full screen on mobile in any orientation
         width: '100%',
@@ -1132,8 +1131,6 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
       {/* Media content */}
       <div
         aria-label="Visualisation du média"
-        role="region"
-        tabIndex={0}
         className={`flex-1 flex items-center justify-center overflow-hidden media-content-container ${
           isLandscape && isMobile ? 'p-0' : 'p-4 md:p-8'
         }`}
@@ -1223,6 +1220,6 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
           {currentIndex + 1} / {allMedia.length}
         </div>
       )}
-    </dialog>
+    </div>
   );
 };
