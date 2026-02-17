@@ -5,6 +5,26 @@ import { useState } from 'react'
 import { useAuth } from '@/context/AuthContext'
 import { Lock, User, Shield, Zap, EyeOff } from 'lucide-react'
 
+// Styles CSS pour empêcher le navigateur de changer les couleurs en mode autofill
+const autofillStyles = `
+  /* Empêche le navigateur de changer la couleur de fond en autofill */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  input:-webkit-autofill:active {
+    -webkit-box-shadow: 0 0 0 1000px var(--bg-hover) inset !important;
+    -webkit-text-fill-color: var(--text-primary) !important;
+    caret-color: var(--text-primary) !important;
+    transition: background-color 5000s ease-in-out 0s;
+  }
+  
+  /* Firefox */
+  input:-moz-autofill {
+    background-color: var(--bg-hover) !important;
+    color: var(--text-primary) !important;
+  }
+`
+
 // Helper function to get auth title based on mode
 const getAuthTitle = (mode: 'signin' | 'signup' | 'guest'): string => {
   if (mode === 'guest') return 'Mode éphémère';
@@ -63,6 +83,9 @@ export function AuthPage() {
 
   return (
     <div className="h-screen bg-bg-primary flex items-center justify-center p-4 overflow-hidden">
+      {/* Injecte les styles CSS pour l'autofill */}
+      <style>{autofillStyles}</style>
+      
       <div className="w-full max-w-md space-y-1 sm:space-y-2">
         {/* Logo & Title */}
         <div className="text-center space-y-0.5 sm:space-y-1">
