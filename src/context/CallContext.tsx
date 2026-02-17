@@ -4,7 +4,7 @@
 import { createContext, useContext, useEffect, useState, useRef, useMemo, ReactNode } from 'react'
 import { supabase } from '@/lib/supabase'
 import { webrtcManager, CallConfig } from '@/lib/webrtc'
-import { groupCallManager, Participant, GroupCallConfig } from '@/lib/groupWebRTC'
+import { groupCallManager, GroupCallConfig } from '@/lib/groupWebRTC'
 import { useAuth } from './AuthContext'
 
 interface CallSignal {
@@ -64,7 +64,7 @@ interface CallContextType {
 
 const CallContext = createContext<CallContextType | undefined>(undefined)
 
-export function CallProvider({ children }: { children: ReactNode }) {
+export function CallProvider({ children }: { readonly children: ReactNode }) {
   const { user } = useAuth()
   const [isInCall, setIsInCall] = useState(false)
   const [isRinging, setIsRinging] = useState(false)
@@ -304,7 +304,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
     })
 
     // Envoyer une notification
-    if ('Notification' in window && Notification.permission === 'granted') {
+    if ('Notification' in globalThis && Notification.permission === 'granted') {
       showIncomingCallNotification(callerName, isVideo, signal.conversation_id, signal.from)
     }
   }
@@ -336,7 +336,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
     })
 
     // Envoyer une notification
-    if ('Notification' in window && Notification.permission === 'granted') {
+    if ('Notification' in globalThis && Notification.permission === 'granted') {
       showGroupCallNotification(groupCallerName, groupName, isGroupVideo, signal.conversation_id, signal.from)
     }
   }
@@ -406,7 +406,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const startCall = async (userId: string, conversationId: string, config: CallConfig) => {
     try {
       // DEMANDER EXPLICITEMENT les permissions sur mobile
-      if (typeof window !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
+      if (typeof globalThis !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
         try {
           const testStream = await navigator.mediaDevices.getUserMedia({
             audio: true,
@@ -533,7 +533,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       
       if (!callLogError && callLogData) {
         // Dispatch a custom event to notify ChatViewPage to reload call logs
-        window.dispatchEvent(new CustomEvent('call-log-created', {
+        globalThis.dispatchEvent(new CustomEvent('call-log-created', {
           detail: { conversationId, callLog: callLogData?.[0] }
         }))
       }
@@ -652,7 +652,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       
       if (!answerCallLogError && answerCallLogData) {
         // Dispatch a custom event to notify ChatViewPage to reload call logs
-        window.dispatchEvent(new CustomEvent('call-log-created', {
+        globalThis.dispatchEvent(new CustomEvent('call-log-created', {
           detail: { conversationId: incomingCallSignal.conversation_id, callLog: answerCallLogData?.[0] }
         }))
       }
@@ -833,7 +833,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
   // Helper to request media permissions
   const requestMediaPermissions = async (video: boolean): Promise<boolean> => {
-    if (typeof window === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+    if (typeof globalThis === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
       return true
     }
     
@@ -995,7 +995,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
     if (callLogError) {
       console.error('Error creating group call log:', callLogError)
     } else if (callLogData) {
-      window.dispatchEvent(new CustomEvent('call-log-created', {
+      globalThis.dispatchEvent(new CustomEvent('call-log-created', {
         detail: { conversationId, callLog: callLogData?.[0] }
       }))
     }

@@ -59,7 +59,7 @@ export const MessageSearch: React.FC<MessageSearchProps> = ({
         
         {searchQuery && (
           <div className="text-sm text-text-tertiary whitespace-nowrap">
-            {searchResults.length} résultat{searchResults.length !== 1 ? 's' : ''}
+            {searchResults.length} résultat{searchResults.length === 1 ? '' : 's'}
           </div>
         )}
         

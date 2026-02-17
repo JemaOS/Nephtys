@@ -8,7 +8,7 @@ import { Play, Pause, Download } from 'lucide-react';
 let audioContext: AudioContext | null = null;
 const getAudioContext = () => {
   if (!audioContext) {
-    audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    audioContext = new (globalThis.AudioContext || (globalThis as any).webkitAudioContext)();
   }
   return audioContext;
 };
@@ -141,7 +141,8 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
       try {
         webAudioSourceRef.current.stop();
       } catch (e) {
-        // Ignore - might already be stopped
+        // Audio source might already be stopped - this is expected
+        console.log('Audio source already stopped or invalid');
       }
       webAudioSourceRef.current = null;
     }
@@ -378,14 +379,14 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
         fileExtension = 'm4a';
       }
       
-      const downloadUrl = window.URL.createObjectURL(blob);
+      const downloadUrl = globalThis.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = downloadUrl;
       a.download = `voice-message-${Date.now()}.${fileExtension}`;
       document.body.appendChild(a);
       a.click();
       a.remove();
-      window.URL.revokeObjectURL(downloadUrl);
+      globalThis.URL.revokeObjectURL(downloadUrl);
     } catch (error) {
       console.error('Error downloading voice message:', error);
     }

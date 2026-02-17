@@ -107,10 +107,10 @@ export const MessageReply: React.FC<MessageReplyProps> = ({
       {/* Content */}
       <div className="flex-1 min-w-0 px-3 py-2 flex justify-between items-center">
         <div className="flex-1 min-w-0 mr-2">
-          <div className={`text-sm font-medium text-primary-300 mb-0.5 ${!isPreview ? 'text-xs font-semibold' : ''}`}>
+          <div className={`text-sm font-medium text-primary-300 mb-0.5 ${isPreview ? '' : 'text-xs font-semibold'}`}>
             {replyToMessage.senderName || 'Utilisateur'}
           </div>
-          <div className={`text-sm truncate flex items-center gap-1.5 ${!isPreview ? 'text-text-primary/80' : 'text-text-secondary'}`}>
+          <div className={`text-sm truncate flex items-center gap-1.5 ${isPreview ? 'text-text-secondary' : 'text-text-primary/80'}`}>
             {Icon && (
               <Icon size={16} className="flex-shrink-0" />
             )}

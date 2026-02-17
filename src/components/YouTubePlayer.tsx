@@ -91,8 +91,8 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
   // Initialize PiP position to bottom-right
   useEffect(() => {
     if (isPiP && pipPosition.x === 0 && pipPosition.y === 0) {
-      const windowWidth = window.innerWidth;
-      const windowHeight = window.innerHeight;
+      const windowWidth = globalThis.innerWidth;
+      const windowHeight = globalThis.innerHeight;
       const pipWidth = 280;
       const pipHeight = 158; // 16:9 aspect ratio
       setPipPosition({
@@ -126,8 +126,8 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
     
     const pipWidth = 280;
     const pipHeight = 158;
-    const windowWidth = window.innerWidth;
-    const windowHeight = window.innerHeight;
+    const windowWidth = globalThis.innerWidth;
+    const windowHeight = globalThis.innerHeight;
     
     // Calculate new position with bounds checking
     let newX = clientX - dragOffset.x;
@@ -148,17 +148,17 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
   // Add/remove drag event listeners
   useEffect(() => {
     if (isDragging) {
-      window.addEventListener('mousemove', handleDragMove);
-      window.addEventListener('mouseup', handleDragEnd);
-      window.addEventListener('touchmove', handleDragMove);
-      window.addEventListener('touchend', handleDragEnd);
+      globalThis.addEventListener('mousemove', handleDragMove);
+      globalThis.addEventListener('mouseup', handleDragEnd);
+      globalThis.addEventListener('touchmove', handleDragMove);
+      globalThis.addEventListener('touchend', handleDragEnd);
     }
     
     return () => {
-      window.removeEventListener('mousemove', handleDragMove);
-      window.removeEventListener('mouseup', handleDragEnd);
-      window.removeEventListener('touchmove', handleDragMove);
-      window.removeEventListener('touchend', handleDragEnd);
+      globalThis.removeEventListener('mousemove', handleDragMove);
+      globalThis.removeEventListener('mouseup', handleDragEnd);
+      globalThis.removeEventListener('touchmove', handleDragMove);
+      globalThis.removeEventListener('touchend', handleDragEnd);
     };
   }, [isDragging, handleDragMove, handleDragEnd]);
 
@@ -170,8 +170,8 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
         onClose();
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    globalThis.addEventListener('keydown', handleKeyDown);
+    return () => globalThis.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
 
   // Toggle PiP mode

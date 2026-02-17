@@ -1025,13 +1025,18 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
         });
         onShare?.();
       } catch (error) {
+        // User cancelled share or share failed - no action needed
         console.log('Share cancelled');
       }
     } else {
       // Fallback: copy URL to clipboard
-      await navigator.clipboard.writeText(mediaUrl);
-      alert('Lien copié !');
-      onShare?.();
+      try {
+        await navigator.clipboard.writeText(mediaUrl);
+        alert('Lien copié !');
+        onShare?.();
+      } catch (clipboardError) {
+        console.error('Failed to copy to clipboard:', clipboardError);
+      }
     }
   };
 
@@ -1047,13 +1052,15 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
 
   if (!isOpen) return null;
 
+  const landscapeModeClass = isLandscape && isMobile ? 'landscape-mode' : '';
+  const fullscreenActiveClass = isFullscreen ? 'fullscreen-active' : '';
+  const cursorNoneClass = showControls ? '' : 'cursor-none';
+
   return (
     <div
       ref={viewerRef}
       aria-label="Visualiseur de média"
-      className={`fixed inset-0 z-[200] bg-black flex flex-col media-viewer-fullscreen m-0 p-0 w-full h-full max-w-none max-h-none text-left ${
-        isLandscape && isMobile ? 'landscape-mode' : ''
-      } ${isFullscreen ? 'fullscreen-active' : ''} ${!showControls ? 'cursor-none' : ''}`}
+      className={`fixed inset-0 z-[200] bg-black flex flex-col media-viewer-fullscreen m-0 p-0 w-full h-full max-w-none max-h-none text-left ${landscapeModeClass} ${fullscreenActiveClass} ${cursorNoneClass}`}
       onClick={() => setShowControls(true)}
       onMouseMove={handleContainerMouseMove}
       style={{

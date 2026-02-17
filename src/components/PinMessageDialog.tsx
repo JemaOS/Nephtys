@@ -2,7 +2,6 @@
 // Distributed under the license specified in the root directory of this project.
 
 import React, { useState } from 'react';
-import { X } from 'lucide-react';
 
 interface PinMessageDialogProps {
   isOpen: boolean;

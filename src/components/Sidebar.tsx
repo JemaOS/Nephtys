@@ -2,7 +2,7 @@
 // Distributed under the license specified in the root directory of this project.
 
 import { useNavigate, useLocation } from 'react-router-dom'
-import { MessageCircle, Users, Settings, Circle, Phone, Archive } from 'lucide-react'
+import { MessageCircle, Users, Settings, Phone, Archive } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'

@@ -201,8 +201,8 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const [image, setImage] = useState<HTMLImageElement | null>(null);
   const [activeTool, setActiveTool] = useState<Tool>('none');
-  const [, setIsDrawing] = useState(false);
-  // Note: isDrawing state is used indirectly via setIsDrawing in drawing handlers
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [_isDrawing, setIsDrawing] = useState(false);
   const [currentPath, setCurrentPath] = useState<DrawPath | null>(null);
   const [drawPaths, setDrawPaths] = useState<DrawPath[]>([]);
   const [textOverlays, setTextOverlays] = useState<TextOverlay[]>([]);
@@ -229,8 +229,8 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
   const [cropMode, setCropMode] = useState(false);
   const [cropStart, setCropStart] = useState<{ x: number; y: number } | null>(null);
   const [cropEnd, setCropEnd] = useState<{ x: number; y: number } | null>(null);
-  const [, setBlurStart] = useState<{ x: number; y: number } | null>(null);
-  // Note: blurStart is managed via setBlurStart in blur tool handlers
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [_blurStart, setBlurStart] = useState<{ x: number; y: number } | null>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
 
   // Calculate canvas size to fit container while maintaining aspect ratio

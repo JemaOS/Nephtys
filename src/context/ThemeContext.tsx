@@ -15,18 +15,18 @@ interface ThemeContextType {
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined)
 
-export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>(() => {
+export function ThemeProvider({ children }: { readonly children: ReactNode }) {
+  const [themeState, setThemeState] = useState<Theme>(() => {
     return (localStorage.getItem('anu_theme') as Theme) || 'dark'
   })
   
-  const [wallpaper, setWallpaperState] = useState<Wallpaper>(() => {
+  const [wallpaperState, setWallpaperState] = useState<Wallpaper>(() => {
     return (localStorage.getItem('anu_wallpaper') as Wallpaper) || 'default'
   })
 
   useEffect(() => {
-    applyTheme(theme)
-  }, [theme])
+    applyTheme(themeState)
+  }, [themeState])
 
   const applyTheme = (newTheme: Theme) => {
     if (newTheme === 'light') {
@@ -36,7 +36,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       document.documentElement.classList.remove('light')
       document.documentElement.classList.add('dark')
     } else {
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+      const prefersDark = globalThis.matchMedia('(prefers-color-scheme: dark)').matches
       document.documentElement.classList.toggle('dark', prefersDark)
       document.documentElement.classList.toggle('light', !prefersDark)
     }
@@ -54,11 +54,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }
 
   const value = useMemo(() => ({
-    theme,
-    wallpaper,
+    theme: themeState,
+    wallpaper: wallpaperState,
     setTheme,
     setWallpaper
-  }), [theme, wallpaper]);
+  }), [themeState, wallpaperState]);
 
   return (
     <ThemeContext.Provider value={value}>

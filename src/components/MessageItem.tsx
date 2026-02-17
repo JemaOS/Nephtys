@@ -40,7 +40,7 @@ const isEmojiOnly = (text: string): { isEmoji: boolean; emojiCount: number } => 
   if (!emojis) return { isEmoji: false, emojiCount: 0 }
   
   const emojiString = emojis.join('')
-  const textWithoutWhitespace = trimmed.replace(/\s/g, '')
+  const textWithoutWhitespace = trimmed.replaceAll(/\s/g, '')
   
   if (textWithoutWhitespace === emojiString && emojis.length >= 1 && emojis.length <= 3) {
     return { isEmoji: true, emojiCount: emojis.length }
@@ -264,7 +264,7 @@ export const MessageItem: React.FC<MessageItemProps> = React.memo(({
   // Extract all message type properties at once - reduces cognitive complexity
   const msgType = getMessageType(message)
   const messageReactions = reactions.filter(r => r.message_id === message.id)
-  const systemMessageContent = msgType.isSystemMessage ? message.content.replace(/\[SYSTEM\]/g, '') : ''
+  const systemMessageContent = msgType.isSystemMessage ? message.content.replaceAll('[SYSTEM]', '') : ''
   
   const senderInfo = getSenderInfoForMessage(
     message.sender_id,

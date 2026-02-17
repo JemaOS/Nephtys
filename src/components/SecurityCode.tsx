@@ -36,7 +36,7 @@ export const SecurityCode: React.FC<SecurityCodeProps> = ({
   };
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(safetyNumber.replace(/\s/g, ''));
+    navigator.clipboard.writeText(safetyNumber.replaceAll(/\s/g, ''));
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };

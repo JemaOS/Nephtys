@@ -2,7 +2,7 @@
 // Distributed under the license specified in the root directory of this project.
 
 import { createContext, useContext, useEffect, useState, useMemo, ReactNode } from 'react'
-import { User, Session } from '@supabase/supabase-js'
+import { User } from '@supabase/supabase-js'
 import { supabase, Profile } from '@/lib/supabase'
 import { initializePresence, cleanupPresence } from '@/hooks/usePresence'
 
@@ -31,10 +31,10 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 function withTimeout<T>(promise: Promise<T> | PromiseLike<T>, ms: number, fallback?: T): Promise<T> {
   return new Promise((resolve, reject) => {
     const timeoutId = setTimeout(() => {
-      if (fallback !== undefined) {
-        resolve(fallback);
-      } else {
+      if (fallback === undefined) {
         reject(new Error('Operation timed out'));
+      } else {
+        resolve(fallback);
       }
     }, ms);
 
@@ -108,7 +108,7 @@ const generateSecureRandomString = (length: number = 12): string => {
   return result;
 }
 
-export function AuthProvider({ children }: { children: ReactNode }) {
+export function AuthProvider({ children }: { readonly children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
@@ -119,12 +119,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const handleOnline = () => setIsOffline(false);
     const handleOffline = () => setIsOffline(true);
     
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
+    globalThis.addEventListener('online', handleOnline);
+    globalThis.addEventListener('offline', handleOffline);
     
     return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
+      globalThis.removeEventListener('online', handleOnline);
+      globalThis.removeEventListener('offline', handleOffline);
     };
   }, []);
 
@@ -182,7 +182,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         }
       } catch (error) {
-        console.warn('[Auth] Session fetch timed out or failed, using cached data');
+        // Session fetch failed - use cached data if available
+        console.warn('[Auth] Session fetch timed out or failed, using cached data', error);
         // Keep using cached data if available
       } finally {
         setLoading(false);
@@ -257,7 +258,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         cacheProfile(data);
       }
     } catch (error) {
-      console.warn('[Auth] Profile fetch timed out, using cached profile');
+      // Profile fetch failed - use cached profile if available
+      console.warn('[Auth] Profile fetch timed out, using cached profile', error);
       // Keep using cached profile if available
     }
   }

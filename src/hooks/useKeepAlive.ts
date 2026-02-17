@@ -32,7 +32,8 @@ export function useKeepAlive(
 
       wakeLockRef.current = await nav.wakeLock.request('screen');
     } catch (err: any) {
-      // Wake Lock request can fail - silent fail for stability
+      // Wake Lock request can fail on some devices/browsers - this is expected
+      console.log('Wake Lock request failed:', err?.message || 'unknown error');
     }
   }, []);
 
@@ -43,7 +44,8 @@ export function useKeepAlive(
         await wakeLockRef.current.release();
         wakeLockRef.current = null;
       } catch (err) {
-        // Silent fail
+        // Release can fail if lock was already released - this is expected
+        console.log('Wake Lock release failed:', err);
       }
     }
   }, []);
@@ -61,9 +63,9 @@ export function useKeepAlive(
     if (!enabled) return;
 
     // Check if we're in a PWA context
-    const isPWA = window.matchMedia('(display-mode: standalone)').matches ||
-                  window.matchMedia('(display-mode: fullscreen)').matches ||
-                  (window.navigator as any).standalone === true;
+    const isPWA = globalThis.matchMedia('(display-mode: standalone)').matches ||
+                  globalThis.matchMedia('(display-mode: fullscreen)').matches ||
+                  (globalThis.navigator as any).standalone === true;
 
     if (!isPWA) {
       return;

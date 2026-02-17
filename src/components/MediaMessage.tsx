@@ -112,8 +112,8 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
   const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
   
   // Detect if we're in a PWA
-  const isPWA = window.matchMedia('(display-mode: standalone)').matches ||
-                (window.navigator as any).standalone === true;
+  const isPWA = globalThis.matchMedia('(display-mode: standalone)').matches ||
+                (globalThis.navigator as any).standalone === true;
 
   const handleDownload = async () => {
     try {

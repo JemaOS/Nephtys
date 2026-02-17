@@ -1,5 +1,5 @@
 import React, { useRef, useEffect } from 'react';
-import { Download, File, Play, Copy, FileText, FileSpreadsheet, FileImage, FileArchive } from 'lucide-react';
+import { File, Play, Copy, FileText, FileSpreadsheet, FileImage, FileArchive } from 'lucide-react';
 import { MessageHoverActions } from './MessageHoverActions';
 
 // Custom hook to preload next images in viewport
@@ -148,6 +148,9 @@ export const formatMessageTimestamp = (ts: string): string => {
 // Type alias for message status
 export type MessageStatus = 'sent' | 'delivered' | 'read';
 
+// Type alias for media timestamp overlay status
+type MediaTimestampStatus = 'sent' | 'delivered' | 'read';
+
 // Helper function to render status check SVG
 export const renderStatusCheckmark = (status?: MessageStatus): React.ReactNode => {
   if (status === 'read') {
@@ -207,7 +210,7 @@ export const getDocumentTypeIcon = (extension: string, bgColor: string, defaultI
 // Helper component for timestamp overlay inside media
 export const MediaTimestampOverlay: React.FC<{
   timestamp: string;
-  status?: 'sent' | 'delivered' | 'read';
+  status?: MediaTimestampStatus;
   isOwn: boolean;
 }> = ({ timestamp, status, isOwn }) => {
   const formatTime = (ts: string) => {

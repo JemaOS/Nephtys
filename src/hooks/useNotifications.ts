@@ -15,7 +15,7 @@ interface UseNotificationsReturn {
 
 export const useNotifications = (): UseNotificationsReturn => {
   const [permission, setPermission] = useState<NotificationPermission>('default');
-  const [isSupported] = useState(() => 'Notification' in window && 'serviceWorker' in navigator);
+  const [isSupported] = useState(() => 'Notification' in globalThis && 'serviceWorker' in navigator);
   const [registration, setRegistration] = useState<ServiceWorkerRegistration | null>(null);
 
   useEffect(() => {
@@ -29,8 +29,9 @@ export const useNotifications = (): UseNotificationsReturn => {
     try {
       const reg = await navigator.serviceWorker.register('/sw.js');
       setRegistration(reg);
-    } catch {
-      // Service Worker registration failed
+    } catch (error) {
+      // Service Worker registration failed - notifications may not work offline
+      console.warn('Service Worker registration failed:', error);
     }
   };
 

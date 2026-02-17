@@ -14,7 +14,7 @@ import {
 import { CallParticipantSelector } from './CallParticipantSelector'
 
 // Helper component for call duration
-export function CallDuration({ isActive }: { isActive: boolean }) {
+export function CallDuration({ isActive }: { readonly isActive: boolean }) {
   const [duration, setDuration] = useState(0)
 
   useEffect(() => {
@@ -45,8 +45,8 @@ export function ParticipantVideo({
   participant,
   isLocal = false
 }: {
-  participant: { id: string; name: string; avatar?: string; stream?: MediaStream; audioEnabled: boolean; videoEnabled: boolean }
-  isLocal?: boolean
+  readonly participant: { readonly id: string; readonly name: string; readonly avatar?: string; readonly stream?: MediaStream; readonly audioEnabled: boolean; readonly videoEnabled: boolean }
+  readonly isLocal?: boolean
 }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const audioRef = useRef<HTMLAudioElement>(null)
@@ -60,7 +60,7 @@ export function ParticipantVideo({
   useEffect(() => {
     if (!isLocal && audioRef.current && participant.stream) {
       audioRef.current.srcObject = participant.stream
-      audioRef.current.volume = 1.0
+      audioRef.current.volume = 1
       audioRef.current.play().catch(err => console.warn('Group audio play failed:', err))
     }
   }, [participant.stream, isLocal])
@@ -120,11 +120,11 @@ function OneToOneCallTopBar({
   callerName,
   onAddParticipant,
 }: {
-  isRinging: boolean;
-  isInCall: boolean;
-  isCalling: boolean;
-  callerName: string;
-  onAddParticipant: () => void;
+  readonly isRinging: boolean;
+  readonly isInCall: boolean;
+  readonly isCalling: boolean;
+  readonly callerName: string;
+  readonly onAddParticipant: () => void;
 }) {
   return (
     <div className="safe-area-top mt-4 px-4 relative">
@@ -177,19 +177,19 @@ function OneToOneCallControls({
   onAnswerCall,
   onRejectCall,
 }: {
-  isRinging: boolean;
-  isVideoCall: boolean;
-  isCalling: boolean;
-  isInCall: boolean;
-  audioEnabled: boolean;
-  videoEnabled: boolean;
-  isSpeakerOn: boolean;
-  onToggleAudio: () => void;
-  onToggleVideo: () => void;
-  onToggleSpeaker: () => void;
-  onEndCall: () => void;
-  onAnswerCall: () => void;
-  onRejectCall: () => void;
+  readonly isRinging: boolean;
+  readonly isVideoCall: boolean;
+  readonly isCalling: boolean;
+  readonly isInCall: boolean;
+  readonly audioEnabled: boolean;
+  readonly videoEnabled: boolean;
+  readonly isSpeakerOn: boolean;
+  readonly onToggleAudio: () => void;
+  readonly onToggleVideo: () => void;
+  readonly onToggleSpeaker: () => void;
+  readonly onEndCall: () => void;
+  readonly onAnswerCall: () => void;
+  readonly onRejectCall: () => void;
 }) {
   if (isRinging) {
     return (
@@ -309,34 +309,36 @@ export function OneToOneCallUI({
   localVideoRef,
   remoteVideoRef,
 }: {
-  callerName: string;
-  callerAvatar?: string;
-  hasRemoteVideo: boolean;
-  remoteStream: MediaStream | null;
-  remoteVideoEnabled: boolean;
-  localStream: MediaStream | null;
-  profile: any;
-  isRinging: boolean;
-  isCalling: boolean;
-  isInCall: boolean;
-  isVideoCall: boolean;
-  videoEnabled: boolean;
-  audioEnabled: boolean;
-  isSpeakerOn: boolean;
-  isDragging: boolean;
-  pipPosition: { x: number; y: number };
-  showAddParticipant: boolean;
-  onToggleAudio: () => void;
-  onToggleVideo: () => void;
-  onToggleSpeaker: () => void;
-  onEndCall: () => void;
-  onAnswerCall: () => void;
-  onRejectCall: () => void;
-  onAddParticipant: () => void;
-  onCloseAddParticipant: () => void;
-  localVideoRef: RefObject<HTMLVideoElement>;
-  remoteVideoRef: RefObject<HTMLVideoElement>;
+  readonly callerName: string;
+  readonly callerAvatar?: string;
+  readonly hasRemoteVideo: boolean;
+  readonly remoteStream: MediaStream | null;
+  readonly remoteVideoEnabled: boolean;
+  readonly localStream: MediaStream | null;
+  readonly profile: any;
+  readonly isRinging: boolean;
+  readonly isCalling: boolean;
+  readonly isInCall: boolean;
+  readonly isVideoCall: boolean;
+  readonly videoEnabled: boolean;
+  readonly audioEnabled: boolean;
+  readonly isSpeakerOn: boolean;
+  readonly isDragging: boolean;
+  readonly pipPosition: { readonly x: number; readonly y: number };
+  readonly showAddParticipant: boolean;
+  readonly onToggleAudio: () => void;
+  readonly onToggleVideo: () => void;
+  readonly onToggleSpeaker: () => void;
+  readonly onEndCall: () => void;
+  readonly onAnswerCall: () => void;
+  readonly onRejectCall: () => void;
+  readonly onAddParticipant: () => void;
+  readonly localVideoRef: RefObject<HTMLVideoElement>;
+  readonly remoteVideoRef: RefObject<HTMLVideoElement>;
 }) {
+  // showAddParticipant is not used in this component but kept in interface for compatibility
+  void showAddParticipant;
+
   return (
     <div className="fixed inset-0 z-[100] bg-gray-900 flex flex-col overflow-hidden">
       <audio ref={(el) => { if (el && el.srcObject !== remoteStream) el.srcObject = remoteStream }} autoPlay style={{ display: 'none' }}>
@@ -496,17 +498,17 @@ export function GroupCallUI({
   setShowAddParticipant,
   addParticipant,
 }: {
-  callerName: string;
-  isInCall: boolean;
-  allParticipants: any[];
-  audioEnabled: boolean;
-  videoEnabled: boolean;
-  toggleAudio: () => void;
-  toggleVideo: () => void;
-  endCall: () => void;
-  showAddParticipant: boolean;
-  setShowAddParticipant: (show: boolean) => void;
-  addParticipant: (id: string) => void;
+  readonly callerName: string;
+  readonly isInCall: boolean;
+  readonly allParticipants: readonly any[];
+  readonly audioEnabled: boolean;
+  readonly videoEnabled: boolean;
+  readonly toggleAudio: () => void;
+  readonly toggleVideo: () => void;
+  readonly endCall: () => void;
+  readonly showAddParticipant: boolean;
+  readonly setShowAddParticipant: (show: boolean) => void;
+  readonly addParticipant: (id: string) => void;
 }) {
   return (
     <div className="fixed inset-0 z-[100] bg-gray-900 flex flex-col">

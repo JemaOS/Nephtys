@@ -129,9 +129,12 @@ const normalizeTenorResult = (result: any) => {
   return result;
 };
 
+// Type alias for upload file type
+type UploadFileType = 'image' | 'video' | 'file' | 'audio';
+
 interface UploadedFileData {
   url: string;
-  type: 'image' | 'video' | 'file' | 'audio';
+  type: UploadFileType;
   fileName: string;
   fileSize: number;
   width?: number;
@@ -141,8 +144,8 @@ interface UploadedFileData {
 }
 
 interface MediaUploaderProps {
-  onMediaSelect: (selectedFile: globalThis.File, type: 'image' | 'video' | 'file' | 'audio') => void;
-  onUploadComplete: (url: string, type: 'image' | 'video' | 'file' | 'audio', fileName: string, fileSize: number, width?: number, height?: number, thumbnail?: string, duration?: number) => void;
+  onMediaSelect: (selectedFile: globalThis.File, type: UploadFileType) => void;
+  onUploadComplete: (url: string, type: UploadFileType, fileName: string, fileSize: number, width?: number, height?: number, thumbnail?: string, duration?: number) => void;
   onMultipleUploadComplete?: (files: UploadedFileData[]) => void;
   onCancel: () => void;
   onEmojiSelect?: (emoji: string) => void;

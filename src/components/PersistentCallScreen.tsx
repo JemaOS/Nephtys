@@ -1,13 +1,10 @@
 // Copyright (c) 2025 Jema Technology.
 // Distributed under the license specified in the root directory of this project.
 
-import { useEffect, useRef, useState, useCallback, RefObject } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { useCall } from '@/context/CallContext'
 import { useAuth } from '@/context/AuthContext'
-import { CallParticipantSelector } from './CallParticipantSelector'
 import {
-  CallDuration,
-  ParticipantVideo,
   OneToOneCallUI,
   GroupCallUI
 } from './PersistentCallScreenComponents'
@@ -42,10 +39,10 @@ export function PersistentCallScreen() {
 
   // Draggable self-view state
   const [pipPosition, setPipPosition] = useState<{ x: number; y: number }>(() => {
-    if (typeof window !== 'undefined') {
-      const width = window.innerWidth < 768 ? 112 : 144 // w-28 (112px) or md:w-36 (144px)
+    if (typeof globalThis !== 'undefined') {
+      const width = globalThis.innerWidth < 768 ? 112 : 144 // w-28 (112px) or md:w-36 (144px)
       return {
-        x: window.innerWidth - width - 16, // right-4
+        x: globalThis.innerWidth - width - 16, // right-4
         y: 80 // top-20
       }
     }
@@ -93,10 +90,10 @@ export function PersistentCallScreen() {
     const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
     const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
     
-    const width = window.innerWidth < 768 ? 112 : 144
-    const height = window.innerWidth < 768 ? 160 : 208 // h-40 (160px) or md:h-52 (208px)
-    const windowWidth = window.innerWidth
-    const windowHeight = window.innerHeight
+    const width = globalThis.innerWidth < 768 ? 112 : 144
+    const height = globalThis.innerWidth < 768 ? 160 : 208 // h-40 (160px) or md:h-52 (208px)
+    const windowWidth = globalThis.innerWidth
+    const windowHeight = globalThis.innerHeight
     
     // Calculate new position with bounds checking
     let newX = clientX - dragOffset.x
@@ -117,17 +114,17 @@ export function PersistentCallScreen() {
   // Add/remove drag event listeners
   useEffect(() => {
     if (isDragging) {
-      window.addEventListener('mousemove', handleDragMove)
-      window.addEventListener('mouseup', handleDragEnd)
-      window.addEventListener('touchmove', handleDragMove)
-      window.addEventListener('touchend', handleDragEnd)
+      globalThis.addEventListener('mousemove', handleDragMove)
+      globalThis.addEventListener('mouseup', handleDragEnd)
+      globalThis.addEventListener('touchmove', handleDragMove)
+      globalThis.addEventListener('touchend', handleDragEnd)
     }
     
     return () => {
-      window.removeEventListener('mousemove', handleDragMove)
-      window.removeEventListener('mouseup', handleDragEnd)
-      window.removeEventListener('touchmove', handleDragMove)
-      window.removeEventListener('touchend', handleDragEnd)
+      globalThis.removeEventListener('mousemove', handleDragMove)
+      globalThis.removeEventListener('mouseup', handleDragEnd)
+      globalThis.removeEventListener('touchmove', handleDragMove)
+      globalThis.removeEventListener('touchend', handleDragEnd)
     }
   }, [isDragging, handleDragMove, handleDragEnd])
 
@@ -171,7 +168,7 @@ export function PersistentCallScreen() {
       
       if (remoteAudioRef.current) {
         remoteAudioRef.current.srcObject = remoteStream
-        remoteAudioRef.current.volume = 1.0
+        remoteAudioRef.current.volume = 1
         remoteAudioRef.current.play().catch(err => {
           console.warn('Audio play failed:', err);
         });

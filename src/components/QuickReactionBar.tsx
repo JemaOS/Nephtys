@@ -4,11 +4,11 @@
 import { Plus } from 'lucide-react'
 
 interface QuickReactionBarProps {
-  isOpen: boolean
-  position: { x: number; y: number }
-  onReaction: (emoji: string) => void
-  onMoreOptions: () => void
-  onClose: () => void
+  readonly isOpen: boolean
+  readonly position: { readonly x: number; readonly y: number }
+  readonly onReaction: (emoji: string) => void
+  readonly onMoreOptions: () => void
+  readonly onClose: () => void
 }
 
 const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏']

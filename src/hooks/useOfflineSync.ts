@@ -56,12 +56,12 @@ export const useOfflineSync = (conversationId?: string): UseOfflineSyncReturn =>
   // Sync pending messages with timeout and retry
   const syncPendingMessages = useCallback(async () => {
     // Prevent concurrent syncs
-    if (!navigator.onLine || syncInProgress.current) {
+    if (navigator.onLine && !syncInProgress.current) {
+      syncInProgress.current = true;
+      setIsSyncing(true);
+    } else {
       return;
     }
-
-    syncInProgress.current = true;
-    setIsSyncing(true);
 
     try {
       const pendingMessages = await offlineStorage.getPendingMessages();
@@ -141,8 +141,8 @@ export const useOfflineSync = (conversationId?: string): UseOfflineSyncReturn =>
       }
     };
 
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
+    globalThis.addEventListener('online', handleOnline);
+    globalThis.addEventListener('offline', handleOffline);
 
     // Load pending count on mount (non-blocking)
     loadPendingCount();
@@ -156,8 +156,8 @@ export const useOfflineSync = (conversationId?: string): UseOfflineSyncReturn =>
     }
 
     return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
+      globalThis.removeEventListener('online', handleOnline);
+      globalThis.removeEventListener('offline', handleOffline);
       if (retryTimeoutRef.current) {
         clearTimeout(retryTimeoutRef.current);
       }
@@ -186,6 +186,7 @@ export const useOfflineSync = (conversationId?: string): UseOfflineSyncReturn =>
           filter: `conversation_id=eq.${conversationId}`,
         }, async (payload) => {
           try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             await offlineStorage.saveMessage(payload.new as any);
           } catch {
             // Error saving message offline
