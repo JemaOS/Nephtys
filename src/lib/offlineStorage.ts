@@ -91,11 +91,11 @@ class OfflineStorage {
   // Lazy initialization - called on first async operation
   private async ensureInitialized(): Promise<boolean> {
     if (this.initPromise !== null) {
-      const isReady = await this.initPromise;
+      await this.initPromise;
       return this.isInitialized && this.db !== null;
     }
     
-    this.initPromise = this.init().catch((error) => {
+    this.initPromise = this.init().catch(() => {
       this.initFailed = true;
     });
     
@@ -725,13 +725,11 @@ class OfflineStorage {
         const store = transaction.objectStore(PROFILES_STORE);
         
         let completed = 0;
-        const profiles: CachedProfile[] = [];
         
         for (const userId of missingIds) {
           const request = store.get(userId);
           request.onsuccess = () => {
             if (request.result) {
-              profiles.push(request.result);
               result.set(userId, request.result);
               // Update memory cache
               this.memoryCache.profiles.set(userId, request.result);

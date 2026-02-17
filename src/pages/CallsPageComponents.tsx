@@ -101,11 +101,17 @@ export const CallItem = ({
   const { displayName, avatarUrl, isGroupCall, isOutgoing } = getCallDisplayInfo(call, user)
   const { isMissed, isAnswered } = getCallStatus(call)
   
-  const containerClass = isSelected
-    ? 'bg-accent/20'
-    : selectedCall?.id === call.id
-      ? 'bg-bg-surface'
-      : 'hover:bg-bg-surface'
+  const getContainerClass = () => {
+    if (isSelected) {
+      return 'bg-accent/20'
+    }
+    if (selectedCall?.id === call.id) {
+      return 'bg-bg-surface'
+    }
+    return 'hover:bg-bg-surface'
+  }
+  
+  const containerClass = getContainerClass()
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (isMobile && e.button === 0) {
@@ -296,38 +302,46 @@ export const CallsList = ({
   user: any;
 }) => (
   <div className="flex-1 overflow-y-auto pb-2">
-    {loading ? (
-      <div className="flex justify-center items-center h-full">
-        <div className="w-8 h-8 rounded-full border-4 border-accent border-t-transparent animate-spin" />
-      </div>
-    ) : filteredCalls.length === 0 ? (
-      <div className="flex flex-col items-center justify-center h-full text-center px-8">
-        <Phone size={64} className="text-[#3b4a54] mb-4" />
-        <h3 className="text-lg font-medium text-text-secondary mb-2">Aucun appel</h3>
-        <p className="text-sm text-text-secondary">Votre historique d'appels apparaîtra ici</p>
-      </div>
-    ) : (
-      filteredCalls.map((call) => {
-        const isSelected = selectedCalls.has(call.id)
-        
+    {(() => {
+      if (loading) {
         return (
-          <CallItem
-            key={call.id}
-            call={call}
-            user={user}
-            isSelected={isSelected}
-            selectedCall={selectedCall}
-            isSelectionMode={isSelectionMode}
-            onClick={() => handleCallClick(call)}
-            onContextMenu={(e) => handleCallContextMenu(e, call)}
-            onTouchStart={() => handleTouchStart(call.id)}
-            onTouchEnd={handleTouchEnd}
-            onTouchMove={handleTouchMove}
-            isMobile={isMobile}
-          />
+          <div className="flex justify-center items-center h-full">
+            <div className="w-8 h-8 rounded-full border-4 border-accent border-t-transparent animate-spin" />
+          </div>
         )
-      })
-    )}
+      }
+      if (filteredCalls.length === 0) {
+        return (
+          <div className="flex flex-col items-center justify-center h-full text-center px-8">
+            <Phone size={64} className="text-[#3b4a54] mb-4" />
+            <h3 className="text-lg font-medium text-text-secondary mb-2">Aucun appel</h3>
+            <p className="text-sm text-text-secondary">Votre historique d'appels apparaîtra ici</p>
+          </div>
+        )
+      }
+      return (
+        filteredCalls.map((call) => {
+          const isSelected = selectedCalls.has(call.id)
+          
+          return (
+            <CallItem
+              key={call.id}
+              call={call}
+              user={user}
+              isSelected={isSelected}
+              selectedCall={selectedCall}
+              isSelectionMode={isSelectionMode}
+              onClick={() => handleCallClick(call)}
+              onContextMenu={(e) => handleCallContextMenu(e, call)}
+              onTouchStart={() => handleTouchStart(call.id)}
+              onTouchEnd={handleTouchEnd}
+              onTouchMove={handleTouchMove}
+              isMobile={isMobile}
+            />
+          )
+        })
+      )
+    })()}
   </div>
 )
 

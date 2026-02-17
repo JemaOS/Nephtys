@@ -81,7 +81,6 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
 }) => {
   const [isFullscreen, setIsFullscreen] = useState(true);
   const [isPiP, setIsPiP] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
   const [pipPosition, setPipPosition] = useState<Position>({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState<Position>({ x: 0, y: 0 });
@@ -163,12 +162,6 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
     };
   }, [isDragging, handleDragMove, handleDragEnd]);
 
-  // Format time as MM:SS
-  const formatTime = (seconds: number): string => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
 
   // Handle escape key to close
   useEffect(() => {
@@ -318,19 +311,16 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
           <p className="text-white text-sm mb-2 truncate">{title}</p>
         )}
         
-        {/* Time indicator */}
-        <div className="flex items-center justify-between text-white text-xs">
-          <span>{formatTime(currentTime)}</span>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={togglePiP}
-              className="px-3 py-1.5 rounded-full bg-white/20 hover:bg-white/30 text-white text-xs flex items-center gap-1 transition-colors"
-            >
-              <Minimize2 size={14} />
-              <span>PiP</span>
-            </button>
-          </div>
+        {/* PiP button */}
+        <div className="flex items-center justify-end text-white text-xs">
+          <button
+            type="button"
+            onClick={togglePiP}
+            className="px-3 py-1.5 rounded-full bg-white/20 hover:bg-white/30 text-white text-xs flex items-center gap-1 transition-colors"
+          >
+            <Minimize2 size={14} />
+            <span>PiP</span>
+          </button>
         </div>
       </div>
     </div>

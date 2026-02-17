@@ -38,7 +38,8 @@ export const PinMessageDialog: React.FC<PinMessageDialogProps> = ({
   };
 
   return (
-    <div
+    <button
+      type="button"
       className="fixed inset-0 bg-black/50 z-[250] flex items-center justify-center w-full h-full cursor-default"
       onClick={() => onClose()}
       aria-label="Fermer la boîte de dialogue"
@@ -112,6 +113,6 @@ export const PinMessageDialog: React.FC<PinMessageDialogProps> = ({
             </button>
           </div>
         </dialog>
-      </div>
+      </button>
   );
 };

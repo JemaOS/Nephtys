@@ -220,10 +220,8 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   useEffect(() => {
     if (showControls && !isHoveringControls) {
       startHideTimer();
-    } else {
-      if (controlsTimeoutRef.current) {
-        clearTimeout(controlsTimeoutRef.current);
-      }
+    } else if (controlsTimeoutRef.current) {
+      clearTimeout(controlsTimeoutRef.current);
     }
     return () => {
       if (controlsTimeoutRef.current) {
@@ -1061,6 +1059,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
       onMouseMove={handleContainerMouseMove}
       aria-modal="true"
       aria-label="Visualiseur de média"
+      role="dialog"
       open
       style={{
         // Ensure the viewer takes full screen on mobile in any orientation
@@ -1133,6 +1132,8 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
       {/* Media content */}
       <div
         aria-label="Visualisation du média"
+        role="region"
+        tabIndex={0}
         className={`flex-1 flex items-center justify-center overflow-hidden media-content-container ${
           isLandscape && isMobile ? 'p-0' : 'p-4 md:p-8'
         }`}

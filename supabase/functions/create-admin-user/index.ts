@@ -117,8 +117,8 @@ Deno.serve(async (req) => {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
-  
-      const userData = await response.json();
+    
+      await response.json();
       return new Response(JSON.stringify({
         success: true,
         message: 'Admin user created successfully via direct SQL',

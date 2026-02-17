@@ -248,8 +248,9 @@ async function fetchProfilesData(supabaseUrl: string, supabaseServiceKey: string
   const profilesMap = new Map();
   
   if (userIds.length > 0) {
+    const userIdList = userIds.map((id: string) => `"${id}"`).join(',');
     const profilesResponse = await fetch(
-      `${supabaseUrl}/rest/v1/profiles?id=in.(${userIds.map((id: string) => `"${id}"`).join(',')})&select=id,username,display_name,avatar_url,bio,session_id,public_key,created_at,updated_at`,
+      `${supabaseUrl}/rest/v1/profiles?id=in.(${userIdList})&select=id,username,display_name,avatar_url,bio,session_id,public_key,created_at,updated_at`,
       {
         headers: {
           'Authorization': `Bearer ${supabaseServiceKey}`,

@@ -535,11 +535,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = React.memo(({
                     } else {
                       // For direct conversations, navigate to groups page to create a new group
                       // Pass the other user's ID as a query parameter to pre-select them
-                      if (otherUser) {
-                        navigate(`/groups/new?createWith=${otherUser.id}`)
-                      } else {
-                        navigate('/groups/new')
-                      }
+                      navigate(`/groups/new?createWith=${otherUser?.id || ''}`)
                     }
                   }}
                   className="w-full px-4 py-3 text-left hover:bg-bg-hover transition-colors text-text-primary text-sm flex items-center gap-3"
@@ -1167,7 +1163,6 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = React.memo((
           handleSelectMessage(message.id)
         }
       }}
-      role="button"
       aria-label={`Message de ${isOwn ? 'vous' : 'autre utilisateur'}`}
       // tabIndex is appropriate here - message items need keyboard navigation for accessibility
       // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
@@ -1200,7 +1195,6 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = React.memo((
           }
           handleContextMenu(e, message)
         }}
-        role="group"
         aria-label="Contenu du message"
       >
         <MessageContent
@@ -1368,7 +1362,6 @@ export const MessageList: React.FC<MessageListProps> = React.memo(({
       style={getWallpaperStyle()}
       onContextMenu={handleBackgroundContextMenu}
       onScroll={onScroll}
-      role="group"
       aria-label="Liste des messages"
       // tabIndex is appropriate here - message list needs keyboard navigation for accessibility
       // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
@@ -1387,64 +1380,70 @@ export const MessageList: React.FC<MessageListProps> = React.memo(({
           <span className="text-xs text-text-secondary">↓ Faire défiler vers le haut pour charger plus</span>
         </div>
       )}
-      {loading ? (
-        null
-      ) : messages.length === 0 ? (
-        <div className="flex flex-col items-center justify-center flex-1 text-center space-y-3 px-8 my-auto">
-          <div className="w-16 h-16 rounded-full bg-bg-surface flex items-center justify-center">
-            <svg width="24" height="28" viewBox="0 0 16 20" fill="#8696a0">
-              <path d="M13 7h-1V5c0-2.21-1.79-4-4-4S4 2.79 4 5v2H3c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2zm-5 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H4.9V5c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/>
-            </svg>
-          </div>
-          <div>
-            <p className="text-sm text-text-secondary mb-1">Les messages sont chiffrés de bout en bout</p>
-            <p className="text-xs text-text-secondary">Personne en dehors de cette discussion ne peut les lire</p>
-          </div>
-        </div>
-      ) : (
-        <>
-          <div>
-          {timelineItems.map((item) => (
-            <TimelineItemComponent
-              key={item.type === 'call' ? `call-${item.data.id}` : `message-${item.data.id}`}
-              item={item}
-              user={user}
-              reactions={reactions}
-              selectedMessages={selectedMessages}
-              hoveredMessageId={hoveredMessageId}
-              setHoveredMessageId={setHoveredMessageId}
-              handleTouchStart={handleTouchStart}
-              handleTouchEnd={handleTouchEnd}
-              handleTouchMove={handleTouchMove}
-              handleSelectMessage={handleSelectMessage}
-              isSelectionMode={isSelectionMode}
-              isMobile={isMobile}
-              setReplyToMessage={setReplyToMessage}
-              handleForwardMessage={handleForwardMessage}
-              setQuickReactionBar={setQuickReactionBar}
-              handleContextMenu={handleContextMenu}
-              setContextMenu={setContextMenu}
-              getSenderInfo={getSenderInfo}
-              setGifStickerViewer={setGifStickerViewer}
-              handlePinMessage={handlePinMessage}
-              addReaction={addReaction}
-              removeReaction={removeReaction}
-              handleStarMessage={handleStarMessage}
-              allMediaItems={allMediaItems}
-              getMediaIndexForMessage={getMediaIndexForMessage}
-              handleMediaNavigate={handleMediaNavigate}
-              scrollToMessage={scrollToMessage}
-              handleStartVideoCall={handleStartVideoCall}
-              handleStartAudioCall={handleStartAudioCall}
-              otherUser={otherUser}
-              messages={messages}
-            />
-          ))}
-          </div>
-          {/* Spacer element to ensure scroll goes past the last message */}
-          <div ref={messagesEndRef} className="h-1 md:h-4" />
-        </>
-      )}
+      {(() => {
+        if (loading) {
+          return null
+        }
+        if (messages.length === 0) {
+          return (
+            <div className="flex flex-col items-center justify-center flex-1 text-center space-y-3 px-8 my-auto">
+              <div className="w-16 h-16 rounded-full bg-bg-surface flex items-center justify-center">
+                <svg width="24" height="28" viewBox="0 0 16 20" fill="#8696a0">
+                  <path d="M13 7h-1V5c0-2.21-1.79-4-4-4S4 2.79 4 5v2H3c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2zm-5 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H4.9V5c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/>
+                </svg>
+              </div>
+              <div>
+                <p className="text-sm text-text-secondary mb-1">Les messages sont chiffrés de bout en bout</p>
+                <p className="text-xs text-text-secondary">Personne en dehors de cette discussion ne peut les lire</p>
+              </div>
+            </div>
+          )
+        }
+        return (
+          <>
+            <div>
+            {timelineItems.map((item) => (
+              <TimelineItemComponent
+                key={item.type === 'call' ? `call-${item.data.id}` : `message-${item.data.id}`}
+                item={item}
+                user={user}
+                reactions={reactions}
+                selectedMessages={selectedMessages}
+                hoveredMessageId={hoveredMessageId}
+                setHoveredMessageId={setHoveredMessageId}
+                handleTouchStart={handleTouchStart}
+                handleTouchEnd={handleTouchEnd}
+                handleTouchMove={handleTouchMove}
+                handleSelectMessage={handleSelectMessage}
+                isSelectionMode={isSelectionMode}
+                isMobile={isMobile}
+                setReplyToMessage={setReplyToMessage}
+                handleForwardMessage={handleForwardMessage}
+                setQuickReactionBar={setQuickReactionBar}
+                handleContextMenu={handleContextMenu}
+                setContextMenu={setContextMenu}
+                getSenderInfo={getSenderInfo}
+                setGifStickerViewer={setGifStickerViewer}
+                handlePinMessage={handlePinMessage}
+                addReaction={addReaction}
+                removeReaction={removeReaction}
+                handleStarMessage={handleStarMessage}
+                allMediaItems={allMediaItems}
+                getMediaIndexForMessage={getMediaIndexForMessage}
+                handleMediaNavigate={handleMediaNavigate}
+                scrollToMessage={scrollToMessage}
+                handleStartVideoCall={handleStartVideoCall}
+                handleStartAudioCall={handleStartAudioCall}
+                otherUser={otherUser}
+                messages={messages}
+              />
+            ))}
+            </div>
+            {/* Spacer element to ensure scroll goes past the last message */}
+            <div ref={messagesEndRef} className="h-1 md:h-4" />
+          </>
+        )
+      })()}
       </div>
     </div>
   )

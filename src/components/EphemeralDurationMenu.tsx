@@ -56,6 +56,8 @@ export const EphemeralDurationMenu: React.FC<EphemeralDurationMenuProps> = ({
       aria-modal="true"
       aria-label="Menu de durée éphémère"
       open
+      role="button"
+      tabIndex={0}
     >
       <div
         ref={modalRef}

@@ -238,6 +238,7 @@ export const MediaViewerHeader: React.FC<MediaViewerHeaderProps> = ({
     }`}
     onMouseEnter={() => setIsHoveringControls(true)}
     onMouseLeave={() => setIsHoveringControls(false)}
+    role="banner"
   >
     <div className="flex items-center justify-between p-3 md:p-4 bg-gradient-to-b from-black/80 to-transparent">
       {/* Left side - Sender info */}
@@ -311,6 +312,8 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
     } ${isDragging ? 'cursor-grabbing' : ''}`}
     onMouseDown={handleMouseDown}
     onMouseMove={handleMouseMove}
+    role="region"
+    aria-label="Visionneuse d'image"
     style={{
       transform: zoom <= 1 ? `translateX(${swipeOffset}px)` : 'none',
       transition: isSwipeActive ? 'none' : 'transform 0.15s ease-out',
@@ -688,10 +691,10 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
     
     <div className="flex flex-col items-center gap-4">
       {/* Waveform visualization placeholder */}
-      <div className="w-full h-16 bg-bg-hover rounded-lg flex items-center justify-center gap-1">
+      <div className="w-full h-16 bg-bg-hover rounded-lg flex items-center justify-center gap-1" aria-hidden="true">
         {Array.from({ length: 30 }).map((_, idx) => (
           <div
-            key={idx}
+            key={`waveform-${idx}`}
             className={`w-1 bg-accent rounded-full transition-all ${
               isPlaying ? 'animate-pulse' : ''
             }`}

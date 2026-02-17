@@ -103,7 +103,7 @@ export class WebRTCManager {
           event.track.enabled = true;
         }
 
-        if (event.streams && event.streams[0]) {
+        if (event.streams?.[0]) {
           const stream = event.streams[0];
           console.log('🎥 WebRTC: Remote stream received, tracks:', stream.getTracks().length);
           

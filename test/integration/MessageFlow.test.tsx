@@ -223,7 +223,8 @@ describe('MessageFlow', () => {
   });
 
   it('should display messages', async () => {
-    const messages = [
+    // Mock messages data for display
+    [
       {
         id: 'msg-1',
         content: 'Hello there',

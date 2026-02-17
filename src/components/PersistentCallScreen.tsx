@@ -82,7 +82,7 @@ export function PersistentCallScreen() {
   }, [checkIsVideoCall, remoteStream, remoteVideoEnabled]);
 
   // Helper: Handle drag start - extracted
-  const handleDragStartCallback = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+  const handleDragStart = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     if (!pipRef.current) return
     
     setIsDragging(true)

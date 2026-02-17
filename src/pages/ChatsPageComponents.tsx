@@ -463,25 +463,26 @@ const ConversationItem = ({
         )}
         
         <div className="relative">
-          {conversation.type === 'direct' && conversation.otherUserProfile?.avatar_url ? (
-            <img
-              src={conversation.otherUserProfile.avatar_url}
-              alt={displayName}
-              className="w-12 h-12 rounded-full object-cover flex-shrink-0"
-              key={conversation.otherUserProfile.avatar_url}
-            />
-          ) : conversation.avatar_url ? (
-            <img
-              src={conversation.avatar_url}
-              alt={displayName}
-              className="w-12 h-12 rounded-full object-cover flex-shrink-0"
-              key={conversation.avatar_url}
-            />
-          ) : (
-            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold text-lg flex-shrink-0">
-              {displayName[0]?.toUpperCase()}
-            </div>
-          )}
+          {(() => {
+            const avatarUrl = conversation.type === 'direct'
+              ? conversation.otherUserProfile?.avatar_url
+              : conversation.avatar_url
+            if (avatarUrl) {
+              return (
+                <img
+                  src={avatarUrl}
+                  alt={displayName}
+                  className="w-12 h-12 rounded-full object-cover flex-shrink-0"
+                  key={avatarUrl}
+                />
+              )
+            }
+            return (
+              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold text-lg flex-shrink-0">
+                {displayName[0]?.toUpperCase()}
+              </div>
+            )
+          })()}
           {!isSelectionMode && conversation.is_pinned && (
             <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-accent flex items-center justify-center">
               <Pin size={12} className="text-white" />
@@ -550,16 +551,20 @@ export const ChatsList = ({
   formatDate: (date: string) => string;
 }) => (
   <div className="flex-1 overflow-y-auto pb-4">
-    {isLoading ? (
-      <ConversationSkeleton />
-    ) : filteredConversations.length === 0 ? (
-      <div className="flex flex-col items-center justify-center h-full text-center px-8">
-        <MessageCircle size={64} className="text-[#3b4a54] mb-4" />
-        <h3 className="text-lg font-medium text-text-secondary mb-2">Aucune conversation</h3>
-        <p className="text-sm text-text-secondary">Commencez une nouvelle discussion</p>
-      </div>
-    ) : (
-      filteredConversations.map((conversation) =>
+    {(() => {
+      if (isLoading) {
+        return <ConversationSkeleton />
+      }
+      if (filteredConversations.length === 0) {
+        return (
+          <div className="flex flex-col items-center justify-center h-full text-center px-8">
+            <MessageCircle size={64} className="text-[#3b4a54] mb-4" />
+            <h3 className="text-lg font-medium text-text-secondary mb-2">Aucune conversation</h3>
+            <p className="text-sm text-text-secondary">Commencez une nouvelle discussion</p>
+          </div>
+        )
+      }
+      return filteredConversations.map((conversation) =>
         renderConversationItem(
           conversation,
           selectedConversations,
@@ -569,6 +574,6 @@ export const ChatsList = ({
           formatDate
         )
       )
-    )}
+    })()}
   </div>
 )

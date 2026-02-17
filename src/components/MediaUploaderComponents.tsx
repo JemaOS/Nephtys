@@ -267,37 +267,45 @@ export const StickerPicker: React.FC<StickerPickerProps> = ({
       </div>
       
       {/* Stickers grid */}
-      {loadingStickers ? (
-        <div className="flex justify-center py-8">
-          <Loader2 size={32} className="animate-spin text-accent" />
-        </div>
-      ) : stickers.length > 0 ? (
-        <div className="grid grid-cols-3 gap-3">
-          {stickers.map((sticker) => {
-            const stickerUrl = sticker.media_formats?.tinywebp?.url || sticker.media_formats?.tinygif?.url;
-            const stickerAlt = sticker.content_description || 'Sticker';
-            return (
-              <button
-                key={sticker.id}
-                onClick={() => handleStickerSelect(sticker)}
-                className="aspect-square rounded-xl overflow-hidden bg-transparent hover:bg-bg-hover transition-all p-2"
-              >
-                <img
-                  src={stickerUrl}
-                  alt={stickerAlt}
-                  className="w-full h-full object-contain"
-                  loading="lazy"
-                />
-              </button>
-            );
-          })}
-        </div>
-      ) : (
-        <div className="text-center py-8 text-text-secondary">
-          <p>Aucun sticker trouvé</p>
-          <p className="text-xs mt-1">Essayez une autre recherche</p>
-        </div>
-      )}
+      {(() => {
+        if (loadingStickers) {
+          return (
+            <div className="flex justify-center py-8">
+              <Loader2 size={32} className="animate-spin text-accent" />
+            </div>
+          );
+        }
+        if (stickers.length > 0) {
+          return (
+            <div className="grid grid-cols-3 gap-3">
+              {stickers.map((sticker) => {
+                const stickerUrl = sticker.media_formats?.tinywebp?.url || sticker.media_formats?.tinygif?.url;
+                const stickerAlt = sticker.content_description || 'Sticker';
+                return (
+                  <button
+                    key={sticker.id}
+                    onClick={() => handleStickerSelect(sticker)}
+                    className="aspect-square rounded-xl overflow-hidden bg-transparent hover:bg-bg-hover transition-all p-2"
+                  >
+                    <img
+                      src={stickerUrl}
+                      alt={stickerAlt}
+                      className="w-full h-full object-contain"
+                      loading="lazy"
+                    />
+                  </button>
+                );
+              })}
+            </div>
+          );
+        }
+        return (
+          <div className="text-center py-8 text-text-secondary">
+            <p>Aucun sticker trouvé</p>
+            <p className="text-xs mt-1">Essayez une autre recherche</p>
+          </div>
+        );
+      })()}
       
       {/* Tenor attribution */}
       <p className="text-xs text-text-secondary text-center">

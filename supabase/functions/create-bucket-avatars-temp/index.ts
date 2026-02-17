@@ -24,9 +24,6 @@ Deno.serve(async (req) => {
         });
     }
 
-    // Extract project ref from URL
-    const projectRef = supabaseUrl.split('.')[0].replace('https://', '');
-
     // Storage API endpoint
     const storageUrl = `${supabaseUrl}/storage/v1/bucket`;
 

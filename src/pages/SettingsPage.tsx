@@ -704,8 +704,8 @@ export function SettingsPage() {
         </div>
       </button>
       <div className="py-2">
-        {mainSettings.map((setting, idx) => (
-          <button key={idx} onClick={() => setCurrentView(setting.view)} className="w-full px-6 py-4 flex items-center gap-4 hover:bg-bg-surface transition-colors">
+        {mainSettings.map((setting) => (
+          <button key={setting.view} onClick={() => setCurrentView(setting.view)} className="w-full px-6 py-4 flex items-center gap-4 hover:bg-bg-surface transition-colors">
             <setting.icon size={24} className="text-text-secondary" />
             <div className="flex-1 text-left">
               <div className="text-text-primary font-normal">{setting.label}</div>
@@ -1197,8 +1197,8 @@ export function SettingsPage() {
         { q: 'Comment fonctionne le chiffrement ?', a: 'Nephtys utilise le protocole Signal pour chiffrer vos messages de bout en bout.' },
         { q: 'Mes données sont-elles sauvegardées ?', a: 'En mode normal oui, en mode éphémère non. Tout est supprimé à la déconnexion.' },
         { q: 'Puis-je utiliser Nephtys sur plusieurs appareils ?', a: 'Oui, jusqu\'à 4 appareils simultanément.' },
-      ].map((faq, idx) => (
-        <div key={idx} className="bg-bg-surface rounded-2xl p-4">
+      ].map((faq, index) => (
+        <div key={faq.q} className="bg-bg-surface rounded-2xl p-4">
           <h4 className="text-text-primary font-medium mb-2">{faq.q}</h4>
           <p className="text-sm text-text-secondary">{faq.a}</p>
         </div>
@@ -1328,17 +1328,17 @@ export function SettingsPage() {
 
 // ============ BACKUP VIEW HELPERS ============
 
-// Helper component for password dialog
-const BackupPasswordDialog = ({ 
-  passwordAction, 
-  backupPassword, 
-  setBackupPassword, 
-  setShowPasswordInput, 
-  handleBackup 
-}: { 
-  passwordAction: string, 
-  backupPassword: string, 
-  setBackupPassword: (v: string) => void, 
+// Helper component for password dialog - defined outside main component
+const BackupPasswordDialogComponent = ({
+  passwordAction,
+  backupPassword,
+  setBackupPassword,
+  setShowPasswordInput,
+  handleBackup
+}: {
+  passwordAction: string,
+  backupPassword: string,
+  setBackupPassword: (v: string) => void,
   setShowPasswordInput: (v: boolean) => void,
   handleBackup: (isLight: boolean) => void
 }) => (
@@ -1387,17 +1387,17 @@ const BackupPasswordDialog = ({
   </div>
 )
 
-// Helper component for backup progress
-const BackupProgressDisplay = ({ 
-  isBackingUp, 
-  isRestoring, 
-  backupStatus, 
-  backupProgress 
-}: { 
-  isBackingUp: boolean, 
-  isRestoring: boolean, 
-  backupStatus: string, 
-  backupProgress: number 
+// Helper component for backup progress - defined outside main component
+const BackupProgressDisplayComponent = ({
+  isBackingUp,
+  isRestoring,
+  backupStatus,
+  backupProgress
+}: {
+  isBackingUp: boolean,
+  isRestoring: boolean,
+  backupStatus: string,
+  backupProgress: number
 }) => (
   <div className="px-6 py-4 bg-accent/10 mx-4 rounded-2xl mb-4">
     <div className="flex items-center gap-3 mb-2">
@@ -1414,11 +1414,11 @@ const BackupProgressDisplay = ({
   </div>
 )
 
-// Helper for backup info display
-const BackupInfoDisplay = ({ lastBackupDate, lastBackupSize, estimatedSize }: { 
-  lastBackupDate: Date | null, 
-  lastBackupSize: number, 
-  estimatedSize: number 
+// Helper for backup info display - defined outside main component
+const BackupInfoDisplayComponent = ({ lastBackupDate, lastBackupSize, estimatedSize }: {
+  lastBackupDate: Date | null,
+  lastBackupSize: number,
+  estimatedSize: number
 }) => (
   <div className="px-6 py-4 bg-bg-surface mx-4 rounded-2xl mb-4">
     <div className="space-y-2">
@@ -1442,8 +1442,8 @@ const BackupInfoDisplay = ({ lastBackupDate, lastBackupSize, estimatedSize }: {
   </div>
 )
 
-// Helper for Proton Drive recommendation
-const ProtonDriveRecommendation = () => (
+// Helper for Proton Drive recommendation - defined outside main component
+const ProtonDriveRecommendationComponent = () => (
   <div className="px-6 py-4 border-t border-bg-hover mt-4">
     <div className="bg-[#6d4aff]/10 rounded-2xl p-4">
       <div className="flex items-start gap-3">
@@ -1461,17 +1461,17 @@ const ProtonDriveRecommendation = () => (
   </div>
 )
 
-// Helper component for backup setting toggle
-const BackupSettingToggle = ({ 
-  label, 
-  description, 
-  value, 
-  onChange 
-}: { 
-  label: string, 
-  description: string, 
-  value: boolean, 
-  onChange: (v: boolean) => void 
+// Helper component for backup setting toggle - defined outside main component
+const BackupSettingToggleComponent = ({
+  label,
+  description,
+  value,
+  onChange
+}: {
+  label: string,
+  description: string,
+  value: boolean,
+  onChange: (v: boolean) => void
 }) => (
   <div className="px-6 py-4 border-t border-bg-hover">
     <div className="flex items-center justify-between">
@@ -1489,8 +1489,8 @@ const BackupSettingToggle = ({
   </div>
 )
 
-// Helper component for security info
-const BackupSecurityInfo = () => (
+// Helper component for security info - defined outside main component
+const BackupSecurityInfoComponent = () => (
   <div className="px-6 py-4">
     <div className="bg-bg-surface rounded-2xl p-4">
       <div className="flex items-start gap-3">
@@ -1510,7 +1510,7 @@ const BackupSecurityInfo = () => (
     <div className="flex-1 overflow-y-auto pb-4">
       <div className="py-2">
         {showPasswordInput && (
-          <BackupPasswordDialog 
+          <BackupPasswordDialogComponent
             passwordAction={passwordAction}
             backupPassword={backupPassword}
             setBackupPassword={setBackupPassword}
@@ -1520,7 +1520,7 @@ const BackupSecurityInfo = () => (
         )}
 
         {(isBackingUp || isRestoring) && (
-          <BackupProgressDisplay 
+          <BackupProgressDisplayComponent
             isBackingUp={isBackingUp}
             isRestoring={isRestoring}
             backupStatus={backupStatus}
@@ -1538,7 +1538,7 @@ const BackupSecurityInfo = () => (
           </div>
         </div>
 
-        <BackupInfoDisplay 
+        <BackupInfoDisplayComponent
           lastBackupDate={lastBackupDate}
           lastBackupSize={lastBackupSize}
           estimatedSize={estimatedSize}
@@ -1582,15 +1582,18 @@ const BackupSecurityInfo = () => (
           </button>
         </div>
 
-        <ProtonDriveRecommendation />
+        <ProtonDriveRecommendationComponent />
 
         <div className="px-6 py-4 border-t border-bg-hover">
           <div className="flex items-center justify-between mb-4">
             <div>
               <div className="text-text-primary">Fréquence de rappel</div>
               <div className="text-text-secondary text-sm">
-                {backupSettings.frequency === 'daily' ? 'Tous les jours' : 
-                 backupSettings.frequency === 'weekly' ? 'Toutes les semaines' : 'Tous les mois'}
+                {(() => {
+                  if (backupSettings.frequency === 'daily') return 'Tous les jours'
+                  if (backupSettings.frequency === 'weekly') return 'Toutes les semaines'
+                  return 'Tous les mois'
+                })()}
               </div>
             </div>
             <select 
@@ -1606,35 +1609,35 @@ const BackupSecurityInfo = () => (
           </div>
         </div>
 
-        <BackupSettingToggle 
+        <BackupSettingToggleComponent
           label="Inclure les images"
           description="Photos et images partagées"
           value={backupSettings.includeImages}
           onChange={(v) => updateBackupSettings({ includeImages: v })}
         />
 
-        <BackupSettingToggle 
+        <BackupSettingToggleComponent
           label="Inclure les vidéos"
           description="Les vidéos peuvent augmenter la taille de la sauvegarde"
           value={backupSettings.includeVideos}
           onChange={(v) => updateBackupSettings({ includeVideos: v })}
         />
 
-        <BackupSettingToggle 
+        <BackupSettingToggleComponent
           label="Inclure les messages vocaux"
           description="Messages vocaux et fichiers audio"
           value={backupSettings.includeAudio}
           onChange={(v) => updateBackupSettings({ includeAudio: v })}
         />
 
-        <BackupSettingToggle 
+        <BackupSettingToggleComponent
           label="Inclure les fichiers"
           description="Documents, PDF et autres fichiers"
           value={backupSettings.includeFiles}
           onChange={(v) => updateBackupSettings({ includeFiles: v })}
         />
 
-        <BackupSecurityInfo />
+        <BackupSecurityInfoComponent />
       </div>
     </div>
   )

@@ -289,6 +289,7 @@ export function ChatsPage() {
 
   // Legacy function name for compatibility with existing code
   const loadConversations = useCallback(() => loadConversationsFromServer(true), [loadConversationsFromServer])
+  // Avoid using loadConversations directly as it doesn't provide additional value over loadConversationsFromServer
 
   // Load from cache first, then sync with server (WhatsApp-like behavior)
   const loadConversationsWithCacheFirst = useCallback(async () => {
@@ -341,8 +342,8 @@ export function ChatsPage() {
   
   // Instant handler for new message in a conversation (for updating last_message_at instantly)
   const handleNewMessageInConversation = useCallback((payload: any) => {
-    const newMessage = payload.new
-    if (newMessage && newMessage.conversation_id) {
+    const newMessage = payload?.new
+    if (newMessage?.conversation_id) {
       // Instantly update the conversation's last_message_at
       setConversations(prev => {
         // Check if conversation exists in current list

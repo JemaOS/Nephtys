@@ -552,79 +552,6 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
     }
   }, [activeTool, cropMode, handleDrawStart, handleCropStart, handleBlurStart, handleTextTool, handleShapeTool]);
 
-  // Mouse/Touch handlers with useCallback to prevent unnecessary re-renders
-  const handlePointerDown = useCallback((e: React.MouseEvent | React.TouchEvent) => {
-    // Prevent default to stop scrolling and other browser behaviors
-    if ('touches' in e) {
-      e.preventDefault();
-    }
-    
-    const coords = getCanvasCoords(e);
-    if (!coords) return;
-
-    // Route to appropriate handler based on active tool
-    routeToolHandler(coords);
-  }, [getCanvasCoords, routeToolHandler]);
-
-  const handlePointerMove = useCallback((e: React.MouseEvent | React.TouchEvent) => {
-    // Prevent default to stop scrolling during drag
-    if ('touches' in e) {
-      e.preventDefault();
-    }
-    
-    const coords = getCanvasCoords(e);
-    if (!coords) return;
-
-    if (isDrawing && activeTool === 'draw') {
-      setCurrentPath(prev => {
-        if (!prev) return null;
-        return {
-          ...prev,
-          points: [...prev.points, coords],
-        };
-      });
-    } else if ((activeTool === 'crop' || cropMode) && isCroppingRef.current) {
-      // Use ref to track last position for smoother updates
-      lastCropEndRef.current = coords;
-      setCropEnd(coords);
-    } else if (activeTool === 'blur' && blurStart) {
-      // Preview blur region - could add visual feedback here
-    }
-  }, [activeTool, cropMode, isDrawing, blurStart, getCanvasCoords]);
-
-  const handlePointerUp = useCallback((e: React.MouseEvent | React.TouchEvent) => {
-    const coords = getCanvasCoords(e) || lastCropEndRef.current;
-
-    if (isDrawing && currentPath) {
-      setDrawPaths(prev => [...prev, currentPath]);
-      setCurrentPath(null);
-      setIsDrawing(false);
-    } else if ((activeTool === 'crop' || cropMode) && isCroppingRef.current) {
-      isCroppingRef.current = false;
-      // Keep the crop selection visible - don't reset cropStart/cropEnd here
-    } else if (activeTool === 'blur' && blurStart && coords) {
-      const x = Math.min(blurStart.x, coords.x);
-      const y = Math.min(blurStart.y, coords.y);
-      const width = Math.abs(coords.x - blurStart.x);
-      const height = Math.abs(coords.y - blurStart.y);
-      
-      if (width > 10 && height > 10) {
-        setBlurRegions(prev => [...prev, { x, y, width, height, intensity: blurIntensity }]);
-      }
-      setBlurStart(null);
-    }
-  }, [activeTool, cropMode, isDrawing, currentPath, blurStart, blurIntensity, getCanvasCoords]);
-
-  // Handle pointer leave - important for when mouse leaves canvas during drag
-  const handlePointerLeave = useCallback((e: React.MouseEvent | React.TouchEvent) => {
-    // Don't end crop operation on leave - user might come back
-    if (isDrawing && currentPath) {
-      setDrawPaths(prev => [...prev, currentPath]);
-      setCurrentPath(null);
-      setIsDrawing(false);
-    }
-  }, [isDrawing, currentPath]);
-
   // Rotation handlers
   const rotateLeft = () => setRotation((r) => (r - 90) % 360);
 
@@ -761,22 +688,6 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
     link.click();
   }, [fileName, hdQuality]);
 
-  // Save/Send image - wrapped in useCallback
-  const handleSaveCallback = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    canvas.toBlob(
-      (blob) => {
-        if (blob) {
-          onSave(blob, `edited_${fileName}`);
-        }
-      },
-      'image/png',
-      hdQuality ? 1 : 0.8
-    );
-  }, [onSave, fileName, hdQuality]);
-
   const handleSend = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas || !onSend) return;
@@ -867,7 +778,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
             ref={canvasRef}
             className="max-w-full max-h-full rounded-lg shadow-lg"
             style={{
-              cursor: activeTool === 'draw' ? 'crosshair' : activeTool === 'crop' || cropMode ? 'crosshair' : 'default',
+              cursor: activeTool === 'draw' ? 'crosshair' : (activeTool === 'crop' || cropMode) ? 'crosshair' : 'default',
               touchAction: 'none',
               userSelect: 'none',
             }}

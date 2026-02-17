@@ -138,7 +138,7 @@ export async function verify2FAEnrollment(
     }
     
     // Then verify with the code
-    const { data, error } = await supabase.auth.mfa.verify({
+    const { error } = await supabase.auth.mfa.verify({
       factorId,
       challengeId: challengeData.id,
       code

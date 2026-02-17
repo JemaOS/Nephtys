@@ -54,7 +54,7 @@ const findSavedMessagesConversation = async (supabase: any, userId: string): Pro
         .select('user_id')
         .eq('conversation_id', conv.id)
       
-      if (members && members.length === 1 && members[0].user_id === userId) {
+      if (members?.length === 1 && members[0]?.user_id === userId) {
         return { exists: true, conversationId: conv.id }
       }
     }
@@ -77,7 +77,7 @@ const findDirectConversation = async (supabase: any, userId: string, contactUser
         .eq('id', member.conversation_id)
         .maybeSingle()
       
-      if (!conversationData || conversationData.type !== 'direct') {
+      if (conversationData?.type !== 'direct') {
         continue
       }
 
@@ -161,6 +161,50 @@ const findCachedConversation = async (
 };
 
 // Helper: Find existing conversation in database (moved to module level to reduce complexity)
+const findSelfConversation = async (
+  supabase: any,
+  userId: string
+): Promise<string | null> => {
+  const { data: savedMessagesConv } = await supabase
+    .from('conversations')
+    .select('id')
+    .eq('type', 'direct')
+    .eq('created_by', userId)
+    .eq('name', 'Messages enregistrés')
+    .maybeSingle();
+  
+  return savedMessagesConv?.id || null;
+};
+
+const findDirectConversationWithContact = async (
+  supabase: any,
+  userId: string,
+  contactId: string
+): Promise<string | null> => {
+  const { data: existingConv } = await supabase
+    .from('conversation_members')
+    .select(`
+      conversation_id,
+      conversations!conversation_members_conversation_id_fkey!inner(id, type)
+    `)
+    .eq('user_id', contactId)
+    .eq('conversations.type', 'direct');
+  
+  if (existingConv && existingConv.length > 0) {
+    const convIds = existingConv.map(c => c.conversation_id);
+    const { data: userMembership } = await supabase
+      .from('conversation_members')
+      .select('conversation_id')
+      .eq('user_id', userId)
+      .in('conversation_id', convIds)
+      .limit(1)
+      .maybeSingle();
+    
+    return userMembership?.conversation_id || null;
+  }
+  return null;
+};
+
 const findExistingConversation = async (
   supabase: any,
   isSelfContact: boolean,
@@ -168,38 +212,9 @@ const findExistingConversation = async (
   contactId: string
 ): Promise<string | null> => {
   if (isSelfContact) {
-    const { data: savedMessagesConv } = await supabase
-      .from('conversations')
-      .select('id')
-      .eq('type', 'direct')
-      .eq('created_by', userId)
-      .eq('name', 'Messages enregistrés')
-      .maybeSingle();
-    
-    return savedMessagesConv?.id || null;
+    return findSelfConversation(supabase, userId);
   } else {
-    const { data: existingConv } = await supabase
-      .from('conversation_members')
-      .select(`
-        conversation_id,
-        conversations!conversation_members_conversation_id_fkey!inner(id, type)
-      `)
-      .eq('user_id', contactId)
-      .eq('conversations.type', 'direct');
-    
-    if (existingConv && existingConv.length > 0) {
-      const convIds = existingConv.map(c => c.conversation_id);
-      const { data: userMembership } = await supabase
-        .from('conversation_members')
-        .select('conversation_id')
-        .eq('user_id', userId)
-        .in('conversation_id', convIds)
-        .limit(1)
-        .maybeSingle();
-      
-      return userMembership?.conversation_id || null;
-    }
-    return null;
+    return findDirectConversationWithContact(supabase, userId, contactId);
   }
 };
 
@@ -592,7 +607,7 @@ export function ContactsPage() {
         .eq('id', conv.conversation_id)
         .maybeSingle()
       
-      if (!conversationData || conversationData.type !== 'direct') continue
+      if (conversationData?.type !== 'direct') continue
 
       const { data: allMembers } = await supabase
         .from('conversation_members')
@@ -626,7 +641,7 @@ export function ContactsPage() {
         .eq('id', conv.conversation_id)
         .maybeSingle()
       
-      if (!conversationData || conversationData.type !== 'direct') continue
+      if (conversationData?.type !== 'direct') continue
 
       const { data: allMembers } = await supabase
         .from('conversation_members')
@@ -669,7 +684,7 @@ export function ContactsPage() {
         .eq('id', conv.conversation_id)
         .maybeSingle()
       
-      if (!groupData || groupData.type !== 'group') continue
+      if (groupData?.type !== 'group') continue
       
       const { data: groupMembers } = await supabase
         .from('conversation_members')
@@ -918,103 +933,112 @@ const getContactsToDelete = (
 
         {/* Contacts List */}
         <div className="flex-1 overflow-y-auto pb-2">
-          {loading ? (
-            // Skeleton loading for better UX
-            <div className="space-y-0">
-              {[1, 2, 3, 4, 5].map((i) => (
-                <div key={i} className="px-4 py-3 animate-pulse">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-full bg-bg-hover flex-shrink-0" />
-                    <div className="flex-1 min-w-0 border-b border-bg-hover pb-3">
-                      <div className="h-4 bg-bg-hover rounded w-32 mb-2" />
-                      <div className="h-3 bg-bg-hover rounded w-24" />
+          {(() => {
+            if (loading) {
+              return (
+                <div className="space-y-0">
+                  {[1, 2, 3, 4, 5].map((i) => (
+                    <div key={i} className="px-4 py-3 animate-pulse">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-full bg-bg-hover flex-shrink-0" />
+                        <div className="flex-1 min-w-0 border-b border-bg-hover pb-3">
+                          <div className="h-4 bg-bg-hover rounded w-32 mb-2" />
+                          <div className="h-3 bg-bg-hover rounded w-24" />
+                        </div>
+                        <div className="w-10 h-10 rounded-full bg-bg-hover flex-shrink-0" />
+                      </div>
                     </div>
-                    <div className="w-10 h-10 rounded-full bg-bg-hover flex-shrink-0" />
-                  </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          ) : filteredContacts.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-center px-8">
-              <UserPlus size={64} className="text-[#3b4a54] mb-4" />
-              <h3 className="text-lg font-medium text-text-secondary mb-2">Aucun contact</h3>
-              <p className="text-sm text-text-secondary mb-4">Ajoutez des contacts pour commencer</p>
-              <button
-                onClick={() => setShowAddModal(true)}
-                className="px-6 py-2 rounded-lg bg-accent hover:bg-[#5a5ec9] text-white font-medium transition-colors"
-              >
-                Ajouter un contact
-              </button>
-            </div>
-          ) : (
-            filteredContacts.map((contact) => (
-              <button
-                type="button"
-                key={contact.id}
-                className={`w-full px-4 py-3 hover:bg-bg-surface transition-colors cursor-pointer text-left ${
-                  selectedContacts.has(contact.id) ? 'bg-accent/10' : ''
-                }`}
-                onClick={() => {
-                  if (isSelectionMode) {
-                    toggleContactSelection(contact.id)
-                  }
-                }}
-              >
-                <div className="flex items-center gap-3">
-                  {/* Selection checkbox */}
-                  {isSelectionMode && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
+              )
+            }
+            if (filteredContacts.length === 0) {
+              return (
+                <div className="flex flex-col items-center justify-center h-full text-center px-8">
+                  <UserPlus size={64} className="text-[#3b4a54] mb-4" />
+                  <h3 className="text-lg font-medium text-text-secondary mb-2">Aucun contact</h3>
+                  <p className="text-sm text-text-secondary mb-4">Ajoutez des contacts pour commencer</p>
+                  <button
+                    onClick={() => setShowAddModal(true)}
+                    className="px-6 py-2 rounded-lg bg-accent hover:bg-[#5a5ec9] text-white font-medium transition-colors"
+                  >
+                    Ajouter un contact
+                  </button>
+                </div>
+              )
+            }
+            return (
+              <>
+                {filteredContacts.map((contact) => (
+                  <button
+                    type="button"
+                    key={contact.id}
+                    className={`w-full px-4 py-3 hover:bg-bg-surface transition-colors cursor-pointer text-left ${
+                      selectedContacts.has(contact.id) ? 'bg-accent/10' : ''
+                    }`}
+                    onClick={() => {
+                      if (isSelectionMode) {
                         toggleContactSelection(contact.id)
-                      }}
-                      className={`w-6 h-6 rounded-full flex items-center justify-center transition-all flex-shrink-0 ${
-                        selectedContacts.has(contact.id)
-                          ? 'bg-accent text-white'
-                          : 'bg-bg-hover text-text-tertiary border border-bg-hover'
-                      }`}
-                    >
-                      <Check size={14} />
-                    </button>
-                  )}
-                  
-                  {/* Avatar with profile photo */}
-                  {contact.profile.avatar_url ? (
-                    <img
-                      src={contact.profile.avatar_url}
-                      alt={contact.profile.display_name || contact.profile.username}
-                      className="w-12 h-12 rounded-full object-cover flex-shrink-0"
-                    />
-                  ) : (
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold text-lg flex-shrink-0">
-                      {(contact.profile.display_name || contact.profile.username)[0].toUpperCase()}
-                    </div>
-                  )}
-                  
-                  <div className="flex-1 min-w-0 border-b border-bg-hover pb-3">
-                    <h3 className="text-text-primary font-normal truncate">
-                      {contact.nickname || contact.profile.display_name || contact.profile.username}
-                    </h3>
-                    <p className="text-sm text-text-secondary truncate">
-                      @{contact.profile.username}
-                    </p>
-                  </div>
+                      }
+                    }}
+                  >
+                    <div className="flex items-center gap-3">
+                      {/* Selection checkbox */}
+                      {isSelectionMode && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            toggleContactSelection(contact.id)
+                          }}
+                          className={`w-6 h-6 rounded-full flex items-center justify-center transition-all flex-shrink-0 ${
+                            selectedContacts.has(contact.id)
+                              ? 'bg-accent text-white'
+                              : 'bg-bg-hover text-text-tertiary border border-bg-hover'
+                          }`}
+                        >
+                          <Check size={14} />
+                        </button>
+                      )}
+                      
+                      {/* Avatar with profile photo */}
+                      {contact.profile.avatar_url ? (
+                        <img
+                          src={contact.profile.avatar_url}
+                          alt={contact.profile.display_name || contact.profile.username}
+                          className="w-12 h-12 rounded-full object-cover flex-shrink-0"
+                        />
+                      ) : (
+                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold text-lg flex-shrink-0">
+                          {(contact.profile.display_name || contact.profile.username)[0].toUpperCase()}
+                        </div>
+                      )}
+                      
+                      <div className="flex-1 min-w-0 border-b border-bg-hover pb-3">
+                        <h3 className="text-text-primary font-normal truncate">
+                          {contact.nickname || contact.profile.display_name || contact.profile.username}
+                        </h3>
+                        <p className="text-sm text-text-secondary truncate">
+                          @{contact.profile.username}
+                        </p>
+                      </div>
 
-                  {!isSelectionMode && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        createConversation(contact.contact_user_id)
-                      }}
-                      className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors flex-shrink-0"
-                    >
-                      <MessageCircle size={20} className="text-[#787add]" />
-                    </button>
-                  )}
-                </div>
-              </button>
-            ))
-          )}
+                      {!isSelectionMode && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            createConversation(contact.contact_user_id)
+                          }}
+                          className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors flex-shrink-0"
+                        >
+                          <MessageCircle size={20} className="text-[#787add]" />
+                        </button>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </>
+            )
+          })()}
         </div>
       </div>
 

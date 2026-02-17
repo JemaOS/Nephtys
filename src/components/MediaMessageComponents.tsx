@@ -292,24 +292,6 @@ export const ImageRenderer: React.FC<{
   const srcSet = generateSrcSet(url);
   const blurPlaceholder = thumbnail || generateBlurPlaceholder(url);
   
-  const getContainerStyle = (): React.CSSProperties => {
-    if (imageDimensions) {
-      const displayDims = calculateDisplayDimensions(imageDimensions);
-      const aspectRatio = imageDimensions.width / imageDimensions.height;
-      return {
-        width: '100%',
-        maxWidth: `${displayDims.width}px`,
-        aspectRatio: `${aspectRatio}`,
-        maxHeight: '400px',
-      };
-    }
-    return {
-      width: '100%',
-      maxWidth: '200px',
-      aspectRatio: '1',
-      maxHeight: '400px',
-    };
-  };
   const hasKnownDimensions = !!imageDimensions;
   
   return (

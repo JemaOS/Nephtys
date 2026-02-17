@@ -460,7 +460,7 @@ describe('Double Ratchet Algorithm', () => {
       const restored = deserializeRatchetState(serialized);
       
       // Should be able to continue conversation
-      const [state2, encrypted] = encryptMessage(restored, 'After restore');
+      const [, encrypted] = encryptMessage(restored, 'After restore');
       const [, decrypted] = decryptMessage(bobState, encrypted);
       
       expect(decrypted).toBe('After restore');

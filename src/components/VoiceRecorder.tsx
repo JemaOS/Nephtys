@@ -92,33 +92,29 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
       // Determine the best supported audio format
       // Priority: MP4/AAC (most compatible) > audio/webm (basic) > audio/ogg
       // Note: We avoid opus codec as it has playback issues on some browsers
-      let mimeType = 'audio/webm';
       const audioBitsPerSecond = 128000; // 128 kbps for high quality voice
       
       // Check for MP4/AAC first - most universally supported for playback
       if (MediaRecorder.isTypeSupported('audio/mp4')) {
-        mimeType = 'audio/mp4';
+        mimeTypeRef.current = 'audio/mp4';
       } else if (MediaRecorder.isTypeSupported('audio/mp4;codecs=aac')) {
-        mimeType = 'audio/mp4;codecs=aac';
+        mimeTypeRef.current = 'audio/mp4;codecs=aac';
       } else if (MediaRecorder.isTypeSupported('audio/aac')) {
-        mimeType = 'audio/aac';
+        mimeTypeRef.current = 'audio/aac';
       } else if (MediaRecorder.isTypeSupported('audio/webm')) {
         // Basic WebM without opus codec - better compatibility
-        mimeType = 'audio/webm';
+        mimeTypeRef.current = 'audio/webm';
       } else if (MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')) {
         // OGG/Opus as fallback
-        mimeType = 'audio/ogg;codecs=opus';
+        mimeTypeRef.current = 'audio/ogg;codecs=opus';
       } else if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
         // WebM/Opus as last resort
-        mimeType = 'audio/webm;codecs=opus';
+        mimeTypeRef.current = 'audio/webm;codecs=opus';
       }
-      
-      // Store the mimeType for later use when creating the blob
-      mimeTypeRef.current = mimeType;
-      console.log('Using audio format:', mimeType, 'at', audioBitsPerSecond, 'bps');
+      console.log('Using audio format:', mimeTypeRef.current, 'at', audioBitsPerSecond, 'bps');
 
       const mediaRecorder = new MediaRecorder(stream, {
-        mimeType,
+        mimeType: mimeTypeRef.current,
         audioBitsPerSecond,
       });
 
@@ -282,7 +278,7 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
         </div>
         
         {/* Waveform Visualization - Clean animated style */}
-        <div className="flex-1 flex items-center justify-center gap-[2px] h-8 px-2">
+        <div className="flex-1 flex items-center justify-center gap-[2px] h-8 px-2" aria-hidden="true">
           {waveformData.map((value, index) => {
             const isActive = isRecording && !isPaused;
             // Dynamic waveform

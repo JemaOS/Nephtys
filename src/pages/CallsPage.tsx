@@ -104,8 +104,6 @@ export function CallsPage() {
   const [favoriteGroups, setFavoriteGroups] = useState<Map<string, { name: string; avatar_url: string | null }>>(new Map())
   const [contextMenuCall, setContextMenuCall] = useState<CallLog | null>(null)
   const [contextMenuPosition, setContextMenuPosition] = useState<{ x: number; y: number } | null>(null)
-  const [callerName, setCallerName] = useState<string>('')
-  const [callerAvatar, setCallerAvatar] = useState<string | undefined>(undefined)
   
   // Selection mode state (WhatsApp-style)
   const [isSelectionMode, setIsSelectionMode] = useState(false)
@@ -699,7 +697,7 @@ export function CallsPage() {
           .select('user_id')
           .eq('conversation_id', conv.id)
         
-        if (members && members.length === 1 && members[0].user_id === userId) {
+        if (members?.length === 1 && members[0]?.user_id === userId) {
           return conv.id
         }
       }
@@ -722,7 +720,7 @@ export function CallsPage() {
           .eq('id', member.conversation_id)
           .maybeSingle()
         
-        if (!conversationData || conversationData.type !== 'direct') {
+        if (conversationData?.type !== 'direct') {
           continue
         }
 
@@ -783,11 +781,6 @@ export function CallsPage() {
       .select('display_name, username, avatar_url')
       .eq('id', contactId)
       .single()
-
-    if (profile) {
-      setCallerName(profile.display_name || profile.username || 'Utilisateur')
-      setCallerAvatar(profile.avatar_url || undefined)
-    }
 
     // Trouver ou créer une conversation avec ce contact
     const { data: existingMembers } = await supabase
@@ -877,11 +870,6 @@ export function CallsPage() {
         .eq('id', otherUserId)
         .single()
 
-      if (profile) {
-        setCallerName(profile.display_name || profile.username || 'Utilisateur')
-        setCallerAvatar(profile.avatar_url || undefined)
-      }
-
       console.log('🔍 DEBUG: Recall button clicked')
       console.log('  - conversationId:', selectedCall.conversation_id)
       console.log('  - callType:', selectedCall.type)
@@ -953,9 +941,6 @@ export function CallsPage() {
         .eq('id', otherUserId)
         .single()
 
-      setCallerName(profile?.display_name || profile?.username || 'Utilisateur')
-      setCallerAvatar(profile?.avatar_url || undefined)
-      
       try {
         await startCall(otherUserId, contextMenuCall.conversation_id, {
           audio: true,
@@ -1114,28 +1099,132 @@ export function CallsPage() {
     }
   }
 
-  // Component: Call Details Content (shared between mobile and desktop)
-  const CallDetailsContent = ({ call }: { call: CallLog }) => {
+  // CallDetailsContent component moved outside of CallsPage component
+
+  // Helper functions for CallDetailsContent that need to be passed as props
+  const getCallDisplayNameHelper = (call: CallLog, userId: string | undefined): string => {
+    if (call.is_group_call) {
+      return call.conversation_name || 'Groupe'
+    }
+    const isOutgoing = call.caller_id === userId
+    const otherProfile = isOutgoing ? call.callee_profile : call.caller_profile
+    return otherProfile?.display_name || otherProfile?.username || 'Utilisateur'
+  }
+
+  const getCallAvatarUrlHelper = (call: CallLog, userId: string | undefined): string | null | undefined => {
+    if (call.is_group_call) {
+      return call.conversation_avatar
+    }
+    const isOutgoing = call.caller_id === userId
+    const otherProfile = isOutgoing ? call.callee_profile : call.caller_profile
+    return otherProfile?.avatar_url
+  }
+
+  const getCallStatusTextHelper = (call: CallLog, userId: string | undefined): string => {
+    if (call.is_group_call) {
+      return 'Appel de groupe';
+    }
+    const isOutgoing = call.caller_id === userId;
+    return isOutgoing ? 'Appel sortant' : 'Appel entrant';
+  }
+
+  const getCallTypeTextHelper = (call: CallLog): string => {
+    if (call.is_group_call) {
+      return call.type === 'video' ? 'Appel vidéo de groupe' : 'Appel de groupe'
+    }
+    return call.type === 'video' ? 'Appel vidéo' : 'Appel vocal'
+  }
+
+  const renderCallStatusHelper = (call: CallLog): string => {
+    switch (call.status) {
+      case 'answered': return 'Répondu'
+      case 'missed': return 'Manqué'
+      case 'rejected': return 'Refusé'
+      case 'ended': return 'Terminé'
+      default: return 'Initié'
+    }
+  }
+
+  const renderCallAvatarHelper = (avatarUrl: string | null | undefined, isGroupCall: boolean, displayName: string) => {
+    if (avatarUrl) {
+      return <img src={avatarUrl} alt={displayName} className="w-20 h-20 rounded-full object-cover" />
+    }
+    if (isGroupCall) {
+      return (
+        <div className="w-20 h-20 rounded-full bg-gradient-to-br from-accent to-primary-600 flex items-center justify-center text-white">
+          <Users size={36} />
+        </div>
+      )
+    }
+    return (
+      <div className="w-20 h-20 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-2xl">
+        {displayName[0]?.toUpperCase()}
+      </div>
+    )
+  }
+
+  const getFavoriteIdHelper = (call: CallLog, userId: string | undefined): string => {
+    if (call.is_group_call) {
+      return call.conversation_id;
+    }
+    const isOutgoing = call.caller_id === userId;
+    return isOutgoing ? call.callee_profile?.id : call.caller_profile?.id;
+  }
+
+  interface CallDetailsContentProps {
+    call: CallLog;
+    userId: string | undefined;
+    favorites: string[];
+    toggleFavorite: (id: string, isGroup: boolean) => void;
+    navigate: (path: string) => void;
+    setSelectedCall: (call: CallLog | null) => void;
+    handleCallBack: (call: CallLog) => void;
+    formatCallDuration: (seconds: number | null) => string;
+  }
+
+  const CallDetailsContent: React.FC<CallDetailsContentProps> = ({
+    call,
+    userId,
+    favorites,
+    toggleFavorite,
+    navigate,
+    setSelectedCall,
+    handleCallBack,
+    formatCallDuration
+  }) => {
     const isGroupCall = call.is_group_call
     
-    const displayName = getCallDisplayName(call)
-    const avatarUrl = getCallAvatarUrl(call)
+    const displayName = getCallDisplayNameHelper(call, userId)
+    const avatarUrl = getCallAvatarUrlHelper(call, userId)
     const isCallMissedOrRejected = call.status === 'missed' || call.status === 'rejected'
     const statusClass = isCallMissedOrRejected ? 'text-[#ea4335]' : 'text-primary-600 dark:text-primary-400'
+    const isFavorite = favorites.includes(getFavoriteIdHelper(call, userId) || '')
+    
+    const handleFavoriteClick = () => {
+      if (call.is_group_call) {
+        toggleFavorite(call.conversation_id, true)
+      } else {
+        const isOut = call.caller_id === userId
+        const otherProfile = isOut ? call.callee_profile : call.caller_profile
+        if (otherProfile) {
+          toggleFavorite(otherProfile.id, false)
+        }
+      }
+    }
     
     return (
       <>
         {/* Contact Section */}
         <div className="bg-bg-hover rounded-2xl p-6">
           <div className="flex flex-col items-center gap-4">
-            {renderCallAvatar(avatarUrl, isGroupCall, displayName)}
+            {renderCallAvatarHelper(avatarUrl, isGroupCall, displayName)}
             <div className="text-center">
               <h3 className="text-lg font-medium text-text-primary mb-1 flex items-center justify-center gap-2">
                 {isGroupCall && <Users size={18} className="text-text-secondary" />}
                 {displayName}
               </h3>
               <p className="text-sm text-text-secondary">
-                {getCallStatusText(call)}
+                {getCallStatusTextHelper(call, userId)}
               </p>
             </div>
           </div>
@@ -1149,7 +1238,7 @@ export function CallsPage() {
               {isGroupCall && <Users size={16} className="text-accent" />}
               {call.type === 'video' ? <Video size={16} className="text-accent" /> : <Phone size={16} className="text-accent" />}
               <span className="text-gray-800 dark:text-white">
-                {getCallTypeText(call)}
+                {getCallTypeTextHelper(call)}
               </span>
             </div>
           </div>
@@ -1169,7 +1258,7 @@ export function CallsPage() {
           <div className="flex items-center justify-between">
             <span className="text-text-secondary">Statut</span>
             <span className={statusClass}>
-              {renderCallStatus(call)}
+              {renderCallStatusHelper(call)}
             </span>
           </div>
         </div>
@@ -1178,11 +1267,11 @@ export function CallsPage() {
         <div className="space-y-3">
           {/* Favoris */}
           <button
-            onClick={() => handleFavoriteClick(call)}
+            onClick={handleFavoriteClick}
             className="w-full py-3 rounded-xl bg-bg-hover hover:bg-bg-surface text-text-primary font-medium flex items-center justify-center gap-2"
           >
-            <Star size={20} className={isFavorite(call) ? 'fill-[#6b6fdb] text-accent' : ''} />
-            {isFavorite(call) ? 'Retirer des favoris' : 'Ajouter aux favoris'}
+            <Star size={20} className={isFavorite ? 'fill-[#6b6fdb] text-accent' : ''} />
+            {isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
           </button>
           <button
             onClick={() => {
@@ -1206,7 +1295,6 @@ export function CallsPage() {
       </>
     )
   }
-
   // Select all calls (must be after filteredCalls is defined)
   const selectAllCalls = useCallback(() => {
     const allCallIds = new Set(filteredCalls.map(call => call.id))
@@ -1464,7 +1552,16 @@ export function CallsPage() {
             </div>
 
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
-              <CallDetailsContent call={selectedCall} />
+              <CallDetailsContent
+                call={selectedCall}
+                userId={user?.id}
+                favorites={favorites}
+                toggleFavorite={toggleFavorite}
+                navigate={navigate}
+                setSelectedCall={setSelectedCall}
+                handleCallBack={handleCallBack}
+                formatCallDuration={formatCallDuration}
+              />
             </div>
           </div>
         </div>
@@ -1486,7 +1583,16 @@ export function CallsPage() {
             </div>
 
             <div className="space-y-4">
-              <CallDetailsContent call={selectedCall} />
+              <CallDetailsContent
+                call={selectedCall}
+                userId={user?.id}
+                favorites={favorites}
+                toggleFavorite={toggleFavorite}
+                navigate={navigate}
+                setSelectedCall={setSelectedCall}
+                handleCallBack={handleCallBack}
+                formatCallDuration={formatCallDuration}
+              />
             </div>
           </div>
         ) : (

@@ -146,66 +146,76 @@ export function ArchivedPage() {
         </div>
 
         <div className="flex-1 overflow-y-auto">
-          {loading ? (
-            <div className="flex justify-center items-center h-full">
-              <div className="w-8 h-8 rounded-full border-4 border-accent border-t-transparent animate-spin" />
-            </div>
-          ) : conversations.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-center px-8">
-              <Archive size={64} className="text-[#3b4a54] mb-4" />
-              <h3 className="text-lg font-medium text-text-secondary mb-2">Aucune discussion archivée</h3>
-              <p className="text-sm text-text-secondary">Les discussions archivées apparaîtront ici</p>
-            </div>
-          ) : (
-            conversations.map((conversation) => {
-              const displayName = conversation.type === 'group'
-                ? conversation.name || 'Groupe'
-                : conversation.otherUserProfile?.display_name || conversation.otherUserProfile?.username || 'Utilisateur'
-
+          {(() => {
+            if (loading) {
               return (
-                <div
-                  key={conversation.id}
-                  className="px-4 py-3 hover:bg-bg-surface transition-colors"
-                >
-                  <div className="flex items-center gap-3">
-                  {/* For direct conversations, show the other user's avatar if available */}
-                  {/* For group conversations, show the group avatar if available */}
-                  <div className="relative">
-                    {(conversation.type === 'direct' && conversation.otherUserProfile?.avatar_url) || conversation.avatar_url ? (
-                      <img
-                        src={conversation.type === 'direct' ? conversation.otherUserProfile?.avatar_url : conversation.avatar_url}
-                        alt={displayName}
-                        className="w-12 h-12 rounded-full object-cover flex-shrink-0"
-                        key={conversation.type === 'direct' ? conversation.otherUserProfile?.avatar_url : conversation.avatar_url}
-                      />
-                    ) : (
-                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold text-lg flex-shrink-0">
-                        {displayName[0]?.toUpperCase()}
-                      </div>
-                    )}
-                  </div>
-                    
-                    <button
-                      type="button"
-                      className="flex-1 min-w-0 border-b border-bg-hover pb-3 text-left bg-transparent p-0"
-                      onClick={() => navigate(`/chat/${conversation.id}`)}
-                    >
-                      <h3 className="text-text-primary font-normal truncate">{displayName}</h3>
-                      <p className="text-sm text-text-secondary">Archivée</p>
-                    </button>
-
-                    <button
-                      onClick={(e) => handleUnarchive(conversation.id, e)}
-                      className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors flex-shrink-0"
-                      title="Désarchiver"
-                    >
-                      <ArchiveRestore size={20} className="text-accent" />
-                    </button>
-                  </div>
+                <div className="flex justify-center items-center h-full">
+                  <div className="w-8 h-8 rounded-full border-4 border-accent border-t-transparent animate-spin" />
                 </div>
               )
-            })
-          )}
+            }
+            if (conversations.length === 0) {
+              return (
+                <div className="flex flex-col items-center justify-center h-full text-center px-8">
+                  <Archive size={64} className="text-[#3b4a54] mb-4" />
+                  <h3 className="text-lg font-medium text-text-secondary mb-2">Aucune discussion archivée</h3>
+                  <p className="text-sm text-text-secondary">Les discussions archivées apparaîtront ici</p>
+                </div>
+              )
+            }
+            return (
+              <>
+                {conversations.map((conversation) => {
+                  const displayName = conversation.type === 'group'
+                    ? conversation.name || 'Groupe'
+                    : conversation.otherUserProfile?.display_name || conversation.otherUserProfile?.username || 'Utilisateur'
+
+                  return (
+                    <div
+                      key={conversation.id}
+                      className="px-4 py-3 hover:bg-bg-surface transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                      {/* For direct conversations, show the other user's avatar if available */}
+                      {/* For group conversations, show the group avatar if available */}
+                      <div className="relative">
+                        {(conversation.type === 'direct' && conversation.otherUserProfile?.avatar_url) || conversation.avatar_url ? (
+                          <img
+                            src={conversation.type === 'direct' ? conversation.otherUserProfile?.avatar_url : conversation.avatar_url}
+                            alt={displayName}
+                            className="w-12 h-12 rounded-full object-cover flex-shrink-0"
+                            key={conversation.type === 'direct' ? conversation.otherUserProfile?.avatar_url : conversation.avatar_url}
+                          />
+                        ) : (
+                          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold text-lg flex-shrink-0">
+                            {displayName[0]?.toUpperCase()}
+                          </div>
+                        )}
+                      </div>
+                        
+                        <button
+                          type="button"
+                          className="flex-1 min-w-0 border-b border-bg-hover pb-3 text-left bg-transparent p-0"
+                          onClick={() => navigate(`/chat/${conversation.id}`)}
+                        >
+                          <h3 className="text-text-primary font-normal truncate">{displayName}</h3>
+                          <p className="text-sm text-text-secondary">Archivée</p>
+                        </button>
+
+                        <button
+                          onClick={(e) => handleUnarchive(conversation.id, e)}
+                          className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors flex-shrink-0"
+                          title="Désarchiver"
+                        >
+                          <ArchiveRestore size={20} className="text-accent" />
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </>
+            )
+          })()}
         </div>
       </div>
     </MainLayout>

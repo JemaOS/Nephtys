@@ -1,7 +1,7 @@
-import fs from 'fs';
+import fs from 'node:fs';
 import lighthouse from 'lighthouse';
 import * as chromeLauncher from 'chrome-launcher';
-import { spawn } from 'child_process';
+import { spawn } from 'node:child_process';
 
 let serverPort = 5173;
 
@@ -53,46 +53,45 @@ const startServer = () => {
   });
 };
 
-(async () => {
-  let server;
-  let chrome;
-  try {
-    server = await startServer();
+let server;
+let chrome;
 
-    // Wait a bit for the server to be fully responsive
-    await new Promise(resolve => setTimeout(resolve, 2000));
+try {
+  server = await startServer();
 
-    chrome = await chromeLauncher.launch({chromeFlags: ['--headless']});
-    const options = {logLevel: 'info', output: 'html', onlyCategories: ['performance'], port: chrome.port};
-    console.log(`Running Lighthouse on http://localhost:${serverPort}`);
-    const runnerResult = await lighthouse(`http://localhost:${serverPort}`, options);
+  // Wait a bit for the server to be fully responsive
+  await new Promise(resolve => setTimeout(resolve, 2000));
 
-    // `.report` is the HTML report as a string
-    const reportHtml = runnerResult.report;
-    fs.writeFileSync('lhreport.html', reportHtml);
+  chrome = await chromeLauncher.launch({chromeFlags: ['--headless']});
+  const options = {logLevel: 'info', output: 'html', onlyCategories: ['performance'], port: chrome.port};
+  console.log(`Running Lighthouse on http://localhost:${serverPort}`);
+  const runnerResult = await lighthouse(`http://localhost:${serverPort}`, options);
 
-    // `.lhr` is the Lighthouse Result as a JS object
-    console.log('Report is done for', runnerResult.lhr.finalUrl);
-    console.log('Performance score was', runnerResult.lhr.categories.performance.score * 100);
+  // `.report` is the HTML report as a string
+  const reportHtml = runnerResult.report;
+  fs.writeFileSync('lhreport.html', reportHtml);
 
-    const audits = runnerResult.lhr.audits;
-    const failedAudits = Object.values(audits).filter(audit => audit.score !== 1 && audit.score !== null && audit.score < 0.9);
-    console.log('Failed Audits:');
-    failedAudits.forEach(audit => {
-        console.log(`${audit.title}: ${audit.score} - ${audit.displayValue}`);
-    });
+  // `.lhr` is the Lighthouse Result as a JS object
+  console.log('Report is done for', runnerResult.lhr.finalUrl);
+  console.log('Performance score was', runnerResult.lhr.categories.performance.score * 100);
 
-  } catch (error) {
-    console.error('Error running lighthouse:', error);
-    process.exitCode = 1;
-  } finally {
-    if (chrome) {
-      await chrome.kill();
-    }
-    if (server) {
-      console.log('Killing server...');
-      server.kill();
-    }
-    process.exit();
+  const audits = runnerResult.lhr.audits;
+  const failedAudits = Object.values(audits).filter(audit => audit.score !== 1 && audit.score !== null && audit.score < 0.9);
+  console.log('Failed Audits:');
+  failedAudits.forEach(audit => {
+      console.log(`${audit.title}: ${audit.score} - ${audit.displayValue}`);
+  });
+
+} catch (error) {
+  console.error('Error running lighthouse:', error);
+  process.exitCode = 1;
+} finally {
+  if (chrome) {
+    await chrome.kill();
   }
-})();
+  if (server) {
+    console.log('Killing server...');
+    server.kill();
+  }
+  process.exit();
+}
