@@ -219,19 +219,6 @@ const findDirectConversationWithContact = async (
   return null;
 };
 
-const findExistingConversation = async (
-  supabaseClient: any,
-  isSelfContact: boolean,
-  userId: string,
-  contactId: string
-): Promise<string | null> => {
-  if (isSelfContact) {
-    return findSelfConversation(supabaseClient, userId);
-  } else {
-    return findDirectConversationWithContact(supabaseClient, userId, contactId);
-  }
-};
-
 // Helper: Create new self conversation and add members
 const createNewSelfConversationAndAddMembers = async (
   supabaseClient: any,
@@ -577,7 +564,11 @@ export function ContactsPage() {
   // Check for existing conversation in database
   const checkExistingConversation = async (contactId: string): Promise<string | null> => {
     if (!user) return null;
-    return findExistingConversation(supabase, contactId === user.id, user.id, contactId);
+    if (contactId === user.id) {
+      return findSelfConversation(supabase, user.id);
+    } else {
+      return findDirectConversationWithContact(supabase, user.id, contactId);
+    }
   };
 
   // Create new conversation for contact
