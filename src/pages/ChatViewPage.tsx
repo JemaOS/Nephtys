@@ -1325,7 +1325,11 @@ export function ChatViewPage() {
     setSending(true)
     
     // OPTIMISTIC UI: Add message to local state immediately for instant display
-    const tempId = `temp-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`
+    // Using crypto.getRandomValues for better randomness (not for security, just for unique IDs)
+    const randomBytes = new Uint8Array(8);
+    crypto.getRandomValues(randomBytes);
+    const randomStr = Array.from(randomBytes).map(b => b.toString(36).padStart(2, '0')).join('').substring(0, 9);
+    const tempId = `temp-${Date.now()}-${randomStr}`;
     const optimisticMessage: Message = {
       id: tempId,
       conversation_id: conversationId!,
