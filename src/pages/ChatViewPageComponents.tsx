@@ -1161,6 +1161,16 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = React.memo((
           handleSelectMessage(message.id)
         }
       }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          if (isSelectionMode) {
+            handleSelectMessage(message.id)
+          }
+        }
+      }}
+      role="button"
+      tabIndex={0}
       aria-label={`Message de ${isOwn ? 'vous' : getSenderInfo(message.sender_id).name}`}
     >
       <MessageSideActions
@@ -1183,8 +1193,15 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = React.memo((
           }
           handleContextMenu(e, message)
         }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            handleContextMenu(e as unknown as React.MouseEvent, message)
+          }
+        }}
+        role="button"
+        tabIndex={0}
         aria-label="Contenu du message"
-        role="group"
       >
         <MessageContent
           message={message}

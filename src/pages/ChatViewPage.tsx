@@ -69,8 +69,8 @@ const isEmojiOnly = (text: string): { isEmoji: boolean; emojiCount: number } => 
       String.raw`\u200D(?:\p{Emoji_Presentation}|\p{Extended_Pictographic})` +
       '|' +
       String.raw`\p{Emoji_Modifier}` +
-    String.raw`)*` +
-    '/gu'
+    String.raw`)*`,
+    'gu'
   )
   
   // Find all emojis in the text
@@ -291,9 +291,13 @@ export function ChatViewPage() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [messageToDelete, setMessageToDelete] = useState<Message | null>(null)
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  // Using useState for setDeletedForMeIds - value not needed, only setter
-  const setDeletedForMeIds = useState<Set<string>>(new Set())[1]
+  // Using useRef for deletedForMeIds - we only need to track IDs for local filtering
+  const deletedForMeIdsRef = useRef<Set<string>>(new Set())
+  const setDeletedForMeIds = useCallback((updater: Set<string> | ((prev: Set<string>) => Set<string>)) => {
+    deletedForMeIdsRef.current = typeof updater === 'function' 
+      ? updater(deletedForMeIdsRef.current) 
+      : updater
+  }, [])
   const [showForwardModal, setShowForwardModal] = useState(false)
   const [messageToForward, setMessageToForward] = useState<Message | null>(null)
   const [quickReactionBar, setQuickReactionBar] = useState<{
