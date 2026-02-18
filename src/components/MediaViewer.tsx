@@ -1068,6 +1068,10 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
     <dialog
       ref={viewerRef}
       className={`fixed inset-0 z-[200] bg-black flex flex-col media-viewer-fullscreen m-0 p-0 w-full h-full max-w-none max-h-none text-left ${landscapeModeClass} ${fullscreenActiveClass} ${cursorNoneClass}`}
+      // Use dialog role for accessibility - this makes it an interactive element
+      role="dialog"
+      aria-modal="true"
+      aria-label="Visionneuse de médias"
       onClick={(e) => {
         // Close only if clicking directly on the dialog backdrop
         if (e.target === e.currentTarget) {
@@ -1147,11 +1151,19 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
       <section
         aria-label="Visualisation du média"
         aria-roledescription="Zone de visualisation - Cliquez ou utilisez les touches pour interagir"
+        // Use region role to indicate this is an interactive region
+        role="region"
         className={`flex-1 flex items-center justify-center overflow-hidden media-content-container ${
           isLandscape && isMobile ? 'p-0' : 'p-4 md:p-8'
         }`}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
+        // Add keyboard handler for accessibility
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') {
+            onClose();
+          }
+        }}
         // Remove tabIndex from non-interactive element
         style={{
           // Always use touch-action: none to prevent browser default behaviors and ensure we handle all touch events
