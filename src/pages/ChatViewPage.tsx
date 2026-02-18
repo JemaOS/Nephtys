@@ -80,7 +80,7 @@ const isEmojiOnly = (text: string): { isEmoji: boolean; emojiCount: number } => 
   
   // Check if the entire string is just emojis (with optional whitespace between)
   const emojiString = emojis.join('')
-  const textWithoutWhitespace = trimmed.replaceAll('\\s', '')
+  const textWithoutWhitespace = trimmed.replace(/\s/g, '')
   
   // If the text without whitespace equals the joined emojis, it's emoji-only
   if (textWithoutWhitespace === emojiString && emojis.length >= 1 && emojis.length <= 3) {
