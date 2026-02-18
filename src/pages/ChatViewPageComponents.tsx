@@ -144,7 +144,7 @@ export const isEmojiOnly = (text: string): { isEmoji: boolean; emojiCount: numbe
   if (!emojis) return { isEmoji: false, emojiCount: 0 }
   
   const emojiString = emojis.join('')
-  const textWithoutWhitespace = trimmed.replace(/\s/g, '')
+  const textWithoutWhitespace = trimmed.replaceAll(' ', '')
   
   if (textWithoutWhitespace === emojiString && emojis.length >= 1 && emojis.length <= 3) {
     return { isEmoji: true, emojiCount: emojis.length }

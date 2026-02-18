@@ -1153,6 +1153,14 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
         }`}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
+        onKeyDown={(e) => {
+          // Handle keyboard events for accessibility
+          if (e.key === 'Enter' || e.key === ' ') {
+            handleMouseUp();
+          }
+        }}
+        role="button"
+        tabIndex={0}
         style={{
           // Always use touch-action: none to prevent browser default behaviors and ensure we handle all touch events
           touchAction: 'none',

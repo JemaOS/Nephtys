@@ -292,7 +292,8 @@ export function ChatViewPage() {
   const [messageToDelete, setMessageToDelete] = useState<Message | null>(null)
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false)
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [, setDeletedForMeIds] = useState<Set<string>>(new Set())
+  // Using useState for setDeletedForMeIds - value not needed, only setter
+  const setDeletedForMeIds = useState<Set<string>>(new Set())[1]
   const [showForwardModal, setShowForwardModal] = useState(false)
   const [messageToForward, setMessageToForward] = useState<Message | null>(null)
   const [quickReactionBar, setQuickReactionBar] = useState<{
