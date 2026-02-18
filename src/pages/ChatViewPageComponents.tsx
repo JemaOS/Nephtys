@@ -1161,21 +1161,7 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = React.memo((
           handleSelectMessage(message.id)
         }
       }}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          if (isSelectionMode) {
-            handleSelectMessage(message.id)
-          }
-        }
-      }}
-      onKeyUp={(e) => {
-        if (e.key === 'Escape') {
-          setHoveredMessageId(null)
-        }
-      }}
-      role="button"
-      tabIndex={0}
-      aria-label={`Message de ${isOwn ? 'vous' : getSenderInfo(message.sender_id).name}${isSelected ? ' (sélectionné)' : ''}`}
+      aria-label={`Message de ${isOwn ? 'vous' : getSenderInfo(message.sender_id).name}`}
     >
       <MessageSideActions
         isOwn={isOwn}
