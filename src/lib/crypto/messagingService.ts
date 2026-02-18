@@ -202,7 +202,7 @@ export class E2EEMessagingService {
     this.ensureInitialized();
     
     // Get a one-time pre-key to include
-    const otkIndex = this.keyBundle.oneTimePreKeys.length > 0 ? 0 : undefined;
+    const otkIndex = this.keyBundle!.oneTimePreKeys.length > 0 ? 0 : undefined;
     
     return getPublicKeyBundle(this.keyBundle!, otkIndex);
   }
@@ -267,7 +267,7 @@ export class E2EEMessagingService {
     
     // Store pending initial message data
     this.pendingInitials.set(recipientId, {
-      senderId: this.userId!,
+      senderId: this.userId,
       ephemeralPublicKey: ephemeralKey.publicKey,
       usedOneTimePreKeyId: recipientKeyBundle.oneTimePreKeyId
     });
@@ -313,7 +313,7 @@ export class E2EEMessagingService {
           k => k.keyId !== usedOneTimePreKeyId
         );
         // Update stored key bundle
-        await this.keyStorage.storeKeyBundle(this.keyBundle!);
+        await this.keyStorage.storeKeyBundle(this.keyBundle);
       }
     }
     
@@ -381,8 +381,9 @@ export class E2EEMessagingService {
     const isInitial = pendingInitial !== undefined;
     
     // Create message data for signing
+    const currentUserId = this.userId;
     const messageData = new Uint8Array([
-      ...new TextEncoder().encode(this.userId!),
+      ...new TextEncoder().encode(currentUserId),
       ...new TextEncoder().encode(recipientId),
       ...new Uint8Array(new BigUint64Array([BigInt(timestamp)]).buffer),
       ...encrypted.ciphertext
@@ -393,7 +394,7 @@ export class E2EEMessagingService {
     
     const payload: EncryptedMessagePayload = {
       type: isInitial ? 'initial' : 'message',
-      senderId: this.userId!,
+      senderId: this.userId,
       recipientId,
       timestamp,
       encryptedContent: bytesToBase64(encrypted.ciphertext),
@@ -689,7 +690,7 @@ export class E2EEMessagingService {
     }
     
     // Persist updated key bundle
-    await this.keyStorage.storeKeyBundle(this.keyBundle!);
+    await this.keyStorage.storeKeyBundle(this.keyBundle);
     
     console.log(`[MessagingService] Generated ${count} new one-time pre-keys`);
     

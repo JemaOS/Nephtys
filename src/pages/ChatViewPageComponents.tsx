@@ -1150,6 +1150,8 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = React.memo((
     <div
       key={message.id}
       id={`message-${message.id}`}
+      role="article"
+      tabIndex={0}
       className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-1 ${isSelected ? 'bg-[#787add]/10' : ''} transition-colors duration-500`}
       onMouseEnter={() => setHoveredMessageId(message.id)}
       onMouseLeave={() => setHoveredMessageId(null)}
@@ -1182,6 +1184,8 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = React.memo((
       />
       
       <div
+        role="group"
+        aria-label="Contenu du message"
         className={`max-w-[85%] sm:max-w-[75%] md:max-w-[70%] lg:max-w-[65%] relative group`}
         data-message-id={message.id}
         onContextMenu={(e) => {
@@ -1197,7 +1201,6 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = React.memo((
             handleContextMenu(e as unknown as React.MouseEvent, message)
           }
         }}
-        aria-label="Contenu du message"
       >
         <MessageContent
           message={message}
