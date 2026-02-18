@@ -1161,6 +1161,10 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = React.memo((
           handleSelectMessage(message.id)
         }
       }}
+      role="article"
+      aria-label={`Message de ${isOwn ? 'vous' : getSenderInfo(message.sender_id).name}`}
+      aria-selected={isSelected}
+      tabIndex={0}
     >
       <MessageSideActions
         isOwn={isOwn}

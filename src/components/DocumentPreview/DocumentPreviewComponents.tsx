@@ -299,7 +299,7 @@ export const DocumentPreviewContent: React.FC<DocumentPreviewContentProps> = ({
         onClose();
       }
     }}
-    tabIndex={0}
+    // Don't add keyboard handler for accessibility since this is not an interactive element
   >
     {loading && (
       <div className="flex items-center justify-center h-full w-full">
