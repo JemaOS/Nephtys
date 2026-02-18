@@ -313,7 +313,7 @@ export function ChatViewPage() {
   } | null>(null)
   
   // State for media viewer with navigation support
-  const [mediaViewerState, setMediaViewerState] = useState<{
+  const [, setMediaViewerState] = useState<{
     isOpen: boolean;
     currentIndex: number;
   }>({ isOpen: false, currentIndex: 0 })

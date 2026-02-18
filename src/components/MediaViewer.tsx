@@ -1057,11 +1057,9 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   const cursorNoneClass = showControls ? '' : 'cursor-none';
 
   return (
-    // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
     <div
       ref={viewerRef}
-      role="button"
-      tabIndex={0}
+      tabIndex={-1}
       aria-label="Visualiseur de média"
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -1144,8 +1142,6 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
         </>
       )}
 
-      {/* Media content */}
-      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
       <div
         aria-label="Visualisation du média"
         className={`flex-1 flex items-center justify-center overflow-hidden media-content-container ${
@@ -1159,8 +1155,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
             handleMouseUp();
           }
         }}
-        role="button"
-        tabIndex={0}
+        tabIndex={-1}
         style={{
           // Always use touch-action: none to prevent browser default behaviors and ensure we handle all touch events
           touchAction: 'none',
