@@ -574,7 +574,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = React.memo(({
                 <button
                   onClick={() => {
                     if (confirm('Voulez-vous vraiment supprimer cette conversation ?')) {
-                      supabase.from('conversation_members').delete().eq('conversation_id', conversationId!).eq('user_id', user!.id)
+                      supabase.from('conversation_members').delete().eq('conversation_id', conversationId).eq('user_id', user.id)
                       navigate('/chats')
                     }
                     setShowConversationMenu(false)
@@ -1148,6 +1148,7 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = React.memo((
   
   return (
     <article
+      tabIndex={0}
       key={message.id}
       id={`message-${message.id}`}
       className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-1 ${isSelected ? 'bg-[#787add]/10' : ''} transition-colors duration-500`}
@@ -1182,6 +1183,7 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = React.memo((
       />
       
       <address
+        tabIndex={0}
         aria-label="Contenu du message"
         className={`max-w-[85%] sm:max-w-[75%] md:max-w-[70%] lg:max-w-[65%] relative group`}
         data-message-id={message.id}

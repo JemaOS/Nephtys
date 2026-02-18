@@ -136,7 +136,12 @@ test.describe('Messaging', () => {
          return;
       }
       
-      // Chat view messages or last message
+      // Chat view messages or last message - filter by conversation if specified
+      if (url.includes('conversation_id=eq.conv-1') || url.includes('conversation_id=in.%28conv-1%29')) {
+         await route.fulfill({ json: messages });
+         return;
+      }
+      
       await route.fulfill({ json: messages });
     });
 
@@ -153,6 +158,9 @@ test.describe('Messaging', () => {
     
     // Check if we are in the chat view
     await expect(page).toHaveURL(/\/chat\/conv-1/);
+    
+    // Wait for messages to load
+    await page.waitForLoadState('networkidle');
     
     // Check if previous message is visible
     await expect(page.getByText('Hello there!').first()).toBeVisible();

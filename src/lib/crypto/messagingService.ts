@@ -202,9 +202,9 @@ export class E2EEMessagingService {
     this.ensureInitialized();
     
     // Get a one-time pre-key to include
-    const otkIndex = this.keyBundle!.oneTimePreKeys.length > 0 ? 0 : undefined;
+    const otkIndex = this.keyBundle.oneTimePreKeys.length > 0 ? 0 : undefined;
     
-    return getPublicKeyBundle(this.keyBundle!, otkIndex);
+    return getPublicKeyBundle(this.keyBundle, otkIndex);
   }
   
   /**
@@ -215,7 +215,7 @@ export class E2EEMessagingService {
    */
   getPublicKeyBundleWithOTK(oneTimeKeyIndex?: number): PublicKeyBundle {
     this.ensureInitialized();
-    return getPublicKeyBundle(this.keyBundle!, oneTimeKeyIndex);
+    return getPublicKeyBundle(this.keyBundle, oneTimeKeyIndex);
   }
   
   /**
@@ -267,7 +267,7 @@ export class E2EEMessagingService {
     
     // Store pending initial message data
     this.pendingInitials.set(recipientId, {
-      senderId: this.userId,
+      senderId: this.userId ?? '',
       ephemeralPublicKey: ephemeralKey.publicKey,
       usedOneTimePreKeyId: recipientKeyBundle.oneTimePreKeyId
     });
@@ -381,7 +381,7 @@ export class E2EEMessagingService {
     const isInitial = pendingInitial !== undefined;
     
     // Create message data for signing
-    const currentUserId = this.userId;
+    const currentUserId = this.userId ?? '';
     const messageData = new Uint8Array([
       ...new TextEncoder().encode(currentUserId),
       ...new TextEncoder().encode(recipientId),
@@ -394,7 +394,7 @@ export class E2EEMessagingService {
     
     const payload: EncryptedMessagePayload = {
       type: isInitial ? 'initial' : 'message',
-      senderId: this.userId,
+      senderId: this.userId ?? '',
       recipientId,
       timestamp,
       encryptedContent: bytesToBase64(encrypted.ciphertext),

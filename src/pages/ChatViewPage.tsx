@@ -1224,7 +1224,7 @@ export function ChatViewPage() {
       setCache(`msgs_${conversationId}`, data) // Cache messages
       
       // Save to offlineStorage for long-term caching
-      offlineStorage.saveMessages(data as unknown as any[]).catch(() => {
+      offlineStorage.saveMessages(data as any[]).catch(() => {
         // Silent fail
       })
       
