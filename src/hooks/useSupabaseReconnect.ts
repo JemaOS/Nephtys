@@ -10,7 +10,7 @@ const VISIBILITY_RECONNECT_DELAY = 1000 // 1s debounce for visibility changes
 const MAX_RECONNECT_ATTEMPTS = 3
 
 // Track if we've already scheduled a reload to prevent multiple reloads
-let reloadScheduled = false
+const reloadScheduled = { value: false }
 
 /**
  * Hook to handle Supabase reconnection when PWA comes back from background
@@ -106,3 +106,5 @@ export function useOnSupabaseReconnect(callback: () => void) {
     return () => globalThis.removeEventListener('supabase-reconnected', handler)
   }, [callback])
 }
+
+
