@@ -289,6 +289,7 @@ export const DocumentPreviewContent: React.FC<DocumentPreviewContentProps> = ({
     aria-label="Zone de prévisualisation du document - Appuyez sur Échap pour fermer"
     role="application"
     aria-roledescription="Zone de prévisualisation interactive - Utilisez les gestes tactiles ou la molette pour zoomer"
+    tabIndex={0}
     onMouseDown={isPDF ? handleMouseDown : undefined}
     onTouchStart={handleTouchStart}
     onTouchMove={handleTouchMove}
