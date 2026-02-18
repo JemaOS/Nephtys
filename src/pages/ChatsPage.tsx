@@ -639,12 +639,12 @@ export function ChatsPage() {
     
     // Also clear localStorage cache for these conversations
     try {
-      selectedIds.forEach(conversationId => {
-        localStorage.removeItem('anu_cache_conv_' + conversationId)
-        localStorage.removeItem('anu_cache_user_' + conversationId)
-        localStorage.removeItem('anu_cache_direct_user_id_' + conversationId)
-        localStorage.removeItem('anu_cache_msgs_' + conversationId)
-        localStorage.removeItem('anu_cache_members_' + conversationId)
+      selectedIds.forEach((conversationId: string) => {
+        localStorage.removeItem(`anu_cache_conv_${conversationId}`)
+        localStorage.removeItem(`anu_cache_user_${conversationId}`)
+        localStorage.removeItem(`anu_cache_direct_user_id_${conversationId}`)
+        localStorage.removeItem(`anu_cache_msgs_${conversationId}`)
+        localStorage.removeItem(`anu_cache_members_${conversationId}`)
       })
     } catch (e) {
       console.warn('[ChatsPage] Error clearing cache:', e)
