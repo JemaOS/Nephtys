@@ -364,7 +364,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
   };
 
   // Helper: Validate file size based on type - extracted to reduce complexity
-  const validateFileSize = (file: File, type: 'image' | 'video' | 'file' | 'audio'): boolean => {
+  const validateFileSize = (file: File, type: MediaFileType): boolean => {
     const VIDEO_SIZE_LIMIT = 200 * 1024 * 1024; // 200MB
     const DOC_SIZE_LIMIT = 2 * 1024 * 1024 * 1024; // 2GB
     const GLOBAL_LIMIT = 2 * 1024 * 1024 * 1024; // 2GB

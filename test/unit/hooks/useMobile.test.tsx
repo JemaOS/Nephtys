@@ -2,12 +2,12 @@ import { renderHook, act } from '@testing-library/react';
 import { useIsMobile } from '../../../src/hooks/use-mobile';
 
 describe('useIsMobile', () => {
-  const originalMatchMedia = window.matchMedia;
-  const originalInnerWidth = window.innerWidth;
+  const originalMatchMedia = globalThis.matchMedia;
+  const originalInnerWidth = globalThis.innerWidth;
 
   beforeEach(() => {
     // Mock matchMedia
-    Object.defineProperty(window, 'matchMedia', {
+    Object.defineProperty(globalThis, 'matchMedia', {
       writable: true,
       value: vi.fn().mockImplementation((query) => ({
         matches: false,
@@ -23,37 +23,37 @@ describe('useIsMobile', () => {
   });
 
   afterEach(() => {
-    window.matchMedia = originalMatchMedia;
-    window.innerWidth = originalInnerWidth;
+    globalThis.matchMedia = originalMatchMedia;
+    globalThis.innerWidth = originalInnerWidth;
   });
 
-  it('should return true when window width is less than 768', () => {
-    window.innerWidth = 500;
+  it('should return true when globalThis width is less than 768', () => {
+    globalThis.innerWidth = 500;
     const { result } = renderHook(() => useIsMobile());
     expect(result.current).toBe(true);
   });
 
-  it('should return false when window width is greater than or equal to 768', () => {
-    window.innerWidth = 1024;
+  it('should return false when globalThis width is greater than or equal to 768', () => {
+    globalThis.innerWidth = 1024;
     const { result } = renderHook(() => useIsMobile());
     expect(result.current).toBe(false);
   });
 
-  it('should update when window resizes', () => {
-    window.innerWidth = 1024;
+  it('should update when globalThis resizes', () => {
+    globalThis.innerWidth = 1024;
     const { result } = renderHook(() => useIsMobile());
     expect(result.current).toBe(false);
 
     // Simulate resize
     act(() => {
-      window.innerWidth = 500;
+      globalThis.innerWidth = 500;
       // Trigger the event listener manually since we mocked it
       // In a real browser, resize event would trigger matchMedia change
-      // But the hook listens to matchMedia change, and inside checks window.innerWidth
+      // But the hook listens to matchMedia change, and inside checks globalThis.innerWidth
       
       // However, the hook implementation:
       // 1. Sets up matchMedia listener
-      // 2. Listener callback calls setIsMobile(window.innerWidth < MOBILE_BREAKPOINT)
+      // 2. Listener callback calls setIsMobile(globalThis.innerWidth < MOBILE_BREAKPOINT)
       
       // So we need to capture the listener and call it.
     });
@@ -66,7 +66,7 @@ describe('useIsMobile with event listener', () => {
   let changeHandler: () => void;
 
   beforeEach(() => {
-    Object.defineProperty(window, 'matchMedia', {
+    Object.defineProperty(globalThis, 'matchMedia', {
       writable: true,
       value: vi.fn().mockImplementation((query) => ({
         matches: false,
@@ -86,12 +86,12 @@ describe('useIsMobile with event listener', () => {
   });
 
   it('should update when media query changes', () => {
-    window.innerWidth = 1024;
+    globalThis.innerWidth = 1024;
     const { result } = renderHook(() => useIsMobile());
     expect(result.current).toBe(false);
 
     act(() => {
-      window.innerWidth = 500;
+      globalThis.innerWidth = 500;
       if (changeHandler) {
         changeHandler();
       }
@@ -100,7 +100,7 @@ describe('useIsMobile with event listener', () => {
     expect(result.current).toBe(true);
     
     act(() => {
-      window.innerWidth = 800;
+      globalThis.innerWidth = 800;
       if (changeHandler) {
         changeHandler();
       }
@@ -109,3 +109,4 @@ describe('useIsMobile with event listener', () => {
     expect(result.current).toBe(false);
   });
 });
+

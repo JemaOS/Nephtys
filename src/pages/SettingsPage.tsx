@@ -20,7 +20,7 @@ import {
   Globe, Database, HelpCircle, Info, LogOut, ChevronRight,
   Moon, Sun, Check, Camera, Edit2, Shield, Key, Trash2,
   Eye, EyeOff, Wifi, WifiOff, Mail, Image, FileText, Mic, Loader2,
-  Cloud, CloudUpload, Calendar, DownloadCloud, Smartphone, Copy, X
+  Cloud, CloudUpload, DownloadCloud, Smartphone, Copy, X
 } from 'lucide-react'
 import {
   createBackup,
@@ -433,7 +433,7 @@ export function SettingsPage() {
     const { error } = await supabase.from('profiles').update({ display_name: newDisplayName.trim() }).eq('id', user.id)
     if (!error) {
       setEditingName(false)
-      window.location.reload()
+      globalThis.location.reload()
     }
   }
 
@@ -487,7 +487,7 @@ export function SettingsPage() {
       }
       
       alert('✅ Photo de profil mise à jour !')
-      window.location.reload()
+      globalThis.location.reload()
     } catch (err: any) {
       console.error('Photo upload error:', err)
       alert(err.message || '❌ Erreur lors de l\'upload de la photo\n\nVeuillez réessayer.')
@@ -1312,7 +1312,7 @@ export function SettingsPage() {
         setBackupPassword('')
         setShowPasswordInput(false)
         alert(`✅ Restauration terminée avec succès !\n\nL'application va se recharger.`)
-        window.location.reload()
+        globalThis.location.reload()
       } else {
         throw new Error(result.error || 'Erreur lors de la restauration')
       }
@@ -1515,3 +1515,5 @@ export function SettingsPage() {
     </MainLayout>
   )
 }
+
+

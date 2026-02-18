@@ -111,7 +111,7 @@ vi.mock('react-pdf', () => ({
 }));
 
 // Mock scrollIntoView
-window.HTMLElement.prototype.scrollIntoView = vi.fn();
+globalThis.HTMLElement.prototype.scrollIntoView = vi.fn();
 
 describe('MessageFlow', () => {
   beforeEach(() => {
@@ -258,3 +258,4 @@ describe('MessageFlow', () => {
     });
   });
 });
+

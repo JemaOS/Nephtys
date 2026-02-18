@@ -15,7 +15,7 @@ const STALE_THRESHOLD = 120000; // 2 minutes without response = stale
 
 // Send message to main thread
 function postToMain(type: string, data?: any) {
-  self.postMessage({ type, ...data });
+  globalThis.postMessage({ type, ...data });
 }
 
 // Start heartbeat
@@ -55,7 +55,7 @@ function stopHeartbeat() {
 }
 
 // Handle messages from main thread
-self.onmessage = (event) => {
+globalThis.onmessage = (event) => {
   const { type, ...data } = event.data;
   
   switch (type) {
