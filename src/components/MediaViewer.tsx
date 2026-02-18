@@ -1043,11 +1043,19 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   const quickEmojis = ['❤️', '😂', '😮', '😢', '🙏', '👍'];
 
   // Focus the viewer on mount for keyboard accessibility
-  const viewerRef = useRef<HTMLDivElement>(null);
+  const viewerRef = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     if (isOpen && viewerRef.current) {
-      viewerRef.current.focus();
+      // Use native dialog showModal method for proper accessibility
+      if (!(viewerRef.current as HTMLDialogElement & { open?: boolean }).open) {
+        (viewerRef.current as HTMLDialogElement).showModal();
+      }
     }
+    return () => {
+      if (viewerRef.current && (viewerRef.current as HTMLDialogElement & { open?: boolean }).open) {
+        (viewerRef.current as HTMLDialogElement).close();
+      }
+    };
   }, [isOpen]);
 
   if (!isOpen) return null;
@@ -1057,24 +1065,16 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   const cursorNoneClass = showControls ? '' : 'cursor-none';
 
   return (
-    <div
+    <dialog
       ref={viewerRef}
-      role="dialog"
-      tabIndex={-1}
-      aria-label="Visualiseur de média"
-      aria-roledescription="Visualiseur de média interactif - Utilisez les touches fléchées pour naviguer, Échap pour fermer"
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          setShowControls(true);
-        }
-      }}
-      onKeyUp={(e) => {
-        if (e.key === 'Escape') {
+      className={`fixed inset-0 z-[200] bg-black flex flex-col media-viewer-fullscreen m-0 p-0 w-full h-full max-w-none max-h-none text-left ${landscapeModeClass} ${fullscreenActiveClass} ${cursorNoneClass}`}
+      onClick={(e) => {
+        // Close only if clicking directly on the dialog backdrop
+        if (e.target === e.currentTarget) {
           onClose();
         }
+        setShowControls(true);
       }}
-      className={`fixed inset-0 z-[200] bg-black flex flex-col media-viewer-fullscreen m-0 p-0 w-full h-full max-w-none max-h-none text-left ${landscapeModeClass} ${fullscreenActiveClass} ${cursorNoneClass}`}
-      onClick={() => setShowControls(true)}
       onMouseMove={handleContainerMouseMove}
       style={{
         // Ensure the viewer takes full screen on mobile in any orientation
@@ -1144,8 +1144,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
         </>
       )}
 
-      <div
-        role="region"
+      <section
         aria-label="Visualisation du média"
         aria-roledescription="Zone de visualisation - Cliquez ou utilisez les touches pour interagir"
         className={`flex-1 flex items-center justify-center overflow-hidden media-content-container ${
@@ -1226,7 +1225,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
             setIsPlaying={setIsPlaying}
           />
         )}
-      </div>
+      </section>
 
       {/* Media counter */}
       {allMedia && allMedia.length > 1 && (
@@ -1238,6 +1237,6 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
           {currentIndex + 1} / {allMedia.length}
         </div>
       )}
-    </div>
+    </dialog>
   );
 };

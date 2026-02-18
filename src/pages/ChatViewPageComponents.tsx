@@ -1147,11 +1147,9 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = React.memo((
   }
   
   return (
-    <div
+    <article
       key={message.id}
       id={`message-${message.id}`}
-      role="article"
-      tabIndex={0}
       className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-1 ${isSelected ? 'bg-[#787add]/10' : ''} transition-colors duration-500`}
       onMouseEnter={() => setHoveredMessageId(message.id)}
       onMouseLeave={() => setHoveredMessageId(null)}
@@ -1183,8 +1181,7 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = React.memo((
         setQuickReactionBar={setQuickReactionBar}
       />
       
-      <div
-        role="group"
+      <address
         aria-label="Contenu du message"
         className={`max-w-[85%] sm:max-w-[75%] md:max-w-[70%] lg:max-w-[65%] relative group`}
         data-message-id={message.id}
@@ -1247,7 +1244,7 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = React.memo((
         {messageReactions.length > 0 && (
           <MessageReactions reactions={messageReactions} currentUserId={user?.id || ''} onReactionClick={(emoji) => addReaction(message.id, emoji)} onReactionRemove={(emoji) => removeReaction(message.id, emoji)} />
         )}
-      </div>
+      </address>
       
       {!isOwn && (
         <MessageSideActions
@@ -1260,7 +1257,7 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = React.memo((
           setQuickReactionBar={setQuickReactionBar}
         />
       )}
-    </div>
+    </article>
   )
 });
 
