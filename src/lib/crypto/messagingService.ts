@@ -202,7 +202,7 @@ export class E2EEMessagingService {
     this.ensureInitialized();
     
     // Get a one-time pre-key to include
-    const otkIndex = this.keyBundle!.oneTimePreKeys.length > 0 ? 0 : undefined;
+    const otkIndex = this.keyBundle.oneTimePreKeys.length > 0 ? 0 : undefined;
     
     return getPublicKeyBundle(this.keyBundle!, otkIndex);
   }
@@ -245,7 +245,7 @@ export class E2EEMessagingService {
     
     // Perform X3DH as initiator
     const { sharedSecret } = x3dhInitiator(
-      this.keyBundle!.identityKey,
+      this.keyBundle.identityKey,
       ephemeralKey,
       recipientKeyBundle
     );
@@ -305,11 +305,11 @@ export class E2EEMessagingService {
     // Find the one-time pre-key if used
     let oneTimeKey: X25519KeyPair | null = null;
     if (usedOneTimePreKeyId !== undefined) {
-      const otk = this.keyBundle!.oneTimePreKeys.find(k => k.keyId === usedOneTimePreKeyId);
+      const otk = this.keyBundle.oneTimePreKeys.find(k => k.keyId === usedOneTimePreKeyId);
       if (otk) {
         oneTimeKey = otk.keyPair;
         // Remove used one-time key
-        this.keyBundle!.oneTimePreKeys = this.keyBundle!.oneTimePreKeys.filter(
+        this.keyBundle.oneTimePreKeys = this.keyBundle.oneTimePreKeys.filter(
           k => k.keyId !== usedOneTimePreKeyId
         );
         // Update stored key bundle
@@ -319,15 +319,15 @@ export class E2EEMessagingService {
     
     // Perform X3DH as responder
     const sharedSecret = x3dhResponder(
-      this.keyBundle!.identityKey,
-      this.keyBundle!.signedPreKey.keyPair,
+      this.keyBundle.identityKey,
+      this.keyBundle.signedPreKey.keyPair,
       oneTimeKey,
       senderIdentityKey,
       ephemeralPublicKey
     );
     
     // Initialize Double Ratchet as Bob (responder)
-    const ratchetState = ratchetInitBob(sharedSecret, this.keyBundle!.signedPreKey.keyPair);
+    const ratchetState = ratchetInitBob(sharedSecret, this.keyBundle.signedPreKey.keyPair);
     
     // Store session info
     const sessionInfo: SessionInfo = {
@@ -499,7 +499,7 @@ export class E2EEMessagingService {
    */
   async signMessage(message: Uint8Array): Promise<Uint8Array> {
     this.ensureInitialized();
-    return sign(message, this.keyBundle!.identityKey.privateKey);
+    return sign(message, this.keyBundle.identityKey.privateKey);
   }
   
   /**
@@ -538,7 +538,7 @@ export class E2EEMessagingService {
   ): Promise<string> {
     this.ensureInitialized();
     
-    const ourIdentityKey = this.keyBundle!.identityKey.publicKey;
+    const ourIdentityKey = this.keyBundle.identityKey.publicKey;
     
     // Combine identity keys in deterministic order
     const combined = new Uint8Array(64);
@@ -575,7 +575,7 @@ export class E2EEMessagingService {
    */
   getIdentityPublicKey(): Uint8Array {
     this.ensureInitialized();
-    return this.keyBundle!.identityKey.publicKey;
+    return this.keyBundle.identityKey.publicKey;
   }
   
   /**
@@ -677,7 +677,7 @@ export class E2EEMessagingService {
       const keyPair = generateX25519KeyPair();
       const keyId = crypto.getRandomValues(new Uint32Array(1))[0];
       
-      this.keyBundle!.oneTimePreKeys.push({
+      this.keyBundle.oneTimePreKeys.push({
         keyId,
         keyPair
       });
