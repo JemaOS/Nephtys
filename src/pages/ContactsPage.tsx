@@ -266,7 +266,7 @@ const createNewSelfConversationAndAddMembers = async (
           { conversation_id: conversation.id, user_id: userId, role: 'admin', is_active: true }
         ]);
       console.log('Members added successfully');
-    } catch (err) {
+    } catch {
       console.error('Error adding members:', err);
     }
   };
@@ -312,7 +312,7 @@ const createNewDirectConversationAndAddMembers = async (
           { conversation_id: conversation.id, user_id: contactId, role: 'member', is_active: true }
         ]);
       console.log('Members added successfully');
-    } catch (err) {
+    } catch {
       console.error('Error adding members:', err);
     }
   };
@@ -556,7 +556,7 @@ export function ContactsPage() {
       await loadContacts()
       setShowAddModal(false)
       setUsernameToAdd('')
-    } catch (err) {
+    } catch {
       setError('Erreur inattendue')
     } finally {
       setLoading(false)
@@ -632,7 +632,7 @@ export function ContactsPage() {
       }
       
       creatingConversationRef.current.delete(contactId)
-    } catch (err) {
+    } catch {
       console.error('Error in createConversation:', err)
       creatingConversationRef.current.delete(contactId)
     }
@@ -914,7 +914,7 @@ const getContactsToDelete = (
       setSelectedContacts(new Set())
       setIsSelectionMode(false)
       console.log('Contacts reloaded successfully')
-    } catch (err) {
+    } catch {
       console.error('Error deleting contacts:', err)
       alert('Erreur lors de la suppression des contacts')
     }
@@ -1186,3 +1186,4 @@ const getContactsToDelete = (
     </MainLayout>
   )
 }
+

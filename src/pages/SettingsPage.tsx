@@ -201,7 +201,7 @@ export function SettingsPage() {
       const { enabled, factors } = await check2FAStatus()
       setTwoFactorEnabled(enabled)
       setTwoFactorFactors(factors)
-    } catch (err) {
+    } catch {
       console.error('Error loading 2FA status:', err)
     } finally {
       setTwoFactorLoading(false)
@@ -302,7 +302,7 @@ export function SettingsPage() {
     try {
       await navigator.clipboard.writeText(text)
       alert('✅ Copié dans le presse-papiers')
-    } catch (err) {
+    } catch {
       console.error('Copy failed:', err)
     }
   }
@@ -376,7 +376,7 @@ export function SettingsPage() {
         audio,
         loading: false
       })
-    } catch (err) {
+    } catch {
       console.error('Error loading storage stats:', err)
       setStorageStats({ total: 0, photos: 0, videos: 0, files: 0, audio: 0, loading: false })
     }
@@ -413,7 +413,7 @@ export function SettingsPage() {
       
       alert('✅ Cache vidé avec succès !')
       loadStorageStats()
-    } catch (err) {
+    } catch {
       console.error('Error clearing storage:', err)
       alert('❌ Erreur lors du vidage du cache')
     } finally {
@@ -507,7 +507,7 @@ export function SettingsPage() {
       await supabase.from('profiles').delete().eq('id', user.id)
       await signOut()
       navigate('/auth')
-    } catch (err) {
+    } catch {
       alert('Erreur lors de la suppression du compte')
     }
   }
@@ -1515,5 +1515,6 @@ export function SettingsPage() {
     </MainLayout>
   )
 }
+
 
 

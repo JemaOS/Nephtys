@@ -1208,7 +1208,7 @@ export function ChatViewPage() {
           setMessages(offlineMsgs as unknown as Message[])
           setLoading(false)
         }
-      } catch (err) {
+      } catch {
         // Silent fail - will load from network
       }
     }
@@ -1284,7 +1284,7 @@ export function ChatViewPage() {
       } else {
         setHasMoreMessages(false)
       }
-    } catch (err) {
+    } catch {
       console.error('Error loading more messages:', err)
     } finally {
       setIsLoadingMore(false)
@@ -1407,7 +1407,7 @@ export function ChatViewPage() {
         setMessages(prev => prev.filter(m => m.id !== tempId))
         console.error('[ChatViewPage] Error sending message:', error)
       }
-    } catch (err) {
+    } catch {
       console.error('[ChatViewPage] Error sending message:', err)
       setMessages(prev => prev.filter(m => m.id !== tempId))
     } finally {
@@ -1494,7 +1494,7 @@ export function ChatViewPage() {
         console.error('Error sending message:', error)
         alert('Erreur lors de l\'envoi du message')
       }
-    } catch (err) {
+    } catch {
       console.error('Error sending message:', err)
       setMessages(prev => prev.filter(m => m.id !== tempId))
       alert('Erreur lors de l\'envoi du message')
@@ -1660,7 +1660,7 @@ export function ChatViewPage() {
         setMessages(prev => prev.filter(m => m.id !== tempId))
         alert('Erreur lors de l\'envoi du message vocal')
       }
-    } catch (err) {
+    } catch {
       alert('Erreur lors de l\'envoi du message vocal')
     } finally { setSending(false) }
   }
@@ -2791,3 +2791,4 @@ export function ChatViewPage() {
     </MainLayout>
   )
 }
+
