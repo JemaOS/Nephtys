@@ -738,8 +738,7 @@ export function ChatsPage() {
             table: 'conversations'
           },
           (payload) => {
-            const payloadAny = payload as any
-            console.log('[ChatsPage] Realtime: Conversation change detected:', payload.eventType, payloadAny.new?.id || payloadAny.old?.id)
+            console.log('[ChatsPage] Realtime: Conversation change detected:', payload.eventType, (payload.new as any)?.id || (payload.old as any)?.id)
             debouncedReload()
           }
         )
@@ -779,8 +778,7 @@ export function ChatsPage() {
             table: 'conversation_members'
           },
           (payload) => {
-            const payloadAny = payload as any
-            console.log('[ChatsPage] Realtime: Member change detected:', payload.eventType, payloadAny.old?.conversation_id)
+            console.log('[ChatsPage] Realtime: Member change detected:', payload.eventType, (payload.old as any)?.conversation_id)
             // Handle DELETE events instantly (user removed from conversation)
             if (payload.eventType === 'DELETE') {
               handleConversationMemberRemoved(payload)

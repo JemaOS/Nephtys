@@ -914,11 +914,11 @@ const TextMessageDisplay = ({ message, hoveredMessageId, isOwn, setContextMenu, 
         <>
           {(() => {
             let displayContent = message.content
-            if ((message as any).link_preview) {
+            if (message.link_preview) {
               try {
-                const previewData = typeof (message as any).link_preview === 'string'
-                  ? JSON.parse((message as any).link_preview)
-                  : (message as any).link_preview
+                const previewData = typeof message.link_preview === 'string'
+                  ? JSON.parse(message.link_preview)
+                  : message.link_preview
                 if (previewData.url) {
                   displayContent = cleanLinkPreviewContent(message.content, previewData.url)
                 }
@@ -928,11 +928,11 @@ const TextMessageDisplay = ({ message, hoveredMessageId, isOwn, setContextMenu, 
             }
             return displayContent ? <p className="text-sm whitespace-pre-wrap break-words">{displayContent}</p> : null
           })()}
-          {(message as any).link_preview && (() => {
+          {message.link_preview && (() => {
             try {
-              const previewData = typeof (message as any).link_preview === 'string'
-                ? JSON.parse((message as any).link_preview)
-                : (message as any).link_preview
+              const previewData = typeof message.link_preview === 'string'
+                ? JSON.parse(message.link_preview)
+                : message.link_preview
               return (
                 <LinkPreview
                   preview={previewData}

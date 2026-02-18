@@ -702,7 +702,7 @@ export function ChatViewPage() {
         event: 'DELETE', schema: 'public', table: 'messages',
         filter: `conversation_id=eq.${conversationId}`
       }, (payload) => {
-        const deletedId = (payload.old as any)?.id
+        const deletedId = payload.old?.id
         if (deletedId) {
           setMessages(prev => removeMessageFromList(prev, deletedId))
         }
