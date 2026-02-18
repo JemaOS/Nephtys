@@ -1059,7 +1059,6 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   return (
     <div
       ref={viewerRef}
-      tabIndex={0}
       aria-label="Visualiseur de média"
       aria-roledescription="Visualiseur de média interactif - Utilisez les touches fléchées pour naviguer, Échap pour fermer"
       onKeyDown={(e) => {
@@ -1145,7 +1144,6 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
 
       <div
         aria-label="Visualisation du média"
-        tabIndex={0}
         aria-roledescription="Zone de visualisation - Cliquez ou utilisez les touches pour interagir"
         className={`flex-1 flex items-center justify-center overflow-hidden media-content-container ${
           isLandscape && isMobile ? 'p-0' : 'p-4 md:p-8'
