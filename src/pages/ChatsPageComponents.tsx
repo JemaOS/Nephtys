@@ -47,12 +47,12 @@ const processUrlDisplay = (url: string): string => {
 
 // Helper function to extract GIF/Sticker caption
 const extractMediaCaption = (content: string, mediaType: 'GIF' | 'STICKER'): string | null => {
-  const regex = new RegExp(`^(?:[\\s\\S]*?\\n)?\\[${mediaType}\\]\\(https?:\\/\\/[^)]+\\)$`)
-  const match = content.match(regex)
+  const regex = new RegExp(String.raw`^(?:[\\s\\S]*?\\n)?\\[${mediaType}\\]\\(https?:\\/\\/[^)]+\\)$`)
+  const match = regex.exec(content)
   if (!match) return null
 
-  const captionRegex = new RegExp(`^([\\s\\S]*?)\\n\\[${mediaType}\\]`)
-  const captionMatch = content.match(captionRegex)
+  const captionRegex = new RegExp(String.raw`^([\\s\\S]*?)\\n\\[${mediaType}\\]`)
+  const captionMatch = captionRegex.exec(content)
   return captionMatch ? captionMatch[1].trim() : ''
 }
 
@@ -577,3 +577,7 @@ export const ChatsList = ({
     })()}
   </div>
 )
+
+
+
+

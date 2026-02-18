@@ -24,8 +24,8 @@ const getMessageTypeInfo = (message: Message) => {
   // Check if this is a GIF or Sticker message
   // Avoid catastrophic backtracking by checking suffix first
   const parseMediaContent = (content: string, type: 'GIF' | 'STICKER') => {
-    const suffixRegex = new RegExp(`\\[${type}\\]\\((https?:\\/\\/[^)]+)\\)$`);
-    const match = content.match(suffixRegex);
+    const suffixRegex = new RegExp(String.raw`\\[${type}\\]\\((https?:\\/\\/[^)]+)\\)$`);
+    const match = suffixRegex.exec(content);
     if (!match) return null;
     
     const url = match[1];
@@ -1451,3 +1451,6 @@ export const MessageList: React.FC<MessageListProps> = React.memo(({
     </section>
   )
 })
+
+
+
