@@ -62,6 +62,20 @@ const findSavedMessagesConversation = async (supabase: any, userId: string): Pro
   return { exists: false, conversationId: null }
 }
 
+// Helper function to check if contact is a self-contact using multiple methods
+const isSelfContact = (contactUserId: string, userId: string, conversationName?: string | null, memberCount?: number): boolean => {
+  // Method 1: Direct ID comparison
+  if (contactUserId === userId) return true;
+  
+  // Method 2: Check if conversation name indicates Saved Messages
+  if (conversationName === 'Messages enregistrés') return true;
+  
+  // Method 3: Check if it's a single-member conversation
+  if (memberCount === 1) return true;
+  
+  return false;
+};
+
 // Helper to find existing direct conversation with a contact
 const findDirectConversation = async (supabase: any, userId: string, contactUserId: string): Promise<{ exists: boolean; conversationId: string | null }> => {
   const { data: existingMembers } = await supabase
@@ -793,14 +807,14 @@ const processContactForDeletion = async (
 ): Promise<boolean> => {
   const contactUserId = contact.contact_user_id;
   const isVirtual = contact.id.startsWith('chat-');
-  const isSelfContact = contactUserId === userId;
+  const isSelfContactCheck = isSelfContact(contactUserId, userId);
   
   if (!myConversations) return false;
   
   let foundConversation = false;
   
   // Handle Saved Messages (self-contact)
-  if (isSelfContact) {
+  if (isSelfContactCheck) {
     foundConversation = await deleteSavedMessagesConversation(userId, myConversations);
     if (foundConversation) {
       console.log('Deleted Saved Messages conversation');

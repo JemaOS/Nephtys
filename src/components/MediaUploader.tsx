@@ -158,7 +158,7 @@ export interface UploadCompleteParams {
 
 interface MediaUploaderProps {
   onMediaSelect: (selectedFile: globalThis.File, type: MediaFileType) => void;
-  onUploadComplete: (url: string, type: MediaFileType, fileName: string, fileSize: number, width?: number, height?: number, thumbnail?: string, duration?: number) => void;
+  onUploadComplete: (fileData: UploadedFileData) => void;
   onMultipleUploadComplete?: (files: UploadedFileData[]) => void;
   onCancel: () => void;
   onEmojiSelect?: (emoji: string) => void;
@@ -532,15 +532,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       } else {
         // Fallback: send files one by one
         for (const uploadedFile of uploadedFiles) {
-          onUploadComplete(
-            uploadedFile.url,
-            uploadedFile.type,
-            uploadedFile.fileName,
-            uploadedFile.fileSize,
-            uploadedFile.width,
-            uploadedFile.height,
-            uploadedFile.thumbnail
-          );
+          onUploadComplete(uploadedFile);
         }
       }
 
@@ -691,16 +683,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
 
       if (uploadedFile) {
         // Call completion callback
-        onUploadComplete(
-          uploadedFile.url,
-          uploadedFile.type,
-          uploadedFile.fileName,
-          uploadedFile.fileSize,
-          uploadedFile.width,
-          uploadedFile.height,
-          uploadedFile.thumbnail,
-          audioDuration
-        );
+        onUploadComplete(uploadedFile);
       }
       
       // Reset state
@@ -830,15 +813,13 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       setDocumentUploadProgress(100);
 
       // Call onUploadComplete with thumbnail URL
-      onUploadComplete(
-        publicUrl,
-        'file',
-        documentFile.name,
-        documentFile.size,
-        undefined, // width
-        undefined, // height
-        thumbnailUrl // thumbnail URL for PDF preview
-      );
+      onUploadComplete({
+        url: publicUrl,
+        type: 'file',
+        fileName: documentFile.name,
+        fileSize: documentFile.size,
+        thumbnail: thumbnailUrl
+      });
 
       // Reset state
       setShowDocumentPreview(false);
@@ -935,15 +916,15 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       const publicUrl = urlData?.publicUrl ?? '';
 
       setUploadProgress(100);
-      onUploadComplete(
-        publicUrl,
-        'image',
-        fileName,
-        fileToUpload instanceof Blob ? fileToUpload.size : editedFile.size,
-        processedImage?.dimensions.width,
-        processedImage?.dimensions.height,
-        processedImage?.thumbnailDataUrl
-      );
+      onUploadComplete({
+        url: publicUrl,
+        type: 'image',
+        fileName: fileName,
+        fileSize: fileToUpload instanceof Blob ? fileToUpload.size : editedFile.size,
+        width: processedImage?.dimensions.width,
+        height: processedImage?.dimensions.height,
+        thumbnail: processedImage?.thumbnailDataUrl
+      });
       
       // Reset
       setSelectedFile(null);

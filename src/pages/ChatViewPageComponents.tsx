@@ -1182,8 +1182,8 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = React.memo((
           }
           handleContextMenu(e, message)
         }}
-        role="region"
         aria-label="Contenu du message"
+        role="group"
       >
         <MessageContent
           message={message}

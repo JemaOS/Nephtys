@@ -1408,17 +1408,23 @@ export function ChatViewPage() {
     }
   }
 
-  const handleMediaUploadComplete = async (
-    url: string,
-    type: 'image' | 'video' | 'file',
-    fileName: string,
-    fileSize: number,
-    width?: number,
-    height?: number,
-    thumbnail?: string
-  ) => {
+  // Type for uploaded file data from MediaUploader
+  type UploadedFileData = {
+    url: string;
+    type: 'image' | 'video' | 'file' | 'audio';
+    fileName: string;
+    fileSize: number;
+    width?: number;
+    height?: number;
+    thumbnail?: string;
+    duration?: number;
+  };
+
+  const handleMediaUploadComplete = async (fileData: UploadedFileData) => {
     if (!user) return
     setSending(true)
+    
+    const { url, type, fileName, fileSize, width, height, thumbnail } = fileData
     
     // Optimistic update
     const tempId = `temp-${Date.now()}`
