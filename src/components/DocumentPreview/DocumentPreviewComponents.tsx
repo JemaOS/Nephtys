@@ -287,7 +287,6 @@ export const DocumentPreviewContent: React.FC<DocumentPreviewContentProps> = ({
     className={`flex-1 overflow-auto bg-[#525659] flex justify-center select-none ${canPreview ? 'items-start' : 'items-center'}`}
     style={{ cursor: getCursorStyle() }}
     aria-label="Zone de prévisualisation du document - Appuyez sur Échap pour fermer"
-    role="button"
     tabIndex={0}
     aria-roledescription="Zone de prévisualisation interactive - Utilisez les gestes tactiles ou la molette pour zoomer"
     onMouseDown={isPDF ? handleMouseDown : undefined}

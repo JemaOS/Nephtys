@@ -15,6 +15,9 @@ import {
   type TOTPFactor,
   type EnrollmentData
 } from '@/lib/twoFactorAuth'
+
+// Type for storage/media type filter
+type StorageType = 'all' | 'photos' | 'videos' | 'files' | 'audio';
 import {
   ArrowLeft, User, Lock, Bell, MessageSquare, Video, Palette,
   Globe, Database, HelpCircle, Info, LogOut, ChevronRight,
@@ -68,7 +71,7 @@ const formatBackupDate = (date: Date | null): string => {
   })
 }
 
-const getStorageTypeLabel = (type: 'all' | 'photos' | 'videos' | 'files' | 'audio'): string => {
+const getStorageTypeLabel = (type: StorageType): string => {
   if (type === 'all') return 'toutes les données'
   if (type === 'photos') return 'les photos'
   if (type === 'videos') return 'les vidéos'
@@ -76,7 +79,7 @@ const getStorageTypeLabel = (type: 'all' | 'photos' | 'videos' | 'files' | 'audi
   return 'les messages vocaux'
 }
 
-const getMediaTypeFilter = (type: 'all' | 'photos' | 'videos' | 'files' | 'audio'): string | null => {
+const getMediaTypeFilter = (type: StorageType): string | null => {
   if (type === 'all') return null
   if (type === 'photos') return 'image'
   if (type === 'videos') return 'video'

@@ -174,7 +174,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
   onGifStickerSend,
 }) => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [selectedFileType, setSelectedFileType] = useState<'image' | 'video' | 'file' | 'audio' | null>(null);
+  const [selectedFileType, setSelectedFileType] = useState<MediaFileType | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   // Multiple files selection state
   type FileSelection = { file: File; preview: string; type: MediaFileType };
@@ -411,7 +411,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
   };
 
   // Helper: Process single file preview - extracted to reduce complexity
-  const createFilePreview = (file: File, type: 'image' | 'video' | 'file' | 'audio', onPreviewCreated: (preview: string) => void): void => {
+  const createFilePreview = (file: File, type: MediaFileType, onPreviewCreated: (preview: string) => void): void => {
     if (type === 'image' || type === 'video' || type === 'audio') {
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -423,7 +423,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
 
   // Helper: Process a single file for upload - extracted to reduce complexity
   interface ProcessSingleFileParams {
-    fileItem: { file: File; preview: string; type: 'image' | 'video' | 'file' | 'audio' };
+    fileItem: { file: File; preview: string; type: MediaFileType };
     userId: string;
     totalFiles: number;
     uploadedFiles: UploadedFileData[];
@@ -551,7 +551,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
 
   // Process a single file for upload - extracted to reduce component complexity
   const processFileForUpload = async (
-    fileItem: { file: File; preview: string; type: 'image' | 'video' | 'file' | 'audio' },
+    fileItem: { file: File; preview: string; type: MediaFileType },
     userId: string,
     index: number
   ): Promise<UploadedFileData | null> => {
@@ -660,9 +660,8 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       const fileType = selectedFileType || getFileType(selectedFile);
       
       // Get audio duration if it's an audio file
-      let audioDuration: number | undefined;
       if (fileType === 'audio' && preview) {
-        audioDuration = await getAudioDuration(preview);
+        await getAudioDuration(preview);
       }
 
       // Start Upload Phase

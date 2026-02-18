@@ -703,7 +703,7 @@ export class E2EEMessagingService {
    */
   getOneTimeKeyCount(): number {
     if (!this.keyBundle) return 0;
-    return this.keyBundle.oneTimePreKeys.length;
+    return this.keyBundle?.oneTimePreKeys.length;
   }
 }
 
