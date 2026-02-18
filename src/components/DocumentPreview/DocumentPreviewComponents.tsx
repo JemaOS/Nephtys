@@ -287,9 +287,9 @@ export const DocumentPreviewContent: React.FC<DocumentPreviewContentProps> = ({
     className={`flex-1 overflow-auto bg-[#525659] flex justify-center select-none ${canPreview ? 'items-start' : 'items-center'}`}
     style={{ cursor: getCursorStyle() }}
     aria-label="Zone de prévisualisation du document - Appuyez sur Échap pour fermer"
-    role="application"
-    aria-roledescription="Zone de prévisualisation interactive - Utilisez les gestes tactiles ou la molette pour zoomer"
+    role="button"
     tabIndex={0}
+    aria-roledescription="Zone de prévisualisation interactive - Utilisez les gestes tactiles ou la molette pour zoomer"
     onMouseDown={isPDF ? handleMouseDown : undefined}
     onTouchStart={handleTouchStart}
     onTouchMove={handleTouchMove}
@@ -298,9 +298,11 @@ export const DocumentPreviewContent: React.FC<DocumentPreviewContentProps> = ({
       // Handle keyboard navigation for accessibility
       if (e.key === 'Escape') {
         onClose();
+      } else if (e.key === 'Enter' || e.key === ' ') {
+        // Activate interaction
+        e.preventDefault();
       }
     }}
-    // Don't add keyboard handler for accessibility since this is not an interactive element
   >
     {loading && (
       <div className="flex items-center justify-center h-full w-full">
