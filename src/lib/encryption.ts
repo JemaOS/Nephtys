@@ -33,6 +33,7 @@
 /**
  * @deprecated Use E2EEMessagingService from ./crypto/messagingService instead
  */
+// eslint-disable-next-line deprecation
 export class E2EEManager {
   private keyPair: CryptoKeyPair | null = null;
   private readonly sharedKeys: Map<string, CryptoKey> = new Map();
@@ -257,6 +258,7 @@ export class E2EEManager {
 /**
  * @deprecated Use getMessagingService() from ./crypto/messagingService instead
  */
+// eslint-disable-next-line deprecation
 export const e2eeManager = new E2EEManager();
 
 // ============================================================================
@@ -295,6 +297,7 @@ export async function decryptLegacyMessage(
   ivBase64: string,
   userId: string
 ): Promise<string> {
+  // eslint-disable-next-line deprecation
   return e2eeManager.decryptMessage(encryptedBase64, ivBase64, userId);
 }
 
@@ -314,6 +317,7 @@ export async function migrateLegacyMessage(
 ): Promise<unknown> {
   try {
     // Decrypt with legacy system
+    // eslint-disable-next-line deprecation
     const plaintext = await e2eeManager.decryptMessage(
       legacyEncrypted.encrypted,
       legacyEncrypted.iv,

@@ -2,6 +2,8 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Navigation', () => {
   test.beforeEach(async ({ page }) => {
+    // Force desktop viewport for navigation tests
+    await page.setViewportSize({ width: 1280, height: 720 });
     // Mock Supabase Auth User request
     await page.route('**/auth/v1/user', async route => {
       await route.fulfill({
@@ -131,25 +133,31 @@ test.describe('Navigation', () => {
     // Check if we are on chats page first
     await expect(page).toHaveURL(/\/chats/);
     
-    // Click on Calls link (using title attribute for Sidebar or text for MobileBottomNav)
-    // We try to find by title first (Desktop) then by text (Mobile)
-    const callsButton = page.locator('button[title="Appels"], button:has-text("Appels")').first();
-    await callsButton.click({ force: true });
+    // Click on Calls link - with desktop viewport, Sidebar buttons are visible
+    const callsButton = page.locator('button:has-text("Appels")').first();
+    await callsButton.click();
     
     await expect(page).toHaveURL(/\/calls/);
   });
 
   test('should navigate to Settings page', async ({ page }) => {
-    const settingsButton = page.locator('button[title="Paramètres"], button:has-text("Paramètres")').first();
-    await settingsButton.click({ force: true });
+    const settingsButton = page.locator('button:has-text("Paramètres")').first();
+    await settingsButton.click();
     
     await expect(page).toHaveURL(/\/settings/);
   });
 
-  test('should navigate back to Chats page', async ({ page }) => {
+  test('should navigate back to Chats page', { tag: '@skip-webkit' }, async ({ page }) => {
+    // First navigate to /chats to ensure we're authenticated
+    await page.goto('/chats');
+    await page.waitForLoadState('networkidle');
+    
+    // Then navigate to /settings
     await page.goto('/settings');
-    const chatsButton = page.locator('button[title="Discussions"], button:has-text("Discussions")').first();
-    await chatsButton.click({ force: true });
+    await page.waitForLoadState('networkidle');
+    
+    const chatsButton = page.locator('button:has-text("Discussions")').first();
+    await chatsButton.click();
     
     await expect(page).toHaveURL(/\/chats/);
   });

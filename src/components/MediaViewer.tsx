@@ -1044,16 +1044,36 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
 
   // Focus the viewer on mount for keyboard accessibility
   const viewerRef = useRef<HTMLDialogElement>(null);
+  
+  // Handle backdrop click for dialog - using native dialog methods
+  const handleDialogClick = useCallback((e: React.MouseEvent<HTMLDialogElement>) => {
+    // Close only if clicking on the backdrop (the dialog element itself, not its contents)
+    const rect = viewerRef.current?.getBoundingClientRect();
+    if (rect && e.clientX >= rect.left && e.clientX <= rect.right && 
+        e.clientY >= rect.top && e.clientY <= rect.bottom) {
+      // Click is within dialog bounds, don't close
+      return;
+    }
+    onClose();
+  }, [onClose]);
+  
+  // Handle keyboard for closing dialog
+  const handleDialogKeyDown = useCallback((e: React.KeyboardEvent<HTMLDialogElement>) => {
+    if (e.key === 'Escape') {
+      onClose();
+    }
+  }, [onClose]);
+  
   useEffect(() => {
     if (isOpen && viewerRef.current) {
       // Use native dialog showModal method for proper accessibility
-      if (!(viewerRef.current as HTMLDialogElement & { open?: boolean }).open) {
-        (viewerRef.current as HTMLDialogElement).showModal();
+      if (!viewerRef.current.open) {
+        viewerRef.current.showModal();
       }
     }
     return () => {
-      if (viewerRef.current && (viewerRef.current as HTMLDialogElement & { open?: boolean }).open) {
-        (viewerRef.current as HTMLDialogElement).close();
+      if (viewerRef.current?.open) {
+        viewerRef.current.close();
       }
     };
   }, [isOpen]);
@@ -1065,26 +1085,33 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   const cursorNoneClass = showControls ? '' : 'cursor-none';
 
   return (
-    // Use a div wrapper for the backdrop click handler to avoid SonarQube issues with dialog
-    <div
+    // Using native <dialog> element for proper accessibility
+    <dialog
+      ref={viewerRef}
       className={`fixed inset-0 z-[200] bg-black flex flex-col media-viewer-fullscreen ${landscapeModeClass} ${fullscreenActiveClass} ${cursorNoneClass}`}
       style={{
         width: '100%',
         height: '100%',
         minHeight: isMobile ? '100dvh' : '100vh',
+        margin: 0,
+        maxWidth: 'none',
+        maxHeight: 'none',
+        border: 'none',
+        padding: 0,
+        background: 'black',
       }}
-      onClick={(e) => {
-        // Close only if clicking directly on the backdrop
-        if (e.target === e.currentTarget) {
-          onClose();
-        }
-        setShowControls(true);
-      }}
-      onMouseMove={handleContainerMouseMove}
-      role="dialog"
+      onClick={handleDialogClick}
+      onKeyDown={handleDialogKeyDown}
       aria-modal="true"
       aria-label="Visionneuse de médias"
     >
+      {/* Container for dialog content - handles mouse move for controls - made focusable for accessibility */}
+      <div
+        className="flex-1 flex flex-col"
+        onMouseMove={handleContainerMouseMove}
+        tabIndex={-1}
+        role="presentation"
+      >
       <MediaViewerHeader
         showControls={showControls}
         setIsHoveringControls={setIsHoveringControls}
@@ -1234,6 +1261,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
           {currentIndex + 1} / {allMedia.length}
         </div>
       )}
-    </div>
+      </div>
+    </dialog>
   );
 };

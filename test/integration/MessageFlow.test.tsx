@@ -1,3 +1,4 @@
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { ChatViewPage } from '../../src/pages/ChatViewPage';
 import { AuthProvider } from '../../src/context/AuthContext';
@@ -5,26 +6,32 @@ import { ThemeProvider } from '../../src/context/ThemeContext';
 import { CallProvider } from '../../src/context/CallContext';
 import { BrowserRouter } from 'react-router-dom';
 
-// Mock Supabase
-const mocks = vi.hoisted(() => {
-  return {
-    mockSelect: vi.fn(),
-    mockInsert: vi.fn(),
-    mockUpdate: vi.fn(),
-    mockEq: vi.fn(),
-    mockOrder: vi.fn(),
-    mockLimit: vi.fn(),
-    mockSingle: vi.fn(),
-    mockMaybeSingle: vi.fn(),
-    mockIn: vi.fn(),
-    mockIs: vi.fn(),
-    mockGt: vi.fn(),
-    mockNeq: vi.fn(),
-  };
-});
+// Mock ResizeObserver for test environment
+class ResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+global.ResizeObserver = ResizeObserver;
 
-vi.mock('../../src/lib/supabase', () => {
-  const mockSupabase = {
+// Mock Supabase
+const mocks = vi.hoisted(() => ({
+  mockSelect: vi.fn(),
+  mockInsert: vi.fn(),
+  mockUpdate: vi.fn(),
+  mockEq: vi.fn(),
+  mockOrder: vi.fn(),
+  mockLimit: vi.fn(),
+  mockSingle: vi.fn(),
+  mockMaybeSingle: vi.fn(),
+  mockIn: vi.fn(),
+  mockIs: vi.fn(),
+  mockGt: vi.fn(),
+  mockNeq: vi.fn(),
+}));
+
+vi.mock('../../src/lib/supabase', () => ({
+  supabase: {
     from: vi.fn(() => ({
       select: mocks.mockSelect,
       insert: mocks.mockInsert,
@@ -46,9 +53,8 @@ vi.mock('../../src/lib/supabase', () => {
       getSession: vi.fn().mockResolvedValue({ data: { session: { user: { id: 'user-123' } } }, error: null }),
       onAuthStateChange: vi.fn().mockReturnValue({ data: { subscription: { unsubscribe: () => {} } } }),
     },
-  };
-  return { supabase: mockSupabase };
-});
+  },
+}));
 
 // Mock hooks
 vi.mock('react-router-dom', async () => {
@@ -258,4 +264,3 @@ describe('MessageFlow', () => {
     });
   });
 });
-

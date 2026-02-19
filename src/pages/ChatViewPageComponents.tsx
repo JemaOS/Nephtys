@@ -1148,6 +1148,7 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = React.memo((
   
   return (
     <article
+      role="button"
       tabIndex={0}
       key={message.id}
       id={`message-${message.id}`}
@@ -1182,8 +1183,8 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = React.memo((
         setQuickReactionBar={setQuickReactionBar}
       />
       
-      <address
-        tabIndex={0}
+      <div
+        role="group"
         aria-label="Contenu du message"
         className={`max-w-[85%] sm:max-w-[75%] md:max-w-[70%] lg:max-w-[65%] relative group`}
         data-message-id={message.id}
@@ -1193,12 +1194,6 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = React.memo((
             return
           }
           handleContextMenu(e, message)
-        }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault()
-            handleContextMenu(e as unknown as React.MouseEvent, message)
-          }
         }}
       >
         <MessageContent
@@ -1246,7 +1241,7 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = React.memo((
         {messageReactions.length > 0 && (
           <MessageReactions reactions={messageReactions} currentUserId={user?.id || ''} onReactionClick={(emoji) => addReaction(message.id, emoji)} onReactionRemove={(emoji) => removeReaction(message.id, emoji)} />
         )}
-      </address>
+      </div>
       
       {!isOwn && (
         <MessageSideActions

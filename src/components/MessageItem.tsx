@@ -173,7 +173,7 @@ const getMessageType = (message: Message): MessageTypeProps => {
     mediaUrl: mediaUrl || false,
     mediaType,
     isGifMessage,
-    isStickerMessage: isStickerMessage || isGifMessage,
+    isStickerMessage,
     isSystemMessage,
     isEmojiOnlyMessage,
     emojiCount,
@@ -234,6 +234,53 @@ const renderTextContent = (message: Message, isOwn: boolean, msgType: MessageTyp
   )
 }
 
+// Component to render GIF/Sticker messages
+const GifStickerMessageDisplay = ({ 
+  message, 
+  isOwn, 
+  gifMatch, 
+  stickerMatch, 
+  isGifMessage 
+}: { 
+  message: Message
+  isOwn: boolean
+  gifMatch: RegExpMatchArray | null
+  stickerMatch: RegExpMatchArray | null
+  isGifMessage: boolean
+}) => {
+  const match = isGifMessage ? gifMatch : stickerMatch
+  if (!match) return null
+  
+  const caption = match[1]
+  const url = match[2]
+  const isGif = isGifMessage
+  
+  return (
+    <div className="relative">
+      <div className="space-y-1">
+        <button
+          type="button"
+          className={`overflow-hidden cursor-pointer ${isGif ? 'max-w-[240px] sm:max-w-[280px]' : 'max-w-[160px] sm:max-w-[200px]'} rounded-xl border-[3px] border-[#787add] p-0 bg-transparent`}
+          onClick={(e) => e.stopPropagation()}
+          aria-label={isGif ? 'Voir le GIF' : 'Voir le sticker'}
+        >
+          <img
+            src={url}
+            alt={isGif ? 'GIF' : 'Sticker'}
+            className={`w-full h-auto ${isGif ? 'max-h-[200px] sm:max-h-[240px]' : 'max-h-[160px] sm:max-h-[200px]'} object-contain`}
+            loading="lazy"
+          />
+        </button>
+        {caption && (
+          <div className={`px-3 py-2 rounded-2xl ${isOwn ? 'bg-[#787add] text-white' : 'bg-bg-surface text-text-primary'}`}>
+            <p className="text-sm whitespace-pre-wrap break-words">{caption}</p>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // Main MessageItem component - wrapped with React.memo for performance
 export const MessageItem: React.FC<MessageItemProps> = React.memo(({
   message,
@@ -265,6 +312,10 @@ export const MessageItem: React.FC<MessageItemProps> = React.memo(({
   const msgType = getMessageType(message)
   const messageReactions = reactions.filter(r => r.message_id === message.id)
   const systemMessageContent = msgType.isSystemMessage ? message.content.replaceAll('[SYSTEM]', '') : ''
+  
+  // Extract GIF/Sticker matches for rendering
+  const gifMatch = msgType.isGifMessage ? parseSpecialMessage(message.content || '', 'GIF') : null
+  const stickerMatch = msgType.isStickerMessage && !msgType.isGifMessage ? parseSpecialMessage(message.content || '', 'STICKER') : null
   
   const senderInfo = getSenderInfoForMessage(
     message.sender_id,
@@ -380,6 +431,19 @@ export const MessageItem: React.FC<MessageItemProps> = React.memo(({
         </div>
         {renderTimestampBubble()}
       </>
+    )
+  }
+
+  // Render GIF/Sticker messages
+  if (msgType.isGifMessage || msgType.isStickerMessage) {
+    return renderBubbleWrapper(
+      <GifStickerMessageDisplay
+        message={message}
+        isOwn={isOwn}
+        gifMatch={gifMatch}
+        stickerMatch={stickerMatch}
+        isGifMessage={msgType.isGifMessage}
+      />
     )
   }
 

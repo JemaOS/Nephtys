@@ -2,8 +2,25 @@ import '@testing-library/jest-dom'
 
 // Mock ResizeObserver for all tests
 class ResizeObserver {
-  observe() {}
-  unobserve() {}
-  disconnect() {}
+  private targets: Element[] = [];
+  
+  constructor(callback: ResizeObserverCallback) {}
+  
+  observe(target: Element): void {
+    if (!this.targets.includes(target)) {
+      this.targets.push(target);
+    }
+  }
+  
+  unobserve(target: Element): void {
+    const index = this.targets.indexOf(target);
+    if (index !== -1) {
+      this.targets.splice(index, 1);
+    }
+  }
+  
+  disconnect(): void {
+    this.targets = [];
+  }
 }
-global.ResizeObserver = ResizeObserver;
+globalThis.ResizeObserver = ResizeObserver;

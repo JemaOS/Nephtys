@@ -172,7 +172,7 @@ export function SettingsPage() {
   })
   const [clearingStorage, setClearingStorage] = useState(false)
   
-  const [backupSettings, setBackupSettingsState] = useState<BackupSettings>(getBackupSettings())
+  const [backupSettings, setBackupSettings] = useState<BackupSettings>(getBackupSettings())
   const [lastBackupDate, setLastBackupDate] = useState<Date | null>(null)
   const [lastBackupSize, setLastBackupSize] = useState<number>(0)
   const [isBackingUp, setIsBackingUp] = useState(false)
@@ -204,8 +204,8 @@ export function SettingsPage() {
       const { enabled, factors } = await check2FAStatus()
       setTwoFactorEnabled(enabled)
       setTwoFactorFactors(factors)
-    } catch {
-      console.error('Error loading 2FA status:', err)
+    } catch (e) {
+      console.error('Error loading 2FA status:', e)
     } finally {
       setTwoFactorLoading(false)
     }
@@ -305,8 +305,8 @@ export function SettingsPage() {
     try {
       await navigator.clipboard.writeText(text)
       alert('✅ Copié dans le presse-papiers')
-    } catch {
-      console.error('Copy failed:', err)
+    } catch (e) {
+      console.error('Copy failed:', e)
     }
   }
 
@@ -328,7 +328,7 @@ export function SettingsPage() {
 
   const updateBackupSettings = (updates: Partial<BackupSettings>) => {
     const newSettings = { ...backupSettings, ...updates }
-    setBackupSettingsState(newSettings)
+    setBackupSettings(newSettings)
     saveBackupSettings(newSettings)
   }
 
@@ -379,8 +379,8 @@ export function SettingsPage() {
         audio,
         loading: false
       })
-    } catch {
-      console.error('Error loading storage stats:', err)
+    } catch (e) {
+      console.error('Error loading storage stats:', e)
       setStorageStats({ total: 0, photos: 0, videos: 0, files: 0, audio: 0, loading: false })
     }
   }
@@ -416,8 +416,8 @@ export function SettingsPage() {
       
       alert('✅ Cache vidé avec succès !')
       loadStorageStats()
-    } catch {
-      console.error('Error clearing storage:', err)
+    } catch (e) {
+      console.error('Error clearing storage:', e)
       alert('❌ Erreur lors du vidage du cache')
     } finally {
       setClearingStorage(false)
@@ -1518,6 +1518,3 @@ export function SettingsPage() {
     </MainLayout>
   )
 }
-
-
-
