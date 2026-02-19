@@ -415,5 +415,5 @@ export const DocumentPreviewContent: React.FC<DocumentPreviewContentProps> = ({
         </div>
       </div>
     )}
-  </div>
+  </button>
 );

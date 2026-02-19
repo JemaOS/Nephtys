@@ -51,7 +51,7 @@ test.describe('Messaging', () => {
     });
 
     // Mock conversation_members for current user (Step 1)
-    await page.route('**/rest/v1/conversation_members*user_id=eq.test-user-id*', async route => {
+    await page.route('**/rest/v1/conversation_members?*user_id=eq.test-user-id*', async route => {
        const json = [
         { conversation_id: 'conv-1', is_pinned: false, is_muted: false, is_archived: false }
        ];
@@ -75,7 +75,7 @@ test.describe('Messaging', () => {
 
     // Mock conversation_members for the conversation (Step 3)
     // Note: The URL pattern needs to be flexible as the query might change
-    await page.route('**/rest/v1/conversation_members*conversation_id=in.%28conv-1%29*', async route => {
+    await page.route('**/rest/v1/conversation_members*conversation_id=in*', async route => {
        const json = [
         { conversation_id: 'conv-1', user_id: 'test-user-id' },
         { conversation_id: 'conv-1', user_id: 'alice-id' }

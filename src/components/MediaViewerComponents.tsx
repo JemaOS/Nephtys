@@ -491,7 +491,6 @@ const VideoControls: React.FC<VideoControlsProps> = ({
         onMouseEnter={() => setIsHoveringControls(true)}
         onMouseLeave={() => setIsHoveringControls(false)}
         // tabIndex is appropriate here because this is a toolbar with keyboard handlers
-        // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
         tabIndex={0}
         role="toolbar"
         aria-label="Contrôles vidéo"

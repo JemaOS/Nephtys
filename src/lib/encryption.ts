@@ -257,7 +257,6 @@ export class E2EEManager {
 /**
  * @deprecated Use getMessagingService() from ./crypto/messagingService instead
  */
-// eslint-disable-next-line deprecation
 export const e2eeManager = new E2EEManager();
 
 // ============================================================================
@@ -296,7 +295,6 @@ export async function decryptLegacyMessage(
   ivBase64: string,
   userId: string
 ): Promise<string> {
-  // eslint-disable-next-line deprecation
   return e2eeManager.decryptMessage(encryptedBase64, ivBase64, userId);
 }
 
@@ -316,7 +314,6 @@ export async function migrateLegacyMessage(
 ): Promise<unknown> {
   try {
     // Decrypt with legacy system
-    // eslint-disable-next-line deprecation
     const plaintext = await e2eeManager.decryptMessage(
       legacyEncrypted.encrypted,
       legacyEncrypted.iv,
@@ -327,7 +324,6 @@ export async function migrateLegacyMessage(
     return await newEncryptFn(plaintext);
   } catch (error) {
     console.error('Failed to migrate legacy message:', error);
-    // eslint-disable-next-line deprecation
     return null;
   }
 }
