@@ -4,8 +4,6 @@ import '@testing-library/jest-dom'
 class ResizeObserver {
   private targets: Element[] = [];
   
-  constructor(callback: ResizeObserverCallback) {}
-  
   observe(target: Element): void {
     if (!this.targets.includes(target)) {
       this.targets.push(target);
