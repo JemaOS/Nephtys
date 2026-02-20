@@ -247,7 +247,10 @@ export function ChatViewPage() {
   )
   const [callLogs, setCallLogs] = useState<CallLog[]>([])
   const [filteredMessages, setFilteredMessages] = useState<Message[]>([])
-  const [newMessage, setNewMessage] = useState('')
+  const [newMessage, setNewMessage] = useState<string>(() => {
+    const savedDraft = conversationId ? localStorage.getItem(`draft_${conversationId}`) : null
+    return savedDraft || ''
+  })
   const [loading, setLoading] = useState(() => {
     // If we have cached messages, don't show loading spinner
     const cachedMsgs = conversationId ? getCache<Message[]>(`msgs_${conversationId}`) : null
