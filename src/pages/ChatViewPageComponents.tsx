@@ -1227,17 +1227,7 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = React.memo((
         )}
       </div>
       
-      {!isOwn && (
-        <MessageSideActions
-          isOwn={isOwn}
-          hoveredMessageId={hoveredMessageId}
-          message={message}
-          isSelectionMode={isSelectionMode}
-          setReplyToMessage={setReplyToMessage}
-          handleForwardMessage={handleForwardMessage}
-          setQuickReactionBar={setQuickReactionBar}
-        />
-      )}
+
     </article>
   )
 });
