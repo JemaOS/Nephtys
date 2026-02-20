@@ -1,5 +1,6 @@
 // Test utilities and helpers for Playwright tests
-import { Page, Locator, expect } from '@playwright/test';
+import { Page, Locator } from '@playwright/test';
+export { expect } from '@playwright/test';
 
 // Mock data helpers
 export const mockUser = {
@@ -167,9 +168,9 @@ export async function checkForXSS(page: Page, payload: string): Promise<boolean>
 // Memory leak detection helpers
 export async function measureMemory(page: Page): Promise<number> {
   return await page.evaluate(() => {
-    // @ts-ignore
+    // @ts-expect-error: performance.memory is non-standard
     if (performance.memory) {
-      // @ts-ignore
+      // @ts-expect-error: performance.memory.usedJSHeapSize is non-standard
       return performance.memory.usedJSHeapSize;
     }
     return 0;
@@ -180,6 +181,3 @@ export async function measureMemory(page: Page): Promise<number> {
 export async function waitForElement(locator: Locator, timeout: number = 5000) {
   await locator.waitFor({ state: 'visible', timeout });
 }
-
-// Expect helpers
-export { expect };
