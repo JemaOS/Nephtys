@@ -978,7 +978,7 @@ const MessageSideActions = ({ isOwn, hoveredMessageId, message, isSelectionMode,
       <div className="flex items-center gap-0.5 md:gap-1 mr-1 md:mr-2">
         <button
           onClick={() => setReplyToMessage(message)}
-          className="md:hidden w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] flex items-center justify-center transition-colors shadow-md"
+          className="w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] flex items-center justify-center transition-colors shadow-md"
           title="Répondre"
           aria-label="Répondre"
         >
@@ -1007,14 +1007,6 @@ const MessageSideActions = ({ isOwn, hoveredMessageId, message, isSelectionMode,
         >
           <Smile size={16} className="text-[#8696a0]" />
         </button>
-        <button
-          onClick={() => setReplyToMessage(message)}
-          className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
-          title="Répondre"
-          aria-label="Répondre"
-        >
-          <Reply size={16} className="text-[#8696a0]" />
-        </button>
       </div>
     )
   }
@@ -1024,15 +1016,7 @@ const MessageSideActions = ({ isOwn, hoveredMessageId, message, isSelectionMode,
       <div className="flex items-center gap-0.5 md:gap-1 pb-4 ml-1 md:ml-2">
         <button
           onClick={() => setReplyToMessage(message)}
-          className="md:hidden w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] flex items-center justify-center transition-colors shadow-md"
-          title="Répondre"
-          aria-label="Répondre"
-        >
-          <Reply size={16} className="text-[#8696a0]" />
-        </button>
-        <button
-          onClick={() => setReplyToMessage(message)}
-          className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
+          className="w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] flex items-center justify-center transition-colors shadow-md"
           title="Répondre"
           aria-label="Répondre"
         >
