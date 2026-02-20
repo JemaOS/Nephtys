@@ -1463,6 +1463,11 @@ export function ChatViewPage() {
       reply_to_id: replyToMessage?.id || null,
       is_starred: false,
       is_pinned: false,
+      is_ephemeral: !!ephemeralDuration,
+      ephemeral_duration: ephemeralDuration,
+      ephemeral_expires_at: ephemeralDuration 
+        ? new Date(Date.now() + ephemeralDuration * 1000).toISOString() 
+        : null,
     } as unknown as Message
 
     setMessages(prev => [...prev, optimisticMessage])
@@ -1485,6 +1490,15 @@ export function ChatViewPage() {
       }
       if (thumbnail) {
         messageData.media_thumbnail = thumbnail
+      }
+      
+      // Add ephemeral fields if enabled
+      if (ephemeralDuration) {
+        messageData.is_ephemeral = true
+        messageData.ephemeral_duration = ephemeralDuration
+        messageData.ephemeral_expires_at = ephemeralDuration 
+          ? new Date(Date.now() + ephemeralDuration * 1000).toISOString() 
+          : null
       }
       
       const { data, error } = await supabase.from('messages').insert(messageData).select().single()
@@ -1537,7 +1551,12 @@ export function ChatViewPage() {
           media_thumbnail: file.thumbnail,
           reply_to_id: replyToMessage?.id || null,
           is_starred: false,
-          is_pinned: false
+          is_pinned: false,
+          is_ephemeral: !!ephemeralDuration,
+          ephemeral_duration: ephemeralDuration,
+          ephemeral_expires_at: ephemeralDuration 
+            ? new Date(Date.now() + ephemeralDuration * 1000).toISOString() 
+            : null,
         } as unknown as Message
         tempMessages.push(optimisticMessage)
     })
@@ -1575,6 +1594,15 @@ export function ChatViewPage() {
         }
         if (file.thumbnail) {
           messageData.media_thumbnail = file.thumbnail
+        }
+        
+        // Add ephemeral fields if enabled
+        if (ephemeralDuration) {
+          messageData.is_ephemeral = true
+          messageData.ephemeral_duration = ephemeralDuration
+          messageData.ephemeral_expires_at = ephemeralDuration 
+            ? new Date(Date.now() + ephemeralDuration * 1000).toISOString() 
+            : null
         }
         
         const { data, error } = await supabase.from('messages').insert(messageData).select().single()
@@ -1634,6 +1662,15 @@ export function ChatViewPage() {
         file_url: publicUrl, // Fallback for older schema
       }
       
+      // Add ephemeral fields if enabled
+      if (ephemeralDuration) {
+        messageData.is_ephemeral = true
+        messageData.ephemeral_duration = ephemeralDuration
+        messageData.ephemeral_expires_at = ephemeralDuration 
+          ? new Date(Date.now() + ephemeralDuration * 1000).toISOString() 
+          : null
+      }
+      
       // Optimistic update - add message to local state immediately
       const optimisticMessage = {
         id: tempId,
@@ -1648,6 +1685,11 @@ export function ChatViewPage() {
         file_name: messageData.file_name,
         file_size: audioBlob.size,
         reply_to_id: replyToMessage?.id || null,
+        is_ephemeral: !!ephemeralDuration,
+        ephemeral_duration: ephemeralDuration,
+        ephemeral_expires_at: ephemeralDuration 
+          ? new Date(Date.now() + ephemeralDuration * 1000).toISOString() 
+          : null,
       } as unknown as Message
       
       setMessages(prev => [...prev, optimisticMessage])
@@ -2575,6 +2617,11 @@ export function ChatViewPage() {
               reply_to_id: replyToMessage?.id || null,
               is_starred: false,
               is_pinned: false,
+              is_ephemeral: !!ephemeralDuration,
+              ephemeral_duration: ephemeralDuration,
+              ephemeral_expires_at: ephemeralDuration 
+                ? new Date(Date.now() + ephemeralDuration * 1000).toISOString() 
+                : null,
             } as unknown as Message
 
             setMessages(prev => [...prev, optimisticMessage])
@@ -2589,6 +2636,15 @@ export function ChatViewPage() {
                 type: 'text',
                 status: 'sent',
                 reply_to_id: optimisticMessage.reply_to_id,
+              }
+              
+              // Add ephemeral fields if enabled
+              if (ephemeralDuration) {
+                messageData.is_ephemeral = true
+                messageData.ephemeral_duration = ephemeralDuration
+                messageData.ephemeral_expires_at = ephemeralDuration 
+                  ? new Date(Date.now() + ephemeralDuration * 1000).toISOString() 
+                  : null
               }
               
               const { data, error } = await supabase.from('messages').insert(messageData).select().single()
