@@ -1026,11 +1026,9 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       if (type === 'sticker') {
         // For stickers, prefer webp formats
         url = formats.webp?.url || formats.gif?.url || formats.tinygif?.url || '';
-        previewUrl = formats.tinywebp?.url || formats.nanogif?.url || formats.tinygif?.url || url;
       } else {
         // For GIFs, prefer smaller formats for preview
         url = formats.gif?.url || formats.mediumgif?.url || formats.tinygif?.url || '';
-        previewUrl = formats.tinygif?.url || formats.nanogif?.url || url;
       }
       
       if (url && onGifStickerSend) {

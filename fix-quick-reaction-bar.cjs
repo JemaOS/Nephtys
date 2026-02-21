@@ -1,5 +1,5 @@
-const fs = require('fs');
-const path = require('path');
+const fs = require('node:fs');
+const path = require('node:path');
 
 // Read the file
 const filePath = path.join(__dirname, 'src', 'pages', 'ChatViewPageComponents.tsx');
@@ -51,7 +51,7 @@ const newReactionButton = `        <button
         </button>`;
 
 // Find the !isOwn case block and replace the reaction button
-const ownCasePattern = /if \(\!isOwn && hoveredMessageId === message\.id && \!isSelectionMode\) \{([\s\S]*?)return null/;
+const ownCasePattern = /if \(!isOwn && hoveredMessageId === message\.id && !isSelectionMode\) \{([\s\S]*?)return null/;
 const match = content.match(ownCasePattern);
 
 if (!match) {

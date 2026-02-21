@@ -59,6 +59,33 @@ export function ConversationContextMenu({
     ...(onSelect ? [{ icon: CheckSquare, label: 'Sélectionner', onClick: onSelect }] : []),
   ]
 
+  // Desktop: Traditional context menu
+  // Calculate position to keep menu on screen
+  const [menuStyle, setMenuStyle] = useState({ left: x, top: y, opacity: 0 })
+  
+  useEffect(() => {
+    if (menuRef.current && !isMobile) {
+      const rect = menuRef.current.getBoundingClientRect()
+      const viewportWidth = window.innerWidth
+      const viewportHeight = window.innerHeight
+      
+      let newX = x
+      let newY = y
+      
+      // Adjust X if it goes off right edge
+      if (x + rect.width > viewportWidth) {
+        newX = viewportWidth - rect.width - 10
+      }
+      
+      // Adjust Y if it goes off bottom edge
+      if (y + rect.height > viewportHeight) {
+        newY = viewportHeight - rect.height - 10
+      }
+      
+      setMenuStyle({ left: newX, top: newY, opacity: 1 })
+    }
+  }, [x, y, isMobile])
+
   // Mobile: WhatsApp-style top action bar
   if (isMobile) {
     return (
@@ -134,33 +161,6 @@ export function ConversationContextMenu({
       </>
     )
   }
-
-  // Desktop: Traditional context menu
-  // Calculate position to keep menu on screen
-  const [menuStyle, setMenuStyle] = useState({ left: x, top: y, opacity: 0 })
-  
-  useEffect(() => {
-    if (menuRef.current && !isMobile) {
-      const rect = menuRef.current.getBoundingClientRect()
-      const viewportWidth = window.innerWidth
-      const viewportHeight = window.innerHeight
-      
-      let newX = x
-      let newY = y
-      
-      // Adjust X if it goes off right edge
-      if (x + rect.width > viewportWidth) {
-        newX = viewportWidth - rect.width - 10
-      }
-      
-      // Adjust Y if it goes off bottom edge
-      if (y + rect.height > viewportHeight) {
-        newY = viewportHeight - rect.height - 10
-      }
-      
-      setMenuStyle({ left: newX, top: newY, opacity: 1 })
-    }
-  }, [x, y, isMobile])
 
   return (
     <>

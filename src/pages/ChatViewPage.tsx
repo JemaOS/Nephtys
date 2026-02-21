@@ -348,7 +348,7 @@ export function ChatViewPage() {
   useEffect(() => {
     const interval = setInterval(() => {
       setMessages(prevMessages => {
-        const now = new Date().getTime();
+        const now = Date.now();
         const validMessages = prevMessages.filter(msg => {
           if (msg.is_ephemeral && msg.ephemeral_expires_at) {
             const expiresAt = new Date(msg.ephemeral_expires_at).getTime();
@@ -1282,7 +1282,7 @@ export function ChatViewPage() {
     
     if (!error && data) {
       // Filter out expired ephemeral messages
-      const now = new Date().getTime();
+      const now = Date.now();
       const validData = data.filter(msg => {
         if (msg.is_ephemeral && msg.ephemeral_expires_at) {
           const expiresAt = new Date(msg.ephemeral_expires_at).getTime();
@@ -1335,7 +1335,7 @@ export function ChatViewPage() {
       
       if (!error && data && data.length > 0) {
         // Filter out expired ephemeral messages
-        const now = new Date().getTime();
+        const now = Date.now();
         const validData = data.filter(msg => {
           if (msg.is_ephemeral && msg.ephemeral_expires_at) {
             const expiresAt = new Date(msg.ephemeral_expires_at).getTime();

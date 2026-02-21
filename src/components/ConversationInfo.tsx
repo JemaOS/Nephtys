@@ -256,9 +256,9 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
       if (error) {
         console.error('Error inserting system message:', error);
       } else {
-        if (data && data[0] && onSystemMessage) {
-          onSystemMessage(data[0] as Message);
-        }
+      if (data?.[0] && onSystemMessage) {
+        onSystemMessage(data[0] as Message);
+      }
         // Update conversation's last_message_at
         await supabase
           .from('conversations')

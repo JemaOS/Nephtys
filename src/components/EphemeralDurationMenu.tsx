@@ -46,11 +46,9 @@ export const EphemeralDurationMenu: React.FC<EphemeralDurationMenuProps> = ({
         aria-label="Fermer le menu"
       />
       
-      <div
+      <dialog
         ref={modalRef as any}
         className="bg-bg-surface w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden relative z-10"
-        role="dialog"
-        aria-modal="true"
         aria-labelledby="ephemeral-dialog-title"
       >
         <div className="p-4 border-b border-bg-hover">
@@ -76,7 +74,7 @@ export const EphemeralDurationMenu: React.FC<EphemeralDurationMenuProps> = ({
             Annuler
           </button>
         </div>
-      </div>
+      </dialog>
     </div>
   );
 };

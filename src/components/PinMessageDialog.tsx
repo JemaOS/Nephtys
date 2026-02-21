@@ -37,18 +37,15 @@ export const PinMessageDialog: React.FC<PinMessageDialogProps> = ({
   };
 
   return (
-    <button
-      type="button"
-      className="fixed inset-0 bg-black/50 z-[250] flex items-center justify-center w-full h-full cursor-default"
+    <dialog
+      ref={dialogRef as any}
+      className="fixed inset-0 bg-black/50 z-[250] flex items-center justify-center w-full h-full cursor-default border-none p-0 m-0 max-w-none max-h-none"
       onClick={() => onClose()}
       aria-label="Fermer la boîte de dialogue"
     >
         {/* Dialog */}
         <div
-          ref={dialogRef as any}
           className="bg-bg-surface rounded-lg shadow-2xl w-full max-w-md mx-4 overflow-hidden cursor-auto text-left p-0 border-none flex flex-col"
-          role="dialog"
-          aria-modal="true"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
@@ -114,6 +111,6 @@ export const PinMessageDialog: React.FC<PinMessageDialogProps> = ({
             </button>
           </div>
         </div>
-      </button>
+      </dialog>
   );
 };

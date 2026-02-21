@@ -339,11 +339,11 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
           handleResetZoom();
         }
       }}
-      aria-label="Image,double-cliquez pour réinitialiser le zoom"
+      aria-label="Image, double-cliquez pour réinitialiser le zoom"
     >
       <img
         src={mediaUrl}
-        alt=""
+        alt="Media"
         className="max-w-full max-h-full object-contain select-none"
         style={{
           transform: `scale(${zoom}) translate(${position.x / zoom}px, ${position.y / zoom}px)`,
