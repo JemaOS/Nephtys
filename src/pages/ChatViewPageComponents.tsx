@@ -1133,9 +1133,10 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = React.memo((
   }
   
   return (
-    <article
-      role="button"
-      tabIndex={0}
+    <div
+      role={isSelectionMode ? "checkbox" : undefined}
+      tabIndex={isSelectionMode ? 0 : undefined}
+      aria-checked={isSelectionMode ? isSelected : undefined}
       key={message.id}
       id={`message-${message.id}`}
       className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-1 ${isSelected ? 'bg-[#787add]/10' : ''} transition-colors duration-500`}
@@ -1145,19 +1146,13 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = React.memo((
       onTouchStart={() => handleTouchStart(message)}
       onTouchEnd={handleTouchEnd}
       onTouchMove={handleTouchMove}
-      onClick={() => {
-        if (isSelectionMode) {
-          handleSelectMessage(message.id)
-        }
-      }}
-      onKeyDown={(e) => {
+      onClick={isSelectionMode ? () => handleSelectMessage(message.id) : undefined}
+      onKeyDown={isSelectionMode ? (e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
-          if (isSelectionMode) {
-            handleSelectMessage(message.id)
-          }
+          handleSelectMessage(message.id)
         }
-      }}
+      } : undefined}
       >
         {isOwn && (
           <MessageSideActions
@@ -1242,7 +1237,7 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = React.memo((
             setQuickReactionBar={setQuickReactionBar}
           />
         )}
-      </article>
+      </div>
   )
 });
 

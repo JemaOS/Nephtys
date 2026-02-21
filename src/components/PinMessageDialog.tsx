@@ -39,15 +39,20 @@ export const PinMessageDialog: React.FC<PinMessageDialogProps> = ({
   return (
     <dialog
       ref={dialogRef as any}
-      className="fixed inset-0 bg-black/50 z-[250] flex items-center justify-center w-full h-full cursor-default border-none p-0 m-0 max-w-none max-h-none"
-      onClick={() => onClose()}
-      aria-label="Fermer la boîte de dialogue"
+      className="fixed inset-0 bg-transparent z-[250] flex items-center justify-center w-full h-full border-none p-0 m-0 max-w-none max-h-none"
     >
-        {/* Dialog */}
-        <div
-          className="bg-bg-surface rounded-lg shadow-2xl w-full max-w-md mx-4 overflow-hidden cursor-auto text-left p-0 border-none flex flex-col"
-          onClick={(e) => e.stopPropagation()}
-        >
+      {/* Backdrop */}
+      <div 
+        className="absolute inset-0 bg-black/50" 
+        onClick={onClose} 
+        onKeyDown={(e) => { if (e.key === 'Escape' || e.key === 'Enter') onClose(); }}
+        role="button"
+        tabIndex={0}
+        aria-label="Fermer"
+      />
+      
+      {/* Dialog Content */}
+      <div className="bg-bg-surface rounded-lg shadow-2xl w-full max-w-md mx-4 overflow-hidden cursor-auto text-left p-0 border-none flex flex-col relative z-10">
           {/* Header */}
           <div className="px-6 py-4">
             <h2 className="text-xl font-medium text-text-primary">

@@ -1045,25 +1045,6 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   // Focus the viewer on mount for keyboard accessibility
   const viewerRef = useRef<HTMLDialogElement>(null);
   
-  // Handle backdrop click for dialog - using native dialog methods
-  const handleDialogClick = useCallback((e: React.MouseEvent<HTMLDialogElement>) => {
-    // Close only if clicking on the backdrop (the dialog element itself, not its contents)
-    const rect = viewerRef.current?.getBoundingClientRect();
-    if (rect && e.clientX >= rect.left && e.clientX <= rect.right && 
-        e.clientY >= rect.top && e.clientY <= rect.bottom) {
-      // Click is within dialog bounds, don't close
-      return;
-    }
-    onClose();
-  }, [onClose]);
-  
-  // Handle keyboard for closing dialog
-  const handleDialogKeyDown = useCallback((e: React.KeyboardEvent<HTMLDialogElement>) => {
-    if (e.key === 'Escape') {
-      onClose();
-    }
-  }, [onClose]);
-  
   useEffect(() => {
     if (isOpen && viewerRef.current) {
       // Use native dialog showModal method for proper accessibility
@@ -1100,8 +1081,6 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
         padding: 0,
         background: 'black',
       }}
-      onClick={handleDialogClick}
-      onKeyDown={handleDialogKeyDown}
       aria-modal="true"
       aria-label="Visionneuse de médias"
     >

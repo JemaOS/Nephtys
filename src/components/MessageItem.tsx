@@ -384,11 +384,11 @@ export const MessageItem: React.FC<MessageItemProps> = React.memo(({
   const renderBubbleWrapper = (content: React.ReactNode, showReplyQuote: boolean = false) => (
     <div
       className={`flex w-full text-left ${isOwn ? 'justify-end' : 'justify-start'} mb-1 ${isSelected ? 'bg-[#787add]/10' : ''} transition-colors duration-500 border-none bg-transparent p-0`}
-      onClick={handleClick}
-      onKeyDown={handleKeyDown}
-      role={isSelectionMode ? "checkbox" : "presentation"}
+      onClick={isSelectionMode ? handleClick : undefined}
+      onKeyDown={isSelectionMode ? handleKeyDown : undefined}
+      role={isSelectionMode ? "checkbox" : undefined}
       aria-checked={isSelectionMode ? isSelected : undefined}
-      tabIndex={isSelectionMode ? 0 : -1}
+      tabIndex={isSelectionMode ? 0 : undefined}
     >
       <MessageQuickActions position="left" isOwn={isOwn} isHovered={isHovered} isSelectionMode={isSelectionMode} messageId={message.id} onReply={handleReply} onForward={handleForward} />
       <div className={`max-w-[85%] sm:max-w-[75%] md:max-w-[70%] lg:max-w-[65%] relative group`}>
@@ -524,11 +524,11 @@ export const MessageItem: React.FC<MessageItemProps> = React.memo(({
     <div
       id={`message-${message.id}`}
       className={`flex w-full text-left ${isOwn ? 'justify-end' : 'justify-start'} mb-1 ${isSelected ? 'bg-[#787add]/10' : ''} transition-colors duration-500 border-none bg-transparent p-0`}
-      onClick={handleClick}
-      onKeyDown={handleKeyDown}
-      role={isSelectionMode ? "checkbox" : "presentation"}
+      onClick={isSelectionMode ? handleClick : undefined}
+      onKeyDown={isSelectionMode ? handleKeyDown : undefined}
+      role={isSelectionMode ? "checkbox" : undefined}
       aria-checked={isSelectionMode ? isSelected : undefined}
-      tabIndex={isSelectionMode ? 0 : -1}
+      tabIndex={isSelectionMode ? 0 : undefined}
     >
       <MessageQuickActions position="left" isOwn={isOwn} isHovered={isHovered} isSelectionMode={isSelectionMode} messageId={message.id} onReply={handleReply} onForward={handleForward} />
       <div className={`max-w-[85%] sm:max-w-[75%] md:max-w-[70%] lg:max-w-[65%] relative px-3 py-2 rounded-2xl ${isOwn ? 'bg-[#787add] text-white rounded-br-none' : 'bg-bg-surface text-text-primary rounded-bl-none'}`}>
