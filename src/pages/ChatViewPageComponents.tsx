@@ -24,7 +24,9 @@ const getMessageTypeInfo = (message: Message) => {
   // Check if this is a GIF or Sticker message
   // Avoid catastrophic backtracking by checking suffix first
   const parseMediaContent = (content: string, type: 'GIF' | 'STICKER') => {
-    const suffixRegex = new RegExp(String.raw`\\[${type}\\]\\((https?:\\/\\/[^)]+)\\)$`);
+    const suffixRegex = type === 'GIF' 
+      ? /\[GIF\]\((https?:\/\/[^)]+)\)$/
+      : /\[STICKER\]\((https?:\/\/[^)]+)\)$/;
     const match = suffixRegex.exec(content);
     if (!match) return null;
     
@@ -1011,10 +1013,10 @@ const MessageSideActions = ({ isOwn, hoveredMessageId, message, isSelectionMode,
     )
   }
   
-  if (!isOwn && hoveredMessageId === message.id && !isSelectionMode) {
-    return (
-      <div className="flex items-center gap-0.5 md:gap-1 pb-4 ml-1 md:ml-2">
-        <button
+    if (!isOwn && hoveredMessageId === message.id && !isSelectionMode) {
+      return (
+        <div className="flex items-center gap-0.5 md:gap-1 ml-1 md:ml-2">
+          <button
           onClick={() => setReplyToMessage(message)}
           className="w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] flex items-center justify-center transition-colors shadow-md"
           title="Répondre"
@@ -1156,79 +1158,91 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = React.memo((
           }
         }
       }}
-    >
-      <MessageSideActions
-        isOwn={isOwn}
-        hoveredMessageId={hoveredMessageId}
-        message={message}
-        isSelectionMode={isSelectionMode}
-        setReplyToMessage={setReplyToMessage}
-        handleForwardMessage={handleForwardMessage}
-        setQuickReactionBar={setQuickReactionBar}
-      />
-      
-      <div
-        role="group"
-        aria-label="Contenu du message"
-        className={`max-w-[85%] sm:max-w-[75%] md:max-w-[70%] lg:max-w-[65%] relative group`}
-        data-message-id={message.id}
-        onContextMenu={(e) => {
-          if (isMobile) {
-            e.preventDefault()
-            return
-          }
-          handleContextMenu(e, message)
-        }}
       >
-        <MessageContent
-          message={message}
-          hoveredMessageId={hoveredMessageId}
-          isOwn={isOwn}
-          setContextMenu={setContextMenu}
-          getSenderInfo={getSenderInfo}
-          setGifStickerViewer={setGifStickerViewer}
-          user={user}
-          handleForwardMessage={handleForwardMessage}
-          handleStarMessage={handleStarMessage}
-          handlePinMessage={handlePinMessage}
-          addReaction={addReaction}
-          allMediaItems={allMediaItems}
-          getMediaIndexForMessage={getMediaIndexForMessage}
-          handleMediaNavigate={handleMediaNavigate}
-          scrollToMessage={scrollToMessage}
-          messages={messages}
-          otherUser={otherUser}
-          setReplyToMessage={setReplyToMessage}
-        />
-
-        {isSelectionMode && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              handleSelectMessage(message.id);
-            }}
-            className={`absolute top-1/2 -translate-y-1/2 ${
-              isOwn ? '-left-10' : '-right-10'
-            } w-7 h-7 rounded-full flex items-center justify-center transition-all ${
-              isSelected
-                ? 'bg-[#787add] text-white'
-                : 'bg-bg-surface hover:bg-bg-hover text-text-tertiary border border-bg-hover'
-            }`}
-            type="button"
-            aria-label={isSelected ? 'Désélectionner le message' : 'Sélectionner le message'}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="20 6 9 17 4 12"></polyline>
-            </svg>
-          </button>
+        {isOwn && (
+          <MessageSideActions
+            isOwn={isOwn}
+            hoveredMessageId={hoveredMessageId}
+            message={message}
+            isSelectionMode={isSelectionMode}
+            setReplyToMessage={setReplyToMessage}
+            handleForwardMessage={handleForwardMessage}
+            setQuickReactionBar={setQuickReactionBar}
+          />
         )}
-        {messageReactions.length > 0 && (
-          <MessageReactions reactions={messageReactions} currentUserId={user?.id || ''} onReactionClick={(emoji) => addReaction(message.id, emoji)} onReactionRemove={(emoji) => removeReaction(message.id, emoji)} />
-        )}
-      </div>
-      
+        
+        <div
+          role="group"
+          aria-label="Contenu du message"
+          className={`max-w-[85%] sm:max-w-[75%] md:max-w-[70%] lg:max-w-[65%] relative group`}
+          data-message-id={message.id}
+          onContextMenu={(e) => {
+            if (isMobile) {
+              e.preventDefault()
+              return
+            }
+            handleContextMenu(e, message)
+          }}
+        >
+          <MessageContent
+            message={message}
+            hoveredMessageId={hoveredMessageId}
+            isOwn={isOwn}
+            setContextMenu={setContextMenu}
+            getSenderInfo={getSenderInfo}
+            setGifStickerViewer={setGifStickerViewer}
+            user={user}
+            handleForwardMessage={handleForwardMessage}
+            handleStarMessage={handleStarMessage}
+            handlePinMessage={handlePinMessage}
+            addReaction={addReaction}
+            allMediaItems={allMediaItems}
+            getMediaIndexForMessage={getMediaIndexForMessage}
+            handleMediaNavigate={handleMediaNavigate}
+            scrollToMessage={scrollToMessage}
+            messages={messages}
+            otherUser={otherUser}
+            setReplyToMessage={setReplyToMessage}
+          />
 
-    </article>
+          {isSelectionMode && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleSelectMessage(message.id);
+              }}
+              className={`absolute top-1/2 -translate-y-1/2 ${
+                isOwn ? '-left-10' : '-right-10'
+              } w-7 h-7 rounded-full flex items-center justify-center transition-all ${
+                isSelected
+                  ? 'bg-[#787add] text-white'
+                  : 'bg-bg-surface hover:bg-bg-hover text-text-tertiary border border-bg-hover'
+              }`}
+              type="button"
+              aria-label={isSelected ? 'Désélectionner le message' : 'Sélectionner le message'}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+            </button>
+          )}
+          {messageReactions.length > 0 && (
+            <MessageReactions reactions={messageReactions} currentUserId={user?.id || ''} onReactionClick={(emoji) => addReaction(message.id, emoji)} onReactionRemove={(emoji) => removeReaction(message.id, emoji)} />
+          )}
+        </div>
+        
+        {!isOwn && (
+          <MessageSideActions
+            isOwn={isOwn}
+            hoveredMessageId={hoveredMessageId}
+            message={message}
+            isSelectionMode={isSelectionMode}
+            setReplyToMessage={setReplyToMessage}
+            handleForwardMessage={handleForwardMessage}
+            setQuickReactionBar={setQuickReactionBar}
+          />
+        )}
+      </article>
   )
 });
 

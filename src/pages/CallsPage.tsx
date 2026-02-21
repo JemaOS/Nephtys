@@ -104,6 +104,32 @@ export function CallsPage() {
   const [favoriteGroups, setFavoriteGroups] = useState<Map<string, { name: string; avatar_url: string | null }>>(new Map())
   const [contextMenuCall, setContextMenuCall] = useState<CallLog | null>(null)
   const [contextMenuPosition, setContextMenuPosition] = useState<{ x: number; y: number } | null>(null)
+  const [adjustedContextMenuPosition, setAdjustedContextMenuPosition] = useState<{ x: number; y: number } | null>(null)
+  const contextMenuRef = useRef<HTMLDivElement>(null)
+
+  // Adjust context menu position to stay within viewport
+  useEffect(() => {
+    if (contextMenuPosition && contextMenuRef.current) {
+      const rect = contextMenuRef.current.getBoundingClientRect()
+      const viewportWidth = window.innerWidth
+      const viewportHeight = window.innerHeight
+      
+      let newX = contextMenuPosition.x
+      let newY = contextMenuPosition.y
+      
+      if (newX + rect.width > viewportWidth) {
+        newX = viewportWidth - rect.width - 10
+      }
+      
+      if (newY + rect.height > viewportHeight) {
+        newY = viewportHeight - rect.height - 10
+      }
+      
+      setAdjustedContextMenuPosition({ x: newX, y: newY })
+    } else {
+      setAdjustedContextMenuPosition(null)
+    }
+  }, [contextMenuPosition])
   
   // Selection mode state (WhatsApp-style)
   const [isSelectionMode, setIsSelectionMode] = useState(false)
@@ -1728,7 +1754,7 @@ export function CallsPage() {
           {/* Overlay pour fermer le menu */}
           <button
             type="button"
-            className="fixed inset-0 z-40 cursor-default"
+            className="fixed inset-0 z-40 cursor-default w-full h-full bg-transparent border-none"
             onClick={handleCloseContextMenu}
             aria-label="Fermer le menu"
             onKeyDown={(e) => {
@@ -1740,10 +1766,12 @@ export function CallsPage() {
           
           {/* Menu contextuel */}
           <div
-            className="fixed z-50 bg-bg-hover rounded-lg shadow-xl py-2 min-w-[200px]"
+            ref={contextMenuRef}
+            className="fixed z-50 bg-bg-hover rounded-lg shadow-xl py-2 min-w-[200px] transition-opacity duration-100"
             style={{
-              left: `${contextMenuPosition.x}px`,
-              top: `${contextMenuPosition.y}px`,
+              left: `${adjustedContextMenuPosition?.x ?? contextMenuPosition.x}px`,
+              top: `${adjustedContextMenuPosition?.y ?? contextMenuPosition.y}px`,
+              opacity: adjustedContextMenuPosition ? 1 : 0
             }}
           >
             {/* Option Sélectionner */}

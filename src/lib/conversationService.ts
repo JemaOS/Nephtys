@@ -59,6 +59,7 @@ export const fetchLastMessages = async (conversationIds: string[]) => {
     .select('*')
     .in('conversation_id', conversationIds)
     .is('deleted_at', null)
+    .or(`ephemeral_expires_at.is.null,ephemeral_expires_at.gt.${new Date().toISOString()}`)
     .order('created_at', { ascending: false })
     .limit(conversationIds.length * 10) // Increased to ensure we get last message for each conversation
 }
@@ -71,6 +72,7 @@ export const fetchUnreadCounts = async (conversationIds: string[], userId: strin
     .neq('sender_id', userId)
     .neq('status', 'read')
     .is('deleted_at', null)
+    .or(`ephemeral_expires_at.is.null,ephemeral_expires_at.gt.${new Date().toISOString()}`)
 }
 
 export interface BuildEnrichedConversationsParams {

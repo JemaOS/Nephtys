@@ -1017,26 +1017,28 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
     }
   };
 
-  // Handle GIF/sticker selection
-  const handleGifStickerSelect = (item: any, type: 'gif' | 'sticker') => {
-    const formats = item.media_formats;
-    let url = '';
-    let previewUrl = '';
-    
-    if (type === 'sticker') {
-      // For stickers, prefer webp formats
-      url = formats.webp?.url || formats.gif?.url || formats.tinygif?.url || '';
-      previewUrl = formats.tinywebp?.url || formats.nanogif?.url || formats.tinygif?.url || url;
-    } else {
-      // For GIFs, prefer smaller formats for preview
-      url = formats.gif?.url || formats.mediumgif?.url || formats.tinygif?.url || '';
-      previewUrl = formats.tinygif?.url || formats.nanogif?.url || url;
-    }
-    
-    if (url) {
-      setSelectedGifSticker({ url, previewUrl, type });
-    }
-  };
+    // Handle GIF/sticker selection
+    const handleGifStickerSelect = (item: any, type: 'gif' | 'sticker') => {
+      const formats = item.media_formats;
+      let url = '';
+      let previewUrl = '';
+      
+      if (type === 'sticker') {
+        // For stickers, prefer webp formats
+        url = formats.webp?.url || formats.gif?.url || formats.tinygif?.url || '';
+        previewUrl = formats.tinywebp?.url || formats.nanogif?.url || formats.tinygif?.url || url;
+      } else {
+        // For GIFs, prefer smaller formats for preview
+        url = formats.gif?.url || formats.mediumgif?.url || formats.tinygif?.url || '';
+        previewUrl = formats.tinygif?.url || formats.nanogif?.url || url;
+      }
+      
+      if (url && onGifStickerSend) {
+        // Send immediately without caption, like WhatsApp
+        onGifStickerSend(url, type, '');
+        onCancel();
+      }
+    };
 
   // Note: openImageEditor is available for direct image editing integration
   // Handle send GIF/sticker with caption
@@ -1081,7 +1083,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
 
   // Render the component
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm">
       <div className="bg-bg-surface w-full sm:w-[480px] sm:rounded-2xl rounded-t-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-bg-hover">
@@ -1099,98 +1101,98 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
           </button>
         </div>
 
-        {/* Tab Navigation */}
-        <div className="flex border-b border-bg-hover">
-          <button
-            onClick={() => setActiveTab('attach')}
-            className={`flex-1 py-3 flex items-center justify-center gap-2 text-sm font-medium transition-colors ${
-              activeTab === 'attach' ? 'text-accent border-b-2 border-accent' : 'text-text-secondary hover:text-text-primary'
-            }`}
-          >
-            <Plus size={18} />
-            Fichier
-          </button>
-          <button
-            onClick={() => setActiveTab('emoji')}
-            className={`flex-1 py-3 flex items-center justify-center gap-2 text-sm font-medium transition-colors ${
-              activeTab === 'emoji' ? 'text-accent border-b-2 border-accent' : 'text-text-secondary hover:text-text-primary'
-            }`}
-          >
-            <Sticker size={18} />
-            Emoji
-          </button>
-          <button
-            onClick={() => setActiveTab('sticker')}
-            className={`flex-1 py-3 flex items-center justify-center gap-2 text-sm font-medium transition-colors ${
-              activeTab === 'sticker' ? 'text-accent border-b-2 border-accent' : 'text-text-secondary hover:text-text-primary'
-            }`}
-          >
-            <FileImage size={18} />
-            Stickers
-          </button>
-          <button
-            onClick={() => setActiveTab('gif')}
-            className={`flex-1 py-3 flex items-center justify-center gap-2 text-sm font-medium transition-colors ${
-              activeTab === 'gif' ? 'text-accent border-b-2 border-accent' : 'text-text-secondary hover:text-text-primary'
-            }`}
-          >
-            <Video size={18} />
-            GIFs
-          </button>
-        </div>
+          {/* Tab Navigation */}
+          <div className="flex border-b border-bg-hover overflow-x-auto hide-scrollbar">
+            <button
+              onClick={() => setActiveTab('attach')}
+              className={`flex-1 min-w-[80px] py-3 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm font-medium transition-colors ${
+                activeTab === 'attach' ? 'text-accent border-b-2 border-accent' : 'text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              <Plus size={16} className="sm:w-[18px] sm:h-[18px]" />
+              <span>Fichier</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('emoji')}
+              className={`flex-1 min-w-[80px] py-3 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm font-medium transition-colors ${
+                activeTab === 'emoji' ? 'text-accent border-b-2 border-accent' : 'text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              <Sticker size={16} className="sm:w-[18px] sm:h-[18px]" />
+              <span>Emoji</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('sticker')}
+              className={`flex-1 min-w-[80px] py-3 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm font-medium transition-colors ${
+                activeTab === 'sticker' ? 'text-accent border-b-2 border-accent' : 'text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              <FileImage size={16} className="sm:w-[18px] sm:h-[18px]" />
+              <span>Stickers</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('gif')}
+              className={`flex-1 min-w-[80px] py-3 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm font-medium transition-colors ${
+                activeTab === 'gif' ? 'text-accent border-b-2 border-accent' : 'text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              <Video size={16} className="sm:w-[18px] sm:h-[18px]" />
+              <span>GIFs</span>
+            </button>
+          </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-4">
-          {/* Attach Tab */}
-          {activeTab === 'attach' && !selectedFile && !multipleSelectionMode && !showImageEditor && !showDocumentPreview && !cameraMode && (
-            <div className="grid grid-cols-3 gap-4">
-              <button
-                onClick={() => imageInputRef.current?.click()}
-                className="flex flex-col items-center gap-2 p-4 rounded-xl bg-bg-hover hover:bg-bg-primary transition-colors"
-              >
-                <div className="w-12 h-12 rounded-full bg-[#7578db]/20 flex items-center justify-center">
-                  <Image size={24} className="text-[#7578db]" />
-                </div>
-                <span className="text-sm text-text-secondary">Galerie</span>
-              </button>
-              <button
-                onClick={() => cameraInputRef.current?.click()}
-                className="flex flex-col items-center gap-2 p-4 rounded-xl bg-bg-hover hover:bg-bg-primary transition-colors"
-              >
-                <div className="w-12 h-12 rounded-full bg-[#7578db]/20 flex items-center justify-center">
-                  <Camera size={24} className="text-[#7578db]" />
-                </div>
-                <span className="text-sm text-text-secondary">Caméra</span>
-              </button>
-              <button
-                onClick={() => videoInputRef.current?.click()}
-                className="flex flex-col items-center gap-2 p-4 rounded-xl bg-bg-hover hover:bg-bg-primary transition-colors"
-              >
-                <div className="w-12 h-12 rounded-full bg-[#7578db]/20 flex items-center justify-center">
-                  <Video size={24} className="text-[#7578db]" />
-                </div>
-                <span className="text-sm text-text-secondary">Vidéo</span>
-              </button>
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="flex flex-col items-center gap-2 p-4 rounded-xl bg-bg-hover hover:bg-bg-primary transition-colors"
-              >
-                <div className="w-12 h-12 rounded-full bg-[#7578db]/20 flex items-center justify-center">
-                  <FileIcon size={24} className="text-[#7578db]" />
-                </div>
-                <span className="text-sm text-text-secondary">Document</span>
-              </button>
-              <button
-                onClick={() => audioInputRef.current?.click()}
-                className="flex flex-col items-center gap-2 p-4 rounded-xl bg-bg-hover hover:bg-bg-primary transition-colors"
-              >
-                <div className="w-12 h-12 rounded-full bg-[#7578db]/20 flex items-center justify-center">
-                  <Music size={24} className="text-[#7578db]" />
-                </div>
-                <span className="text-sm text-text-secondary">Audio</span>
-              </button>
-            </div>
-          )}
+          {/* Content */}
+          <div className="flex-1 overflow-y-auto p-4">
+            {/* Attach Tab */}
+            {activeTab === 'attach' && !selectedFile && !multipleSelectionMode && !showImageEditor && !showDocumentPreview && !cameraMode && (
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 sm:gap-4">
+                <button
+                  onClick={() => imageInputRef.current?.click()}
+                  className="flex flex-col items-center gap-2 p-2 sm:p-4 rounded-xl bg-bg-hover hover:bg-bg-primary transition-colors"
+                >
+                  <div className="w-12 h-12 rounded-full bg-[#7578db]/20 flex items-center justify-center flex-shrink-0">
+                    <Image size={24} className="text-[#7578db]" />
+                  </div>
+                  <span className="text-xs sm:text-sm text-text-secondary text-center w-full truncate px-1">Galerie</span>
+                </button>
+                <button
+                  onClick={() => cameraInputRef.current?.click()}
+                  className="flex flex-col items-center gap-2 p-2 sm:p-4 rounded-xl bg-bg-hover hover:bg-bg-primary transition-colors"
+                >
+                  <div className="w-12 h-12 rounded-full bg-[#7578db]/20 flex items-center justify-center flex-shrink-0">
+                    <Camera size={24} className="text-[#7578db]" />
+                  </div>
+                  <span className="text-xs sm:text-sm text-text-secondary text-center w-full truncate px-1">Caméra</span>
+                </button>
+                <button
+                  onClick={() => videoInputRef.current?.click()}
+                  className="flex flex-col items-center gap-2 p-2 sm:p-4 rounded-xl bg-bg-hover hover:bg-bg-primary transition-colors"
+                >
+                  <div className="w-12 h-12 rounded-full bg-[#7578db]/20 flex items-center justify-center flex-shrink-0">
+                    <Video size={24} className="text-[#7578db]" />
+                  </div>
+                  <span className="text-xs sm:text-sm text-text-secondary text-center w-full truncate px-1">Vidéo</span>
+                </button>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex flex-col items-center gap-2 p-2 sm:p-4 rounded-xl bg-bg-hover hover:bg-bg-primary transition-colors"
+                >
+                  <div className="w-12 h-12 rounded-full bg-[#7578db]/20 flex items-center justify-center flex-shrink-0">
+                    <FileIcon size={24} className="text-[#7578db]" />
+                  </div>
+                  <span className="text-xs sm:text-sm text-text-secondary text-center w-full truncate px-1">Document</span>
+                </button>
+                <button
+                  onClick={() => audioInputRef.current?.click()}
+                  className="flex flex-col items-center gap-2 p-2 sm:p-4 rounded-xl bg-bg-hover hover:bg-bg-primary transition-colors"
+                >
+                  <div className="w-12 h-12 rounded-full bg-[#7578db]/20 flex items-center justify-center flex-shrink-0">
+                    <Music size={24} className="text-[#7578db]" />
+                  </div>
+                  <span className="text-xs sm:text-sm text-text-secondary text-center w-full truncate px-1">Audio</span>
+                </button>
+              </div>
+            )}
 
           {/* Hidden Inputs */}
           <input

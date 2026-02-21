@@ -112,7 +112,9 @@ const parseSpecialMessage = (content: string, tag: string): RegExpMatchArray | n
   
   // 1. Check if it ends with the tag
   // We use a simple regex anchored at the end
-  const suffixRegex = new RegExp(String.raw`\[${tag}\]\((https?:\/\/[^\)]+)\)$`)
+  const suffixRegex = tag === 'GIF' 
+    ? /\[GIF\]\((https?:\/\/[^)]+)\)$/
+    : /\[STICKER\]\((https?:\/\/[^)]+)\)$/;
   const match = suffixRegex.exec(content)
   
   if (!match) return null
@@ -372,8 +374,7 @@ export const MessageItem: React.FC<MessageItemProps> = React.memo(({
 
   // Common wrapper for message bubbles (non-system, non-emoji)
   const renderBubbleWrapper = (content: React.ReactNode, showReplyQuote: boolean = false) => (
-    <button
-      type="button"
+    <div
       className={`flex w-full text-left ${isOwn ? 'justify-end' : 'justify-start'} mb-1 ${isSelected ? 'bg-[#787add]/10' : ''} transition-colors duration-500 border-none bg-transparent p-0`}
       onClick={handleClick}
     >
@@ -395,9 +396,10 @@ export const MessageItem: React.FC<MessageItemProps> = React.memo(({
         )}
         {content}
       </div>
+      <MessageQuickActions position="right" isOwn={isOwn} isHovered={isHovered} isSelectionMode={isSelectionMode} messageId={message.id} onReply={handleReply} onForward={handleForward} />
       <MessageSelectionCheckbox isOwn={isOwn} isSelected={isSelected} isSelectionMode={isSelectionMode} messageId={message.id} onSelectMessage={onSelectMessage} />
       {renderReactions()}
-    </button>
+    </div>
   )
 
   // Render based on message type
@@ -507,8 +509,7 @@ export const MessageItem: React.FC<MessageItemProps> = React.memo(({
   const textContent = renderTextContent(message, isOwn, msgType)
 
   return (
-    <button
-      type="button"
+    <div
       id={`message-${message.id}`}
       className={`flex w-full text-left ${isOwn ? 'justify-end' : 'justify-start'} mb-1 ${isSelected ? 'bg-[#787add]/10' : ''} transition-colors duration-500 border-none bg-transparent p-0`}
       onClick={handleClick}
@@ -532,7 +533,7 @@ export const MessageItem: React.FC<MessageItemProps> = React.memo(({
       <MessageQuickActions position="right" isOwn={isOwn} isHovered={isHovered} isSelectionMode={isSelectionMode} messageId={message.id} onReply={handleReply} onForward={handleForward} />
       <MessageSelectionCheckbox isOwn={isOwn} isSelected={isSelected} isSelectionMode={isSelectionMode} messageId={message.id} onSelectMessage={onSelectMessage} />
       {renderReactions()}
-    </button>
+    </div>
   )
 })
 

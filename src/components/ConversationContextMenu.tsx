@@ -136,6 +136,32 @@ export function ConversationContextMenu({
   }
 
   // Desktop: Traditional context menu
+  // Calculate position to keep menu on screen
+  const [menuStyle, setMenuStyle] = useState({ left: x, top: y, opacity: 0 })
+  
+  useEffect(() => {
+    if (menuRef.current && !isMobile) {
+      const rect = menuRef.current.getBoundingClientRect()
+      const viewportWidth = window.innerWidth
+      const viewportHeight = window.innerHeight
+      
+      let newX = x
+      let newY = y
+      
+      // Adjust X if it goes off right edge
+      if (x + rect.width > viewportWidth) {
+        newX = viewportWidth - rect.width - 10
+      }
+      
+      // Adjust Y if it goes off bottom edge
+      if (y + rect.height > viewportHeight) {
+        newY = viewportHeight - rect.height - 10
+      }
+      
+      setMenuStyle({ left: newX, top: newY, opacity: 1 })
+    }
+  }, [x, y, isMobile])
+
   return (
     <>
       {/* Overlay - use button for accessibility */}
@@ -152,10 +178,11 @@ export function ConversationContextMenu({
       {/* Menu */}
       <div
         ref={menuRef}
-        className="fixed z-50 min-w-[280px] bg-bg-surface rounded-lg shadow-2xl py-2 border border-bg-hover"
+        className="fixed z-50 min-w-[280px] bg-bg-surface rounded-lg shadow-2xl py-2 border border-bg-hover transition-opacity duration-100"
         style={{
-          left: `${x}px`,
-          top: `${y}px`,
+          left: `${menuStyle.left}px`,
+          top: `${menuStyle.top}px`,
+          opacity: menuStyle.opacity
         }}
       >
         {menuItems.map((item) => (

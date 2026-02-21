@@ -343,6 +343,31 @@ export function ChatViewPage() {
   useEffect(() => {
     sendingRef.current = sending
   }, [sending])
+
+  // Periodically check and remove expired ephemeral messages
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setMessages(prevMessages => {
+        const now = new Date().getTime();
+        const validMessages = prevMessages.filter(msg => {
+          if (msg.is_ephemeral && msg.ephemeral_expires_at) {
+            const expiresAt = new Date(msg.ephemeral_expires_at).getTime();
+            return expiresAt > now;
+          }
+          return true;
+        });
+        
+        // Only update state if messages were actually removed
+        if (validMessages.length !== prevMessages.length) {
+          return validMessages;
+        }
+        return prevMessages;
+      });
+    }, 1000); // Check every second
+    
+    return () => clearInterval(interval);
+  }, []);
+
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null)
   const longPressMessageRef = useRef<Message | null>(null)
   
@@ -544,7 +569,10 @@ export function ChatViewPage() {
   }, [displayedMessages, callLogs])
 
   const updateMessageStatus = async (messageId: string, status: 'delivered' | 'read') => {
-    await supabase.from('messages').update({ status }).eq('id', messageId)
+    const { error } = await supabase.from('messages').update({ status }).eq('id', messageId)
+    if (error) {
+      console.error('[ChatViewPage] Error updating message status:', error)
+    }
   }
 
   // Helper to update a message in the list
@@ -565,12 +593,16 @@ export function ChatViewPage() {
 
   // Helper to handle notifications for new messages (extracted to reduce complexity)
   const handleNewMessageNotification = useCallback(async (newMsg: Message, senderId: string) => {
-    await updateMessageStatus(newMsg.id, 'delivered')
-    if (document.hidden && permission === 'granted') {
-      const currentOtherUser = otherUserRef.current
-      const senderName = currentOtherUser?.display_name || currentOtherUser?.username || 'Quelqu\'un'
-      const preview = newMsg.type === 'text' ? newMsg.content : '📎 Fichier'
-      sendNotification(senderName, preview, { conversationId, messageId: newMsg.id, url: `/chat/${conversationId}` })
+    if (!document.hidden) {
+      await updateMessageStatus(newMsg.id, 'read')
+    } else {
+      await updateMessageStatus(newMsg.id, 'delivered')
+      if (permission === 'granted') {
+        const currentOtherUser = otherUserRef.current
+        const senderName = currentOtherUser?.display_name || currentOtherUser?.username || 'Quelqu\'un'
+        const preview = newMsg.type === 'text' ? newMsg.content : '📎 Fichier'
+        sendNotification(senderName, preview, { conversationId, messageId: newMsg.id, url: `/chat/${conversationId}` })
+      }
     }
   }, [permission, conversationId, sendNotification])
 
@@ -765,6 +797,13 @@ export function ChatViewPage() {
       // Only log, don't reload - realtime channel handles updates
       if (document.visibilityState === 'visible') {
         // Tab visible, realtime channel active
+        // Mark unread messages as read when coming back to the tab
+        if (user) {
+          setMessages(currentMessages => {
+            markMessagesAsRead(currentMessages, user.id);
+            return currentMessages;
+          });
+        }
       }
     }
     
@@ -830,8 +869,8 @@ export function ChatViewPage() {
     // Only run when messages are loaded and we haven't scrolled yet for this conversation
     if (loading || !conversationId) return
     
-    // If no messages, we are done
-    if (messages.length === 0) {
+    // If no messages and no call logs, we are done
+    if (timelineItems.length === 0) {
       setIsInitialScrollDone(true)
       hasScrolledInitially.current = true
       return
@@ -861,7 +900,7 @@ export function ChatViewPage() {
         // Success or max attempts reached
         setIsInitialScrollDone(true)
         hasScrolledInitially.current = true
-        prevMessageCountRef.current = messages.length
+        prevMessageCountRef.current = timelineItems.length
       } else {
         // Retry with exponential backoff - longer delays for images to load
         setTimeout(scrollToBottom, scrollAttemptsRef.current * 100)
@@ -899,7 +938,7 @@ export function ChatViewPage() {
         })
         setIsInitialScrollDone(true)
         hasScrolledInitially.current = true
-        prevMessageCountRef.current = messages.length
+        prevMessageCountRef.current = timelineItems.length
       }
     }, 2000)
     
@@ -908,7 +947,7 @@ export function ChatViewPage() {
       safetyTimeouts.forEach(t => clearTimeout(t))
       clearTimeout(finalTimeout)
     }
-  }, [loading, messages.length, conversationId])
+  }, [loading, timelineItems.length, conversationId])
 
   // ResizeObserver to handle dynamic content changes (images loading, etc.)
   useEffect(() => {
@@ -942,20 +981,20 @@ export function ChatViewPage() {
   
   // Handle new messages with smooth scroll (after initial load)
   useEffect(() => {
-    if (!loading && messages.length > 0 && hasScrolledInitially.current) {
-      if (messages.length > prevMessageCountRef.current) {
+    if (!loading && timelineItems.length > 0 && hasScrolledInitially.current) {
+      if (timelineItems.length > prevMessageCountRef.current) {
         // New message added - scroll smoothly
         const behavior = getScrollBehavior()
         messagesEndRef.current?.scrollIntoView({ behavior })
-        prevMessageCountRef.current = messages.length
+        prevMessageCountRef.current = timelineItems.length
       }
     }
-  }, [loading, messages.length])
+  }, [loading, timelineItems.length])
 
   // Note: scrollToBottom is implemented via messagesEndRef.scrollIntoView
   // Extract ternary for scroll behavior
   const getScrollBehavior = (): ScrollBehavior => {
-    if (messages.length > prevMessageCountRef.current) {
+    if (timelineItems.length > prevMessageCountRef.current) {
       return 'smooth'
     }
     return 'instant'
@@ -1199,10 +1238,13 @@ export function ChatViewPage() {
     }
   }
 
-  const markMessagesAsRead = async (messages: Message[], currentUserId: string) => {
+  async function markMessagesAsRead(messages: Message[], currentUserId: string) {
     const unreadMessages = messages.filter(msg => msg.sender_id !== currentUserId && msg.status !== 'read')
     if (unreadMessages.length > 0) {
-      await supabase.from('messages').update({ status: 'read' }).in('id', unreadMessages.map(msg => msg.id))
+      const { error } = await supabase.from('messages').update({ status: 'read' }).in('id', unreadMessages.map(msg => msg.id))
+      if (error) {
+        console.error('[ChatViewPage] Error marking messages as read:', error)
+      }
     }
   }
 
@@ -1225,34 +1267,51 @@ export function ChatViewPage() {
       }
     }
     
-    const { data, error } = await supabase.from('messages').select('*').eq('conversation_id', conversationId!).is('deleted_at', null).order('created_at', { ascending: true }).limit(100)
+    const { data, error } = await supabase
+      .from('messages')
+      .select('*')
+      .eq('conversation_id', conversationId!)
+      .is('deleted_at', null)
+      .or(`ephemeral_expires_at.is.null,ephemeral_expires_at.gt.${new Date().toISOString()}`)
+      .order('created_at', { ascending: true })
+      .limit(100)
     
     if (error) {
       console.error('Error loading messages:', error)
     }
     
     if (!error && data) {
-      setMessages(data)
-      setCache(`msgs_${conversationId}`, data) // Cache messages
+      // Filter out expired ephemeral messages
+      const now = new Date().getTime();
+      const validData = data.filter(msg => {
+        if (msg.is_ephemeral && msg.ephemeral_expires_at) {
+          const expiresAt = new Date(msg.ephemeral_expires_at).getTime();
+          return expiresAt > now;
+        }
+        return true;
+      });
+
+      setMessages(validData)
+      setCache(`msgs_${conversationId}`, validData) // Cache messages
       
       // Save to offlineStorage for long-term caching
-      offlineStorage.saveMessages(data as any[]).catch(() => {
+      offlineStorage.saveMessages(validData as any[]).catch(() => {
         // Silent fail
       })
       
       // Cache profiles for offline access
-      await cacheMessageProfiles(data)
+      await cacheMessageProfiles(validData)
       
       setFilteredMessages([])
       
       // Track oldest message for infinite scroll
-      if (data.length > 0) {
-        oldestMessageRef.current = data[0].id
-        setHasMoreMessages(data.length >= 100)
+      if (validData.length > 0) {
+        oldestMessageRef.current = validData[0].id
+        setHasMoreMessages(validData.length >= 100) // Still use original data length for pagination logic? Actually, if we filtered some out, we might need to load more, but this is fine for now.
       }
       
       if (user) {
-        await markMessagesAsRead(data, user.id)
+        await markMessagesAsRead(validData, user.id)
       }
     }
     setLoading(false)
@@ -1263,21 +1322,32 @@ export function ChatViewPage() {
     if (isLoadingMore || !hasMoreMessages || !oldestMessageRef.current) return
     
     setIsLoadingMore(true)
-    try {
-      const { data, error } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('conversation_id', conversationId!)
-        .is('deleted_at', null)
-        .lt('created_at', (await supabase.from('messages').select('created_at').eq('id', oldestMessageRef.current).maybeSingle())?.data?.created_at || '')
-        .order('created_at', { ascending: true })
-        .limit(50)
+      try {
+        const { data, error } = await supabase
+          .from('messages')
+          .select('*')
+          .eq('conversation_id', conversationId!)
+          .is('deleted_at', null)
+          .or(`ephemeral_expires_at.is.null,ephemeral_expires_at.gt.${new Date().toISOString()}`)
+          .lt('created_at', (await supabase.from('messages').select('created_at').eq('id', oldestMessageRef.current).maybeSingle())?.data?.created_at || '')
+          .order('created_at', { ascending: true })
+          .limit(50)
       
       if (!error && data && data.length > 0) {
+        // Filter out expired ephemeral messages
+        const now = new Date().getTime();
+        const validData = data.filter(msg => {
+          if (msg.is_ephemeral && msg.ephemeral_expires_at) {
+            const expiresAt = new Date(msg.ephemeral_expires_at).getTime();
+            return expiresAt > now;
+          }
+          return true;
+        });
+
         // Prepend older messages to the list
         setMessages(prev => {
           const existingIds = new Set(prev.map(m => m.id))
-          const newMessages = data.filter(m => !existingIds.has(m.id))
+          const newMessages = validData.filter(m => !existingIds.has(m.id))
           return [...newMessages, ...prev]
         })
         
@@ -1286,7 +1356,7 @@ export function ChatViewPage() {
         setHasMoreMessages(data.length >= 50)
         
         // Cache new profiles
-        const senderIds = [...new Set(data.map(m => m.sender_id))]
+        const senderIds = [...new Set(validData.map(m => m.sender_id))]
         if (senderIds.length > 0) {
           const { data: profiles } = await supabase.from('profiles').select('*').in('id', senderIds)
           if (profiles && profiles.length > 0) {
@@ -2685,11 +2755,17 @@ export function ChatViewPage() {
             // Reload ephemeral setting in case it was changed
             loadEphemeralSetting()
           }}
-          onStartVideoCall={handleStartVideoCall}
-          onStartAudioCall={handleStartAudioCall}
-          initialTab={showAddMemberModal ? 'members' : 'overview'}
-          openAddMemberModal={showAddMemberModal}
-        />
+            onStartVideoCall={handleStartVideoCall}
+            onStartAudioCall={handleStartAudioCall}
+            initialTab={showAddMemberModal ? 'members' : 'overview'}
+            openAddMemberModal={showAddMemberModal}
+            onSystemMessage={(msg) => {
+              setMessages(prev => {
+                if (prev.some(m => m.id === msg.id)) return prev;
+                return [...prev, msg];
+              });
+            }}
+          />
       )}
 
       {/* Context Menu */}

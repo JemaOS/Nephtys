@@ -63,6 +63,7 @@ interface ConversationInfoProps {
   onStartAudioCall?: () => void;
   initialTab?: 'overview' | 'members' | 'media' | 'files' | 'links';
   openAddMemberModal?: boolean;
+  onSystemMessage?: (message: Message) => void;
 }
 
 interface GroupMember {
@@ -88,6 +89,7 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
   onStartAudioCall,
   initialTab = 'overview',
   openAddMemberModal = false,
+  onSystemMessage,
 }) => {
   // Initialize state
   const [activeTab, setActiveTab] = useState<'overview' | 'members' | 'media' | 'files' | 'links'>(initialTab);
@@ -243,7 +245,7 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
     const systemMessageContent = buildEphemeralSystemMessage(duration);
     
     try {
-      const { error } = await supabase.from('messages').insert({
+      const { data, error } = await supabase.from('messages').insert({
         conversation_id: conversationId,
         sender_id: currentUserId,
         content: systemMessageContent,
@@ -254,6 +256,9 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
       if (error) {
         console.error('Error inserting system message:', error);
       } else {
+        if (data && data[0] && onSystemMessage) {
+          onSystemMessage(data[0] as Message);
+        }
         // Update conversation's last_message_at
         await supabase
           .from('conversations')

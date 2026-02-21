@@ -245,6 +245,21 @@ export function ChatsPage() {
         return
       }
 
+      // Mark all 'sent' messages addressed to this user as 'delivered'
+      // This mimics WhatsApp behavior where messages are delivered as soon as the app is open
+      const conversationIds = enrichedConversations.map(c => c.id);
+      if (conversationIds.length > 0) {
+        supabase
+          .from('messages')
+          .update({ status: 'delivered' })
+          .in('conversation_id', conversationIds)
+          .neq('sender_id', user.id)
+          .eq('status', 'sent')
+          .then(({ error }) => {
+            if (error) console.error('Error marking messages as delivered:', error);
+          });
+      }
+
       // Sort: pinned first, then by last_message_at
       const sorted = sortConversations(enrichedConversations)
 
@@ -339,10 +354,15 @@ export function ChatsPage() {
     }, 500) // 500ms debounce
   }, [loadConversationsFromServer])
   
-  // Instant handler for new message in a conversation (for updating last_message_at instantly)
-  const handleNewMessageInConversation = useCallback((payload: any) => {
-    const newMessage = payload?.new
-    if (newMessage?.conversation_id) {
+    // Instant handler for new message in a conversation (for updating last_message_at instantly)
+    const handleNewMessageInConversation = useCallback((payload: any) => {
+      const newMessage = payload?.new
+      if (newMessage?.conversation_id) {
+        // Mark message as delivered if it's not from the current user
+        if (user && newMessage.sender_id !== user.id && newMessage.status === 'sent') {
+          supabase.from('messages').update({ status: 'delivered' }).eq('id', newMessage.id).eq('status', 'sent').then();
+        }
+
       // Instantly update the conversation's last_message_at
       setConversations(prev => {
         // Check if conversation exists in current list

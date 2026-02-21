@@ -100,7 +100,7 @@ export function Sidebar() {
               <Icon size={22} />
               
               {/* Tooltip */}
-              <div className="absolute left-14 px-2 py-1 bg-bg-surface text-text-primary text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none shadow-lg border border-bg-hover">
+              <div className="absolute left-14 px-2 py-1 bg-bg-surface text-text-primary text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none shadow-lg border border-bg-hover z-[100]">
                 {item.label}
               </div>
             </button>
