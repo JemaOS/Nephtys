@@ -48,6 +48,7 @@ export const EphemeralDurationMenu: React.FC<EphemeralDurationMenuProps> = ({
       
       <dialog
         ref={modalRef as any}
+        open
         className="bg-bg-surface w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden relative z-10"
         aria-labelledby="ephemeral-dialog-title"
       >

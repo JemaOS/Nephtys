@@ -31,16 +31,16 @@ export const extractYouTubeVideoId = (url: string): string | null => {
     }
     
     // Handle youtube.com domains
-    if (hostname.includes('youtube.com')) {
+    if (hostname.includes('youtube.com') || hostname.includes('youtube-nocookie.com')) {
       // Handle /watch?v=VIDEO_ID
       if (pathname === '/watch') {
         const videoId = searchParams.get('v');
         return videoId?.length === 11 ? videoId : null;
       }
       
-      // Handle /embed/, /v/, /shorts/
+      // Handle /embed/, /v/, /shorts/, /live/
       const pathParts = pathname.split('/');
-      const validPrefixes = ['embed', 'v', 'shorts'];
+      const validPrefixes = ['embed', 'v', 'shorts', 'live'];
       // pathParts[0] is empty string because pathname starts with /
       if (validPrefixes.includes(pathParts[1]) && pathParts[2]?.length === 11) {
         return pathParts[2];
@@ -62,8 +62,8 @@ export const isYouTubeUrl = (url: string): boolean => {
     const urlObj = new URL(url);
     const hostname = urlObj.hostname;
     const isYouTube = hostname === 'youtube.com' || hostname === 'www.youtube.com' || 
-                      hostname.includes('youtube.com') || hostname === 'youtu.be' || 
-                      hostname.includes('youtu.be');
+                      hostname.includes('youtube.com') || hostname.includes('youtube-nocookie.com') || 
+                      hostname === 'youtu.be' || hostname.includes('youtu.be');
     return isYouTube && extractYouTubeVideoId(url) !== null;
   } catch {
     return false;
@@ -191,7 +191,7 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
   };
 
   // YouTube embed URL with autoplay
-  const embedUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1&enablejsapi=1&rel=0&modestbranding=1&playsinline=1`;
+  const embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&enablejsapi=1&rel=0&modestbranding=1&playsinline=1`;
 
   // PiP mode - small floating player with drag support
   if (isPiP) {
@@ -255,7 +255,7 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
           title="YouTube video player"
           className="w-full h-full pointer-events-auto"
           style={{ pointerEvents: isDragging ? 'none' : 'auto' }}
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
           allowFullScreen
         />
       </div>
@@ -298,8 +298,8 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
             src={embedUrl}
             title="YouTube video player"
             className="w-full h-full"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-            allowFullScreen
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
+          allowFullScreen
           />
         </div>
       </div>
