@@ -283,7 +283,7 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
         const answer = await webrtcManager.createAnswer(signal.data);
         await sendSignal({
           type: 'answer',
-          from: user!.id,
+          from: user?.id ?? "",
           to: signal.from,
           data: answer,
           conversation_id: signal.conversation_id,
@@ -411,6 +411,9 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
   }
 
   const startCall = async (userId: string, conversationId: string, config: CallConfig) => {
+    if (!user?.id) {
+      throw new Error('Vous devez être connecté pour démarrer un appel.')
+    }
     try {
       // DEMANDER EXPLICITEMENT les permissions sur mobile
       if (typeof globalThis !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
@@ -486,7 +489,7 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
 
       await sendSignal({
         type: 'offer',
-        from: user!.id,
+        from: user?.id ?? "",
         to: userId,
         data: { ...offer, video: config.video },
         conversation_id: conversationId,
@@ -495,7 +498,7 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
       webrtcManager.onIceCandidate(async (candidate) => {
         await sendSignal({
           type: 'ice-candidate',
-          from: user!.id,
+          from: user?.id ?? "",
           to: userId,
           data: candidate,
           conversation_id: conversationId,
@@ -517,7 +520,7 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
              const offer = await webrtcManager.restartIce();
              await sendSignal({
                type: 'offer',
-               from: user!.id,
+               from: user?.id ?? "",
                to: userId,
                data: { ...offer, video: config.video },
                conversation_id: conversationId,
@@ -534,7 +537,7 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
 
       const { data: callLogData, error: callLogError } = await supabase.from('call_logs').insert({
         conversation_id: conversationId,
-        caller_id: user!.id,
+        caller_id: user?.id ?? "",
         callee_id: userId,
         type: config.video ? 'video' : 'audio',
         status: 'initiated',
@@ -555,6 +558,10 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
 
   const answerCall = async () => {
     if (!incomingCallSignal) return
+    if (!user?.id) {
+      console.warn('[Call] answerCall called without authenticated user')
+      return
+    }
 
     // If it's a group call, use the group call answer flow
     if (incomingCall?.isGroupCall) {
@@ -609,7 +616,7 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
              const offer = await webrtcManager.restartIce();
              await sendSignal({
                type: 'offer',
-               from: user!.id,
+               from: user?.id ?? "",
                to: incomingCallSignal.from,
                data: { ...offer, video: config.video },
                conversation_id: incomingCallSignal.conversation_id,
@@ -623,7 +630,7 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
       webrtcManager.onIceCandidate(async (candidate) => {
         await sendSignal({
           type: 'ice-candidate',
-          from: user!.id,
+          from: user?.id ?? "",
           to: incomingCallSignal.from,
           data: candidate,
           conversation_id: incomingCallSignal.conversation_id,
@@ -645,7 +652,7 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
 
       await sendSignal({
         type: 'answer',
-        from: user!.id,
+        from: user?.id ?? "",
         to: incomingCallSignal.from,
         data: answer,
         conversation_id: incomingCallSignal.conversation_id,
@@ -654,7 +661,7 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
       const { data: answerCallLogData, error: answerCallLogError } = await supabase.from('call_logs').insert({
         conversation_id: incomingCallSignal.conversation_id,
         caller_id: incomingCallSignal.from,
-        callee_id: user!.id,
+        callee_id: user?.id ?? "",
         type: config.video ? 'video' : 'audio',
         status: 'answered',
       }).select()
@@ -678,10 +685,10 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
   const rejectCall = async () => {
     if (incomingCallSignal) {
       // For group calls, we just dismiss the notification without sending a signal
-      if (!incomingCall?.isGroupCall) {
+      if (!incomingCall?.isGroupCall && user?.id) {
         await sendSignal({
           type: 'call-end',
-          from: user!.id,
+          from: user.id,
           to: incomingCallSignal.from,
           data: { reason: 'rejected' },
           conversation_id: incomingCallSignal.conversation_id,
@@ -784,6 +791,10 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
   // Answer a group call (join the existing call)
   const answerGroupCall = async () => {
     if (!incomingCallSignal || !incomingCall?.isGroupCall) return
+    if (!user?.id) {
+      console.warn('[Call] answerGroupCall called without authenticated user')
+      return
+    }
 
     try {
       setIsRinging(false)
@@ -830,7 +841,7 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
       if (currentCallUserId && currentCallConversationId) {
         await sendSignal({
           type: 'media-state-update',
-          from: user!.id,
+          from: user?.id ?? "",
           to: currentCallUserId,
           data: { video: newState },
           conversation_id: currentCallConversationId,
@@ -881,10 +892,10 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
     if (!members || members.length === 0) return
     
     for (const member of members) {
-      if (member.user_id !== user!.id) {
+      if (member.user_id !== user?.id ?? "") {
         await sendSignal({
           type: 'group-call-invite',
-          from: user!.id,
+          from: user?.id ?? "",
           to: member.user_id,
           data: {
             video,
@@ -899,9 +910,13 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
 
   // Start a group call
   const startGroupCall = async (conversationId: string, config: GroupCallConfig) => {
+    if (!user?.id) {
+      throw new Error('Vous devez être connecté pour démarrer un appel.')
+    }
+    const callerId = user.id
     const hasPermissions = await requestMediaPermissions(config.video)
     if (!hasPermissions) return
-    
+
     try {
       setIsCalling(true)
       setIsGroupCall(true)
@@ -935,7 +950,7 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
 
       // Initialize group call
       const stream = await groupCallManager.initializeGroupCall(
-        user!.id,
+        callerId,
         conversationId,
         config
       )
@@ -999,8 +1014,8 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
   const logGroupCall = async (conversationId: string, isVideo: boolean) => {
     const { data: callLogData, error: callLogError } = await supabase.from('call_logs').insert({
       conversation_id: conversationId,
-      caller_id: user!.id,
-      callee_id: user!.id,
+      caller_id: user?.id ?? "",
+      callee_id: user?.id ?? "",
       type: isVideo ? 'video' : 'audio',
       status: 'initiated',
     }).select()
