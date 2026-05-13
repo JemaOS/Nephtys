@@ -7,15 +7,14 @@
  */
 import { pdfjs } from 'react-pdf';
 
-const PDFJS_VERSION = pdfjs.version; // ex: "5.4.296"
 let workerConfigured = false;
 
 export function configurePDFWorker() {
   if (workerConfigured) return;
   workerConfigured = true;
 
-  // CDN unpkg — fiable, toujours la bonne version, pas de problème
-  // de bundling Vite/Vercel avec les workers ESM.
-  // pdfjs v4+ requiert un module worker (.mjs) — pas de classic worker.
-  pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${PDFJS_VERSION}/build/pdf.worker.min.mjs`;
+  // Le worker est copié dans public/ lors du build (voir vite.config.ts et
+  // le script prebuild). On le charge depuis la même origine → pas de CSP,
+  // pas de CORS, pas de dépendance CDN externe.
+  pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
 }

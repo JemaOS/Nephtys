@@ -7,7 +7,7 @@ import { useAuth } from '@/context/AuthContext'
 import { useTheme } from '@/context/ThemeContext'
 import { MainLayout } from '@/components/MainLayout'
 import { supabase, Message, Conversation, Profile, sendBroadcastMessage } from '@/lib/supabase'
-import { signFieldsBatch, resolveMediaUrl } from '@/lib/mediaUrl'
+import { signFieldsBatch, resolveMediaUrl, extractStoragePath } from '@/lib/mediaUrl'
 import { createMediaKeysForMessage } from '@/lib/encryptedMediaService'
 import { offlineStorage } from '@/lib/offlineStorage'
 import { useUserPresence } from '@/hooks/usePresence'
@@ -2147,15 +2147,13 @@ export function ChatViewPage() {
     try {
       // If message has media, delete from storage first
       if (messageToDelete.media_url) {
-        // Extract the file path from the URL
-        const url = new URL(messageToDelete.media_url)
-        const pathParts = url.pathname.split('/storage/v1/object/public/media/')
-        if (pathParts.length > 1) {
-          const filePath = pathParts[1]
+        // media_url peut être un path nu ou une URL complète signée.
+        // extractStoragePath gère les deux cas.
+        const filePath = extractStoragePath(messageToDelete.media_url)
+        if (filePath) {
           const { error: storageError } = await supabase.storage
             .from('media')
             .remove([filePath])
-          
           if (storageError) {
             console.error('Error deleting file from storage:', storageError)
           }
@@ -2530,15 +2528,8 @@ export function ChatViewPage() {
     
     for (const msg of selectedMsgs) {
       if (msg.media_url) {
-        try {
-          const url = new URL(msg.media_url)
-          const pathParts = url.pathname.split('/storage/v1/object/public/media/')
-          if (pathParts.length > 1) {
-            mediaFilePaths.push(pathParts[1])
-          }
-        } catch (error) {
-          console.error('Error parsing media URL:', error)
-        }
+        const filePath = extractStoragePath(msg.media_url)
+        if (filePath) mediaFilePaths.push(filePath)
       }
     }
     
