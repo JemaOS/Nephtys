@@ -9,6 +9,7 @@ import { processImageForUpload, ProcessedImage } from '@/lib/imageUtils';
 import { compressVideo } from '@/lib/videoCompression';
 import { DocumentPreviewModal, generatePDFThumbnail } from './DocumentPreview';
 import { AudioPreviewPlayer, EmojiPicker, StickerPicker } from './MediaUploaderComponents';
+import { uploadEncryptedMedia } from '@/lib/encryptedMediaService';
 
 // Helper function to get file extension
 const getFileExtension = (filename: string): string => {
@@ -142,6 +143,12 @@ interface UploadedFileData {
   height?: number;
   thumbnail?: string;
   duration?: number;
+  /** Si true, le fichier est chiffré E2EE et `encryptionKey`/`mediaIv` sont définis */
+  encrypted?: boolean;
+  /** Clé AES brute (jamais persistée côté serveur, à wrapper pour chaque destinataire) */
+  encryptionKey?: Uint8Array;
+  /** IV utilisé pour le chiffrement du média (à stocker dans message_media_keys) */
+  mediaIv?: string;
 }
 
 // Interface for upload complete parameters - kept for backwards compatibility
@@ -154,6 +161,9 @@ export interface UploadCompleteParams {
   height?: number;
   thumbnail?: string;
   duration?: number;
+  encrypted?: boolean;
+  encryptionKey?: Uint8Array;
+  mediaIv?: string;
 }
 
 interface MediaUploaderProps {
@@ -457,37 +467,36 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       }
     }
     
+    // E2EE : on chiffre AVANT l'upload. Le serveur ne voit que des octets aléatoires.
     const folder = getFolderForFileType(type);
-    const fileName = `${userId}/${folder}/${Date.now()}_${file.name.replaceAll(/[^a-zA-Z0-9.-]/g, "_")}`;
+    const safeName = file.name.replaceAll(/[^a-zA-Z0-9.-]/g, "_");
+    const pathPrefix = `${userId}/${folder}/${Date.now()}_${safeName}`;
 
-    const { error } = await supabase.storage
-      .from('media')
-      .upload(fileName, fileToUpload, {
-        cacheControl: '3600',
-        upsert: false,
-        contentType: file.type || 'application/octet-stream',
-      });
-
-    if (error) {
-      console.error('Upload error:', error);
+    let uploadedFile: UploadedFileData;
+    try {
+      const blobToEncrypt = fileToUpload instanceof Blob ? fileToUpload : new Blob([await fileToUpload.arrayBuffer()]);
+      const result = await uploadEncryptedMedia(blobToEncrypt, pathPrefix);
+      uploadedFile = {
+        url: result.path,
+        type,
+        fileName: file.name,
+        fileSize: result.originalSize,
+        encrypted: true,
+        encryptionKey: result.rawKey,
+        mediaIv: result.mediaIvBase64,
+      };
+    } catch (e: any) {
+      console.error('Encrypted upload error:', e);
       return null;
     }
 
-    // Bucket privé : on stocke le path. L'URL signée est générée à l'affichage.
-    const uploadedFile: UploadedFileData = {
-      url: fileName,
-      type,
-      fileName: file.name,
-      fileSize: fileToUpload instanceof Blob ? fileToUpload.size : file.size,
-    };
-    
     // Add image dimensions if available
     if (processedImage) {
       uploadedFile.width = processedImage.dimensions.width;
       uploadedFile.height = processedImage.dimensions.height;
       uploadedFile.thumbnail = processedImage.thumbnailDataUrl;
     }
-    
+
     // Update progress
     setUploadProgress(Math.round(((index + 1) / totalFiles) * 100));
     
@@ -576,30 +585,29 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       }
     }
     
+    // E2EE : chiffrement avant upload
     const folder = getFolderForFileType(type);
-    const fileName = `${userId}/${folder}/${Date.now()}_${file.name.replaceAll(/[^a-zA-Z0-9.-]/g, "_")}`;
+    const safeName = file.name.replaceAll(/[^a-zA-Z0-9.-]/g, "_");
+    const pathPrefix = `${userId}/${folder}/${Date.now()}_${safeName}`;
 
-    const { error } = await supabase.storage
-      .from('media')
-      .upload(fileName, fileToUpload, {
-        cacheControl: '3600',
-        upsert: false,
-        contentType: file.type || 'application/octet-stream',
-      });
-
-    if (error) {
-      console.error('Upload error:', error);
+    let uploadedFile: UploadedFileData;
+    try {
+      const blobToEncrypt = fileToUpload instanceof Blob ? fileToUpload : new Blob([await fileToUpload.arrayBuffer()]);
+      const result = await uploadEncryptedMedia(blobToEncrypt, pathPrefix);
+      uploadedFile = {
+        url: result.path,
+        type,
+        fileName: file.name,
+        fileSize: result.originalSize,
+        encrypted: true,
+        encryptionKey: result.rawKey,
+        mediaIv: result.mediaIvBase64,
+      };
+    } catch (e: any) {
+      console.error('Encrypted upload error:', e);
       return null;
     }
 
-    // Bucket privé : on stocke le path. L'URL signée est générée à l'affichage.
-    const uploadedFile: UploadedFileData = {
-      url: fileName,
-      type,
-      fileName: file.name,
-      fileSize: fileToUpload instanceof Blob ? fileToUpload.size : file.size,
-    };
-    
     // Add image dimensions if available
     if (processedImage) {
       uploadedFile.width = processedImage.dimensions.width;
@@ -735,23 +743,11 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
           const thumbnailDataUrl = await generatePDFThumbnail(documentFile, 300);
           setDocumentUploadProgress(15);
 
-          // Upload thumbnail to storage
-          const thumbnailResponse = await fetch(thumbnailDataUrl);
-          const thumbnailBlob = await thumbnailResponse.blob();
-          const thumbnailFileName = `${user.id}/thumbnails/${Date.now()}_${documentFile.name.replaceAll(/\.[^/.]+$/, '')}_thumb.jpg`;
-
-          const { error: thumbError } = await supabase.storage
-            .from('media')
-            .upload(thumbnailFileName, thumbnailBlob, {
-              cacheControl: '3600',
-              upsert: false,
-              contentType: 'image/jpeg',
-            });
-
-          if (!thumbError) {
-            // Bucket privé : on stocke le path. URL signée générée à l'affichage.
-            thumbnailUrl = thumbnailFileName;
-          }
+          // Pour les thumbnails de PDF, on utilise directement le data URL
+          // (image inline base64) plutôt que d'uploader un thumbnail non chiffré
+          // qui révélerait le contenu du document. Coût: la BDD stocke un peu
+          // plus, mais l'aperçu reste E2EE.
+          thumbnailUrl = thumbnailDataUrl;
           setDocumentUploadProgress(30);
         } catch (err) {
           console.warn('PDF thumbnail generation failed, continuing without thumbnail:', err);
@@ -778,31 +774,29 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
         });
       }, 200);
 
-      const { error } = await supabase.storage
-        .from('media')
-        .upload(fileName, documentFile, {
-          cacheControl: '3600',
-          upsert: false,
-          contentType: documentFile.type || 'application/octet-stream',
-        });
-
-      clearInterval(progressInterval);
-
-      if (error) {
-        console.error('Upload error details:', error);
-        throw new Error(error.message || 'Upload failed');
+      // E2EE : chiffrement avant upload
+      let encryptedResult;
+      try {
+        encryptedResult = await uploadEncryptedMedia(documentFile, fileName);
+      } catch (e: any) {
+        clearInterval(progressInterval);
+        console.error('Encrypted upload error:', e);
+        throw new Error(e.message || 'Upload failed');
       }
 
-      // Bucket privé : on stocke le path. URL signée générée à l'affichage.
+      clearInterval(progressInterval);
       setDocumentUploadProgress(100);
 
       // Call onUploadComplete with thumbnail URL
       onUploadComplete({
-        url: fileName,
+        url: encryptedResult.path,
         type: 'file',
         fileName: documentFile.name,
-        fileSize: documentFile.size,
-        thumbnail: thumbnailUrl
+        fileSize: encryptedResult.originalSize,
+        thumbnail: thumbnailUrl,
+        encrypted: true,
+        encryptionKey: encryptedResult.rawKey,
+        mediaIv: encryptedResult.mediaIvBase64,
       });
 
       // Reset state
@@ -879,31 +873,30 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
         });
       }, 200);
 
-      const { error } = await supabase.storage
-        .from('media')
-        .upload(uploadFileName, fileToUpload, {
-          cacheControl: '3600',
-          upsert: false,
-          contentType: 'image/png',
-        });
-
-      clearInterval(progressInterval);
-
-      if (error) {
-        console.error('Upload error details:', error);
-        throw new Error(error.message || 'Upload failed');
+      // E2EE : chiffrement avant upload
+      let encryptedResult;
+      try {
+        const blobToEncrypt = fileToUpload instanceof Blob ? fileToUpload : new Blob([await fileToUpload.arrayBuffer()]);
+        encryptedResult = await uploadEncryptedMedia(blobToEncrypt, uploadFileName);
+      } catch (e: any) {
+        clearInterval(progressInterval);
+        console.error('Encrypted upload error:', e);
+        throw new Error(e.message || 'Upload failed');
       }
 
-      // Bucket privé : on stocke le path. URL signée générée à l'affichage.
+      clearInterval(progressInterval);
       setUploadProgress(100);
       onUploadComplete({
-        url: uploadFileName,
+        url: encryptedResult.path,
         type: 'image',
         fileName: fileName,
-        fileSize: fileToUpload instanceof Blob ? fileToUpload.size : editedFile.size,
+        fileSize: encryptedResult.originalSize,
         width: processedImage?.dimensions.width,
         height: processedImage?.dimensions.height,
-        thumbnail: processedImage?.thumbnailDataUrl
+        thumbnail: processedImage?.thumbnailDataUrl,
+        encrypted: true,
+        encryptionKey: encryptedResult.rawKey,
+        mediaIv: encryptedResult.mediaIvBase64,
       });
       
       // Reset

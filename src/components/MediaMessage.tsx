@@ -10,6 +10,7 @@ import {
   getMimeTypeFromExtension,
   formatVideoDuration
 } from './MediaMessageComponents';
+import { useDecryptedMedia } from '@/hooks/useDecryptedMedia';
 
 interface MediaMessageProps {
   url: string;
@@ -50,6 +51,10 @@ interface MediaMessageProps {
   }>;
   currentIndex?: number;
   onNavigate?: (index: number) => void;
+  /** Indique si le média est chiffré E2EE (déchiffrement à la volée requis) */
+  isEncrypted?: boolean;
+  /** ID du user courant (requis pour le déchiffrement E2EE) */
+  currentUserId?: string;
 }
 
 
@@ -79,7 +84,19 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
   allMedia,
   currentIndex,
   onNavigate,
+  isEncrypted = false,
+  currentUserId,
 }) => {
+  // Résolution de l'URL : si chiffré, on déchiffre à la volée pour obtenir
+  // un blob URL local. Sinon, useMediaUrl renvoie une URL signée du bucket privé.
+  const { url: resolvedUrl, loading: urlLoading, error: urlError } = useDecryptedMedia({
+    encrypted: isEncrypted,
+    messageId,
+    userId: currentUserId,
+    src: url,
+  });
+  const effectiveUrl = resolvedUrl || url;
+
   const [isFullscreen, setIsFullscreen] = useState(false);
   // Track the currently displayed media index in the viewer (for navigation)
   const [viewerIndex, setViewerIndex] = useState(currentIndex ?? 0);
@@ -117,7 +134,7 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
 
   const handleDownload = async () => {
     try {
-      const response = await fetch(url);
+      const response = await fetch(effectiveUrl);
       const blob = await response.blob();
       const downloadUrl = globalThis.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -135,7 +152,7 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
   // Helper to fetch file as blob - extracted for complexity reduction
   const fetchFileBlob = async (): Promise<{ blob: Blob; mimeType: string } | null> => {
     try {
-      const response = await fetch(url);
+      const response = await fetch(effectiveUrl);
       const blob = await response.blob();
       const mimeType = blob.type || getMimeTypeFromExtension(fileName || '');
       return { blob, mimeType };
@@ -221,7 +238,7 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
   const getCurrentMediaInfo = () => {
     const media = allMedia?.[viewerIndex];
     return {
-      url: media?.url ?? url,
+      url: media?.url ?? effectiveUrl,
       type: media?.type ?? getViewerMediaType(),
       senderName: media?.senderName ?? senderName,
       senderAvatar: media?.senderAvatar ?? senderAvatar,
@@ -276,13 +293,31 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
     }
   }, [type]);
 
+  // Si erreur de déchiffrement, afficher un placeholder explicite
+  if (urlError && isEncrypted) {
+    return (
+      <div className="rounded-lg bg-bg-hover px-4 py-3 text-sm text-text-tertiary border border-bg-elevated">
+        🔒 Média chiffré — clé de déchiffrement indisponible
+      </div>
+    );
+  }
+
+  // Pendant le déchiffrement, afficher un placeholder
+  if (urlLoading && isEncrypted) {
+    return (
+      <div className="rounded-lg bg-bg-hover px-4 py-3 text-sm text-text-tertiary border border-bg-elevated">
+        🔓 Déchiffrement en cours…
+      </div>
+    );
+  }
+
   // Use extracted ImageRenderer component - reduces cognitive complexity
   if (type === 'image') {
     const mediaInfo = getCurrentMediaInfo();
     return (
       <>
         <ImageRenderer
-          url={url}
+          url={effectiveUrl}
           thumbnail={thumbnail}
           caption={caption}
           imageDimensions={imageDimensions}
@@ -319,7 +354,7 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
     return (
       <>
         <VideoRenderer
-          url={url}
+          url={effectiveUrl}
           caption={caption}
           videoDuration={videoDuration}
           timestamp={timestamp}

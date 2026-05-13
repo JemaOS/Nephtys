@@ -8,6 +8,7 @@ import { useTheme } from '@/context/ThemeContext'
 import { MainLayout } from '@/components/MainLayout'
 import { supabase, Message, Conversation, Profile, sendBroadcastMessage } from '@/lib/supabase'
 import { signFieldsBatch, resolveMediaUrl } from '@/lib/mediaUrl'
+import { createMediaKeysForMessage } from '@/lib/encryptedMediaService'
 import { offlineStorage } from '@/lib/offlineStorage'
 import { useUserPresence } from '@/hooks/usePresence'
 import { Send, Mic, Plus } from 'lucide-react'
@@ -1578,6 +1579,9 @@ export function ChatViewPage() {
     setSending(true)
     
     const { url, type, fileName, fileSize, width, height, thumbnail } = fileData
+    const isEncrypted = !!(fileData as any).encrypted
+    const encryptionKey = (fileData as any).encryptionKey as Uint8Array | undefined
+    const mediaIv = (fileData as any).mediaIv as string | undefined
     
     // Optimistic update
     const tempId = `temp-${Date.now()}`
@@ -1617,8 +1621,9 @@ export function ChatViewPage() {
         type, status: 'sent', reply_to_id: optimisticMessage.reply_to_id,
         media_url: url, media_type: type, file_name: fileName, file_size: fileSize,
         file_url: url, // Fallback for older schema
+        is_media_encrypted: isEncrypted,
       }
-      
+
       // Add image dimensions if available
       if (width && height) {
         messageData.media_width = width
@@ -1627,19 +1632,39 @@ export function ChatViewPage() {
       if (thumbnail) {
         messageData.media_thumbnail = thumbnail
       }
-      
+
       // Add ephemeral fields if enabled
       if (ephemeralDuration) {
         messageData.is_ephemeral = true
         messageData.ephemeral_duration = ephemeralDuration
-        messageData.ephemeral_expires_at = ephemeralDuration 
-          ? new Date(Date.now() + ephemeralDuration * 1000).toISOString() 
+        messageData.ephemeral_expires_at = ephemeralDuration
+          ? new Date(Date.now() + ephemeralDuration * 1000).toISOString()
           : null
       }
-      
+
       const { data, error } = await supabase.from('messages').insert(messageData).select().single()
-      
+
       if (!error && data) {
+        // Si le média est chiffré E2EE, créer les clés enveloppées pour chaque destinataire
+        if (isEncrypted && encryptionKey && mediaIv) {
+          try {
+            const result = await createMediaKeysForMessage({
+              messageId: data.id,
+              senderId: user.id,
+              conversationId: conversationId!,
+              rawKey: encryptionKey,
+              mediaIvBase64: mediaIv,
+            })
+            if (result.missingKeys.length > 0) {
+              console.warn('[E2EE] Membres sans clé publique (média non déchiffrable pour eux):', result.missingKeys)
+            }
+          } catch (e) {
+            console.error('[E2EE] Échec de création des clés enveloppées:', e)
+            // On ne bloque pas l'envoi : le message est créé, mais les destinataires
+            // sans clé recevront un message avec média non déchiffrable.
+          }
+        }
+
         // Replace optimistic message with real one
         setMessages(prev => prev.map(m => m.id === tempId ? data : m))
         await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conversationId!)

@@ -6,6 +6,7 @@ import { User } from '@supabase/supabase-js'
 import { supabase, Profile } from '@/lib/supabase'
 import { initializePresence, cleanupPresence } from '@/hooks/usePresence'
 import { resolveMediaUrl } from '@/lib/mediaUrl'
+import { ensureUserKeyPair } from '@/lib/mediaEncryption'
 
 // Timeout for auth operations (in milliseconds)
 const AUTH_TIMEOUT = 5000;
@@ -293,6 +294,12 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
         }
         setProfile(data);
         cacheProfile(data);
+
+        // Initialiser la paire de clés E2EE pour le chiffrement des médias.
+        // Si déjà existante, ne fait rien. Sinon génère + publie la clé publique.
+        ensureUserKeyPair(userId).catch(e => {
+          console.error('[Auth] E2EE key init failed:', e);
+        });
       }
     } catch (error) {
       // Profile fetch failed - use cached profile if available

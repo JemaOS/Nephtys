@@ -488,6 +488,8 @@ export const MessageItem: React.FC<MessageItemProps> = React.memo(({
         allMedia={[]}
         currentIndex={-1}
         onNavigate={() => {}}
+        isEncrypted={(message as any).is_media_encrypted}
+        currentUserId={currentUserId}
       />
     )
   }
@@ -513,6 +515,8 @@ export const MessageItem: React.FC<MessageItemProps> = React.memo(({
         onReaction={(emoji) => onAddReaction(message.id, emoji)}
         showHoverActions={hoveredMessageId === message.id}
         onOpenMenu={() => {}}
+        isEncrypted={(message as any).is_media_encrypted}
+        currentUserId={currentUserId}
       />
     )
   }
