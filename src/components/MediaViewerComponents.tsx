@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Forward, Star, Pin, Smile, Share2, Download, Play, Pause, Volume2, VolumeX, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
+import { X, Forward, Star, Pin, Smile, Download, Play, Pause, Volume2, VolumeX, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
 import { MediaImg } from './MediaImg';
 
 // Format timestamp helper
@@ -32,7 +32,6 @@ interface HeaderActionsProps {
   onStar?: () => void;
   onPin?: () => void;
   onReaction?: (emoji: string) => void;
-  onShare: () => void;
   onDownload: () => void;
   onClose: () => void;
   onToggleFullscreen: () => void;
@@ -56,7 +55,6 @@ export const HeaderActions: React.FC<HeaderActionsProps> = ({
   onStar,
   onPin,
   onReaction,
-  onShare,
   onDownload,
   onClose,
   onToggleFullscreen,
@@ -183,16 +181,6 @@ export const HeaderActions: React.FC<HeaderActionsProps> = ({
         <Maximize2 size={18} className={`text-white ${isFullscreen ? 'rotate-45' : ''}`} />
       </button>
     )}
-    {/* Share - visible on mobile */}
-    <button
-      onClick={(e) => { e.stopPropagation(); onShare(); }}
-      className="w-9 h-9 md:w-10 md:h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
-      title="Partager"
-      aria-label="Partager"
-    >
-      <Share2 size={18} className="md:hidden text-white" />
-      <Share2 size={20} className="hidden md:block text-white" />
-    </button>
     {/* Download - visible on mobile */}
     <button
       onClick={(e) => { e.stopPropagation(); onDownload(); }}

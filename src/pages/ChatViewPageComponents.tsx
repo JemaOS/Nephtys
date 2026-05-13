@@ -1,6 +1,6 @@
 import React, { useRef, useEffect } from 'react'
 import { Virtuoso, VirtuosoHandle } from 'react-virtuoso'
-import { ArrowLeft, Search, Phone, Video, MoreVertical, UserPlus, BellOff, Archive, Trash2, Lock, Star, Info, Share2, Copy, Reply, Forward, Pin, Smile } from 'lucide-react'
+import { ArrowLeft, Search, Phone, Video, MoreVertical, UserPlus, BellOff, Archive, Trash2, Lock, Star, Info, Copy, Reply, Forward, Pin, Smile } from 'lucide-react'
 import { Message, Conversation, Profile } from '@/lib/supabase'
 import { CallMessage } from '@/components/CallMessage'
 import { MessageHoverActions } from '@/components/MessageHoverActions'
@@ -362,33 +362,6 @@ export const ChatHeader: React.FC<ChatHeaderProps> = React.memo(({
                   >
                     <Info size={18} />
                     <span>Infos</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      // Share selected messages
-                      const selectedMsgs = messages.filter(m => selectedMessages.has(m.id))
-                      const textContent = selectedMsgs
-                        .filter(m => m.type === 'text' && m.content)
-                        .map(m => m.content)
-                        .join('\n')
-                      
-                      if (navigator.share && textContent) {
-                        navigator.share({
-                          title: 'Message partagé',
-                          text: textContent,
-                        }).catch(() => {})
-                      } else if (textContent) {
-                        navigator.clipboard.writeText(textContent)
-                        alert('Contenu copié!')
-                      }
-                      setShowSelectionMenu(false)
-                      exitSelectionMode()
-                    }}
-                    disabled={selectedMessages.size === 0}
-                    className="w-full px-4 py-3 text-left hover:bg-bg-hover transition-colors text-text-primary text-sm flex items-center gap-3 disabled:opacity-50"
-                  >
-                    <Share2 size={18} />
-                    <span>Partager</span>
                   </button>
                   <button
                     onClick={() => {

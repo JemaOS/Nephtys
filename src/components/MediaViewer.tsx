@@ -131,7 +131,6 @@ interface MediaViewerProps {
   onStar?: () => void;
   onPin?: () => void;
   onReaction?: (emoji: string) => void;
-  onShare?: () => void;
   onDownload?: () => void;
   // For navigation between media
   allMedia?: Array<{
@@ -170,7 +169,6 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   onStar,
   onPin,
   onReaction,
-  onShare,
   onDownload,
   allMedia,
   currentIndex = 0,
@@ -1100,30 +1098,6 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
     }
   };
 
-  const handleShare = async () => {
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: 'Média partagé',
-          url: mediaUrl,
-        });
-        onShare?.();
-      } catch (error) {
-        // User cancelled share or share failed - log for debugging
-        console.log('Share cancelled or failed:', error);
-      }
-    } else {
-      // Fallback: copy URL to clipboard
-      try {
-        await navigator.clipboard.writeText(mediaUrl);
-        alert('Lien copié !');
-        onShare?.();
-      } catch (clipboardError) {
-        console.error('Failed to copy to clipboard:', clipboardError);
-      }
-    }
-  };
-
   const quickEmojis = ['❤️', '😂', '😮', '😢', '🙏', '👍'];
 
   // Focus the viewer on mount for keyboard accessibility
@@ -1186,7 +1160,6 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
           onStar,
           onPin,
           onReaction,
-          onShare: handleShare,
           onDownload: handleDownload,
           onClose,
           onToggleFullscreen: toggleFullscreen,
