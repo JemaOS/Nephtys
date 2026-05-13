@@ -697,47 +697,19 @@ export function ChatsPage() {
     exitSelectionMode()
   }
 
-  // Load conversations from cache first, then sync with server
+  // Load conversations: cache d'abord (synchrone, instantané), puis sync
+  // serveur en arrière-plan via le mécanisme stale-while-revalidate de
+  // loadConversationsWithCacheFirst. Un seul useEffect — les anciens
+  // doublons ("CRITICAL FIX" + "AGGRESSIVE FIX") provoquaient 3 reloads
+  // concurrents au mount + 2 sur visibility, causant 1-2s de jank.
+  // Le canal realtime + handlers focus/visibility plus bas suffisent à
+  // garder la liste fraîche.
   useEffect(() => {
     if (user && !initialLoadComplete.current) {
       initialLoadComplete.current = true
       loadConversationsWithCacheFirst()
     }
   }, [user, loadConversationsWithCacheFirst])
-  
-  // CRITICAL FIX: Force reload when component mounts (when navigating back from ChatViewPage)
-  // This ensures the conversation list is always fresh when returning to the page
-  useEffect(() => {
-    if (user) {
-      // Small delay to ensure the component is fully mounted
-      const timeout = setTimeout(() => {
-        console.log('[ChatsPage] Component mounted/re-mounted, forcing conversation reload...')
-        loadConversationsFromServer(false)
-      }, 50)
-      return () => clearTimeout(timeout)
-    }
-  }, [user])
-  
-  // AGGRESSIVE FIX: Force FULL reload on EVERY mount and when page becomes visible
-  // This ensures the conversation list is ALWAYS fresh when returning from ChatViewPage
-  useEffect(() => {
-    if (!user) return
-    
-    // Immediate FULL reload on mount - force complete replacement of conversations
-    console.log('[ChatsPage] MOUNT: Force FULL reload of conversations...')
-    loadConversationsFromServer(false, true) // true = forceFullUpdate
-    
-    // Also listen for visibility changes
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        console.log('[ChatsPage] VISIBLE: Force FULL reload of conversations...')
-        loadConversationsFromServer(false, true) // true = forceFullUpdate
-      }
-    }
-    
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
-  }, [user, loadConversationsFromServer])
 
   // Set up real-time subscriptions
   useEffect(() => {
@@ -748,51 +720,26 @@ export function ChatsPage() {
         setIsLoading(false)
       }, 10000)
       
-      // Subscribe to conversation changes with debounced reload
-      const conversationsChannel = supabase
-        .channel('conversations')
-        .on('postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'conversations'
-          },
-          (payload) => {
-            console.log('[ChatsPage] Realtime: Conversation change detected:', payload.eventType, (payload.new as Record<string, unknown>)?.id || (payload.old as Record<string, unknown>)?.id)
-            debouncedReload()
-          }
-        )
-        .subscribe((status) => {
-          console.log('[ChatsPage] Conversations channel status:', status)
-        })
-
-      // Subscribe to new messages for instant conversation update
-      const messagesChannel = supabase
-        .channel('chats-messages', {
-          config: {
-            broadcast: { self: true },
-          }
+      // Un seul canal Realtime consolidé pour TOUS les events qui touchent
+      // la liste de conversations. Avant : 4 WebSocket frames distincts
+      // (un par table). Après : 1 seul, économise ~3 connexions WS et
+      // simplifie le cycle de vie du subscribe/unsubscribe.
+      const chatsListChannel = supabase
+        .channel(`chats-list:${user.id}`, {
+          config: { broadcast: { self: true } },
         })
         .on('postgres_changes',
-          {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'messages'
-          },
-          (payload) => {
-            console.log('[ChatsPage] Realtime: New message INSERT detected:', payload.new?.id, payload.new?.conversation_id)
-            handleNewMessageInConversation(payload)
-          }
+          { event: '*', schema: 'public', table: 'conversations' },
+          () => debouncedReload()
         )
         .on('postgres_changes',
-          {
-            event: 'UPDATE',
-            schema: 'public',
-            table: 'messages'
-          },
+          { event: 'INSERT', schema: 'public', table: 'messages' },
+          (payload) => handleNewMessageInConversation(payload)
+        )
+        .on('postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'messages' },
           (payload) => {
-            // On déclenche un reload uniquement si le statut change vers 'read'
-            // (multi-device sync : l'utilisateur a lu sur un autre appareil)
+            // Reload uniquement si le statut passe à 'read' (multi-device sync)
             const oldStatus = (payload.old as { status?: string })?.status
             const newStatus = (payload.new as { status?: string })?.status
             if (oldStatus !== newStatus && newStatus === 'read') {
@@ -800,40 +747,17 @@ export function ChatsPage() {
             }
           }
         )
-        .subscribe((status) => {
-          console.log('[ChatsPage] Messages channel status:', status)
-        })
-
-      // Subscribe to conversation_members changes (for when members are added/removed)
-      const membersChannel = supabase
-        .channel('conversation-members')
         .on('postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'conversation_members'
-          },
+          { event: '*', schema: 'public', table: 'conversation_members' },
           (payload) => {
-            console.log('[ChatsPage] Realtime: Member change detected:', payload.eventType, (payload.old as Record<string, unknown>)?.conversation_id)
-            // Handle DELETE events instantly (user removed from conversation)
             if (payload.eventType === 'DELETE') {
               handleConversationMemberRemoved(payload)
             }
-            // For other events, use debounced reload
             debouncedReload()
           }
         )
-        .subscribe()
-
-      // Subscribe to profile changes for real-time avatar updates with debounced reload
-      const profilesChannel = supabase
-        .channel('profiles-updates')
         .on('postgres_changes',
-          {
-            event: 'UPDATE',
-            schema: 'public',
-            table: 'profiles'
-          },
+          { event: 'UPDATE', schema: 'public', table: 'profiles' },
           () => debouncedReload()
         )
         .subscribe()
@@ -871,13 +795,12 @@ export function ChatsPage() {
       }
       
       // Écoute l'événement émis par ChatViewPage quand des messages passent
-      // au statut 'read'. Décrémente immédiatement le compteur localement,
-      // PUIS force un reload depuis le serveur pour garantir la cohérence
-      // (au cas où l'UPDATE en base ne se serait pas propagé pour une raison X).
+      // au statut 'read'. Update optimiste instantané du compteur. Pas de
+      // reload serveur : le canal realtime `messagesChannel` ci-dessus
+      // capte déjà l'UPDATE status='read' et déclenche `debouncedReload()`.
       const handleMessagesMarkedRead = (event: Event) => {
         const detail = (event as CustomEvent<{ conversationId?: string }>).detail
         if (!detail?.conversationId) return
-        // 1. Update optimiste instantané
         setConversations(prev =>
           prev.map(conv =>
             conv.id === detail.conversationId
@@ -885,11 +808,6 @@ export function ChatsPage() {
               : conv
           )
         )
-        // 2. Reload serveur après un court délai pour confirmer (et corriger
-        //    si l'UPDATE en base n'a pas eu lieu, ex: erreur réseau côté client)
-        setTimeout(() => {
-          loadConversationsFromServer(false, true)
-        }, 500)
       }
 
       globalThis.addEventListener('supabase-reconnected', handleSupabaseReconnect)
@@ -900,10 +818,7 @@ export function ChatsPage() {
 
       return () => {
         clearTimeout(loadingTimeout)
-        supabase.removeChannel(conversationsChannel)
-        supabase.removeChannel(messagesChannel)
-        supabase.removeChannel(membersChannel)
-        supabase.removeChannel(profilesChannel)
+        supabase.removeChannel(chatsListChannel)
         document.removeEventListener('visibilitychange', handleVisibilityChange)
         globalThis.removeEventListener('supabase-reconnected', handleSupabaseReconnect)
         globalThis.removeEventListener('supabase-connection-lost', handleConnectionLost)

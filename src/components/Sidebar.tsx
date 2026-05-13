@@ -4,46 +4,18 @@
 import { useNavigate, useLocation } from 'react-router-dom'
 import { MessageCircle, Users, Settings, Phone, Archive } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
-import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
+import { prefetchRoute } from '@/lib/routePrefetch'
 import { MediaImg } from './MediaImg'
 
 export function Sidebar() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { profile, user } = useAuth()
-  const [avatarUrl, setAvatarUrl] = useState(profile?.avatar_url)
-
-  // Update avatar when profile changes
-  useEffect(() => {
-    setAvatarUrl(profile?.avatar_url)
-  }, [profile?.avatar_url])
-
-  // Subscribe to profile updates for real-time avatar changes
-  useEffect(() => {
-    if (!user) return
-
-    const channel = supabase
-      .channel('sidebar-profile-updates')
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'profiles',
-          filter: `id=eq.${user.id}`
-        },
-        (payload: any) => {
-          console.log('Sidebar: Profile avatar updated', payload.new.avatar_url)
-          setAvatarUrl(payload.new.avatar_url)
-        }
-      )
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [user])
+  const { profile } = useAuth()
+  // L'avatar vient directement du profile du contexte Auth, qui est déjà
+  // synchronisé en temps réel via le canal `profile-changes` ouvert dans
+  // AuthContext. On évite ainsi un canal Supabase supplémentaire qui se
+  // recréait à chaque navigation (Sidebar étant dans MainLayout).
+  const avatarUrl = profile?.avatar_url
 
   const navItems = [
     { path: '/chats', icon: MessageCircle, label: 'Discussions' },
@@ -62,6 +34,8 @@ export function Sidebar() {
         type="button"
         className="w-10 h-10 rounded-full cursor-pointer hover:opacity-80 transition-opacity overflow-hidden p-0 border-none"
         onClick={() => navigate('/settings')}
+        onMouseEnter={() => prefetchRoute('/settings')}
+        onTouchStart={() => prefetchRoute('/settings')}
         title="Paramètres"
       >
         <MediaImg
@@ -89,9 +63,11 @@ export function Sidebar() {
             <button
               key={item.path}
               onClick={() => navigate(item.path)}
+              onMouseEnter={() => prefetchRoute(item.path)}
+              onTouchStart={() => prefetchRoute(item.path)}
               className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all relative group ${
-                active 
-                  ? 'bg-primary-500 text-white' 
+                active
+                  ? 'bg-primary-500 text-white'
                   : 'text-[#aebac1] hover:bg-bg-hover'
               }`}
               title={item.label}

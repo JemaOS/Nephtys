@@ -398,13 +398,23 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
       
       if (uploadError) throw uploadError;
       
-      // On stocke le path nu en base ; l'URL signée est générée à la volée
-      const { error: updateError } = await supabase
+      // On stocke le path nu en base ; l'URL signée est générée à la volée.
+      // IMPORTANT : on ajoute `.select('id, avatar_url')` pour que Supabase
+      // renvoie les lignes effectivement modifiées. Sans ça, une RLS qui
+      // filtre la ligne (UPDATE 0 rows) renvoie `error = null` mais ne
+      // persiste rien — c'est le bug "l'image disparaît à la fermeture".
+      const { data: updatedRows, error: updateError } = await supabase
         .from('conversations')
         .update({ avatar_url: fileName })
-        .eq('id', conversationId);
+        .eq('id', conversationId)
+        .select('id, avatar_url');
       
       if (updateError) throw updateError;
+      if (!updatedRows || updatedRows.length === 0) {
+        throw new Error(
+          'Mise à jour refusée : tu n\'as peut-être pas les droits sur ce groupe (RLS).'
+        );
+      }
       
       // Affichage immédiat via blob URL local (pas d'attente de signed URL)
       const blobPreview = URL.createObjectURL(file);
@@ -421,15 +431,22 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
       // Notifier le parent (met à jour conversation.avatar_url avec le path nu)
       onAvatarChange?.(fileName);
 
-      // Après 100ms on remplace le blob par le path nu pour que useMediaUrl
-      // génère une signed URL persistante (le blob URL sera révoqué)
+      // Après 2s on remplace le blob par le path nu pour que useMediaUrl
+      // génère une signed URL persistante (le blob URL sera révoqué).
+      // 2s laisse le temps à la signed URL d'être générée et mise en cache
+      // par MediaImg/useMediaUrl, évitant un flash "image cassée".
       setTimeout(() => {
         URL.revokeObjectURL(blobPreview);
         setCurrentAvatar(fileName);
       }, 2000);
     } catch (err) {
       console.error('Photo upload error:', err);
-      alert('❌ Erreur lors de l\'upload de la photo');
+      const message = err instanceof Error ? err.message : '';
+      alert(
+        message
+          ? `❌ Erreur lors de l'upload de la photo\n\n${message}`
+          : '❌ Erreur lors de l\'upload de la photo'
+      );
     } finally {
       setUploadingPhoto(false);
     }
@@ -441,38 +458,49 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
       return;
     }
 
+    const trimmedDescription = newDescription.trim() || null;
+    const previousDescription = currentDescription;
+
+    // Optimistic UI : on ferme l'éditeur et on affiche la nouvelle valeur
+    // immédiatement. Rollback si la requête échoue.
+    setCurrentDescription(trimmedDescription || '');
+    setIsEditingDescription(false);
+
     try {
-      const trimmedDescription = newDescription.trim() || null;
-      const { error } = await supabase
+      const { data: updatedRows, error } = await supabase
         .from('conversations')
         .update({ description: trimmedDescription })
-        .eq('id', conversationId);
+        .eq('id', conversationId)
+        .select('id');
 
-      if (error) {
-        console.error('Error updating description:', error);
-        alert('❌ Erreur lors de la mise à jour: ' + error.message);
-        return;
+      if (error) throw error;
+      if (!updatedRows || updatedRows.length === 0) {
+        throw new Error('Mise à jour refusée (RLS) — vérifie tes droits sur ce groupe.');
       }
-
-      // Update local state to reflect the change
-      setCurrentDescription(trimmedDescription || '');
-      setIsEditingDescription(false);
-      alert('✅ Description mise à jour !');
     } catch (err) {
       console.error('Error updating description:', err);
-      alert('❌ Erreur lors de la mise à jour');
+      // Rollback
+      setCurrentDescription(previousDescription);
+      setNewDescription(previousDescription);
+      const message = err instanceof Error ? err.message : '';
+      alert(message ? `❌ Erreur : ${message}` : '❌ Erreur lors de la mise à jour');
     }
   };
 
   const handleToggleMute = async () => {
+    // Optimistic UI : toggle instantané, rollback si erreur
+    const previousMuted = isMuted;
+    setIsMuted(!previousMuted);
+
     const { error } = await supabase
       .from('conversation_members')
-      .update({ is_muted: !isMuted })
+      .update({ is_muted: !previousMuted })
       .eq('conversation_id', conversationId)
       .eq('user_id', currentUserId);
 
-    if (!error) {
-      setIsMuted(!isMuted);
+    if (error) {
+      console.error('Toggle mute failed, rolling back:', error);
+      setIsMuted(previousMuted);
     }
   };
 

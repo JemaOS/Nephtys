@@ -1,6 +1,8 @@
 import React from 'react'
+import { Virtuoso } from 'react-virtuoso'
 import { ArrowLeft, Pin, Volume2, VolumeX, Archive, Trash2, Plus, UserPlus, Users, MoreVertical, Check, Search, MessageCircle, BellOff } from 'lucide-react'
 import { Conversation, Profile, Message } from '@/lib/supabase'
+import { prefetchChatView } from '@/lib/routePrefetch'
 import { MediaImg } from '@/components/MediaImg'
 
 export interface ConversationWithDetails extends Omit<Conversation, 'is_pinned'> {
@@ -437,6 +439,8 @@ const ConversationItem = ({
       type="button"
       className={`w-full px-4 py-3 cursor-pointer transition-colors text-left ${rowClass}`}
       onClick={() => handleConversationClick(conversation.id)}
+      onMouseEnter={prefetchChatView}
+      onTouchStart={prefetchChatView}
       onContextMenu={(e) => {
         if (!isSelectionMode) {
           handleContextMenu(e, conversation.id)
@@ -540,22 +544,55 @@ export const ChatsList = ({
   handleTouchMove: () => void;
   isMobile: boolean;
   formatDate: (date: string) => string;
-}) => (
-  <div className="flex-1 overflow-y-auto pb-4">
-    {(() => {
-      if (isLoading) {
-        return <ConversationSkeleton />
-      }
-      if (filteredConversations.length === 0) {
-        return (
-          <div className="flex flex-col items-center justify-center h-full text-center px-8">
-            <MessageCircle size={64} className="text-[#3b4a54] mb-4" />
-            <h3 className="text-lg font-medium text-text-secondary mb-2">Aucune conversation</h3>
-            <p className="text-sm text-text-secondary">Commencez une nouvelle discussion</p>
-          </div>
-        )
-      }
-      return filteredConversations.map((conversation) =>
+}) => {
+  if (isLoading) {
+    return (
+      <div className="flex-1 overflow-y-auto pb-4">
+        <ConversationSkeleton />
+      </div>
+    )
+  }
+  if (filteredConversations.length === 0) {
+    return (
+      <div className="flex-1 overflow-y-auto pb-4">
+        <div className="flex flex-col items-center justify-center h-full text-center px-8">
+          <MessageCircle size={64} className="text-[#3b4a54] mb-4" />
+          <h3 className="text-lg font-medium text-text-secondary mb-2">Aucune conversation</h3>
+          <p className="text-sm text-text-secondary">Commencez une nouvelle discussion</p>
+        </div>
+      </div>
+    )
+  }
+  // Virtualisation : au-delà de 30 conversations, on rend uniquement la
+  // fenêtre visible avec react-virtuoso. Coût constant indépendamment du
+  // nombre total de conversations (FPS stable même avec 1000+ items).
+  // En dessous, le rendu classique reste pour préserver les animations
+  // d'entrée/sortie sans surcoût.
+  if (filteredConversations.length > 30) {
+    return (
+      <div className="flex-1 pb-4 min-h-0">
+        <Virtuoso
+          data={filteredConversations}
+          style={{ height: '100%', width: '100%' }}
+          increaseViewportBy={400}
+          computeItemKey={(_, conv) => conv.id}
+          itemContent={(_, conversation) =>
+            renderConversationItem(
+              conversation,
+              selectedConversations,
+              isSelectionMode,
+              handleConversationClick,
+              handleContextMenu,
+              formatDate
+            )
+          }
+        />
+      </div>
+    )
+  }
+  return (
+    <div className="flex-1 overflow-y-auto pb-4">
+      {filteredConversations.map((conversation) =>
         renderConversationItem(
           conversation,
           selectedConversations,
@@ -564,10 +601,10 @@ export const ChatsList = ({
           handleContextMenu,
           formatDate
         )
-      )
-    })()}
-  </div>
-)
+      )}
+    </div>
+  )
+}
 
 
 

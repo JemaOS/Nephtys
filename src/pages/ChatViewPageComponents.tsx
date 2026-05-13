@@ -1,4 +1,5 @@
-import React from 'react'
+import React, { useRef, useEffect } from 'react'
+import { Virtuoso, VirtuosoHandle } from 'react-virtuoso'
 import { ArrowLeft, Search, Phone, Video, MoreVertical, UserPlus, BellOff, Archive, Trash2, Lock, Star, Info, Share2, Copy, Reply, Forward, Pin, Smile } from 'lucide-react'
 import { Message, Conversation, Profile } from '@/lib/supabase'
 import { CallMessage } from '@/components/CallMessage'
@@ -1442,6 +1443,51 @@ export const MessageList: React.FC<MessageListProps> = React.memo(({
             </div>
           )
         }
+        // Virtualisation : au-delà de 50 items, on rend uniquement la
+        // fenêtre visible avec react-virtuoso. En dessous, on garde le
+        // rendu classique pour ne pas perturber les nombreux refs/scroll
+        // logic existants (zone safe : la plupart des conversations ont
+        // < 50 messages affichés à un instant T).
+        const useVirtualization = timelineItems.length > 50
+        if (useVirtualization) {
+          return (
+            <VirtualizedTimeline
+              timelineItems={timelineItems}
+              user={user}
+              reactions={reactions}
+              selectedMessages={selectedMessages}
+              hoveredMessageId={hoveredMessageId}
+              setHoveredMessageId={setHoveredMessageId}
+              handleTouchStart={handleTouchStart}
+              handleTouchEnd={handleTouchEnd}
+              handleTouchMove={handleTouchMove}
+              handleSelectMessage={handleSelectMessage}
+              isSelectionMode={isSelectionMode}
+              isMobile={isMobile}
+              setReplyToMessage={setReplyToMessage}
+              handleForwardMessage={handleForwardMessage}
+              setQuickReactionBar={setQuickReactionBar}
+              handleContextMenu={handleContextMenu}
+              setContextMenu={setContextMenu}
+              getSenderInfo={getSenderInfo}
+              setGifStickerViewer={setGifStickerViewer}
+              handlePinMessage={handlePinMessage}
+              addReaction={addReaction}
+              removeReaction={removeReaction}
+              handleStarMessage={handleStarMessage}
+              allMediaItems={allMediaItems}
+              getMediaIndexForMessage={getMediaIndexForMessage}
+              handleMediaNavigate={handleMediaNavigate}
+              mediaAlbumMap={mediaAlbumMap}
+              scrollToMessage={scrollToMessage}
+              handleStartVideoCall={handleStartVideoCall}
+              handleStartAudioCall={handleStartAudioCall}
+              otherUser={otherUser}
+              messages={messages}
+              messagesEndRef={messagesEndRef}
+            />
+          )
+        }
         return (
           <>
             <div>
@@ -1492,6 +1538,64 @@ export const MessageList: React.FC<MessageListProps> = React.memo(({
     </section>
   )
 })
+
+/**
+ * Liste de messages virtualisée via react-virtuoso. Activée à partir de
+ * 50 items pour garder un FPS stable même avec 1000+ messages. Auto-scroll
+ * vers le dernier message via `followOutput="auto"`.
+ */
+type VirtualizedTimelineProps = Omit<MessageListProps,
+  | 'loading' | 'messages' | 'messagesContainerRef'
+  | 'messagesContentRef' | 'getWallpaperStyle'
+  | 'handleBackgroundContextMenu' | 'linkPreview' | 'replyToMessage'
+  | 'isLoadingPreview' | 'onScroll' | 'isLoadingMore' | 'hasMoreMessages'
+> & { messages: Message[] }
+
+const VirtualizedTimeline: React.FC<VirtualizedTimelineProps> = ({
+  timelineItems,
+  messagesEndRef,
+  ...itemProps
+}) => {
+  const virtuosoRef = useRef<VirtuosoHandle>(null)
+
+  // Au mount + à chaque ajout de message en bas, scroll vers le bas (sauf
+  // si l'utilisateur a remonté manuellement — Virtuoso gère ça via
+  // followOutput='auto').
+  useEffect(() => {
+    if (timelineItems.length > 0) {
+      virtuosoRef.current?.scrollToIndex({
+        index: timelineItems.length - 1,
+        align: 'end',
+        behavior: 'auto',
+      })
+    }
+  }, [timelineItems.length])
+
+  return (
+    <Virtuoso
+      ref={virtuosoRef}
+      data={timelineItems}
+      style={{ height: '100%', width: '100%' }}
+      followOutput="auto"
+      initialTopMostItemIndex={Math.max(0, timelineItems.length - 1)}
+      // overscan : rendre 600px en plus de chaque côté du viewport pour
+      // que le scroll soit fluide sans flash de skeleton.
+      increaseViewportBy={600}
+      computeItemKey={(_, item) =>
+        item.type === 'call' ? `call-${item.data.id}` : `message-${item.data.id}`
+      }
+      itemContent={(_, item) => (
+        <TimelineItemComponent
+          item={item}
+          {...itemProps}
+        />
+      )}
+      components={{
+        Footer: () => <div ref={messagesEndRef} className="h-1 md:h-4" />,
+      }}
+    />
+  )
+}
 
 
 

@@ -8,7 +8,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { signFieldsBatch } from '@/lib/mediaUrl'
 import { MediaImg } from '@/components/MediaImg'
-import { useCall } from '@/context/CallContext'
+import { useCallActions } from '@/context/CallContext'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { Phone, Video, Search, Star, Link2, X, Trash2, UserPlus, Check, ArrowLeft, CheckCheck, Users } from 'lucide-react'
 import { CallItem, CallDetailsContent } from './CallsPageComponents'
@@ -148,12 +148,13 @@ export function CallsPage() {
   // Long press duration (ms) - WhatsApp uses ~500ms
   const LONG_PRESS_DURATION = 500
   
-  // Use CallContext for all calls
+  // useCallActions au lieu de useCall : on n'utilise que les méthodes
+  // (référence stable). PersistentCallScreen, lui, garde useCall() pour
+  // suivre le state d'appel en temps réel.
   const {
     startCall,
     startGroupCall,
-    // We don't need call state here as it's handled by PersistentCallScreen
-  } = useCall()
+  } = useCallActions()
 
   // Cleanup long press timer on unmount
   useEffect(() => {
@@ -1364,9 +1365,24 @@ export function CallsPage() {
         <div className="flex-1 overflow-y-auto pb-2">
           {(() => {
             if (loading) {
+              // Skeleton WhatsApp-style : 5 lignes shimmer plutôt qu'un
+              // spinner plein écran. Affichage instantané, perception
+              // d'une page déjà chargée pendant que les données arrivent.
               return (
-                <div className="flex justify-center items-center h-full">
-                  <div className="w-8 h-8 rounded-full border-4 border-accent border-t-transparent animate-spin" />
+                <div className="px-3 py-2">
+                  {[0, 1, 2, 3, 4].map(i => (
+                    <div
+                      key={i}
+                      className="flex items-center gap-3 px-3 py-3 animate-pulse"
+                    >
+                      <div className="w-12 h-12 rounded-full bg-bg-hover/50 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="h-4 w-32 bg-bg-hover/50 rounded mb-2" />
+                        <div className="h-3 w-24 bg-bg-hover/30 rounded" />
+                      </div>
+                      <div className="w-5 h-5 rounded bg-bg-hover/30" />
+                    </div>
+                  ))}
                 </div>
               )
             }

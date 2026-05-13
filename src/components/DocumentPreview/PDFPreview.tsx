@@ -1,7 +1,7 @@
 // Copyright (c) 2025 Jema Technology.
 // Distributed under the license specified in the root directory of this project.
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { Document, Page } from 'react-pdf';
 import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Loader2 } from 'lucide-react';
 import { configurePDFWorker } from './pdfWorkerConfig';
@@ -32,9 +32,56 @@ export const PDFPreview: React.FC<PDFPreviewProps> = ({
   const [scale, setScale] = useState<number>(1);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [pdfData, setPdfData] = useState<Uint8Array | null>(null);
 
-  // Create file source for react-pdf
-  const fileSource = file;
+  // Pré-télécharger le PDF en ArrayBuffer côté React, puis passer le buffer
+  // à react-pdf via `{ data }`. Ça évite que pdf.js fasse son propre fetch
+  // depuis le worker (ce qui était bloqué par la CSP `connect-src` quand
+  // le `file` était une `blob:` URL ou une signed URL Supabase).
+  // Pour les `File` objects, on utilise directement le file (déjà local).
+  useEffect(() => {
+    if (typeof file !== 'string') {
+      setPdfData(null);
+      setLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+
+    (async () => {
+      try {
+        const response = await fetch(file, { credentials: 'omit' });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const buffer = await response.arrayBuffer();
+        if (cancelled) return;
+        setPdfData(new Uint8Array(buffer));
+      } catch (err) {
+        if (cancelled) return;
+        console.error('PDF prefetch error:', err);
+        const message = err instanceof Error ? err.message : 'Erreur réseau';
+        setError(`Impossible de charger le PDF (${message})`);
+        setLoading(false);
+        onLoadError?.(err instanceof Error ? err : new Error(String(err)));
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [file, onLoadError]);
+
+  // Source pour react-pdf : Uint8Array si on a pré-fetché (mode string),
+  // ou le File directement (mode File). On stabilise via useMemo pour
+  // éviter qu'un nouveau objet `{ data }` recrée la doc à chaque render.
+  const fileSource = useMemo(() => {
+    if (typeof file !== 'string') return file;
+    if (!pdfData) return null;
+    return { data: pdfData };
+  }, [file, pdfData]);
 
   const handleLoadSuccess = useCallback(({ numPages }: { numPages: number }) => {
     setNumPages(numPages);
@@ -146,7 +193,11 @@ export const PDFPreview: React.FC<PDFPreviewProps> = ({
           </div>
         )}
 
-        {/* PDF Document */}
+        {/* PDF Document — on attend que le prefetch soit terminé pour
+            avoir un Uint8Array stable. Si fileSource est null, c'est que
+            le prefetch est en cours, on ne rend rien (le loader ci-dessus
+            s'affiche déjà). */}
+        {fileSource && (
         <Document
           file={fileSource}
           onLoadSuccess={handleLoadSuccess}
@@ -178,6 +229,7 @@ export const PDFPreview: React.FC<PDFPreviewProps> = ({
             />
           )}
         </Document>
+        )}
       </div>
     </div>
   );

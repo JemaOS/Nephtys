@@ -126,7 +126,98 @@ export const buildEnrichedConversations = ({
   })
 }
 
+/**
+ * Tente de récupérer toutes les données de la liste de conversations en
+ * UN SEUL aller-retour via la RPC `get_user_conversations`. Si la RPC
+ * n'existe pas (vieux backend) ou échoue, renvoie null et l'appelant se
+ * rabat sur la version multi-requêtes.
+ */
+const fetchAllConversationDataViaRpc = async (
+  userId: string
+): Promise<ConversationWithDetails[] | null> => {
+  try {
+    const { data, error } = await supabase.rpc('get_user_conversations', {
+      p_user_id: userId,
+    })
+    if (error || !data) return null
+
+    const payload = data as {
+      conversations: any[]
+      memberships: any[]
+      allMembers: any[]
+      profiles: any[]
+      lastMessages: any[]
+      unreadCounts: { conversation_id: string; unread: number }[]
+    }
+
+    const conversationsData = payload.conversations as Conversation[]
+    if (!conversationsData || conversationsData.length === 0) return []
+
+    const activeMembers = payload.memberships
+    const allMembers = payload.allMembers.filter((m: any) => m.user_id !== userId)
+    const profiles = payload.profiles as Profile[]
+    const recentMessages = payload.lastMessages as Message[]
+
+    // Compter les "Saved Messages" (conversations à 1 seul membre = soi-même)
+    const savedMessagesConvIds = new Set<string>()
+    const memberCountByConv = new Map<string, number>()
+    payload.allMembers.forEach((m: any) => {
+      memberCountByConv.set(m.conversation_id, (memberCountByConv.get(m.conversation_id) || 0) + 1)
+    })
+    memberCountByConv.forEach((count, convId) => {
+      if (count === 1) savedMessagesConvIds.add(convId)
+    })
+
+    // Signing en parallèle (bucket privé)
+    await Promise.all([
+      signFieldsBatch(profiles as any[] ?? null, ['avatar_url']),
+      signFieldsBatch(conversationsData as any[], ['avatar_url']),
+      signFieldsBatch(recentMessages as any[] | null, ['media_url', 'file_url', 'media_thumbnail']),
+    ])
+
+    const profileMap = new Map(profiles.map(p => [p.id, p]))
+
+    const lastMessageMap = new Map<string, Message>()
+    recentMessages.forEach(msg => {
+      if (!lastMessageMap.has(msg.conversation_id)) lastMessageMap.set(msg.conversation_id, msg)
+    })
+
+    const unreadCountMap = new Map<string, number>()
+    payload.unreadCounts.forEach(row => {
+      unreadCountMap.set(row.conversation_id, row.unread)
+    })
+
+    const membersByConversation = new Map<string, string[]>()
+    allMembers.forEach((m: any) => {
+      const existing = membersByConversation.get(m.conversation_id) || []
+      existing.push(m.user_id)
+      membersByConversation.set(m.conversation_id, existing)
+    })
+
+    return buildEnrichedConversations({
+      conversationsData,
+      activeMembers,
+      savedMessagesConvIds,
+      membersByConversation,
+      profileMap,
+      lastMessageMap,
+      unreadCountMap,
+      currentUserId: userId,
+    })
+  } catch (e) {
+    console.warn('[conversationService] RPC get_user_conversations failed, falling back:', e)
+    return null
+  }
+}
+
 export const fetchAllConversationData = async (userId: string) => {
+  // Tentative RPC en premier (1 round-trip vs 5). Fallback automatique
+  // si la fonction n'est pas déployée ou échoue.
+  const rpcResult = await fetchAllConversationDataViaRpc(userId)
+  if (rpcResult !== null) {
+    return { enrichedConversations: rpcResult }
+  }
+
   // Step 1: Get members
   const { memberData, memberError } = await fetchConversationMembers(userId)
   if (memberError) return { error: memberError, type: 'members' }
@@ -141,10 +232,25 @@ export const fetchAllConversationData = async (userId: string) => {
   if (convError) return { error: convError, type: 'conversations' }
   if (!conversationsData || conversationsData.length === 0) return { enrichedConversations: [] }
 
-  // Step 3: Get all members
-  const { data: allMembersIncludingSelf } = await fetchAllMembers(conversationIds)
+  // Steps 3-6 en PARALLÈLE : aucune ne dépend du résultat des autres,
+  // toutes ne dépendent que de `conversationIds` (déjà connu).
+  // Avant : 4 round-trips séquentiels (~800ms sur 3G).
+  // Après : 1 round-trip parallèle (~200ms sur 3G).
+  const [
+    { data: allMembersIncludingSelf },
+    { data: recentMessages },
+    { data: unreadData },
+    // On a besoin des allMembers pour calculer les profileIds, donc on
+    // récupère d'abord les members en parallèle avec les autres, puis
+    // on déclenche le fetch des profiles avec leurs IDs.
+  ] = await Promise.all([
+    fetchAllMembers(conversationIds),
+    fetchLastMessages(conversationIds),
+    fetchUnreadCounts(conversationIds, userId),
+  ])
+
   const allMembers = allMembersIncludingSelf?.filter(m => m.user_id !== userId) || []
-  
+
   const savedMessagesConvIds = new Set<string>()
   const memberCountByConv = new Map<string, number>()
   allMembersIncludingSelf?.forEach(m => {
@@ -154,28 +260,29 @@ export const fetchAllConversationData = async (userId: string) => {
     if (count === 1) savedMessagesConvIds.add(convId)
   })
 
-  // Step 4: Get profiles
+  // Step 4: Get profiles (dépend de allMembers, donc post-Promise.all)
   const otherUserIds = [...new Set(allMembers?.map(m => m.user_id) || [])]
   const directConvIds = new Set(conversationsData.filter(c => c.type === 'direct').map(c => c.id))
   const directConvOtherUserIds = allMembers.filter(m => directConvIds.has(m.conversation_id)).map(m => m.user_id)
   const userIdsToFetch = [...new Set([...otherUserIds, ...directConvOtherUserIds, ...(savedMessagesConvIds.size > 0 ? [userId] : [])])]
-  
+
   const { data: profiles } = await fetchProfiles(userIdsToFetch)
-  // Convertir les paths storage en URLs signées (bucket privé)
-  await signFieldsBatch(profiles ?? null, ['avatar_url'])
-  await signFieldsBatch(conversationsData as any[], ['avatar_url'])
+
+  // Signing des URLs en parallèle (toutes les écritures sont sur des
+  // objets distincts, donc safe).
+  await Promise.all([
+    signFieldsBatch(profiles ?? null, ['avatar_url']),
+    signFieldsBatch(conversationsData as any[], ['avatar_url']),
+    signFieldsBatch(recentMessages as any[] | null, ['media_url', 'file_url', 'media_thumbnail']),
+  ])
+
   const profileMap = new Map(profiles?.map(p => [p.id, p]) || [])
 
-  // Step 5: Get last messages
-  const { data: recentMessages } = await fetchLastMessages(conversationIds)
-  await signFieldsBatch(recentMessages as any[] | null, ['media_url', 'file_url', 'media_thumbnail'])
   const lastMessageMap = new Map<string, Message>()
   recentMessages?.forEach(msg => {
     if (!lastMessageMap.has(msg.conversation_id)) lastMessageMap.set(msg.conversation_id, msg)
   })
 
-  // Step 6: Get unread counts
-  const { data: unreadData } = await fetchUnreadCounts(conversationIds, userId)
   const unreadCountMap = new Map<string, number>()
   unreadData?.forEach(msg => {
     unreadCountMap.set(msg.conversation_id, (unreadCountMap.get(msg.conversation_id) || 0) + 1)

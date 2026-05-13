@@ -1,7 +1,7 @@
 // Copyright (c) 2025 Jema Technology.
 // Distributed under the license specified in the root directory of this project.
 
-import { useEffect, useLayoutEffect, useState, useRef, useCallback, useMemo } from 'react'
+import { useEffect, useLayoutEffect, useState, useRef, useCallback, useMemo, lazy, Suspense } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { useTheme } from '@/context/ThemeContext'
@@ -9,18 +9,14 @@ import { MainLayout } from '@/components/MainLayout'
 import { supabase, Message, Conversation, Profile, sendBroadcastMessage } from '@/lib/supabase'
 import { signFieldsBatch, resolveMediaUrl, extractStoragePath } from '@/lib/mediaUrl'
 import { createMediaKeysForMessage } from '@/lib/encryptedMediaService'
+import { downloadMedia } from '@/lib/downloadMedia'
 import { offlineStorage } from '@/lib/offlineStorage'
 import { useUserPresence } from '@/hooks/usePresence'
 import { Send, Mic, Plus } from 'lucide-react'
-import { EmojiPicker } from '@/components/EmojiPicker'
 import { MessageReply } from '@/components/MessageReply'
 import { MessageSearch } from '@/components/MessageSearch'
-import { MediaUploader } from '@/components/MediaUploader'
-import { MediaViewer } from '@/components/MediaViewer'
-import { VoiceRecorder } from '@/components/VoiceRecorder'
-import { ConversationInfo } from '@/components/ConversationInfo'
 import { useMessageReactions } from '@/hooks/useMessageReactions'
-import { useCall } from '@/context/CallContext'
+import { useCallActions } from '@/context/CallContext'
 import { useNotifications } from '@/hooks/useNotifications'
 import { MessageContextMenu } from '@/components/MessageContextMenu'
 import { ChatBackgroundContextMenu } from '@/components/ChatBackgroundContextMenu'
@@ -31,9 +27,32 @@ import { LinkPreviewData, getFirstPreviewUrl, fetchLinkPreview, debounce } from 
 import { PinMessageDialog } from '@/components/PinMessageDialog'
 import { PinnedMessageBanner } from '@/components/PinnedMessageBanner'
 import { DeleteMessageDialog } from '@/components/DeleteMessageDialog'
-import { ForwardMessageModal } from '@/components/ForwardMessageModal'
 import { QuickReactionBar } from '@/components/QuickReactionBar'
 import { ChatHeader, CallLog, TimelineItem, MessageList } from './ChatViewPageComponents'
+
+// Lazy-load des modals lourds. Ils ne sont jamais rendus au premier paint
+// (ouverts uniquement sur action utilisateur), donc ils n'ont pas besoin
+// d'être dans le chunk principal de ChatViewPage. Avant : chunk de ~1 MB
+// car chacun importait transitivement react-pdf, mediabunny, ImageEditor
+// (canvas), EmojiPicker (toutes les emojis), etc. Après : ~250 KB.
+const MediaUploader = lazy(() =>
+  import('@/components/MediaUploader').then(m => ({ default: m.MediaUploader }))
+)
+const MediaViewer = lazy(() =>
+  import('@/components/MediaViewer').then(m => ({ default: m.MediaViewer }))
+)
+const VoiceRecorder = lazy(() =>
+  import('@/components/VoiceRecorder').then(m => ({ default: m.VoiceRecorder }))
+)
+const ConversationInfo = lazy(() =>
+  import('@/components/ConversationInfo').then(m => ({ default: m.ConversationInfo }))
+)
+const ForwardMessageModal = lazy(() =>
+  import('@/components/ForwardMessageModal').then(m => ({ default: m.ForwardMessageModal }))
+)
+const EmojiPicker = lazy(() =>
+  import('@/components/EmojiPicker').then(m => ({ default: m.EmojiPicker }))
+)
 
 const isEmojiOnly = (text: string): { isEmoji: boolean; emojiCount: number } => {
   if (!text || text.trim() === '') return { isEmoji: false, emojiCount: 0 }
@@ -276,6 +295,9 @@ export function ChatViewPage() {
   })
   // Map of group member profiles (user_id -> Profile) for group conversations
   const [groupMemberProfiles, setGroupMemberProfiles] = useState<Map<string, Profile>>(new Map())
+  // Role of the current user in this conversation ('admin' | 'member' | null)
+  // Used to gate admin-only actions like changing the group avatar.
+  const [currentUserRole, setCurrentUserRole] = useState<'admin' | 'member' | null>(null)
   const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null)
   const [replyToMessage, setReplyToMessage] = useState<Message | null>(null)
   const [isSearching, setIsSearching] = useState(false)
@@ -355,29 +377,37 @@ export function ChatViewPage() {
     sendingRef.current = sending
   }, [sending])
 
-  // Periodically check and remove expired ephemeral messages
+  // Suppression des messages éphémères : setTimeout adaptatif au lieu de
+  // setInterval(1000ms) en boucle. On programme un seul timer jusqu'à la
+  // prochaine expiration. Avant : 1 vérif par seconde même quand aucun
+  // message n'est éphémère → 60 setMessages/min inutiles, casse la
+  // mémoization, draine la batterie. Après : 0 timer si rien d'éphémère,
+  // sinon 1 timer programmé pile à l'expiration suivante.
   useEffect(() => {
-    const interval = setInterval(() => {
-      setMessages(prevMessages => {
-        const now = Date.now();
-        const validMessages = prevMessages.filter(msg => {
+    const ephemeralTimes = messages
+      .filter(m => m.is_ephemeral && m.ephemeral_expires_at)
+      .map(m => new Date(m.ephemeral_expires_at!).getTime())
+
+    if (ephemeralTimes.length === 0) return
+
+    const nextExpiration = Math.min(...ephemeralTimes)
+    const delay = Math.max(0, nextExpiration - Date.now())
+
+    const timer = setTimeout(() => {
+      setMessages(prev => {
+        const now = Date.now()
+        const valid = prev.filter(msg => {
           if (msg.is_ephemeral && msg.ephemeral_expires_at) {
-            const expiresAt = new Date(msg.ephemeral_expires_at).getTime();
-            return expiresAt > now;
+            return new Date(msg.ephemeral_expires_at).getTime() > now
           }
-          return true;
-        });
-        
-        // Only update state if messages were actually removed
-        if (validMessages.length !== prevMessages.length) {
-          return validMessages;
-        }
-        return prevMessages;
-      });
-    }, 1000); // Check every second
-    
-    return () => clearInterval(interval);
-  }, []);
+          return true
+        })
+        return valid.length !== prev.length ? valid : prev
+      })
+    }, delay)
+
+    return () => clearTimeout(timer)
+  }, [messages])
 
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null)
   const longPressMessageRef = useRef<Message | null>(null)
@@ -389,7 +419,10 @@ export function ChatViewPage() {
   const scrollPositionRef = useRef(0)
   
   const { reactions, addReaction, removeReaction } = useMessageReactions(conversationId || '')
-  const { startCall, startGroupCall } = useCall()
+  // useCallActions au lieu de useCall : ne renvoie que les méthodes
+  // (référence stable) → ChatViewPage ne re-render plus à chaque
+  // changement d'état d'appel (toggle audio/vidéo, stream update, etc.).
+  const { startCall, startGroupCall } = useCallActions()
   const { permission, requestPermission, sendNotification, subscribeToConversation, unsubscribeFromConversation } = useNotifications()
   const { wallpaper } = useTheme()
   const isMobile = useIsMobile()
@@ -486,6 +519,10 @@ export function ChatViewPage() {
           timestamp: m.created_at,
           isOwn: m.sender_id === user?.id,
           messageId: m.id,
+          // Per-item download metadata so the viewer's download button can save
+          // the file under its original name and decrypt E2EE entries.
+          fileName: m.file_name ?? null,
+          isEncrypted: !!(m as any).is_media_encrypted,
         }
       })
   }, [messages, user?.id, getSenderInfo])
@@ -1294,6 +1331,25 @@ export function ChatViewPage() {
       setCache(`conv_${conversationId}`, data)
       
       if (data.type === 'group') {
+        // Charger le rôle de l'utilisateur courant dans cette conversation
+        // pour décider s'il peut modifier l'avatar/description du groupe.
+        // Le créateur est implicitement considéré comme admin (cohérent
+        // avec la RLS `created_by = auth.uid()` côté serveur).
+        if (user?.id) {
+          if (data.created_by === user.id) {
+            setCurrentUserRole('admin')
+          } else {
+            const { data: memberRow } = await supabase
+              .from('conversation_members')
+              .select('role')
+              .eq('conversation_id', conversationId!)
+              .eq('user_id', user.id)
+              .maybeSingle()
+            const role = (memberRow?.role as 'admin' | 'member' | undefined) ?? null
+            setCurrentUserRole(role)
+          }
+        }
+
         const profileMap = await loadGroupMembers(conversationId!)
         // Signer les avatars de tous les membres
         await signFieldsBatch(Array.from(profileMap.values()) as any[], ['avatar_url'])
@@ -1427,21 +1483,30 @@ export function ChatViewPage() {
         return true;
       });
 
-      // Convertir les paths storage en URLs signées (bucket privé).
-      // On NE signe PAS les médias chiffrés E2EE car ceux-ci seront téléchargés
-      // via fetchAndDecryptMedia qui regenère sa propre URL signée + déchiffre.
-      const nonEncrypted = validData.filter((m: any) => !m.is_media_encrypted);
-      try {
-        await Promise.race([
-          signFieldsBatch(nonEncrypted as any[], ['media_url', 'file_url', 'media_thumbnail']),
-          new Promise(resolve => setTimeout(resolve, 3000)),
-        ]);
-      } catch (e) {
-        console.warn('[loadMessages] signFieldsBatch failed, showing raw paths:', e);
-      }
-
+      // Affichage IMMÉDIAT des messages avec les paths storage nus.
+      // Les composants <MediaImg> + useMediaUrl signeront les URLs en
+      // arrière-plan via getMediaUrl (cache mémoire dans mediaUrl.ts) et
+      // re-rendront chaque image dès que sa signed URL est prête.
+      // Avant, on bloquait jusqu'à 3s ici → écran vide pendant 3s sur 3G
+      // si la conv a beaucoup de médias. Maintenant : 0ms d'attente.
       setMessages(validData)
-      setCache(`msgs_${conversationId}`, validData) // Cache messages
+      setCache(`msgs_${conversationId}`, validData)
+
+      // Pré-signer les médias non chiffrés EN PARALLÈLE pour que les URLs
+      // soient prêtes au moment où MediaImg les demande. signFieldsBatch
+      // mute aussi les objets en place — on déclenche un re-render léger
+      // ensuite via une nouvelle référence de tableau.
+      const nonEncrypted = validData.filter((m: any) => !m.is_media_encrypted)
+      if (nonEncrypted.length > 0) {
+        signFieldsBatch(nonEncrypted as any[], ['media_url', 'file_url', 'media_thumbnail'])
+          .then(() => {
+            // Force un re-render avec les URLs maintenant signées
+            setMessages(prev => [...prev])
+          })
+          .catch(e => {
+            console.warn('[loadMessages] signFieldsBatch failed (paths kept raw):', e)
+          })
+      }
       
       // Save to offlineStorage for long-term caching
       offlineStorage.saveMessages(validData as any[]).catch(() => {
@@ -2004,7 +2069,12 @@ export function ChatViewPage() {
     } finally { setSending(false) }
   }
 
-  const handleStartVideoCall = async () => {
+  // useCallback : ces handlers sont passés en props à <MessageList> /
+  // <ChatHeader> / <ConversationInfo> qui sont React.memo. Sans
+  // useCallback, chaque render parent recrée la fonction → la mémoization
+  // se casse → tous les enfants re-render → ~5 fps sur mobile pendant
+  // le polling éphémère 1 Hz.
+  const handleStartVideoCall = useCallback(async () => {
     if (!conversationId) return
     try {
       if (conversation?.type === 'group') {
@@ -2017,9 +2087,9 @@ export function ChatViewPage() {
       console.error('Error starting video call:', error)
       alert(getCallErrorMessage(error))
     }
-  }
+  }, [conversationId, conversation?.type, otherUser, startCall, startGroupCall])
 
-  const handleStartAudioCall = async () => {
+  const handleStartAudioCall = useCallback(async () => {
     if (!conversationId) return
     try {
       if (conversation?.type === 'group') {
@@ -2032,7 +2102,7 @@ export function ChatViewPage() {
       console.error('Error starting audio call:', error)
       alert(getAudioCallErrorMessage(error))
     }
-  }
+  }, [conversationId, conversation?.type, otherUser, startCall, startGroupCall])
 
   // Context menu handlers
   const handleContextMenu = useCallback((e: React.MouseEvent, message: Message) => {
@@ -2095,13 +2165,13 @@ export function ChatViewPage() {
   }, [])
 
   // Open delete dialog instead of direct deletion
-  const handleDeleteMessage = (messageId: string) => {
+  const handleDeleteMessage = useCallback((messageId: string) => {
     const message = messages.find(m => m.id === messageId)
     if (message) {
       setMessageToDelete(message)
       setShowDeleteDialog(true)
     }
-  }
+  }, [messages])
 
   // Delete for everyone - removes from database and storage
   const handleDeleteForEveryone = async () => {
@@ -2181,10 +2251,10 @@ export function ChatViewPage() {
     setShowDeleteDialog(false)
   }
 
-  const handleForwardMessage = (message: Message) => {
+  const handleForwardMessage = useCallback((message: Message) => {
     setMessageToForward(message)
     setShowForwardModal(true)
-  }
+  }, [])
 
   // Note: formatMessageTime is available for message time formatting
   // Helper to build forward message data
@@ -2273,13 +2343,13 @@ export function ChatViewPage() {
     setShowForwardModal(false)
   }
 
-  const handlePinMessage = async (messageId: string) => {
+  const handlePinMessage = useCallback(async (messageId: string) => {
     const message = messages.find(m => m.id === messageId)
     if (message) {
       setMessageToPin(message)
       setShowPinDialog(true)
     }
-  }
+  }, [messages])
 
   const handleConfirmPin = async (durationSeconds: number) => {
     if (!messageToPin || !conversationId) return
@@ -2323,8 +2393,18 @@ export function ChatViewPage() {
     setShowPinDialog(false)
   }
 
-  const handleUnpinMessage = async () => {
+  const handleUnpinMessage = useCallback(async () => {
     if (!pinnedMessage) return
+
+    // Optimistic UI : on retire la pin instantanément, rollback si erreur
+    const previousPinned = pinnedMessage
+    const previousMessages = messages
+    setPinnedMessage(null)
+    setMessages(prev => prev.map(m =>
+      m.id === previousPinned.id
+        ? { ...m, is_pinned: false, pinned_at: null, pinned_until: null }
+        : m
+    ))
 
     const { error } = await supabase
       .from('messages')
@@ -2333,18 +2413,15 @@ export function ChatViewPage() {
         pinned_at: null,
         pinned_until: null,
       })
-      .eq('id', pinnedMessage.id)
+      .eq('id', previousPinned.id)
 
-    if (!error) {
-      // Update local state
-      setMessages(prev => prev.map(m =>
-        m.id === pinnedMessage.id
-          ? { ...m, is_pinned: false, pinned_at: null, pinned_until: null }
-          : m
-      ))
-      setPinnedMessage(null)
+    if (error) {
+      // Rollback en cas d'erreur réseau / RLS
+      console.error('Unpin failed, rolling back:', error)
+      setPinnedMessage(previousPinned)
+      setMessages(previousMessages)
     }
-  }
+  }, [pinnedMessage, messages])
 
   const scrollToPinnedMessage = () => {
     if (!pinnedMessage) return
@@ -2405,26 +2482,29 @@ export function ChatViewPage() {
     loadPinnedMessage()
   }, [conversationId, user?.id, otherUser])
 
-  const handleStarMessage = async (messageId: string) => {
-    // Find the message to toggle its starred status
+  const handleStarMessage = useCallback(async (messageId: string) => {
     const message = messages.find(m => m.id === messageId)
     if (!message) return
-    
+
     const newStarredStatus = !message.is_starred
-    
-    // Update in database
+
+    // Optimistic UI : toggle local instantané, rollback si erreur
+    setMessages(prev => prev.map(m =>
+      m.id === messageId ? { ...m, is_starred: newStarredStatus } : m
+    ))
+
     const { error } = await supabase
       .from('messages')
       .update({ is_starred: newStarredStatus })
       .eq('id', messageId)
-    
-    if (!error) {
-      // Update local state
+
+    if (error) {
+      console.error('Star toggle failed, rolling back:', error)
       setMessages(prev => prev.map(m =>
-        m.id === messageId ? { ...m, is_starred: newStarredStatus } : m
+        m.id === messageId ? { ...m, is_starred: !newStarredStatus } : m
       ))
     }
-  }
+  }, [messages])
 
   const handleReportMessage = (messageId: string) => {
     // Report functionality - show confirmation and send to server
@@ -2561,36 +2641,41 @@ export function ChatViewPage() {
 
   const handleBulkDownload = useCallback(async () => {
     const selectedMsgs = messages.filter(m => selectedMessages.has(m.id))
-    const mediaMessages = selectedMsgs.filter(m => m.media_url)
-    
+    const mediaMessages = selectedMsgs.filter(m => m.media_url || m.file_url)
+
     if (mediaMessages.length === 0) {
       alert('Aucun média à télécharger')
       return
     }
-    
-    // Download each media file
+
+    // Helper centralisé pour chaque média : gère paths nus, URLs expirées,
+    // médias chiffrés E2EE. Lancé séquentiellement pour éviter de saturer
+    // le navigateur de downloads concurrents.
+    let successCount = 0
+    let failCount = 0
     for (const msg of mediaMessages) {
-      if (msg.media_url) {
-        try {
-          const response = await fetch(msg.media_url)
-          const blob = await response.blob()
-          const url = globalThis.URL.createObjectURL(blob)
-          const a = document.createElement('a')
-          a.href = url
-          a.download = msg.file_name || `download-${Date.now()}`
-          document.body.appendChild(a)
-          a.click()
-          // Use remove() instead of parentNode.removeChild() as required by SonarQube
-          a.remove()
-          globalThis.URL.revokeObjectURL(url)
-        } catch (error) {
-          console.error('Error downloading:', error)
-        }
-      }
+      const url = msg.media_url || msg.file_url
+      if (!url) continue
+      const ok = await downloadMedia({
+        mediaUrl: url,
+        fileName: msg.file_name,
+        mediaType: msg.type || 'file',
+        messageId: msg.id,
+        userId: user?.id,
+        isEncrypted: (msg as any).is_media_encrypted || false,
+      })
+      if (ok) successCount++
+      else failCount++
     }
-    
+
+    if (failCount > 0 && successCount === 0) {
+      // L'alerte d'erreur a déjà été affichée par downloadMedia
+    } else if (failCount > 0) {
+      alert(`✅ ${successCount} téléchargé(s), ❌ ${failCount} échec(s)`)
+    }
+
     exitSelectionMode()
-  }, [messages, selectedMessages, exitSelectionMode])
+  }, [messages, selectedMessages, exitSelectionMode, user?.id])
 
   // For "Saved Messages" (conversation with self), show special name
   const isSavedMessages = conversation?.type === 'direct' && conversation?.name === 'Messages enregistrés'
@@ -2741,7 +2826,9 @@ export function ChatViewPage() {
         <div className="fixed md:relative bottom-[calc(3.5rem+env(safe-area-inset-bottom))] md:bottom-0 left-0 right-0 bg-bg-surface px-2 sm:px-3 md:px-4 py-2 md:py-3 border-t border-bg-hover md:border-t-0 z-40">
           {/* Voice Recorder - replaces input bar when recording */}
           {showVoiceRecorder ? (
-            <VoiceRecorder onRecordingComplete={handleVoiceRecordingComplete} onCancel={() => setShowVoiceRecorder(false)} />
+            <Suspense fallback={null}>
+              <VoiceRecorder onRecordingComplete={handleVoiceRecordingComplete} onCancel={() => setShowVoiceRecorder(false)} />
+            </Suspense>
           ) : (
             <>
               {/* Link Preview above input */}
@@ -2769,9 +2856,11 @@ export function ChatViewPage() {
                 />
               )}
               <form onSubmit={handleSendMessage} className="flex items-center gap-1 md:gap-2">
-                <EmojiPicker
-                  onEmojiSelect={handleEmojiSelect}
-                />
+                <Suspense fallback={<div className="w-9 h-9 md:w-10 md:h-10" />}>
+                  <EmojiPicker
+                    onEmojiSelect={handleEmojiSelect}
+                  />
+                </Suspense>
                 <button type="button" onClick={() => setShowMediaUploader(true)} className="w-9 h-9 md:w-10 md:h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-text-secondary">
                   <Plus size={20} className="md:hidden" />
                   <Plus size={24} className="hidden md:block" />
@@ -2822,6 +2911,7 @@ export function ChatViewPage() {
       )}
 
       {showMediaUploader && (
+        <Suspense fallback={null}>
         <MediaUploader
           onMediaSelect={(file, type) => console.log('Media selected:', file.name, type)}
           onUploadComplete={handleMediaUploadComplete}
@@ -2898,8 +2988,10 @@ export function ChatViewPage() {
             }
           }}
         />
+        </Suspense>
       )}
       {showConversationInfo && (
+        <Suspense fallback={null}>
         <ConversationInfo
           conversationId={conversationId!}
           conversationType={conversation?.type || 'direct'}
@@ -2908,7 +3000,10 @@ export function ChatViewPage() {
           conversationAvatar={conversation?.avatar_url}
           otherUser={otherUser}
           currentUserId={user?.id || ''}
-          isAdmin={conversation?.type === 'group'}
+          isAdmin={
+            conversation?.type === 'group' &&
+            (conversation?.created_by === user?.id || currentUserRole === 'admin')
+          }
           onClose={() => {
             setShowConversationInfo(false)
             setShowAddMemberModal(false)
@@ -2918,7 +3013,7 @@ export function ChatViewPage() {
           onAvatarChange={(newPath) => {
             // Met à jour le state local conversation immédiatement sans reload
             setConversation(prev => prev ? { ...prev, avatar_url: newPath } : prev)
-            // Mise à jour du cache localStorage
+            // Mise à jour du cache localStorage de la conversation courante
             try {
               const cacheKey = `conv_${conversationId}`
               const existing = localStorage.getItem(`anu_cache_${cacheKey}`)
@@ -2928,6 +3023,18 @@ export function ChatViewPage() {
                   parsed.data.avatar_url = newPath
                   localStorage.setItem(`anu_cache_${cacheKey}`, JSON.stringify(parsed))
                 }
+              }
+            } catch { /* ignore */ }
+            // Mise à jour du cache de la liste des conversations (ChatsPage)
+            // pour que la nouvelle photo apparaisse aussi dans la sidebar
+            // sans attendre un refetch complet du serveur.
+            try {
+              const cached = offlineStorage.getConversationsSync()
+              if (cached && Array.isArray(cached)) {
+                const updated = cached.map((c: any) =>
+                  c?.id === conversationId ? { ...c, avatar_url: newPath } : c
+                )
+                offlineStorage.saveConversations(updated).catch(() => { /* ignore */ })
               }
             } catch { /* ignore */ }
           }}
@@ -2942,6 +3049,7 @@ export function ChatViewPage() {
               });
             }}
           />
+        </Suspense>
       )}
 
       {/* Context Menu */}
@@ -2955,7 +3063,10 @@ export function ChatViewPage() {
           isOwn={contextMenu.message.sender_id === user?.id}
           isGroupChat={conversation?.type === 'group'}
           senderName={getSenderInfo(contextMenu.message.sender_id).name}
-          mediaUrl={contextMenu.message.media_url || undefined}
+          mediaUrl={contextMenu.message.media_url || contextMenu.message.file_url || undefined}
+          fileName={contextMenu.message.file_name || null}
+          isEncrypted={(contextMenu.message as any).is_media_encrypted || false}
+          currentUserId={user?.id}
           onClose={closeContextMenu}
           onReply={() => setReplyToMessage(contextMenu.message)}
           onReplyPrivately={() => {
@@ -3028,18 +3139,22 @@ export function ChatViewPage() {
         messageCount={selectedMessages.size}
       />
 
-      {/* Forward Message Modal */}
-      <ForwardMessageModal
-        isOpen={showForwardModal}
-        messageContent={messageToForward?.content || ''}
-        messageType={(messageToForward?.type as 'text' | 'image' | 'video' | 'file' | 'audio') || 'text'}
-        mediaUrl={messageToForward?.media_url || undefined}
-        onClose={() => {
-          setShowForwardModal(false)
-          setMessageToForward(null)
-        }}
-        onForward={handleForwardToConversations}
-      />
+      {/* Forward Message Modal — lazy, ne se charge qu'à l'ouverture */}
+      {showForwardModal && (
+        <Suspense fallback={null}>
+          <ForwardMessageModal
+            isOpen={showForwardModal}
+            messageContent={messageToForward?.content || ''}
+            messageType={(messageToForward?.type as 'text' | 'image' | 'video' | 'file' | 'audio') || 'text'}
+            mediaUrl={messageToForward?.media_url || undefined}
+            onClose={() => {
+              setShowForwardModal(false)
+              setMessageToForward(null)
+            }}
+            onForward={handleForwardToConversations}
+          />
+        </Suspense>
+      )}
 
       {/* Quick Reaction Bar */}
       <QuickReactionBar
@@ -3074,8 +3189,9 @@ export function ChatViewPage() {
         }}
       />
 
-      {/* GIF/Sticker Fullscreen Viewer */}
+      {/* GIF/Sticker Fullscreen Viewer — lazy */}
       {gifStickerViewer && (
+        <Suspense fallback={null}>
         <MediaViewer
           isOpen={gifStickerViewer.isOpen}
           mediaUrl={gifStickerViewer.url}
@@ -3114,6 +3230,7 @@ export function ChatViewPage() {
             }
           }}
         />
+        </Suspense>
       )}
 
     </MainLayout>

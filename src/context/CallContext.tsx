@@ -65,6 +65,32 @@ interface CallContextType {
 
 const CallContext = createContext<CallContextType | undefined>(undefined)
 
+/**
+ * Contexte secondaire qui n'expose QUE les méthodes (références stables
+ * tant que le provider est monté). Permet aux pages qui ne lisent pas le
+ * state d'appel (ChatViewPage, CallsPage) de NE PAS re-render quand
+ * `localStream`, `audioEnabled`, etc. changent — ce qui arrive très
+ * fréquemment pendant un appel actif.
+ *
+ * Pattern :
+ *   - useCall() : renvoie tout (state + actions). Utilisé par
+ *                 PersistentCallScreen qui doit re-render à chaque tick.
+ *   - useCallActions() : renvoie uniquement les méthodes stables.
+ *                       Utilisé par ChatViewPage et CallsPage.
+ */
+interface CallActions {
+  startCall: CallContextType['startCall']
+  startGroupCall: CallContextType['startGroupCall']
+  answerCall: CallContextType['answerCall']
+  endCall: CallContextType['endCall']
+  toggleAudio: CallContextType['toggleAudio']
+  toggleVideo: CallContextType['toggleVideo']
+  rejectCall: CallContextType['rejectCall']
+  addParticipant: CallContextType['addParticipant']
+}
+
+const CallActionsContext = createContext<CallActions | undefined>(undefined)
+
 export function CallProvider({ children }: { readonly children: ReactNode }) {
   const { user } = useAuth()
   const [isInCall, setIsInCall] = useState(false)
@@ -86,6 +112,56 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
   // Group call state
   const [isGroupCall, setIsGroupCall] = useState(false)
   const [groupParticipants, setGroupParticipants] = useState<GroupCallParticipant[]>([])
+
+  // Cache local de l'id utilisateur résolu via fallback Supabase, utilisé
+  // tout au long de l'appel courant (les helpers like sendSignal continuent
+  // d'utiliser `user?.id` du contexte React, qui peut être désynchronisé).
+  const resolvedUserIdRef = useRef<string | null>(null)
+
+  /**
+   * Renvoie l'ID de l'utilisateur connecté.
+   * Priorité 1 : `user.id` du contexte React (instantané).
+   * Priorité 2 : `resolvedUserIdRef.current` (cache de fallback précédent).
+   * Priorité 3 : `supabase.auth.getSession()` (sync depuis le storage local
+   *             de supabase-js, sans requête réseau).
+   * Priorité 4 : `supabase.auth.getUser()` (requête réseau, dernier recours).
+   *
+   * Lance une erreur explicite seulement si AUCUNE de ces sources ne donne
+   * d'utilisateur — i.e. l'utilisateur est réellement déconnecté.
+   *
+   * Corrige le bug "Vous devez être connecté pour démarrer un appel" qui
+   * apparaissait quand le state `user` du AuthContext était temporairement
+   * null (timeout de session, race condition au mount) alors que la session
+   * Supabase était valide.
+   */
+  const resolveCurrentUserId = async (): Promise<string> => {
+    if (user?.id) {
+      resolvedUserIdRef.current = user.id
+      return user.id
+    }
+    if (resolvedUserIdRef.current) {
+      return resolvedUserIdRef.current
+    }
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session?.user?.id) {
+        resolvedUserIdRef.current = session.user.id
+        return session.user.id
+      }
+    } catch (e) {
+      console.warn('[Call] getSession failed during resolveCurrentUserId', e)
+    }
+    try {
+      const { data: { user: fetchedUser } } = await supabase.auth.getUser()
+      if (fetchedUser?.id) {
+        resolvedUserIdRef.current = fetchedUser.id
+        return fetchedUser.id
+      }
+    } catch (e) {
+      console.warn('[Call] getUser failed during resolveCurrentUserId', e)
+    }
+    throw new Error('Vous devez être connecté pour démarrer un appel.')
+  }
 
   const processIceCandidateQueue = async () => {
     if (iceCandidateQueueRef.current.length === 0) return
@@ -411,9 +487,9 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
   }
 
   const startCall = async (userId: string, conversationId: string, config: CallConfig) => {
-    if (!user?.id) {
-      throw new Error('Vous devez être connecté pour démarrer un appel.')
-    }
+    // Résolution robuste de l'identité (fallback session Supabase si le
+    // contexte React n'a pas encore hydraté le user — voir resolveCurrentUserId).
+    const callerId = await resolveCurrentUserId()
     try {
       // DEMANDER EXPLICITEMENT les permissions sur mobile
       if (typeof globalThis !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
@@ -489,7 +565,7 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
 
       await sendSignal({
         type: 'offer',
-        from: user?.id ?? "",
+        from: callerId,
         to: userId,
         data: { ...offer, video: config.video },
         conversation_id: conversationId,
@@ -498,7 +574,7 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
       webrtcManager.onIceCandidate(async (candidate) => {
         await sendSignal({
           type: 'ice-candidate',
-          from: user?.id ?? "",
+          from: callerId,
           to: userId,
           data: candidate,
           conversation_id: conversationId,
@@ -520,7 +596,7 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
              const offer = await webrtcManager.restartIce();
              await sendSignal({
                type: 'offer',
-               from: user?.id ?? "",
+               from: callerId,
                to: userId,
                data: { ...offer, video: config.video },
                conversation_id: conversationId,
@@ -537,7 +613,7 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
 
       const { data: callLogData, error: callLogError } = await supabase.from('call_logs').insert({
         conversation_id: conversationId,
-        caller_id: user?.id ?? "",
+        caller_id: callerId,
         callee_id: userId,
         type: config.video ? 'video' : 'audio',
         status: 'initiated',
@@ -887,15 +963,16 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
     conversationId: string,
     conversationName: string | undefined,
     conversationAvatar: string | undefined,
-    video: boolean
+    video: boolean,
+    callerId: string
   ) => {
     if (!members || members.length === 0) return
     
     for (const member of members) {
-      if (member.user_id !== user?.id ?? "") {
+      if (member.user_id !== callerId) {
         await sendSignal({
           type: 'group-call-invite',
-          from: user?.id ?? "",
+          from: callerId,
           to: member.user_id,
           data: {
             video,
@@ -910,10 +987,9 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
 
   // Start a group call
   const startGroupCall = async (conversationId: string, config: GroupCallConfig) => {
-    if (!user?.id) {
-      throw new Error('Vous devez être connecté pour démarrer un appel.')
-    }
-    const callerId = user.id
+    // Résolution robuste de l'identité (fallback session Supabase si le
+    // contexte React n'a pas encore hydraté le user).
+    const callerId = await resolveCurrentUserId()
     const hasPermissions = await requestMediaPermissions(config.video)
     if (!hasPermissions) return
 
@@ -997,11 +1073,12 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
         conversationId,
         conversation?.name,
         conversation?.avatar_url,
-        config.video
+        config.video,
+        callerId
       )
 
       // Log the call
-      await logGroupCall(conversationId, config.video)
+      await logGroupCall(conversationId, config.video, callerId)
     } catch (error) {
       console.error('Error starting group call:', error)
       setIsCalling(false)
@@ -1011,11 +1088,11 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
   }
 
   // Helper to log group call
-  const logGroupCall = async (conversationId: string, isVideo: boolean) => {
+  const logGroupCall = async (conversationId: string, isVideo: boolean, callerId: string) => {
     const { data: callLogData, error: callLogError } = await supabase.from('call_logs').insert({
       conversation_id: conversationId,
-      caller_id: user?.id ?? "",
-      callee_id: user?.id ?? "",
+      caller_id: callerId,
+      callee_id: callerId,
       type: isVideo ? 'video' : 'audio',
       status: 'initiated',
     }).select()
@@ -1149,9 +1226,40 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
     addParticipant,
   }), [isInCall, isRinging, isCalling, localStream, remoteStream, audioEnabled, videoEnabled, remoteVideoEnabled, incomingCall, isGroupCall, groupParticipants]);
 
+  // Actions séparées : référence stable pour toute la durée de vie du
+  // provider. Les consommateurs de useCallActions() ne re-render jamais
+  // à cause d'un changement de stream/state d'appel.
+  // useRef pour figer la référence à la première frame.
+  const actionsRef = useRef<CallActions | null>(null)
+  if (!actionsRef.current) {
+    actionsRef.current = {
+      startCall,
+      startGroupCall,
+      answerCall,
+      endCall,
+      toggleAudio,
+      toggleVideo,
+      rejectCall,
+      addParticipant,
+    }
+  } else {
+    // Mutation in-place pour que les méthodes capturent toujours le
+    // dernier closure (state à jour) sans changer la référence de l'objet.
+    actionsRef.current.startCall = startCall
+    actionsRef.current.startGroupCall = startGroupCall
+    actionsRef.current.answerCall = answerCall
+    actionsRef.current.endCall = endCall
+    actionsRef.current.toggleAudio = toggleAudio
+    actionsRef.current.toggleVideo = toggleVideo
+    actionsRef.current.rejectCall = rejectCall
+    actionsRef.current.addParticipant = addParticipant
+  }
+
   return (
     <CallContext.Provider value={value}>
-      {children}
+      <CallActionsContext.Provider value={actionsRef.current}>
+        {children}
+      </CallActionsContext.Provider>
     </CallContext.Provider>
   )
 }
@@ -1160,6 +1268,19 @@ export function useCall() {
   const context = useContext(CallContext)
   if (context === undefined) {
     throw new Error('useCall must be used within a CallProvider')
+  }
+  return context
+}
+
+/**
+ * Hook léger qui ne renvoie QUE les méthodes (références stables).
+ * À utiliser quand on a besoin de déclencher des actions d'appel sans
+ * lire le state — évite les re-renders inutiles à chaque tick d'appel.
+ */
+export function useCallActions(): CallActions {
+  const context = useContext(CallActionsContext)
+  if (context === undefined) {
+    throw new Error('useCallActions must be used within a CallProvider')
   }
   return context
 }

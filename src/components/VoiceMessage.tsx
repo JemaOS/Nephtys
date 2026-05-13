@@ -4,6 +4,7 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Play, Pause, Download, Loader2 } from 'lucide-react';
 import { useDecryptedMedia } from '@/hooks/useDecryptedMedia';
+import { downloadMedia } from '@/lib/downloadMedia';
 
 // Audio context for decoding audio that browsers can't play natively
 let audioContext: AudioContext | null = null;
@@ -381,37 +382,14 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
   };
 
   const handleDownload = async () => {
-    try {
-      const response = await fetch(effectiveUrl);
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      const blob = await response.blob();
-      
-      // Determine file extension from MIME type or URL
-      let fileExtension = 'webm';
-      const mimeType = blob.type;
-      if (mimeType.includes('ogg')) {
-        fileExtension = 'ogg';
-      } else if (mimeType.includes('mp4') || mimeType.includes('aac') || mimeType.includes('m4a')) {
-        fileExtension = 'm4a';
-      } else if (url.includes('.ogg')) {
-        fileExtension = 'ogg';
-      } else if (url.includes('.m4a')) {
-        fileExtension = 'm4a';
-      }
-      
-      const downloadUrl = globalThis.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = downloadUrl;
-      a.download = `voice-message-${Date.now()}.${fileExtension}`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      globalThis.URL.revokeObjectURL(downloadUrl);
-    } catch (error) {
-      console.error('Error downloading voice message:', error);
-    }
+    // Helper centralisé : extension auto-détectée depuis Content-Type,
+    // gestion des erreurs avec retour utilisateur. effectiveUrl est déjà
+    // résolu en signed/blob URL par le hook useDecryptedMedia.
+    await downloadMedia({
+      mediaUrl: effectiveUrl,
+      fileName: `voice-message-${Date.now()}`,
+      mediaType: 'audio',
+    });
   };
 
   // Helper to get waveform bar color based on state

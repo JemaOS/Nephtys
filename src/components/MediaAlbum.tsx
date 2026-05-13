@@ -113,6 +113,8 @@ interface MediaAlbumProps {
     timestamp: string;
     isOwn: boolean;
     messageId: string;
+    fileName?: string | null;
+    isEncrypted?: boolean;
   }>;
   getMediaIndexForMessage?: (messageId: string) => number;
 }
@@ -276,6 +278,10 @@ export const MediaAlbum: React.FC<MediaAlbumProps> = ({
           timestamp={startMsg.created_at}
           isOwn={isOwn}
           isStarred={isStarred}
+          fileName={startMsg.file_name}
+          messageId={startMsg.id}
+          currentUserId={currentUserId}
+          isEncrypted={!!(startMsg as any).is_media_encrypted}
           onClose={closeViewer}
           onForward={onForward ? () => { closeViewer(); onForward(); } : undefined}
           onStar={onStar}

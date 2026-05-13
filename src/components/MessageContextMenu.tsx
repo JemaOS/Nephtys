@@ -16,6 +16,7 @@ import {
   Trash2,
   Plus
 } from 'lucide-react';
+import { downloadMedia } from '@/lib/downloadMedia';
 
 interface MessageContextMenuProps {
   isOpen: boolean;
@@ -27,6 +28,12 @@ interface MessageContextMenuProps {
   isGroupChat?: boolean;
   senderName?: string;
   mediaUrl?: string;
+  /** Nom de fichier original (pour les pièces jointes) */
+  fileName?: string | null;
+  /** True si le média est chiffré E2EE — déchiffrement requis avant DL */
+  isEncrypted?: boolean;
+  /** ID utilisateur courant — requis pour déchiffrer un média E2EE */
+  currentUserId?: string;
   onClose: () => void;
   onReply: () => void;
   onReplyPrivately?: () => void;
@@ -60,6 +67,9 @@ export const MessageContextMenu: React.FC<MessageContextMenuProps> = ({
   isGroupChat = false,
   senderName,
   mediaUrl,
+  fileName,
+  isEncrypted,
+  currentUserId,
   onClose,
   onReply,
   onReplyPrivately,
@@ -149,20 +159,16 @@ export const MessageContextMenu: React.FC<MessageContextMenuProps> = ({
 
   const handleSaveAs = async () => {
     if (mediaUrl) {
-      try {
-        const response = await fetch(mediaUrl);
-        const blob = await response.blob();
-        const url = globalThis.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `download-${Date.now()}`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        globalThis.URL.revokeObjectURL(url);
-      } catch (error) {
-        console.error('Error downloading file:', error);
-      }
+      // Helper centralisé : gère paths nus, URLs expirées, médias chiffrés,
+      // et donne un retour utilisateur clair en cas d'échec.
+      await downloadMedia({
+        mediaUrl,
+        fileName,
+        mediaType: messageType,
+        messageId,
+        userId: currentUserId,
+        isEncrypted,
+      });
     }
     onSaveAs?.();
     onClose();

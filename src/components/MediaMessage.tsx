@@ -12,6 +12,7 @@ import {
 } from './MediaMessageComponents';
 import { useDecryptedMedia } from '@/hooks/useDecryptedMedia';
 import { PDFPreview } from './DocumentPreview/PDFPreview';
+import { downloadMedia } from '@/lib/downloadMedia';
 import { X, Download } from 'lucide-react';
 
 interface MediaMessageProps {
@@ -50,6 +51,8 @@ interface MediaMessageProps {
     timestamp: string;
     isOwn: boolean;
     messageId: string;
+    fileName?: string | null;
+    isEncrypted?: boolean;
   }>;
   currentIndex?: number;
   onNavigate?: (index: number) => void;
@@ -136,20 +139,15 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
                 (globalThis.navigator as any).standalone === true;
 
   const handleDownload = async () => {
-    try {
-      const response = await fetch(effectiveUrl);
-      const blob = await response.blob();
-      const downloadUrl = globalThis.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = downloadUrl;
-      a.download = fileName || 'download';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      globalThis.URL.revokeObjectURL(downloadUrl);
-    } catch (error) {
-      console.error('Error downloading file:', error);
-    }
+    // Helper centralisé : feedback utilisateur + gestion paths nus, URLs
+    // expirées et médias chiffrés. effectiveUrl est déjà résolu (signed ou
+    // blob URL déchiffré) donc on passe isEncrypted=false pour éviter
+    // de re-déchiffrer ce qui est déjà déchiffré.
+    await downloadMedia({
+      mediaUrl: effectiveUrl,
+      fileName,
+      mediaType: type,
+    });
   };
 
   // Helper to fetch file as blob - extracted for complexity reduction
@@ -289,6 +287,10 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
       timestamp={mediaInfo.timestamp}
       isOwn={mediaInfo.isOwn}
       isStarred={isStarred}
+      fileName={fileName}
+      messageId={messageId}
+      currentUserId={currentUserId}
+      isEncrypted={isEncrypted}
       onClose={closeFullscreen}
       onForward={onForward ? () => { closeFullscreen(); onForward(); } : undefined}
       onStar={onStar}

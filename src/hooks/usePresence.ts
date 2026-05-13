@@ -5,9 +5,6 @@ import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { RealtimeChannel } from '@supabase/supabase-js'
 
-// Supabase URL for direct API calls
-const SUPABASE_URL = 'https://imkfbalgviqeotpjogff.supabase.co'
-
 interface PresenceState {
   isOnline: boolean
   lastSeen: string | null
@@ -22,17 +19,12 @@ let globalPresenceChannel: RealtimeChannel | null = null
 let globalPresenceState: UserPresence = {}
 const presenceListeners: Set<(state: UserPresence) => void> = new Set()
 let currentUserId: string | null = null
-let heartbeatInterval: NodeJS.Timeout | null = null
 
-// Update last_seen in database periodically
-const updateLastSeen = async (userId: string) => {
-  // Database columns 'is_online' and 'last_seen' not yet available
-}
-
-// Set user as offline in database
-const setOffline = async (userId: string) => {
-  // Database columns 'is_online' and 'last_seen' not yet available
-}
+// NOTE : `updateLastSeen` et `setOffline` étaient des no-op (les colonnes
+// `is_online` et `last_seen` n'ont jamais été ajoutées à la table profiles).
+// On les a supprimés ainsi que le `setInterval(..., 30000)` qui ne servait
+// qu'à les appeler — gain : un timer de moins en boucle continue.
+// La présence est gérée 100% via le canal Supabase Realtime `online-users`.
 
 // Initialize global presence tracking
 export const initializePresence = (userId: string) => {
@@ -44,11 +36,6 @@ export const initializePresence = (userId: string) => {
   if (globalPresenceChannel) {
     globalPresenceChannel.unsubscribe()
     globalPresenceChannel = null
-  }
-
-  if (heartbeatInterval) {
-    clearInterval(heartbeatInterval)
-    heartbeatInterval = null
   }
 
   currentUserId = userId
@@ -100,62 +87,40 @@ export const initializePresence = (userId: string) => {
     })
     .subscribe(async (status) => {
       if (status === 'SUBSCRIBED') {
-        // Track this user's presence
+        // Track this user's presence (le serveur Supabase Realtime maintient
+        // automatiquement la présence tant que la connexion WebSocket vit).
         await globalPresenceChannel?.track({
           user_id: userId,
           online_at: new Date().toISOString(),
         })
-        
-        // Update database
-        await updateLastSeen(userId)
-        
-        // Start heartbeat to keep presence alive and update last_seen
-        heartbeatInterval = setInterval(() => {
-          updateLastSeen(userId)
-        }, 30000) // Every 30 seconds
       }
     })
 
-  // Handle page visibility changes
+  // Handle page visibility changes — track 'away'/'active' pour que les
+  // autres clients voient le bon statut. Le `track()` Supabase est un
+  // simple message WebSocket, pas un INSERT DB.
   const handleVisibilityChange = () => {
     if (document.hidden) {
-      // User switched tabs - still online but less active
       globalPresenceChannel?.track({
         user_id: userId,
         online_at: new Date().toISOString(),
         status: 'away',
       })
     } else {
-      // User came back
       globalPresenceChannel?.track({
         user_id: userId,
         online_at: new Date().toISOString(),
         status: 'active',
       })
-      updateLastSeen(userId)
     }
-  }
-
-  // Handle before unload - set offline
-  const handleBeforeUnload = () => {
-    // Use sendBeacon for reliable offline status update
-    // Note: sendBeacon doesn't support auth headers, so we use a simple approach
-    // The presence channel leaving will also trigger offline status
-    setOffline(userId)
   }
 
   document.addEventListener('visibilitychange', handleVisibilityChange)
-  window.addEventListener('beforeunload', handleBeforeUnload)
 
-  // Store cleanup functions
+  // Store cleanup function (beforeunload n'est plus utile : la fermeture
+  // du WS Supabase déclenche automatiquement l'event presence 'leave').
   ;(globalPresenceChannel as any)._cleanup = () => {
     document.removeEventListener('visibilitychange', handleVisibilityChange)
-    window.removeEventListener('beforeunload', handleBeforeUnload)
-    if (heartbeatInterval) {
-      clearInterval(heartbeatInterval)
-      heartbeatInterval = null
-    }
-    setOffline(userId)
   }
 }
 
@@ -279,34 +244,13 @@ export function usePresence(userId?: string) {
   }
 }
 
-// Hook to track a specific user's presence
+// Hook to track a specific user's presence.
+// On retourne directement les valeurs de usePresence — le canal global
+// `online-users` est seul source de vérité. L'ancien canal supplémentaire
+// `user-presence-${userId}` ouvrait une socket Postgres Changes par
+// utilisateur observé pour un handler vide. Il est supprimé.
 export function useUserPresence(userId: string | undefined) {
   const { isOnline, lastSeen, getStatusText } = usePresence(userId)
-  
-  // Also subscribe to profile changes for this user
-  useEffect(() => {
-    if (!userId) return
-
-    const channel = supabase
-      .channel(`user-presence-${userId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'profiles',
-          filter: `id=eq.${userId}`,
-        },
-        (payload) => {
-          // Profile updated - presence might have changed
-        }
-      )
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [userId])
 
   return {
     isOnline,

@@ -3,6 +3,7 @@
 
 import { useNavigate, useLocation } from 'react-router-dom'
 import { MessageCircle, Users, Settings, Phone } from 'lucide-react'
+import { prefetchRoute } from '@/lib/routePrefetch'
 
 export function MobileBottomNav() {
   const navigate = useNavigate()
@@ -28,6 +29,7 @@ export function MobileBottomNav() {
             <button
               key={item.path}
               onClick={() => navigate(item.path)}
+              onTouchStart={() => prefetchRoute(item.path)}
               className="flex flex-col items-center justify-center gap-0.5 relative"
             >
               <div className="relative">

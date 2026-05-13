@@ -4,6 +4,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { MediaViewerHeader, ImageViewer, VideoPlayer, AudioPlayer } from './MediaViewerComponents';
+import { downloadMedia } from '@/lib/downloadMedia';
 
 // Constants for zoom levels - extracted to module level
 const MIN_ZOOM_DEFAULT = 0.5;
@@ -114,6 +115,16 @@ interface MediaViewerProps {
   timestamp: string;
   isOwn: boolean;
   isStarred?: boolean;
+  /** Original file name (with extension) of the currently displayed media,
+   *  used by the download button so we save the file with the right name
+   *  instead of a generic `media-<timestamp>.bin` / `.txt`. */
+  fileName?: string | null;
+  /** Message ID of the currently displayed media (needed for E2EE download). */
+  messageId?: string;
+  /** Current user ID (needed for E2EE download). */
+  currentUserId?: string;
+  /** Whether the currently displayed media is end-to-end encrypted. */
+  isEncrypted?: boolean;
   onClose: () => void;
   onForward?: () => void;
   onStar?: () => void;
@@ -130,6 +141,11 @@ interface MediaViewerProps {
     timestamp: string;
     isOwn: boolean;
     messageId: string;
+    /** Optional original filename for this entry — used by the download
+     *  button when navigating across many media. */
+    fileName?: string | null;
+    /** Optional flag: this entry is E2EE-encrypted and needs decryption. */
+    isEncrypted?: boolean;
   }>;
   currentIndex?: number;
   onNavigate?: (index: number) => void;
@@ -137,13 +153,17 @@ interface MediaViewerProps {
 
 export const MediaViewer: React.FC<MediaViewerProps> = ({
   isOpen,
-  mediaUrl,
-  mediaType,
-  senderName,
-  senderAvatar,
-  timestamp,
-  isOwn,
+  mediaUrl: mediaUrlProp,
+  mediaType: mediaTypeProp,
+  senderName: senderNameProp,
+  senderAvatar: senderAvatarProp,
+  timestamp: timestampProp,
+  isOwn: isOwnProp,
   isStarred = false,
+  fileName: fileNameProp,
+  messageId: messageIdProp,
+  currentUserId,
+  isEncrypted: isEncryptedProp,
   onClose,
   onForward,
   onStar,
@@ -155,6 +175,32 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   currentIndex = 0,
   onNavigate,
 }) => {
+  // Derive what we display from allMedia[currentIndex] when available, falling
+  // back to the raw props. This makes navigation actually swap the displayed
+  // image / sender / timestamp even when the parent only updates currentIndex
+  // (e.g. the MediaAlbum path) instead of also rebuilding all per-item props.
+  //
+  // Special case for E2EE: when the parent provides a `blob:` URL via
+  // `mediaUrlProp` (locally-decrypted blob) we keep using it instead of
+  // `allMedia[currentIndex].url` (which would be the raw encrypted path).
+  // This means navigation across encrypted entries stays on the originally-
+  // clicked one, matching the existing behavior.
+  const safeIndex = allMedia && allMedia.length > 0
+    ? Math.max(0, Math.min(currentIndex, allMedia.length - 1))
+    : 0;
+  const currentMedia = allMedia && allMedia.length > 0 ? allMedia[safeIndex] : undefined;
+  const isParentBlob = typeof mediaUrlProp === 'string' && mediaUrlProp.startsWith('blob:');
+  const mediaUrl = isParentBlob ? mediaUrlProp : (currentMedia?.url ?? mediaUrlProp);
+  const mediaType = currentMedia?.type ?? mediaTypeProp;
+  const senderName = currentMedia?.senderName ?? senderNameProp;
+  const senderAvatar = currentMedia?.senderAvatar ?? senderAvatarProp;
+  const timestamp = currentMedia?.timestamp ?? timestampProp;
+  const isOwn = currentMedia?.isOwn ?? isOwnProp;
+  // Per-item download metadata: when navigating, we want to download the
+  // file with its original name (and decrypt it if the entry is E2EE).
+  const fileName = currentMedia?.fileName ?? fileNameProp;
+  const messageId = currentMedia?.messageId ?? messageIdProp;
+  const isEncrypted = currentMedia?.isEncrypted ?? isEncryptedProp ?? false;
   const isMobile = useIsMobile();
   const { isLandscape } = useScreenOrientation();
   const [showControls, setShowControls] = useState(true);
@@ -229,6 +275,18 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
       }
     };
   }, [showControls, isHoveringControls, startHideTimer]);
+
+  // Reset zoom / pan / swipe state whenever we navigate to a different media,
+  // otherwise the new image inherits the previous one's transform and feels
+  // broken (zoomed-in / off-center / mid-swipe).
+  useEffect(() => {
+    setZoom(1);
+    setPosition({ x: 0, y: 0 });
+    setSwipeOffset(0);
+    setIsSwipeActive(false);
+    setSwipeDirection(null);
+    setShowControls(true);
+  }, [currentIndex, mediaUrl]);
 
   // Handle mouse move to show controls
   const handleContainerMouseMove = useCallback(() => {
@@ -998,21 +1056,23 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   };
 
   const handleDownload = async () => {
-    try {
-      const response = await fetch(mediaUrl);
-      const blob = await response.blob();
-      const url = globalThis.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      const extension = getMediaExtension(mediaType);
-      a.download = `media-${Date.now()}.${extension}`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      globalThis.URL.revokeObjectURL(url);
+    // Helper centralisé : gère paths nus, URLs expirées, médias chiffrés,
+    // et affiche une vraie erreur utilisateur en cas d'échec.
+    //
+    // Pour les médias E2EE : on doit passer le path/URL d'origine (pas le
+    // blob: URL déchiffré local) afin que downloadMedia re-déchiffre proprement.
+    // Quand la nav viewer est active, currentMedia.url contient ce path source.
+    const downloadUrl = isEncrypted && currentMedia?.url ? currentMedia.url : mediaUrl;
+    const ok = await downloadMedia({
+      mediaUrl: downloadUrl,
+      mediaType,
+      fileName: fileName || undefined,
+      messageId,
+      userId: currentUserId,
+      isEncrypted,
+    });
+    if (ok) {
       onDownload?.();
-    } catch (error) {
-      console.error('Error downloading media:', error);
     }
   };
 
@@ -1122,16 +1182,21 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
         }}
       />
 
-      {/* Navigation arrows - Desktop only (hidden on mobile) */}
-      {allMedia && allMedia.length > 1 && !isMobile && (
+      {/* Navigation arrows - shown on both desktop and mobile (mobile also has swipe) */}
+      {allMedia && allMedia.length > 1 && (
         <>
           {/* Previous button */}
           <button
+            type="button"
             onClick={(e) => { e.stopPropagation(); handlePrevious(); }}
             disabled={currentIndex === 0}
-            className={`absolute left-4 top-1/2 -translate-y-1/2 z-10 w-12 h-12 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center transition-all duration-200 ${
-              currentIndex === 0 ? 'opacity-30 cursor-not-allowed' : 'opacity-100 hover:scale-110'
-            } ${showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+            className={`absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 z-10 w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center transition-all duration-200 ${
+              !showControls
+                ? 'opacity-0 pointer-events-none'
+                : currentIndex === 0
+                  ? 'opacity-30 cursor-not-allowed'
+                  : 'opacity-100 hover:scale-110'
+            }`}
             aria-label="Média précédent"
           >
             <ChevronLeft size={28} className="text-white" />
@@ -1139,11 +1204,16 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
 
           {/* Next button */}
           <button
+            type="button"
             onClick={(e) => { e.stopPropagation(); handleNext(); }}
             disabled={currentIndex === allMedia.length - 1}
-            className={`absolute right-4 top-1/2 -translate-y-1/2 z-10 w-12 h-12 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center transition-all duration-200 ${
-              currentIndex === allMedia.length - 1 ? 'opacity-30 cursor-not-allowed' : 'opacity-100 hover:scale-110'
-            } ${showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+            className={`absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 z-10 w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center transition-all duration-200 ${
+              !showControls
+                ? 'opacity-0 pointer-events-none'
+                : currentIndex === allMedia.length - 1
+                  ? 'opacity-30 cursor-not-allowed'
+                  : 'opacity-100 hover:scale-110'
+            }`}
             aria-label="Média suivant"
           >
             <ChevronRight size={28} className="text-white" />
