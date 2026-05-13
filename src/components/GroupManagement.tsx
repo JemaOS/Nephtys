@@ -5,6 +5,7 @@ import React, { useState } from 'react';
 import { UserPlus, UserMinus, Edit, Trash2, LogOut, Crown, Camera } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { invalidateMediaUrl } from '@/lib/mediaUrl';
+import { MediaImg } from './MediaImg';
 
 interface GroupMember {
   id: string;
@@ -18,6 +19,7 @@ interface GroupManagementProps {
   conversationId: string;
   groupName: string;
   groupDescription: string | null;
+  groupAvatar?: string | null;
   members: GroupMember[];
   currentUserId: string;
   isAdmin: boolean;
@@ -28,6 +30,7 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({
   conversationId,
   groupName,
   groupDescription,
+  groupAvatar,
   members,
   currentUserId,
   isAdmin,
@@ -38,6 +41,8 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({
   const [newDescription, setNewDescription] = useState(groupDescription || '');
   const [saving, setSaving] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  // Avatar local mis à jour optimistement après upload (path nu)
+  const [localAvatar, setLocalAvatar] = useState<string | null | undefined>(groupAvatar);
 
   const handleUpdateGroup = async () => {
     setSaving(true);
@@ -208,7 +213,9 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({
         throw new Error('Erreur lors de la mise à jour du groupe');
       }
       
-      // Invalider les caches qui contiennent l'ancien avatar
+      // Mise à jour locale immédiate (sans reload)
+      setLocalAvatar(fileName);
+      // Invalider les caches
       try {
         localStorage.removeItem(`anu_cache_conv_${conversationId}`);
         invalidateMediaUrl(fileName);
@@ -216,7 +223,6 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({
         // ignore
       }
       alert('✅ Photo du groupe mise à jour !');
-      globalThis.location.reload();
     } catch (err: any) {
       console.error('Group photo upload error:', err);
       alert(err.message || '❌ Erreur lors de l\'upload de la photo\n\nVeuillez réessayer.');
@@ -244,9 +250,16 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({
           {/* Group Avatar */}
           <div className="flex justify-center mb-4">
             <div className="relative">
-              <div className="w-24 h-24 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-3xl">
-                {groupName[0]?.toUpperCase()}
-              </div>
+              <MediaImg
+                src={localAvatar}
+                alt={groupName}
+                className="w-24 h-24 rounded-full object-cover"
+                fallback={
+                  <div className="w-24 h-24 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-3xl">
+                    {groupName[0]?.toUpperCase()}
+                  </div>
+                }
+              />
               {isAdmin && (
                 <label className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-accent flex items-center justify-center cursor-pointer hover:bg-[#5a5ec9] transition-colors">
                   <Camera size={16} className="text-white" />

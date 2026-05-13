@@ -1901,15 +1901,15 @@ export function ChatViewPage() {
         type: 'audio',
         status: 'sent',
         created_at: now,
-        media_url: publicUrl,
+        media_url: fileName,   // path nu — résolu en URL signée à l'affichage
         media_type: 'audio',
         file_name: messageData.file_name,
         file_size: audioBlob.size,
         reply_to_id: replyToMessage?.id || null,
         is_ephemeral: !!ephemeralDuration,
         ephemeral_duration: ephemeralDuration,
-        ephemeral_expires_at: ephemeralDuration 
-          ? new Date(Date.now() + ephemeralDuration * 1000).toISOString() 
+        ephemeral_expires_at: ephemeralDuration
+          ? new Date(Date.now() + ephemeralDuration * 1000).toISOString()
           : null,
       } as unknown as Message
       

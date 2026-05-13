@@ -25,6 +25,8 @@ interface AuthContextType {
   signUp: (username: string, password: string) => Promise<void>
   signInAsGuest: (username: string) => Promise<void>
   signOut: () => Promise<void>
+  /** Met à jour le profil local immédiatement (sans attendre Realtime) */
+  updateLocalProfile: (patch: Partial<Profile>) => void
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -527,6 +529,15 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
     if (error) throw error
   }
 
+  const updateLocalProfile = (patch: Partial<Profile>) => {
+    setProfile(prev => {
+      if (!prev) return prev
+      const updated = { ...prev, ...patch }
+      cacheProfile(updated)
+      return updated
+    })
+  }
+
   const value = useMemo(() => ({
     user,
     profile,
@@ -536,6 +547,7 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
     signUp,
     signInAsGuest,
     signOut,
+    updateLocalProfile,
   }), [user, profile, loading, isOffline]);
 
   return (

@@ -8,7 +8,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { signFieldsBatch } from '@/lib/mediaUrl'
 import { MediaImg } from '@/components/MediaImg'
-import { ArrowLeft, Users, X, Check } from 'lucide-react'
+import { ArrowLeft, Users, X, Check, Camera } from 'lucide-react'
 
 export function GroupsPage() {
   const navigate = useNavigate()
@@ -20,6 +20,8 @@ export function GroupsPage() {
   const [selectedContacts, setSelectedContacts] = useState<string[]>([])
   const [contacts, setContacts] = useState<any[]>([])
   const [creating, setCreating] = useState(false)
+  const [groupAvatarFile, setGroupAvatarFile] = useState<File | null>(null)
+  const [groupAvatarPreview, setGroupAvatarPreview] = useState<string | null>(null)
 
   // Get the createWith parameter from URL (user ID to pre-select)
   const createWithUserId = searchParams.get('createWith')
@@ -102,11 +104,31 @@ export function GroupsPage() {
     }
   }
 
+  const handleAvatarSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !file.type.startsWith('image/')) return
+    setGroupAvatarFile(file)
+    const reader = new FileReader()
+    reader.onload = (ev) => setGroupAvatarPreview(ev.target?.result as string)
+    reader.readAsDataURL(file)
+  }
+
   const handleCreateGroup = async () => {
     if (!groupName.trim() || selectedContacts.length === 0 || !user) return
 
     setCreating(true)
     try {
+      // Upload avatar en premier si sélectionné
+      let avatarPath: string | null = null
+      if (groupAvatarFile) {
+        const ext = groupAvatarFile.name.split('.').pop()
+        const path = `groups/new-${Date.now()}/avatar.${ext}`
+        const { error: upErr } = await supabase.storage
+          .from('media')
+          .upload(path, groupAvatarFile, { cacheControl: '3600', upsert: true })
+        if (!upErr) avatarPath = path
+      }
+
       // Create conversation
       const { data: conversation, error: convError } = await supabase
         .from('conversations')
@@ -116,12 +138,26 @@ export function GroupsPage() {
           description: groupDescription.trim() || null,
           created_by: user.id,
           is_encrypted: true,
-          encryption_protocol: 'mls'
+          encryption_protocol: 'mls',
+          ...(avatarPath ? { avatar_url: avatarPath } : {}),
         })
         .select()
         .maybeSingle()
 
       if (convError || !conversation) throw convError
+
+      // Si avatar uploadé avec path temporaire, le déplacer vers le vrai dossier de la conv
+      if (avatarPath && avatarPath.startsWith('groups/new-')) {
+        const ext = avatarPath.split('.').pop()
+        const finalPath = `groups/${conversation.id}/avatar.${ext}`
+        const { error: copyErr } = await supabase.storage
+          .from('media')
+          .copy(avatarPath, finalPath)
+        if (!copyErr) {
+          await supabase.storage.from('media').remove([avatarPath])
+          await supabase.from('conversations').update({ avatar_url: finalPath }).eq('id', conversation.id)
+        }
+      }
 
       // Add members (creator + selected contacts)
       const members = [
@@ -139,7 +175,6 @@ export function GroupsPage() {
 
       if (membersError) throw membersError
 
-      // Navigate to the new group chat
       navigate(`/chat/${conversation.id}`)
     } catch (err) {
       console.error('Error creating group:', err)
@@ -170,6 +205,25 @@ export function GroupsPage() {
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
           {/* Group Info */}
           <div className="space-y-4">
+            {/* Avatar sélecteur */}
+            <div className="flex justify-center">
+              <label className="relative cursor-pointer group">
+                <div className="w-24 h-24 rounded-full overflow-hidden bg-bg-hover flex items-center justify-center">
+                  {groupAvatarPreview ? (
+                    <img src={groupAvatarPreview} alt="Avatar groupe" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-3xl">
+                      {groupName ? groupName[0].toUpperCase() : <Users size={32} />}
+                    </div>
+                  )}
+                </div>
+                <div className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-accent flex items-center justify-center shadow-md group-hover:bg-[#5a5ec9] transition-colors">
+                  <Camera size={14} className="text-white" />
+                </div>
+                <input type="file" accept="image/*" onChange={handleAvatarSelect} className="hidden" />
+              </label>
+            </div>
+
             <div className="space-y-2">
               <label htmlFor="group-name" className="text-sm text-accent">Nom du groupe</label>
               <div className="relative">
@@ -197,6 +251,7 @@ export function GroupsPage() {
               />
             </div>
           </div>
+          
 
           {/* Selected Contacts */}
           {selectedContacts.length > 0 && (

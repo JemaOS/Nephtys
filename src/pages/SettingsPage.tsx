@@ -129,7 +129,7 @@ const getParentView = (view: SettingsView): SettingsView => {
 // ============ COMPONENT ============
 
 export function SettingsPage() {
-  const { profile, signOut, user } = useAuth()
+  const { profile, signOut, user, updateLocalProfile } = useAuth()
   const { theme, wallpaper, setTheme, setWallpaper } = useTheme()
   const navigate = useNavigate()
   const [currentView, setCurrentView] = useState<SettingsView>('main')
@@ -435,17 +435,22 @@ export function SettingsPage() {
 
   const handleUpdateDisplayName = async () => {
     if (!user || !newDisplayName.trim()) return
-    const { error } = await supabase.from('profiles').update({ display_name: newDisplayName.trim() }).eq('id', user.id)
+    const trimmed = newDisplayName.trim()
+    const { error } = await supabase.from('profiles').update({ display_name: trimmed }).eq('id', user.id)
     if (!error) {
       setEditingName(false)
-      globalThis.location.reload()
+      updateLocalProfile({ display_name: trimmed })
     }
   }
 
   const handleUpdateBio = async () => {
     if (!user) return
-    const { error } = await supabase.from('profiles').update({ bio: newBio.trim() || null }).eq('id', user.id)
-    if (!error) setEditingBio(false)
+    const trimmed = newBio.trim() || null
+    const { error } = await supabase.from('profiles').update({ bio: trimmed }).eq('id', user.id)
+    if (!error) {
+      setEditingBio(false)
+      updateLocalProfile({ bio: trimmed })
+    }
   }
 
   const handleUploadPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
