@@ -131,49 +131,131 @@ async function importKeyPairFromExport(exp: KeyPairExport): Promise<KeyPair> {
 
 /**
  * Récupère la paire de clés ECDH du user :
- *   - depuis IndexedDB local si déjà déverrouillée sur ce device, sinon
- *   - throw KeyRecoveryRequiredError pour que l'UI demande la passphrase
+ *   - depuis IndexedDB local si déjà déverrouillée sur ce device ET
+ *     que la public_key locale correspond bien à celle publiée en DB,
+ *   - sinon throw KeyRecoveryRequiredError pour que l'UI demande la
+ *     passphrase (mode 'unlock' si la DB a une clé chiffrée, 'setup' sinon)
  *
- * Utilise `setupUserKeyPairWithPassphrase` (1ère fois) ou
- * `unlockUserKeyPairWithPassphrase` (autres devices) pour fournir la
- * passphrase et stocker la clé en IDB.
+ * Le check public_key local ↔ DB est crucial pour le multi-device :
+ * un device qui a généré sa propre paire avant l'arrivée du système de
+ * passphrase doit être ré-aligné avec la clé canonique (= celle dérivée
+ * de la passphrase, partagée entre tous les devices).
  */
 export async function getUserKeyPair(userId: string): Promise<KeyPair> {
   const idbKey = `${IDB_KEY_PREFIX}:${userId}`;
   const cached = (await idbGet(idbKey)) as KeyPairExport | undefined;
-  if (cached) return await importKeyPairFromExport(cached);
 
-  // Pas de clé locale → la DB doit en avoir une
-  const remote = await fetchEncryptedPrivateKey(userId);
-  if (remote) throw new KeyRecoveryRequiredError('unlock');
+  // Lecture du profil pour comparer public_key et savoir si la DB a une
+  // clé chiffrée disponible pour récupération.
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('public_key, encrypted_private_key, private_key_salt, private_key_iv')
+    .eq('id', userId)
+    .maybeSingle();
+
+  const remoteHasEncryptedKey = !!(
+    profile?.encrypted_private_key &&
+    profile.private_key_salt &&
+    profile.private_key_iv
+  );
+
+  if (cached) {
+    // Si la DB n'a PAS encore de clé chiffrée (1er device, ou compte créé
+    // avant l'introduction de la passphrase), on demande de définir une
+    // passphrase pour sauvegarder la clé locale en DB.
+    if (!remoteHasEncryptedKey) {
+      throw new KeyRecoveryRequiredError('setup');
+    }
+
+    // Si la DB a une clé chiffrée ET que la public_key locale matche celle
+    // publiée → tout va bien, on renvoie la paire locale.
+    if (profile?.public_key && profile.public_key === cached.publicKey) {
+      return await importKeyPairFromExport(cached);
+    }
+
+    // Mismatch : la DB a une clé canonique différente de la locale (ce
+    // device a généré une paire orpheline avant le système passphrase, ou
+    // le user a réinitialisé ses clés depuis un autre device). On purge
+    // l'IDB local et on force le déverrouillage via passphrase.
+    console.warn(
+      '[E2EE] Local key mismatch with server. Purging local IDB and asking for passphrase.',
+    );
+    try {
+      const db = await openIdb();
+      await new Promise<void>((resolve) => {
+        const tx = db.transaction(IDB_STORE, 'readwrite');
+        tx.objectStore(IDB_STORE).delete(idbKey);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => resolve();
+      });
+    } catch {
+      // ignore
+    }
+    throw new KeyRecoveryRequiredError('unlock');
+  }
+
+  // Pas de clé locale du tout
+  if (remoteHasEncryptedKey) throw new KeyRecoveryRequiredError('unlock');
   throw new KeyRecoveryRequiredError('setup');
 }
 
 /**
- * Première fois : génère une paire fraîche, chiffre la privée avec la
- * passphrase, publie la publique + la privée chiffrée en DB, stocke la
- * paire en IDB local.
+ * Première fois : récupère la paire locale existante si déjà en IDB
+ * (ex. utilisateur ayant utilisé l'app avant l'introduction du système
+ * de passphrase) ; sinon en génère une fraîche. Puis chiffre la privée
+ * avec la passphrase et publie le tout en DB.
+ *
+ * Si la DB possède déjà une paire chiffrée, on bascule automatiquement
+ * sur unlock pour éviter d'écraser ce que les autres devices utilisent.
  */
 export async function setupUserKeyPairWithPassphrase(
   userId: string,
   passphrase: string,
 ): Promise<KeyPair> {
-  // Si une paire chiffrée existe DÉJÀ côté DB, on bascule sur unlock pour
-  // éviter d'écraser ce que les autres expéditeurs ont utilisé.
   const existing = await fetchEncryptedPrivateKey(userId);
   if (existing) return await unlockUserKeyPairWithPassphrase(userId, passphrase);
 
-  const kp = await crypto.subtle.generateKey(ECDH_PARAMS, true, [
-    'deriveKey',
-    'deriveBits',
-  ]);
-  const spki = await crypto.subtle.exportKey('spki', kp.publicKey);
-  const pkcs8 = await crypto.subtle.exportKey('pkcs8', kp.privateKey);
-  const publicKeyBase64 = bufToBase64(spki);
-  const privateKeyBase64 = bufToBase64(pkcs8);
-
-  // 1) Sauvegarde locale (IDB)
   const idbKey = `${IDB_KEY_PREFIX}:${userId}`;
+  const cached = (await idbGet(idbKey)) as KeyPairExport | undefined;
+
+  let publicKeyBase64: string;
+  let privateKeyBase64: string;
+  let publicKey: CryptoKey;
+  let privateKey: CryptoKey;
+
+  if (cached) {
+    // On préserve la paire locale existante : tous les médias déjà
+    // chiffrés pour cette public_key restent lisibles.
+    publicKeyBase64 = cached.publicKey;
+    privateKeyBase64 = cached.privateKey;
+    publicKey = await crypto.subtle.importKey(
+      'spki',
+      base64ToBuf(publicKeyBase64),
+      ECDH_PARAMS,
+      true,
+      [],
+    );
+    privateKey = await crypto.subtle.importKey(
+      'pkcs8',
+      base64ToBuf(privateKeyBase64),
+      ECDH_PARAMS,
+      false,
+      ['deriveKey', 'deriveBits'],
+    );
+  } else {
+    const kp = await crypto.subtle.generateKey(ECDH_PARAMS, true, [
+      'deriveKey',
+      'deriveBits',
+    ]);
+    const spki = await crypto.subtle.exportKey('spki', kp.publicKey);
+    const pkcs8 = await crypto.subtle.exportKey('pkcs8', kp.privateKey);
+    publicKeyBase64 = bufToBase64(spki);
+    privateKeyBase64 = bufToBase64(pkcs8);
+    publicKey = kp.publicKey;
+    privateKey = kp.privateKey;
+  }
+
+  // Sauvegarde locale (IDB) — idempotent si la paire est déjà la même
   await idbSet(idbKey, { publicKey: publicKeyBase64, privateKey: privateKeyBase64 });
 
   // 2) Chiffre la privée avec la passphrase
@@ -200,8 +282,8 @@ export async function setupUserKeyPairWithPassphrase(
     throw pubError;
   }
 
-  console.log('[E2EE] Paire générée + privée chiffrée publiée pour user', userId);
-  return { publicKey: kp.publicKey, privateKey: kp.privateKey, publicKeyBase64 };
+  console.log('[E2EE] Paire chiffrée par passphrase publiée pour user', userId);
+  return { publicKey, privateKey, publicKeyBase64 };
 }
 
 /**
