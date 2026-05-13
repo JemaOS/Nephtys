@@ -27,6 +27,38 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
+/**
+ * Extrait l'erreur structurée renvoyée par l'edge function `auth-with-username`.
+ * - Sur succès HTTP 2xx avec body `{ error: {...} }` → lit `data.error`.
+ * - Sur erreur HTTP (4xx/5xx via FunctionsHttpError) → tente de parser
+ *   le body via `error.context.json()` (compatible @supabase/functions-js récent).
+ *   Renvoie un fallback synthétique si le parsing échoue.
+ */
+async function extractFunctionError(
+  error: any,
+  data: any
+): Promise<{ code: string; message: string } | null> {
+  if (data?.error?.code) {
+    return { code: data.error.code, message: data.error.message ?? '' }
+  }
+  if (!error) return null
+
+  // Cas FunctionsHttpError → contient context (Response)
+  const ctx = error.context
+  if (ctx && typeof ctx.json === 'function') {
+    try {
+      const parsed = await ctx.json()
+      if (parsed?.error?.code) {
+        return { code: parsed.error.code, message: parsed.error.message ?? '' }
+      }
+    } catch {
+      // body non JSON → fallback ci-dessous
+    }
+  }
+  // Fallback générique
+  return { code: 'UNKNOWN', message: error.message ?? 'Erreur réseau' }
+}
+
 // Helper: Promise with timeout
 function withTimeout<T>(promise: Promise<T> | PromiseLike<T>, ms: number, fallback?: T): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -271,15 +303,17 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
         body: { action: 'signin', username, password }
       })
 
-      if (error) {
-        console.error('SignIn error:', error)
-        throw new Error('❌ Identifiants incorrects\n\nVérifiez votre pseudo et mot de passe.')
-      }
-      
-      if (data?.error) {
-        console.error('SignIn data error:', data.error)
-        const errorMsg = data.error.message || ''
-        
+      // Tenter de récupérer l'erreur structurée renvoyée par l'edge function,
+      // que ce soit dans `data` (200) ou dans `error.context` (4xx/5xx).
+      const fnError = await extractFunctionError(error, data)
+      if (fnError) {
+        if (fnError.code === 'RATE_LIMITED') {
+          throw new Error(`❌ Trop de tentatives\n\n${fnError.message}`)
+        }
+        if (fnError.code === 'VALIDATION_ERROR') {
+          throw new Error(`❌ Saisie invalide\n\n${fnError.message}`)
+        }
+        const errorMsg = fnError.message || ''
         if (errorMsg.includes('Invalid login') || errorMsg.includes('Invalid credentials')) {
           throw new Error('❌ Identifiants incorrects\n\nLe pseudo ou le mot de passe est incorrect.')
         } else if (errorMsg.includes('User not found')) {
@@ -320,19 +354,19 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
         body: { action: 'signup', username, password }
       })
 
-      if (error) {
-        console.error('SignUp error:', error)
-        throw new Error('❌ Erreur d\'inscription\n\nImpossible de créer le compte.')
-      }
-      
-      if (data?.error) {
-        console.error('SignUp data error:', data.error)
-        const errorMsg = data.error.message || ''
-        
+      const fnError = await extractFunctionError(error, data)
+      if (fnError) {
+        if (fnError.code === 'RATE_LIMITED') {
+          throw new Error(`❌ Trop d'inscriptions\n\n${fnError.message}`)
+        }
+        if (fnError.code === 'VALIDATION_ERROR') {
+          throw new Error(`❌ Saisie invalide\n\n${fnError.message}`)
+        }
+        const errorMsg = fnError.message || ''
         if (errorMsg.includes('already exists') || errorMsg.includes('duplicate')) {
           throw new Error('❌ Pseudo déjà utilisé\n\nCe pseudo existe déjà. Choisissez-en un autre.')
         } else if (errorMsg.includes('password')) {
-          throw new Error('❌ Mot de passe invalide\n\nLe mot de passe doit contenir au moins 6 caractères.')
+          throw new Error('❌ Mot de passe invalide\n\nLe mot de passe doit contenir au moins 8 caractères.')
         } else {
           throw new Error('❌ Erreur d\'inscription\n\nVeuillez réessayer.')
         }
@@ -399,14 +433,16 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
         }
       })
 
-      if (error) {
-        console.error('Guest signup error:', error)
+      const fnError = await extractFunctionError(error, data)
+      if (fnError) {
+        if (fnError.code === 'RATE_LIMITED') {
+          throw new Error(`❌ Trop de créations\n\n${fnError.message}`)
+        }
+        if (fnError.code === 'VALIDATION_ERROR') {
+          throw new Error(`❌ Saisie invalide\n\n${fnError.message}`)
+        }
+        console.error('Guest signup error:', fnError)
         throw new Error('❌ Mode éphémère indisponible\n\nVeuillez réessayer ou créer un compte permanent.')
-      }
-      
-      if (data?.error) {
-        console.error('Guest signup data error:', data.error)
-        throw new Error('❌ Erreur de création\n\nImpossible de démarrer en mode éphémère.')
       }
 
       // Définir la session

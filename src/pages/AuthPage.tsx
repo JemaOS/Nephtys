@@ -58,24 +58,46 @@ export function AuthPage() {
   
   const { signIn, signUp, signInAsGuest } = useAuth()
 
+  // Validation côté client : aligné sur les règles de l'edge function
+  // pour fournir un retour immédiat et ne pas consommer le rate-limiter inutilement.
+  const validateForm = (): string | null => {
+    const u = username.trim()
+    if (!u) return 'Nom d\'utilisateur requis'
+    if (u.length < 3 || u.length > 20) {
+      return 'Le pseudo doit faire entre 3 et 20 caractères'
+    }
+    if (!/^[a-zA-Z0-9_-]+$/.test(u)) {
+      return 'Le pseudo ne peut contenir que des lettres, chiffres, _ et -'
+    }
+    if (mode !== 'guest') {
+      if (password.length < 1) return 'Mot de passe requis'
+      if (password.length > 128) return 'Le mot de passe est trop long (max 128)'
+      // Min 8 caractères uniquement à l'inscription (rétrocompat anciens comptes)
+      if (mode === 'signup' && password.length < 8) {
+        return 'Le mot de passe doit faire au moins 8 caractères'
+      }
+    }
+    return null
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
-    setLoading(true)
 
+    const validationError = validateForm()
+    if (validationError) {
+      setError(validationError)
+      return
+    }
+
+    setLoading(true)
     try {
-      if (!username) {
-        setError('Nom d\'utilisateur requis')
-        setLoading(false)
-        return
-      }
-      
       if (mode === 'guest') {
-        await signInAsGuest(username)
+        await signInAsGuest(username.trim())
       } else if (mode === 'signin') {
-        await signIn(username, password)
+        await signIn(username.trim(), password)
       } else {
-        await signUp(username, password)
+        await signUp(username.trim(), password)
       }
     } catch (err: any) {
       setError(err.message || 'Une erreur est survenue')
