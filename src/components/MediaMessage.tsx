@@ -382,6 +382,7 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
           timestamp={timestamp}
           status={status}
           isOwn={isOwn}
+          isStarred={isStarred}
           showHoverActions={showHoverActions}
           onOpenMenu={onOpenMenu}
           onVideoClick={() => setIsFullscreen(true)}
@@ -401,6 +402,7 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
         timestamp={timestamp}
         status={status}
         isOwn={isOwn}
+        isStarred={isStarred}
         thumbnail={thumbnail}
         caption={caption}
         handleOpenFile={handleOpenFile}

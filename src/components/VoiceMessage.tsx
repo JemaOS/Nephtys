@@ -79,23 +79,66 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
+    // Don't bind listeners until we have an actual src to play. Without this,
+    // the listeners would be attached to an empty <audio> element while the
+    // E2EE blob / signed URL is still being resolved, and the metadata events
+    // for the resolved source could fire before this effect re-runs.
+    if (!effectiveUrl) return;
+
+    // WebM/Opus blobs produced by MediaRecorder typically report
+    // `audio.duration === Infinity` until the playback head is seeked past
+    // the end of the file (a well-known Chromium quirk). Without this trick
+    // the waveform progress and "X / Y" timer stay at 0:00 / 0:00 because
+    // every duration handler below filters Infinity out.
+    let seekTrickApplied = false;
+    const applySeekTrick = () => {
+      if (seekTrickApplied) return;
+      if (!Number.isFinite(audio.duration)) {
+        seekTrickApplied = true;
+        try {
+          audio.currentTime = Number.MAX_SAFE_INTEGER;
+        } catch {
+          // Some browsers throw before metadata is ready — retried on the
+          // next durationchange / canplay tick.
+          seekTrickApplied = false;
+        }
+      }
+    };
+
+    const setDurationFromAudio = () => {
+      const d = audio.duration;
+      if (typeof d === 'number' && !Number.isNaN(d) && Number.isFinite(d) && d > 0) {
+        setAudioDuration(d);
+      } else {
+        applySeekTrick();
+      }
+    };
 
     const handleTimeUpdate = () => {
+      // After the seek-trick has fired, the first timeupdate gives us the
+      // real duration; we then bring the playhead back to 0 so playback
+      // starts from the beginning when the user presses play.
+      if (seekTrickApplied && Number.isFinite(audio.duration)) {
+        setAudioDuration(audio.duration);
+        try {
+          audio.currentTime = 0;
+        } catch {
+          // Best-effort reset; the next play() call will start from 0 anyway
+          // because the source is still loading on some browsers.
+        }
+        seekTrickApplied = false;
+        setCurrentTime(0);
+        return;
+      }
       setCurrentTime(audio.currentTime);
     };
 
     const handleLoadedMetadata = () => {
-      console.log('Audio loaded - duration:', audio.duration, 'src:', url);
-      if (audio.duration && !Number.isNaN(audio.duration) && Number.isFinite(audio.duration)) {
-        setAudioDuration(audio.duration);
-      }
+      setDurationFromAudio();
     };
 
     const handleDurationChange = () => {
-      console.log('Duration changed:', audio.duration);
-      if (audio.duration && !Number.isNaN(audio.duration) && Number.isFinite(audio.duration)) {
-        setAudioDuration(audio.duration);
-      }
+      setDurationFromAudio();
     };
 
     const handleEnded = () => {
@@ -109,21 +152,14 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
         error: audioElement.error,
         errorCode: audioElement.error?.code,
         errorMessage: audioElement.error?.message,
-        src: url,
+        src: effectiveUrl,
         networkState: audioElement.networkState,
         readyState: audioElement.readyState,
       });
     };
 
     const handleCanPlay = () => {
-      console.log('Audio can play - ready state:', audio.readyState, 'duration:', audio.duration);
-      if (audio.duration && !Number.isNaN(audio.duration) && Number.isFinite(audio.duration)) {
-        setAudioDuration(audio.duration);
-      }
-    };
-
-    const handleCanPlayThrough = () => {
-      console.log('Audio can play through - ready state:', audio.readyState);
+      setDurationFromAudio();
     };
 
     audio.addEventListener('timeupdate', handleTimeUpdate);
@@ -132,7 +168,6 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
     audio.addEventListener('ended', handleEnded);
     audio.addEventListener('error', handleError);
     audio.addEventListener('canplay', handleCanPlay);
-    audio.addEventListener('canplaythrough', handleCanPlayThrough);
 
     // Force load on mobile - some browsers need this
     audio.load();
@@ -144,9 +179,8 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
       audio.removeEventListener('ended', handleEnded);
       audio.removeEventListener('error', handleError);
       audio.removeEventListener('canplay', handleCanPlay);
-      audio.removeEventListener('canplaythrough', handleCanPlayThrough);
     };
-  }, [url]);
+  }, [effectiveUrl]);
 
   // Web Audio API playback state
   const webAudioSourceRef = useRef<AudioBufferSourceNode | null>(null);
@@ -297,9 +331,34 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
       
       // Create new audio element with blob URL
       const newAudio = new Audio(blobUrl);
-      
+
+      // Same seek-trick as the main effect: WebM/Opus blobs from
+      // MediaRecorder report duration === Infinity until we seek past the
+      // end and back to 0. Without this, the timer/waveform stay at 0:00.
+      let blobSeekTrickApplied = false;
+      const setDurationFromBlobAudio = () => {
+        const d = newAudio.duration;
+        if (typeof d === 'number' && !Number.isNaN(d) && Number.isFinite(d) && d > 0) {
+          setAudioDuration(d);
+        } else if (!blobSeekTrickApplied) {
+          blobSeekTrickApplied = true;
+          try {
+            newAudio.currentTime = Number.MAX_SAFE_INTEGER;
+          } catch {
+            blobSeekTrickApplied = false;
+          }
+        }
+      };
+
       // Copy event listeners
       newAudio.addEventListener('timeupdate', () => {
+        if (blobSeekTrickApplied && Number.isFinite(newAudio.duration)) {
+          setAudioDuration(newAudio.duration);
+          try { newAudio.currentTime = 0; } catch { /* best-effort */ }
+          blobSeekTrickApplied = false;
+          setCurrentTime(0);
+          return;
+        }
         setCurrentTime(newAudio.currentTime);
       });
       newAudio.addEventListener('ended', () => {
@@ -307,11 +366,9 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
         setCurrentTime(0);
         URL.revokeObjectURL(blobUrl);
       });
-      newAudio.addEventListener('loadedmetadata', () => {
-        if (newAudio.duration && !Number.isNaN(newAudio.duration) && Number.isFinite(newAudio.duration)) {
-          setAudioDuration(newAudio.duration);
-        }
-      });
+      newAudio.addEventListener('loadedmetadata', setDurationFromBlobAudio);
+      newAudio.addEventListener('durationchange', setDurationFromBlobAudio);
+      newAudio.addEventListener('canplay', setDurationFromBlobAudio);
       
       await newAudio.play();
       

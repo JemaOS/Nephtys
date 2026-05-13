@@ -267,6 +267,7 @@ export const MediaAlbum: React.FC<MediaAlbumProps> = ({
           timestamp={lastMsg.created_at}
           status={status}
           isOwn={isOwn}
+          isStarred={isStarred}
         />
       </div>
       {messages[0].content && (

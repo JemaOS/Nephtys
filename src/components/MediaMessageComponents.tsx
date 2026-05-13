@@ -1,5 +1,5 @@
 import React, { useRef, useEffect } from 'react';
-import { File, Play, Copy, FileText, FileSpreadsheet, FileImage, FileArchive } from 'lucide-react';
+import { File, Play, Copy, FileText, FileSpreadsheet, FileImage, FileArchive, Star } from 'lucide-react';
 import { MessageHoverActions } from './MessageHoverActions';
 
 // Custom hook to preload next images in viewport
@@ -209,7 +209,8 @@ export const MediaTimestampOverlay: React.FC<{
   timestamp: string;
   status?: MessageStatus;
   isOwn: boolean;
-}> = ({ timestamp, status, isOwn }) => {
+  isStarred?: boolean;
+}> = ({ timestamp, status, isOwn, isStarred = false }) => {
   const formatTime = (ts: string) => {
     const date = new Date(ts);
     return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
@@ -217,6 +218,13 @@ export const MediaTimestampOverlay: React.FC<{
 
   return (
     <div className="absolute bottom-2 right-2 flex items-center gap-1 px-1.5 py-0.5 rounded bg-black/50 backdrop-blur-[2px]">
+      {isStarred && (
+        <Star
+          size={10}
+          className="fill-current text-white drop-shadow-sm"
+          aria-label="Message favori"
+        />
+      )}
       <span className="text-[11px] text-white font-medium drop-shadow-sm">
         {formatTime(timestamp)}
       </span>
@@ -384,6 +392,7 @@ export const ImageRenderer: React.FC<{
             timestamp={timestamp}
             status={status}
             isOwn={isOwn}
+            isStarred={isStarred}
           />
         )}
       </button>
@@ -402,11 +411,12 @@ export const VideoRenderer: React.FC<{
   timestamp: string;
   status?: MessageStatus;
   isOwn: boolean;
+  isStarred?: boolean;
   showHoverActions: boolean;
   onOpenMenu?: (e: React.MouseEvent) => void;
   onVideoClick: () => void;
 }> = ({
-  url, caption, videoDuration, timestamp, status, isOwn,
+  url, caption, videoDuration, timestamp, status, isOwn, isStarred = false,
   showHoverActions, onOpenMenu, onVideoClick
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -456,6 +466,7 @@ export const VideoRenderer: React.FC<{
             timestamp={timestamp}
             status={status}
             isOwn={isOwn}
+            isStarred={isStarred}
           />
           <div className="absolute top-2 left-2">
             <Copy size={16} className="text-white drop-shadow-lg" />
@@ -475,6 +486,7 @@ interface FileMessageProps {
   timestamp: string;
   status?: MessageStatus;
   isOwn: boolean;
+  isStarred?: boolean;
   thumbnail?: string;
   caption?: string;
   handleOpenFile: () => void;
@@ -489,6 +501,7 @@ export const FileMessage: React.FC<FileMessageProps> = ({
   timestamp,
   status,
   isOwn,
+  isStarred = false,
   thumbnail,
   caption,
   handleOpenFile,
@@ -551,6 +564,13 @@ export const FileMessage: React.FC<FileMessageProps> = ({
             {/* Timestamp row - right aligned */}
             <div className="flex justify-end mt-2">
               <div className="flex items-center gap-1">
+                {isStarred && (
+                  <Star
+                    size={10}
+                    className="fill-current text-white/80"
+                    aria-label="Message favori"
+                  />
+                )}
                 <span className="text-[11px] text-white/70">
                   {formatMessageTimestamp(timestamp)}
                 </span>
@@ -599,6 +619,13 @@ export const FileMessage: React.FC<FileMessageProps> = ({
             {/* Timestamp row - right aligned */}
             <div className="flex justify-end mt-2">
               <div className="flex items-center gap-1">
+                {isStarred && (
+                  <Star
+                    size={10}
+                    className="fill-current text-white/80"
+                    aria-label="Message favori"
+                  />
+                )}
                 <span className="text-[11px] text-white/70">
                   {formatMessageTimestamp(timestamp)}
                 </span>
