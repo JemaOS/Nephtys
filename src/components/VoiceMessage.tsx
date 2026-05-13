@@ -85,51 +85,14 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
     // for the resolved source could fire before this effect re-runs.
     if (!effectiveUrl) return;
 
-    // WebM/Opus blobs produced by MediaRecorder typically report
-    // `audio.duration === Infinity` until the playback head is seeked past
-    // the end of the file (a well-known Chromium quirk). Without this trick
-    // the waveform progress and "X / Y" timer stay at 0:00 / 0:00 because
-    // every duration handler below filters Infinity out.
-    let seekTrickApplied = false;
-    const applySeekTrick = () => {
-      if (seekTrickApplied) return;
-      if (!Number.isFinite(audio.duration)) {
-        seekTrickApplied = true;
-        try {
-          audio.currentTime = Number.MAX_SAFE_INTEGER;
-        } catch {
-          // Some browsers throw before metadata is ready — retried on the
-          // next durationchange / canplay tick.
-          seekTrickApplied = false;
-        }
-      }
-    };
-
     const setDurationFromAudio = () => {
       const d = audio.duration;
       if (typeof d === 'number' && !Number.isNaN(d) && Number.isFinite(d) && d > 0) {
         setAudioDuration(d);
-      } else {
-        applySeekTrick();
       }
     };
 
     const handleTimeUpdate = () => {
-      // After the seek-trick has fired, the first timeupdate gives us the
-      // real duration; we then bring the playhead back to 0 so playback
-      // starts from the beginning when the user presses play.
-      if (seekTrickApplied && Number.isFinite(audio.duration)) {
-        setAudioDuration(audio.duration);
-        try {
-          audio.currentTime = 0;
-        } catch {
-          // Best-effort reset; the next play() call will start from 0 anyway
-          // because the source is still loading on some browsers.
-        }
-        seekTrickApplied = false;
-        setCurrentTime(0);
-        return;
-      }
       setCurrentTime(audio.currentTime);
     };
 
@@ -181,6 +144,35 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
       audio.removeEventListener('canplay', handleCanPlay);
     };
   }, [effectiveUrl]);
+
+  // Belt-and-braces sync loop: while the audio is playing, mirror
+  // audioRef.current.currentTime into React state on a 100ms interval.
+  // The native `timeupdate` event normally drives this, but on some
+  // browsers / WebM-Opus blobs it fires inconsistently or not at all
+  // until the audio ends — which left the waveform/timer frozen at 0:00
+  // even though playback was clearly happening (visible in the UI as
+  // the Pause button being shown).
+  useEffect(() => {
+    if (!isPlaying) return;
+    const tick = () => {
+      const audio = audioRef.current;
+      if (!audio) return;
+      // Avoid clobbering the React state with a stale 0 right after the
+      // user hit play but before the playhead actually moved.
+      if (Number.isFinite(audio.currentTime)) {
+        setCurrentTime(audio.currentTime);
+      }
+      // Opportunistically refresh duration too — some browsers only
+      // expose it after playback has actually started.
+      const d = audio.duration;
+      if (typeof d === 'number' && Number.isFinite(d) && d > 0) {
+        setAudioDuration((prev) => (prev > 0 ? prev : d));
+      }
+    };
+    tick();
+    const id = setInterval(tick, 100);
+    return () => clearInterval(id);
+  }, [isPlaying]);
 
   // Web Audio API playback state
   const webAudioSourceRef = useRef<AudioBufferSourceNode | null>(null);
@@ -332,33 +324,15 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
       // Create new audio element with blob URL
       const newAudio = new Audio(blobUrl);
 
-      // Same seek-trick as the main effect: WebM/Opus blobs from
-      // MediaRecorder report duration === Infinity until we seek past the
-      // end and back to 0. Without this, the timer/waveform stay at 0:00.
-      let blobSeekTrickApplied = false;
       const setDurationFromBlobAudio = () => {
         const d = newAudio.duration;
         if (typeof d === 'number' && !Number.isNaN(d) && Number.isFinite(d) && d > 0) {
           setAudioDuration(d);
-        } else if (!blobSeekTrickApplied) {
-          blobSeekTrickApplied = true;
-          try {
-            newAudio.currentTime = Number.MAX_SAFE_INTEGER;
-          } catch {
-            blobSeekTrickApplied = false;
-          }
         }
       };
 
       // Copy event listeners
       newAudio.addEventListener('timeupdate', () => {
-        if (blobSeekTrickApplied && Number.isFinite(newAudio.duration)) {
-          setAudioDuration(newAudio.duration);
-          try { newAudio.currentTime = 0; } catch { /* best-effort */ }
-          blobSeekTrickApplied = false;
-          setCurrentTime(0);
-          return;
-        }
         setCurrentTime(newAudio.currentTime);
       });
       newAudio.addEventListener('ended', () => {
