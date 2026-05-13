@@ -66,9 +66,17 @@ export async function getMediaUrl(pathOrUrl: string): Promise<string> {
     return cached.url;
   }
 
-  const { data, error } = await supabase.storage
-    .from(BUCKET)
-    .createSignedUrl(path, SIGN_DURATION_SECONDS);
+  let data, error;
+  try {
+    const result = await supabase.storage
+      .from(BUCKET)
+      .createSignedUrl(path, SIGN_DURATION_SECONDS);
+    data = result.data;
+    error = result.error;
+  } catch (e) {
+    console.warn('[mediaUrl] createSignedUrl threw for', path, e);
+    return pathOrUrl;
+  }
 
   if (error || !data?.signedUrl) {
     console.warn('[mediaUrl] Failed to sign URL for', path, error);

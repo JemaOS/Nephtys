@@ -1340,8 +1340,19 @@ export function ChatViewPage() {
         return true;
       });
 
-      // Convertir les paths storage en URLs signées (bucket privé)
-      await signFieldsBatch(validData as any[], ['media_url', 'file_url', 'media_thumbnail']);
+      // Convertir les paths storage en URLs signées (bucket privé).
+      // On signe AVANT setMessages pour éviter un flash où les images sont
+      // cassées, mais on ne bloque pas plus de 3s — au-delà on affiche
+      // quand même les messages avec leurs paths bruts (les <img> echoueront
+      // mais le texte/contexte des messages sera visible).
+      try {
+        await Promise.race([
+          signFieldsBatch(validData as any[], ['media_url', 'file_url', 'media_thumbnail']),
+          new Promise(resolve => setTimeout(resolve, 3000)),
+        ]);
+      } catch (e) {
+        console.warn('[loadMessages] signFieldsBatch failed, showing raw paths:', e);
+      }
 
       setMessages(validData)
       setCache(`msgs_${conversationId}`, validData) // Cache messages
