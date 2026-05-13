@@ -801,6 +801,8 @@ const MediaMessageDisplay = ({ message, typeInfo, hoveredMessageId, isOwn, setCo
             allMedia={allMediaItems}
             currentIndex={getMediaIndexForMessage(message.id)}
             onNavigate={handleMediaNavigate}
+            isEncrypted={!!message.is_media_encrypted}
+            currentUserId={user?.id}
           />
       </div>
     </div>
@@ -851,6 +853,8 @@ const DocumentMessageDisplay = ({ message, typeInfo, hoveredMessageId, isOwn, se
             message,
           });
         }}
+        isEncrypted={!!message.is_media_encrypted}
+        currentUserId={user?.id}
       />
     </div>
   )

@@ -611,8 +611,11 @@ export function ChatViewPage() {
   // Helper to handle new message insertion with deduplication and optimistic update replacement
   const handleNewMessage = useCallback(async (payload: any) => {
     const newMsg = payload.new as Message
-    // Signer les paths storage (bucket privé) avant injection dans le state
-    await signFieldsBatch([newMsg as any], ['media_url', 'file_url', 'media_thumbnail'])
+    // Signer les paths storage (bucket privé) avant injection dans le state.
+    // On skip la signature pour les médias chiffrés E2EE (télécharge auto via fetchAndDecryptMedia).
+    if (!(newMsg as any).is_media_encrypted) {
+      await signFieldsBatch([newMsg as any], ['media_url', 'file_url', 'media_thumbnail'])
+    }
 
     setMessages(prev => {
       // 1. Check if message already exists (by ID) to prevent duplicates
@@ -1342,13 +1345,12 @@ export function ChatViewPage() {
       });
 
       // Convertir les paths storage en URLs signées (bucket privé).
-      // On signe AVANT setMessages pour éviter un flash où les images sont
-      // cassées, mais on ne bloque pas plus de 3s — au-delà on affiche
-      // quand même les messages avec leurs paths bruts (les <img> echoueront
-      // mais le texte/contexte des messages sera visible).
+      // On NE signe PAS les médias chiffrés E2EE car ceux-ci seront téléchargés
+      // via fetchAndDecryptMedia qui regenère sa propre URL signée + déchiffre.
+      const nonEncrypted = validData.filter((m: any) => !m.is_media_encrypted);
       try {
         await Promise.race([
-          signFieldsBatch(validData as any[], ['media_url', 'file_url', 'media_thumbnail']),
+          signFieldsBatch(nonEncrypted as any[], ['media_url', 'file_url', 'media_thumbnail']),
           new Promise(resolve => setTimeout(resolve, 3000)),
         ]);
       } catch (e) {

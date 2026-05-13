@@ -17,6 +17,7 @@
  */
 
 import { supabase } from './supabase';
+import { extractStoragePath } from './mediaUrl';
 import {
   ensureUserKeyPair,
   encryptMedia,
@@ -205,11 +206,15 @@ export async function fetchAndDecryptMedia(
   const myKeyPair = await ensureUserKeyPair(userId);
   const rawKey = await unwrapKeyFromSender(wrapped, myKeyPair.privateKey);
 
-  // 3. Télécharge le binaire chiffré (signed URL)
+  // 3. Télécharge le binaire chiffré (signed URL).
+  // mediaPath peut être déjà une URL signée (le helper de loadMessages aura
+  // pré-signé) ou un path nu : on extrait toujours le path avant de re-signer.
+  const cleanPath = extractStoragePath(mediaPath);
   const { data: signed, error: signError } = await supabase.storage
     .from('media')
-    .createSignedUrl(mediaPath, 60); // 1 min suffit pour download
+    .createSignedUrl(cleanPath, 60);
   if (signError || !signed?.signedUrl) {
+    console.error('[E2EE] createSignedUrl failed for', cleanPath, signError);
     throw new Error('Impossible de générer une URL signée pour le binaire chiffré');
   }
 
