@@ -317,7 +317,7 @@ export const ImageRenderer: React.FC<{
     <>
       <button
         type="button"
-        className="relative cursor-pointer overflow-hidden rounded-xl border-[3px] border-[#787add] group message-media-container text-left w-full max-w-[260px] sm:max-w-[330px] bg-transparent p-0"
+        className="relative block cursor-pointer overflow-hidden rounded-xl border-[3px] border-[#787add] group message-media-container text-left w-[260px] sm:w-[330px] max-w-full bg-transparent p-0 m-0"
         style={buttonStyle}
         onClick={onImageClick}
         aria-label="Afficher l'image en plein écran"
