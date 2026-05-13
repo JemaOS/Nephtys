@@ -23,8 +23,28 @@ export const PinMessageDialog: React.FC<PinMessageDialogProps> = ({
   onPin,
 }) => {
   const [selectedDuration, setSelectedDuration] = useState<PinDuration>('7d');
-
   const dialogRef = React.useRef<HTMLDialogElement>(null);
+
+  // showModal() place le dialog dans le CSS top layer, au-dessus de tout
+  // autre élément y compris les autres dialogs (MediaViewer).
+  React.useEffect(() => {
+    const el = dialogRef.current;
+    if (!el) return;
+    if (isOpen) {
+      if (!el.open) el.showModal();
+    } else {
+      if (el.open) el.close();
+    }
+  }, [isOpen]);
+
+  // Fermer sur Escape natif
+  React.useEffect(() => {
+    const el = dialogRef.current;
+    if (!el) return;
+    const onCancel = (e: Event) => { e.preventDefault(); onClose(); };
+    el.addEventListener('cancel', onCancel);
+    return () => el.removeEventListener('cancel', onCancel);
+  }, [onClose]);
 
   if (!isOpen) return null;
 
@@ -38,22 +58,18 @@ export const PinMessageDialog: React.FC<PinMessageDialogProps> = ({
 
   return (
     <dialog
-      ref={dialogRef as any}
-      open
-      className="fixed inset-0 bg-transparent z-[250] flex items-center justify-center w-full h-full border-none p-0 m-0 max-w-none max-h-none"
+      ref={dialogRef}
+      className="bg-transparent border-none p-0 m-0 max-w-none max-h-none w-full h-full"
+      style={{ width: '100vw', height: '100dvh', maxWidth: '100vw', maxHeight: '100dvh' }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       {/* Backdrop */}
-      <div 
-        className="absolute inset-0 bg-black/50" 
-        onClick={onClose} 
-        onKeyDown={(e) => { if (e.key === 'Escape' || e.key === 'Enter') onClose(); }}
-        role="button"
-        tabIndex={0}
-        aria-label="Fermer"
-      />
-      
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+
+      {/* Centrage */}
+      <div className="fixed inset-0 flex items-center justify-center p-4 pointer-events-none">
       {/* Dialog Content */}
-      <div className="bg-bg-surface rounded-lg shadow-2xl w-full max-w-md mx-4 overflow-hidden cursor-auto text-left p-0 border-none flex flex-col relative z-10">
+      <div className="bg-bg-surface rounded-2xl shadow-2xl w-full max-w-md overflow-hidden cursor-auto text-left border-none flex flex-col pointer-events-auto">
           {/* Header */}
           <div className="px-6 py-4">
             <h2 className="text-xl font-medium text-text-primary">
@@ -117,6 +133,7 @@ export const PinMessageDialog: React.FC<PinMessageDialogProps> = ({
             </button>
           </div>
         </div>
-      </dialog>
+      </div>
+    </dialog>
   );
 };

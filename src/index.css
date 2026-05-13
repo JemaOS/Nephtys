@@ -243,6 +243,13 @@ img {
   }
 }
 
+/* Les dialogs avec backdrop custom : masquer le ::backdrop natif du browser
+   pour éviter un double overlay. Le MediaViewer et PinMessageDialog gèrent
+   leur propre backdrop via un div interne. */
+dialog::backdrop {
+  background: transparent;
+}
+
 /* Ensure media viewer uses full viewport on mobile */
 @media (max-width: 768px) {
   .media-viewer-fullscreen {
