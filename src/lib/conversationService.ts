@@ -1,5 +1,6 @@
 import { supabase, Conversation, Profile, Message } from '@/lib/supabase'
 import { ConversationWithDetails } from '@/pages/ChatsPageComponents'
+import { signFieldsBatch } from '@/lib/mediaUrl'
 
 export const fetchConversationMembers = async (userId: string) => {
   let memberData: any[] | null = null
@@ -160,10 +161,14 @@ export const fetchAllConversationData = async (userId: string) => {
   const userIdsToFetch = [...new Set([...otherUserIds, ...directConvOtherUserIds, ...(savedMessagesConvIds.size > 0 ? [userId] : [])])]
   
   const { data: profiles } = await fetchProfiles(userIdsToFetch)
+  // Convertir les paths storage en URLs signées (bucket privé)
+  await signFieldsBatch(profiles ?? null, ['avatar_url'])
+  await signFieldsBatch(conversationsData as any[], ['avatar_url'])
   const profileMap = new Map(profiles?.map(p => [p.id, p]) || [])
 
   // Step 5: Get last messages
   const { data: recentMessages } = await fetchLastMessages(conversationIds)
+  await signFieldsBatch(recentMessages as any[] | null, ['media_url', 'file_url', 'media_thumbnail'])
   const lastMessageMap = new Map<string, Message>()
   recentMessages?.forEach(msg => {
     if (!lastMessageMap.has(msg.conversation_id)) lastMessageMap.set(msg.conversation_id, msg)

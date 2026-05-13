@@ -375,16 +375,15 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
       
       if (uploadError) throw uploadError;
       
-      const { data: { publicUrl } } = supabase.storage.from('media').getPublicUrl(fileName);
-      
+      // On stocke le path nu en base ; l'URL signée est générée à la volée
       const { error: updateError } = await supabase
         .from('conversations')
-        .update({ avatar_url: publicUrl })
+        .update({ avatar_url: fileName })
         .eq('id', conversationId);
       
       if (updateError) throw updateError;
       
-      setCurrentAvatar(publicUrl);
+      setCurrentAvatar(fileName);
       alert('✅ Photo mise à jour !');
       globalThis.location.reload();
     } catch (err) {

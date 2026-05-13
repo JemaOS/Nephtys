@@ -5,6 +5,7 @@ import React, { useEffect, useState } from 'react';
 import { X, Search, Check } from 'lucide-react';
 import { supabase, Conversation, Profile } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
+import { signFieldsBatch } from '@/lib/mediaUrl';
 
 interface ConversationWithDetails extends Conversation {
   otherUser?: Profile;
@@ -126,9 +127,13 @@ export const ForwardMessageModal: React.FC<ForwardMessageModalProps> = ({
       );
 
       // 4) Pas de filtre par contacts : on liste toutes les conversations actives.
-      //    L'utilisateur veut pouvoir transférer vers n'importe quelle discussion
-      //    qu'il a déjà ouverte (pattern WhatsApp), pas seulement vers ses
-      //    contacts ajoutés explicitement.
+      // 5) Signer les avatars (bucket privé)
+      await signFieldsBatch(conversationsWithDetails as any[], ['avatar_url']);
+      const otherUsers = conversationsWithDetails
+        .map(c => c.otherUser)
+        .filter(Boolean) as Profile[];
+      await signFieldsBatch(otherUsers as any[], ['avatar_url']);
+
       setConversations(conversationsWithDetails);
     } catch (error) {
       console.error('[ForwardModal] Error loading conversations:', error);

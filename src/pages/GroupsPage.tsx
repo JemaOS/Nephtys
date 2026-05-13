@@ -6,6 +6,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { MainLayout } from '@/components/MainLayout'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
+import { signFieldsBatch } from '@/lib/mediaUrl'
 import { ArrowLeft, Users, X, Check } from 'lucide-react'
 
 export function GroupsPage() {
@@ -84,6 +85,8 @@ export function GroupsPage() {
       .in('id', allCandidateIds)
 
     if (profiles && profiles.length > 0) {
+      // Signer les avatars (bucket privé)
+      await signFieldsBatch(profiles as any[], ['avatar_url'])
       const contactsWithProfiles = profiles.map(profile => {
         const contact = myContacts?.find(c => c.contact_user_id === profile.id)
         return {

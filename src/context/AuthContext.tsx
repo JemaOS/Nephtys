@@ -5,6 +5,7 @@ import { createContext, useContext, useEffect, useState, useMemo, ReactNode } fr
 import { User } from '@supabase/supabase-js'
 import { supabase, Profile } from '@/lib/supabase'
 import { initializePresence, cleanupPresence } from '@/hooks/usePresence'
+import { resolveMediaUrl } from '@/lib/mediaUrl'
 
 // Timeout for auth operations (in milliseconds)
 const AUTH_TIMEOUT = 5000;
@@ -286,6 +287,10 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
       );
 
       if (!error && data) {
+        // Signer l'avatar (bucket privé)
+        if (data.avatar_url) {
+          data.avatar_url = (await resolveMediaUrl(data.avatar_url)) ?? data.avatar_url;
+        }
         setProfile(data);
         cacheProfile(data);
       }

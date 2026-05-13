@@ -127,12 +127,8 @@ export const uploadThumbnail = async (
     throw error;
   }
 
-  // Get public URL
-  const { data: { publicUrl } } = supabase.storage
-    .from('media')
-    .getPublicUrl(thumbnailFileName);
-
-  return publicUrl;
+  // Bucket privé : on retourne le path. URL signée générée à l'affichage.
+  return thumbnailFileName;
 };
 
 export const DocumentThumbnail: React.FC<DocumentThumbnailProps> = ({

@@ -558,9 +558,8 @@ async function uploadBase64File(
       return null
     }
     
-    // Get public URL
-    const { data: { publicUrl } } = supabase.storage.from('media').getPublicUrl(uniqueName)
-    return publicUrl
+    // Bucket privé : on retourne le path. URL signée générée à l'affichage.
+    return uniqueName
   } catch (error) {
     console.error('Error uploading file:', error)
     return null

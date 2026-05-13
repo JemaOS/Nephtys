@@ -473,13 +473,9 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       return null;
     }
 
-    const { data: urlData } = supabase.storage
-      .from('media')
-      .getPublicUrl(fileName);
-    const publicUrl = urlData?.publicUrl ?? '';
-
+    // Bucket privé : on stocke le path. L'URL signée est générée à l'affichage.
     const uploadedFile: UploadedFileData = {
-      url: publicUrl,
+      url: fileName,
       type,
       fileName: file.name,
       fileSize: fileToUpload instanceof Blob ? fileToUpload.size : file.size,
@@ -596,13 +592,9 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       return null;
     }
 
-    const { data: urlData } = supabase.storage
-      .from('media')
-      .getPublicUrl(fileName);
-    const publicUrl = urlData?.publicUrl ?? '';
-
+    // Bucket privé : on stocke le path. L'URL signée est générée à l'affichage.
     const uploadedFile: UploadedFileData = {
-      url: publicUrl,
+      url: fileName,
       type,
       fileName: file.name,
       fileSize: fileToUpload instanceof Blob ? fileToUpload.size : file.size,
@@ -757,10 +749,8 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
             });
 
           if (!thumbError) {
-            const { data: thumbData } = supabase.storage
-              .from('media')
-              .getPublicUrl(thumbnailFileName);
-            thumbnailUrl = thumbData?.publicUrl;
+            // Bucket privé : on stocke le path. URL signée générée à l'affichage.
+            thumbnailUrl = thumbnailFileName;
           }
           setDocumentUploadProgress(30);
         } catch (err) {
@@ -803,17 +793,12 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
         throw new Error(error.message || 'Upload failed');
       }
 
-      // Get public URL
-      const { data: urlData } = supabase.storage
-        .from('media')
-        .getPublicUrl(fileName);
-      const publicUrl = urlData?.publicUrl ?? '';
-
+      // Bucket privé : on stocke le path. URL signée générée à l'affichage.
       setDocumentUploadProgress(100);
 
       // Call onUploadComplete with thumbnail URL
       onUploadComplete({
-        url: publicUrl,
+        url: fileName,
         type: 'file',
         fileName: documentFile.name,
         fileSize: documentFile.size,
@@ -909,14 +894,10 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
         throw new Error(error.message || 'Upload failed');
       }
 
-      const { data: urlData } = supabase.storage
-        .from('media')
-        .getPublicUrl(uploadFileName);
-      const publicUrl = urlData?.publicUrl ?? '';
-
+      // Bucket privé : on stocke le path. URL signée générée à l'affichage.
       setUploadProgress(100);
       onUploadComplete({
-        url: publicUrl,
+        url: uploadFileName,
         type: 'image',
         fileName: fileName,
         fileSize: fileToUpload instanceof Blob ? fileToUpload.size : editedFile.size,

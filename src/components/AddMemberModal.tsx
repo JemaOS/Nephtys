@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Search, Users, Check, Loader2 } from 'lucide-react';
 import { supabase, Profile } from '@/lib/supabase';
+import { signFieldsBatch } from '@/lib/mediaUrl';
 
 interface AddMemberModalProps {
   isOpen: boolean;
@@ -75,6 +76,8 @@ export const AddMemberModal: React.FC<AddMemberModalProps> = ({
         .select('*')
         .in('id', candidateIds);
 
+      // Signer les avatars (bucket privé)
+      await signFieldsBatch(profiles as any[] | null, ['avatar_url']);
       setAvailableContacts(profiles || []);
     } else {
       setAvailableContacts([]);

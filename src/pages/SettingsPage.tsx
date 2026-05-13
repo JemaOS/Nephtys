@@ -477,11 +477,11 @@ export function SettingsPage() {
         throw new Error('Erreur lors de l\'upload')
       }
       
-      const { data: { publicUrl } } = supabase.storage.from('media').getPublicUrl(fileName)
-      
+      // On stocke le path nu en base (pas l'URL signée qui expire).
+      // L'URL signée sera générée à la volée via getMediaUrl() au moment de l'affichage.
       const { error: updateError } = await supabase
         .from('profiles')
-        .update({ avatar_url: publicUrl })
+        .update({ avatar_url: fileName })
         .eq('id', user.id)
       
       if (updateError) {

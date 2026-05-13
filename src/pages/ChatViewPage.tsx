@@ -7,6 +7,7 @@ import { useAuth } from '@/context/AuthContext'
 import { useTheme } from '@/context/ThemeContext'
 import { MainLayout } from '@/components/MainLayout'
 import { supabase, Message, Conversation, Profile, sendBroadcastMessage } from '@/lib/supabase'
+import { signFieldsBatch, resolveMediaUrl } from '@/lib/mediaUrl'
 import { offlineStorage } from '@/lib/offlineStorage'
 import { useUserPresence } from '@/hooks/usePresence'
 import { Send, Mic, Plus } from 'lucide-react'
@@ -607,9 +608,11 @@ export function ChatViewPage() {
   }, [permission, conversationId, sendNotification])
 
   // Helper to handle new message insertion with deduplication and optimistic update replacement
-  const handleNewMessage = useCallback((payload: any) => {
+  const handleNewMessage = useCallback(async (payload: any) => {
     const newMsg = payload.new as Message
-    
+    // Signer les paths storage (bucket privé) avant injection dans le state
+    await signFieldsBatch([newMsg as any], ['media_url', 'file_url', 'media_thumbnail'])
+
     setMessages(prev => {
       // 1. Check if message already exists (by ID) to prevent duplicates
       if (prev.some(m => m.id === newMsg.id)) {
@@ -1196,15 +1199,24 @@ export function ChatViewPage() {
 
     const { data, error } = await supabase.from('conversations').select('*').eq('id', conversationId!).maybeSingle()
     if (!error && data) {
+      // Signer l'avatar (bucket privé)
+      if (data.avatar_url) {
+        data.avatar_url = (await resolveMediaUrl(data.avatar_url)) ?? data.avatar_url
+      }
       setConversation(data)
       setCache(`conv_${conversationId}`, data)
       
       if (data.type === 'group') {
         const profileMap = await loadGroupMembers(conversationId!)
+        // Signer les avatars de tous les membres
+        await signFieldsBatch(Array.from(profileMap.values()) as any[], ['avatar_url'])
         setGroupMemberProfiles(profileMap)
       } else if (data.type === 'direct') {
         const otherUserData = await loadDirectConversationUser(conversationId!, user!.id)
         if (otherUserData) {
+          if (otherUserData.avatar_url) {
+            otherUserData.avatar_url = (await resolveMediaUrl(otherUserData.avatar_url)) ?? otherUserData.avatar_url
+          }
           setOtherUser(otherUserData)
           setCache(`user_${conversationId}`, otherUserData)
         }
@@ -1327,6 +1339,9 @@ export function ChatViewPage() {
         }
         return true;
       });
+
+      // Convertir les paths storage en URLs signées (bucket privé)
+      await signFieldsBatch(validData as any[], ['media_url', 'file_url', 'media_thumbnail']);
 
       setMessages(validData)
       setCache(`msgs_${conversationId}`, validData) // Cache messages
@@ -1760,16 +1775,15 @@ export function ChatViewPage() {
         contentType: mimeType // Explicitly set the content type
       })
       if (uploadError) throw uploadError
-      const { data: { publicUrl } } = supabase.storage.from('media').getPublicUrl(fileName)
-      
+      // On stocke le path nu (pas l'URL signée). L'URL est régénérée au chargement.
       const now = new Date().toISOString()
       const tempId = `temp-${Date.now()}`
       
       const messageData: any = {
         conversation_id: conversationId!, sender_id: user.id, content: '', type: 'audio', status: 'sent',
-        reply_to_id: replyToMessage?.id || null, media_url: publicUrl, media_type: 'audio',
+        reply_to_id: replyToMessage?.id || null, media_url: fileName, media_type: 'audio',
         file_name: `voice-${Date.now()}.${fileExtension}`, file_size: audioBlob.size,
-        file_url: publicUrl, // Fallback for older schema
+        file_url: fileName, // Fallback for older schema
       }
       
       // Add ephemeral fields if enabled

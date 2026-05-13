@@ -7,6 +7,7 @@ import { MainLayout } from '@/components/MainLayout'
 import { supabase, Contact, Profile } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { offlineStorage } from '@/lib/offlineStorage'
+import { signFieldsBatch } from '@/lib/mediaUrl'
 import { Search, UserPlus, MessageCircle, X, Check, Trash2, CheckSquare, Square } from 'lucide-react'
 
 // Cache helpers for instant display like WhatsApp
@@ -453,6 +454,8 @@ export function ContactsPage() {
           })
 
           const filteredContacts = contactsWithProfiles.filter(c => c.profile) as (Contact & { profile: Profile })[]
+          // Signer les avatars (bucket privé)
+          await signFieldsBatch(filteredContacts.map(c => c.profile) as any[], ['avatar_url'])
           setContacts(filteredContacts)
           setCache('contacts', filteredContacts) // Cache for instant display
         }
