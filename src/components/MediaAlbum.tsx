@@ -163,9 +163,14 @@ export const MediaAlbum: React.FC<MediaAlbumProps> = ({
     setViewerStartMessageId(null);
   };
 
-  // Detect if any media is encrypted: si oui, on désactive la nav fullscreen
-  // multi-fichiers (le viewer ne sait pas déchiffrer les autres entrées).
-  const anyEncrypted = messages.some((m) => !!(m as any).is_media_encrypted);
+  // Note: previously we disabled fullscreen multi-file navigation when ANY
+  // entry of the album was E2EE-encrypted, because the viewer could only
+  // display the originally-clicked decrypted blob. The viewer now decrypts
+  // each navigated entry on the fly via `useDecryptedMedia` (each `allMedia[i]`
+  // carries its own `messageId` and `isEncrypted` flag), so we can safely
+  // pass `allMedia` / `onNavigate` regardless of encryption state. This
+  // restores the WhatsApp-like left/right arrows on a 4-image pack in a
+  // friend (E2EE) chat.
 
   const isVideoMsg = (m: Message) => m.type === 'video' || m.media_type === 'video';
 
@@ -287,9 +292,9 @@ export const MediaAlbum: React.FC<MediaAlbumProps> = ({
           onStar={onStar}
           onPin={onPin}
           onReaction={onReaction}
-          allMedia={anyEncrypted ? undefined : allMedia}
-          currentIndex={anyEncrypted ? 0 : viewerIndex}
-          onNavigate={anyEncrypted ? undefined : (idx) => setViewerIndex(idx)}
+          allMedia={allMedia}
+          currentIndex={viewerIndex}
+          onNavigate={(idx) => setViewerIndex(idx)}
         />
       )}
     </>

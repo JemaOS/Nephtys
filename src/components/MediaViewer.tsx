@@ -5,6 +5,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { MediaViewerHeader, ImageViewer, VideoPlayer, AudioPlayer } from './MediaViewerComponents';
 import { downloadMedia } from '@/lib/downloadMedia';
+import { useDecryptedMedia } from '@/hooks/useDecryptedMedia';
 
 // Constants for zoom levels - extracted to module level
 const MIN_ZOOM_DEFAULT = 0.5;
@@ -179,18 +180,10 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   // back to the raw props. This makes navigation actually swap the displayed
   // image / sender / timestamp even when the parent only updates currentIndex
   // (e.g. the MediaAlbum path) instead of also rebuilding all per-item props.
-  //
-  // Special case for E2EE: when the parent provides a `blob:` URL via
-  // `mediaUrlProp` (locally-decrypted blob) we keep using it instead of
-  // `allMedia[currentIndex].url` (which would be the raw encrypted path).
-  // This means navigation across encrypted entries stays on the originally-
-  // clicked one, matching the existing behavior.
   const safeIndex = allMedia && allMedia.length > 0
     ? Math.max(0, Math.min(currentIndex, allMedia.length - 1))
     : 0;
   const currentMedia = allMedia && allMedia.length > 0 ? allMedia[safeIndex] : undefined;
-  const isParentBlob = typeof mediaUrlProp === 'string' && mediaUrlProp.startsWith('blob:');
-  const mediaUrl = isParentBlob ? mediaUrlProp : (currentMedia?.url ?? mediaUrlProp);
   const mediaType = currentMedia?.type ?? mediaTypeProp;
   const senderName = currentMedia?.senderName ?? senderNameProp;
   const senderAvatar = currentMedia?.senderAvatar ?? senderAvatarProp;
@@ -201,6 +194,38 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   const fileName = currentMedia?.fileName ?? fileNameProp;
   const messageId = currentMedia?.messageId ?? messageIdProp;
   const isEncrypted = currentMedia?.isEncrypted ?? isEncryptedProp ?? false;
+
+  // Resolve the actual media URL for display:
+  //  - If the parent passed a `blob:` URL AND we are still on the originally-
+  //    opened entry, keep using it (avoid re-decrypting the same item).
+  //  - Otherwise, prefer the per-item URL from `allMedia[currentIndex]`.
+  //  - If that per-item entry is E2EE, decrypt it locally via `useDecryptedMedia`
+  //    so navigation across encrypted entries works (instead of trying to load
+  //    a raw ciphertext into an <img>).
+  const isParentBlob = typeof mediaUrlProp === 'string' && mediaUrlProp.startsWith('blob:');
+  const isOnInitialEntry = !currentMedia || currentMedia.messageId === messageIdProp;
+  const rawItemUrl = currentMedia?.url ?? mediaUrlProp;
+  const itemNeedsDecrypt = !!currentMedia && !!currentMedia.isEncrypted && !(isParentBlob && isOnInitialEntry);
+
+  // Note: this hook is always called (rules of hooks). When `encrypted=false`
+  // it just resolves the signed URL via useMediaUrl with no extra cost.
+  const { url: decryptedItemUrl } = useDecryptedMedia({
+    encrypted: itemNeedsDecrypt,
+    messageId: currentMedia?.messageId,
+    userId: currentUserId,
+    src: itemNeedsDecrypt ? rawItemUrl : null,
+  });
+
+  let mediaUrl: string;
+  if (isParentBlob && isOnInitialEntry) {
+    mediaUrl = mediaUrlProp;
+  } else if (itemNeedsDecrypt) {
+    // Show the decrypted blob if ready; while decrypting, show empty src to
+    // avoid leaking the ciphertext attempt as a broken image.
+    mediaUrl = decryptedItemUrl || '';
+  } else {
+    mediaUrl = rawItemUrl;
+  }
   const isMobile = useIsMobile();
   const { isLandscape } = useScreenOrientation();
   const [showControls, setShowControls] = useState(true);
@@ -276,17 +301,22 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
     };
   }, [showControls, isHoveringControls, startHideTimer]);
 
-  // Reset zoom / pan / swipe state whenever we navigate to a different media,
-  // otherwise the new image inherits the previous one's transform and feels
-  // broken (zoomed-in / off-center / mid-swipe).
+  // Reset zoom / pan / swipe state whenever we navigate to a different media
+  // or open/close the viewer. Otherwise the new image inherits the previous
+  // one's transform and feels broken (zoomed-in / off-center / mid-swipe).
+  // NOTE: this single effect supersedes the two previously separate ones —
+  // they were partially overlapping and could leave swipe state inconsistent
+  // across navigation.
   useEffect(() => {
     setZoom(1);
     setPosition({ x: 0, y: 0 });
     setSwipeOffset(0);
+    setTouchStartX(null);
+    setTouchStartY(null);
     setIsSwipeActive(false);
     setSwipeDirection(null);
     setShowControls(true);
-  }, [currentIndex, mediaUrl]);
+  }, [currentIndex, mediaUrl, isOpen]);
 
   // Handle mouse move to show controls
   const handleContainerMouseMove = useCallback(() => {
@@ -357,16 +387,8 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [handleKeyDown]);
 
-  // Reset zoom and swipe state when media changes or viewer closes
-  useEffect(() => {
-    setZoom(1);
-    setPosition({ x: 0, y: 0 });
-    setSwipeOffset(0);
-    setTouchStartX(null);
-    setTouchStartY(null);
-    setIsSwipeActive(false);
-    setSwipeDirection(null);
-  }, [mediaUrl, isOpen]);
+  // (Reset effect merged into the unified one above — see the useEffect that
+  // depends on [currentIndex, mediaUrl, isOpen].)
 
   // Robust auto-play handling
   useEffect(() => {
@@ -556,9 +578,10 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
 
   // Helper: Calculate adjusted swipe offset with edge resistance - extracted
   const calculateSwipeOffset = useCallback((diffX: number): number => {
+    const total = allMedia?.length ?? 0;
     const isAtStart = currentIndex === 0 && diffX > 0;
-    const isAtEnd = currentIndex === allMedia.length - 1 && diffX < 0;
-    
+    const isAtEnd = total > 0 && currentIndex === total - 1 && diffX < 0;
+
     // Apply rubber band effect at edges
     if (isAtStart || isAtEnd) {
       return diffX * 0.3;
@@ -580,7 +603,8 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   // Helper: Handle horizontal swipe navigation - extracted to reduce complexity
   const handleHorizontalSwipe = useCallback((diffX: number) => {
     if (!allMedia || allMedia.length <= 1 || zoom > 1) return;
-    
+    if (touchStartX === null) return;
+
     const adjustedOffset = calculateSwipeOffset(diffX);
     updateSwipeWithVelocity(touchStartX + diffX);
     setSwipeOffset(adjustedOffset);
@@ -650,7 +674,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
       return 'next';
     }
     return null;
-  }, [swipeOffset, swipeOffset]);
+  }, [swipeOffset]);
 
   // Handle touch end for pinch-to-zoom, pan, and swipe navigation (WhatsApp-like)
   const handleTouchEnd = useCallback((e: React.TouchEvent) => {
@@ -1182,44 +1206,53 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
         }}
       />
 
-      {/* Navigation arrows - shown on both desktop and mobile (mobile also has swipe) */}
-      {allMedia && allMedia.length > 1 && (
-        <>
-          {/* Previous button */}
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); handlePrevious(); }}
-            disabled={currentIndex === 0}
-            className={`absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 z-10 w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center transition-all duration-200 ${
-              !showControls
-                ? 'opacity-0 pointer-events-none'
-                : currentIndex === 0
-                  ? 'opacity-30 cursor-not-allowed'
-                  : 'opacity-100 hover:scale-110'
-            }`}
-            aria-label="Média précédent"
-          >
-            <ChevronLeft size={28} className="text-white" />
-          </button>
+      {/* Navigation arrows - shown on both desktop and mobile (mobile also has swipe).
+          For images/GIFs/stickers there is no auto-hide flow (only video/audio
+          fade controls after 3s of idle), so we keep the arrows visible
+          regardless of `showControls` for those types — otherwise an
+          unexpected `setShowControls(false)` could leave a 4-image pack with
+          arrows that look invisible/inert. */}
+      {allMedia && allMedia.length > 1 && (() => {
+        const isImageLike = mediaType === 'image' || mediaType === 'gif' || mediaType === 'sticker';
+        const arrowsVisible = isImageLike || showControls;
+        return (
+          <>
+            {/* Previous button */}
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); handlePrevious(); }}
+              disabled={currentIndex === 0}
+              className={`absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 z-10 w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center transition-all duration-200 ${
+                !arrowsVisible
+                  ? 'opacity-0 pointer-events-none'
+                  : currentIndex === 0
+                    ? 'opacity-30 cursor-not-allowed'
+                    : 'opacity-100 hover:scale-110'
+              }`}
+              aria-label="Média précédent"
+            >
+              <ChevronLeft size={28} className="text-white" />
+            </button>
 
-          {/* Next button */}
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); handleNext(); }}
-            disabled={currentIndex === allMedia.length - 1}
-            className={`absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 z-10 w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center transition-all duration-200 ${
-              !showControls
-                ? 'opacity-0 pointer-events-none'
-                : currentIndex === allMedia.length - 1
-                  ? 'opacity-30 cursor-not-allowed'
-                  : 'opacity-100 hover:scale-110'
-            }`}
-            aria-label="Média suivant"
-          >
-            <ChevronRight size={28} className="text-white" />
-          </button>
-        </>
-      )}
+            {/* Next button */}
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); handleNext(); }}
+              disabled={currentIndex === allMedia.length - 1}
+              className={`absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 z-10 w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center transition-all duration-200 ${
+                !arrowsVisible
+                  ? 'opacity-0 pointer-events-none'
+                  : currentIndex === allMedia.length - 1
+                    ? 'opacity-30 cursor-not-allowed'
+                    : 'opacity-100 hover:scale-110'
+              }`}
+              aria-label="Média suivant"
+            >
+              <ChevronRight size={28} className="text-white" />
+            </button>
+          </>
+        );
+      })()}
 
       <section
         aria-label="Visualisation du média"
