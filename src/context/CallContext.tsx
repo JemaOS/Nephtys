@@ -245,6 +245,9 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
       .select('name, avatar_url')
       .eq('id', conversationId)
       .maybeSingle()
+    if (groupConversation?.avatar_url) {
+      groupConversation.avatar_url = (await resolveMediaUrl(groupConversation.avatar_url)) ?? groupConversation.avatar_url
+    }
     return groupConversation
   }
 
@@ -451,7 +454,9 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
         .maybeSingle()
 
       const calleeName = profile?.display_name || profile?.username || 'Utilisateur'
-      const calleeAvatar = profile?.avatar_url || undefined
+      const calleeAvatar = profile?.avatar_url
+        ? ((await resolveMediaUrl(profile.avatar_url)) ?? profile.avatar_url)
+        : undefined
 
       setIncomingCall({
         from: userId,
@@ -915,12 +920,16 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
         .select('user_id')
         .eq('conversation_id', conversationId)
 
+      const groupCallerAvatar = conversation?.avatar_url
+        ? ((await resolveMediaUrl(conversation.avatar_url)) ?? conversation.avatar_url)
+        : undefined
+
       setIncomingCall({
         from: conversationId,
         conversationId: conversationId,
         isVideo: config.video,
         callerName: conversation?.name || 'Appel de groupe',
-        callerAvatar: conversation?.avatar_url,
+        callerAvatar: groupCallerAvatar,
         isGroupCall: true
       })
 

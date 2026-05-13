@@ -5,6 +5,8 @@ import {
 } from 'lucide-react';
 import { Profile, Message } from '@/lib/supabase';
 import { formatFileSize, formatDate, getEphemeralLabel } from './ConversationInfo';
+import { useDecryptedMedia } from '@/hooks/useDecryptedMedia';
+import { useAuth } from '@/context/AuthContext';
 
 // Re-export interfaces if needed, or define them here
 export interface GroupMember {
@@ -298,36 +300,60 @@ export const MediaTab: React.FC<MediaTabProps> = ({
   return (
     <div className="grid grid-cols-3 gap-2">
       {mediaMessages.map((media) => (
-        <button
+        <MediaThumb
           key={media.id}
+          media={media}
           onClick={() => {
             setSelectedMedia(media);
             setIsMediaViewerOpen(true);
           }}
-          className="w-full aspect-square rounded-lg overflow-hidden bg-bg-hover hover:opacity-80 transition-opacity cursor-pointer relative group"
-        >
-          {(media.type === 'video' || media.media_type === 'video') ? (
-            <>
-              <video
-                src={`${media.media_url || media.file_url}#t=0.1`}
-                className="w-full h-full object-cover"
-                muted
-                preload="metadata"
-              />
-              <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/30 transition-colors">
-                <Video size={32} className="text-white drop-shadow-lg" />
-              </div>
-            </>
-          ) : (
-            <img
-              src={media.media_url || media.file_url || ''}
-              alt="Media"
-              className="w-full h-full object-cover"
-            />
-          )}
-        </button>
+        />
       ))}
     </div>
+  );
+};
+
+// Thumbnail unitaire qui résout l'URL signée ou déchiffre E2EE à la volée.
+const MediaThumb: React.FC<{ media: Message; onClick: () => void }> = ({ media, onClick }) => {
+  const { user } = useAuth();
+  const isVideo = media.type === 'video' || media.media_type === 'video';
+  const src = media.media_url || media.file_url || '';
+  const { url, loading } = useDecryptedMedia({
+    encrypted: !!(media as any).is_media_encrypted,
+    messageId: media.id,
+    userId: user?.id,
+    src,
+  });
+
+  return (
+    <button
+      onClick={onClick}
+      className="w-full aspect-square rounded-lg overflow-hidden bg-bg-hover hover:opacity-80 transition-opacity cursor-pointer relative group"
+    >
+      {loading || !url ? (
+        <div className="w-full h-full flex items-center justify-center">
+          <Loader2 size={20} className="animate-spin text-text-secondary" />
+        </div>
+      ) : isVideo ? (
+        <>
+          <video
+            src={`${url}#t=0.1`}
+            className="w-full h-full object-cover"
+            muted
+            preload="metadata"
+          />
+          <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/30 transition-colors">
+            <Video size={32} className="text-white drop-shadow-lg" />
+          </div>
+        </>
+      ) : (
+        <img
+          src={url}
+          alt="Media"
+          className="w-full h-full object-cover"
+        />
+      )}
+    </button>
   );
 };
 

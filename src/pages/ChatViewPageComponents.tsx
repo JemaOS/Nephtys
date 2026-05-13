@@ -6,6 +6,7 @@ import { MessageHoverActions } from '@/components/MessageHoverActions'
 import { MessageReactions } from '@/components/MessageReactions'
 import { MessageReply } from '@/components/MessageReply'
 import { MediaMessage } from '@/components/MediaMessage'
+import { MediaAlbum } from '@/components/MediaAlbum'
 import { VoiceMessage } from '@/components/VoiceMessage'
 import { AudioFilePlayer } from '@/components/AudioFilePlayer'
 import { LinkPreview } from '@/components/LinkPreview'
@@ -632,6 +633,7 @@ interface TimelineItemComponentProps {
   allMediaItems: any[]
   getMediaIndexForMessage: (id: string) => number
   handleMediaNavigate: (index: number) => void
+  mediaAlbumMap?: Map<string, { isLeader: boolean; leaderId: string; members: Message[] }>
   scrollToMessage: (id: string) => void
   handleStartVideoCall: () => void
   handleStartAudioCall: () => void
@@ -762,10 +764,48 @@ const GifStickerMessageDisplay = ({ message, typeInfo, hoveredMessageId, isOwn, 
   )
 }
 
-const MediaMessageDisplay = ({ message, typeInfo, hoveredMessageId, isOwn, setContextMenu, getSenderInfo, handleForwardMessage, handleStarMessage, handlePinMessage, addReaction, allMediaItems, getMediaIndexForMessage, handleMediaNavigate, user }: any) => {
+const MediaMessageDisplay = ({ message, typeInfo, hoveredMessageId, isOwn, setContextMenu, getSenderInfo, handleForwardMessage, handleStarMessage, handlePinMessage, addReaction, allMediaItems, getMediaIndexForMessage, handleMediaNavigate, mediaAlbumMap, user }: any) => {
   const { mediaUrl, mediaType } = typeInfo
   const mediaSenderInfo = getSenderInfo(message.sender_id)
-  
+
+  // --- WhatsApp-style album ---------------------------------------------
+  // Si ce message fait partie d'un album et n'est PAS le leader, on ne
+  // l'affiche pas (il est rendu par le leader sous forme de mosaïque).
+  const albumEntry = mediaAlbumMap?.get?.(message.id)
+  if (albumEntry && !albumEntry.isLeader) {
+    return null
+  }
+  if (albumEntry && albumEntry.isLeader) {
+    return (
+      <div className="relative">
+        <MediaAlbum
+          messages={albumEntry.members}
+          currentUserId={user?.id}
+          isOwn={message.sender_id === user?.id}
+          showHoverActions={hoveredMessageId === message.id}
+          onOpenMenu={(e) => {
+            const rect = e.currentTarget.getBoundingClientRect()
+            setContextMenu({
+              isOpen: true,
+              position: { x: rect.left, y: rect.bottom + 5 },
+              message,
+            })
+          }}
+          onForward={() => handleForwardMessage(message)}
+          onStar={() => handleStarMessage(message.id)}
+          onPin={() => handlePinMessage(message.id)}
+          onReaction={(emoji: string) => addReaction(message.id, emoji)}
+          isStarred={message.is_starred || false}
+          status={message.status as 'sent' | 'delivered' | 'read' | undefined}
+          senderName={mediaSenderInfo.name}
+          senderAvatar={mediaSenderInfo.avatar}
+          allMedia={allMediaItems}
+          getMediaIndexForMessage={getMediaIndexForMessage}
+        />
+      </div>
+    )
+  }
+
   return (
     <div className="relative">
       <div className="space-y-1">
@@ -1085,6 +1125,7 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = React.memo((
   allMediaItems,
   getMediaIndexForMessage,
   handleMediaNavigate,
+  mediaAlbumMap,
   scrollToMessage,
   handleStartVideoCall,
   handleStartAudioCall,
@@ -1135,7 +1176,14 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = React.memo((
       />
     )
   }
-  
+
+  // WhatsApp-style album : si ce message est un suivant d'album, on
+  // n'affiche aucune ligne — le leader rend déjà la mosaïque complète.
+  const albumEntry = mediaAlbumMap?.get?.(message.id)
+  if (albumEntry && !albumEntry.isLeader) {
+    return null
+  }
+
   return (
     <div
       role={isSelectionMode ? "checkbox" : undefined}
@@ -1198,6 +1246,7 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = React.memo((
             allMediaItems={allMediaItems}
             getMediaIndexForMessage={getMediaIndexForMessage}
             handleMediaNavigate={handleMediaNavigate}
+            mediaAlbumMap={mediaAlbumMap}
             scrollToMessage={scrollToMessage}
             messages={messages}
             otherUser={otherUser}
@@ -1274,6 +1323,7 @@ interface MessageListProps {
   allMediaItems: any[]
   getMediaIndexForMessage: (id: string) => number
   handleMediaNavigate: (index: number) => void
+  mediaAlbumMap?: Map<string, { isLeader: boolean; leaderId: string; members: Message[] }>
   scrollToMessage: (id: string) => void
   handleStartVideoCall: () => void
   handleStartAudioCall: () => void
@@ -1321,6 +1371,7 @@ export const MessageList: React.FC<MessageListProps> = React.memo(({
   allMediaItems,
   getMediaIndexForMessage,
   handleMediaNavigate,
+  mediaAlbumMap,
   scrollToMessage,
   handleStartVideoCall,
   handleStartAudioCall,
@@ -1414,6 +1465,7 @@ export const MessageList: React.FC<MessageListProps> = React.memo(({
                 allMediaItems={allMediaItems}
                 getMediaIndexForMessage={getMediaIndexForMessage}
                 handleMediaNavigate={handleMediaNavigate}
+                mediaAlbumMap={mediaAlbumMap}
                 scrollToMessage={scrollToMessage}
                 handleStartVideoCall={handleStartVideoCall}
                 handleStartAudioCall={handleStartAudioCall}

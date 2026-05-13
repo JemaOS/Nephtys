@@ -491,6 +491,47 @@ export function ChatViewPage() {
     return allMediaItems.findIndex(m => m.messageId === messageId)
   }, [allMediaItems])
 
+  // Regroupement WhatsApp-style : médias consécutifs du même expéditeur
+  // envoyés à moins de 30s d'écart sont groupés en un seul "album".
+  const mediaAlbumMap = useMemo(() => {
+    const ALBUM_GAP_MS = 30_000
+    const map = new Map<string, { isLeader: boolean; leaderId: string; members: typeof messages }>()
+    const msgs = Array.isArray(messages) ? messages : []
+
+    const isAlbumCandidate = (m: typeof messages[0]) =>
+      !!m.media_url && (m.media_type === 'image' || m.media_type === 'video') && m.type !== 'audio'
+
+    let i = 0
+    while (i < msgs.length) {
+      const m = msgs[i]
+      if (!isAlbumCandidate(m)) {
+        i++
+        continue
+      }
+      // Démarrer une chaîne potentielle
+      const group = [m]
+      let j = i + 1
+      while (j < msgs.length) {
+        const next = msgs[j]
+        if (!isAlbumCandidate(next)) break
+        if (next.sender_id !== m.sender_id) break
+        const prev = group[group.length - 1]
+        const dt = new Date(next.created_at).getTime() - new Date(prev.created_at).getTime()
+        if (dt > ALBUM_GAP_MS) break
+        group.push(next)
+        j++
+      }
+      if (group.length >= 2) {
+        const leaderId = group[0].id
+        group.forEach((gm, idx) => {
+          map.set(gm.id, { isLeader: idx === 0, leaderId, members: group })
+        })
+      }
+      i = j
+    }
+    return map
+  }, [messages])
+
   const getWallpaperStyle = () => {
     // Only hide if we are showing messages (not loading) and haven't scrolled yet
     const shouldHide = !loading && messages.length > 0 && !isInitialScrollDone
@@ -2661,6 +2702,7 @@ export function ChatViewPage() {
           allMediaItems={allMediaItems}
           getMediaIndexForMessage={getMediaIndexForMessage}
           handleMediaNavigate={handleMediaNavigate}
+          mediaAlbumMap={mediaAlbumMap}
           scrollToMessage={scrollToMessage}
           handleStartVideoCall={handleStartVideoCall}
           handleStartAudioCall={handleStartAudioCall}

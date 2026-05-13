@@ -411,8 +411,9 @@ export function CallsPage() {
           .select('id, name, avatar_url, type')
           .in('id', groupConvIds)
           .eq('type', 'group')
-        
+
         if (conversations) {
+          await signFieldsBatch(conversations as any[], ['avatar_url'])
           const groupMap = new Map<string, { name: string; avatar_url: string | null }>()
           conversations.forEach(conv => {
             groupMap.set(conv.id, { name: conv.name || 'Groupe', avatar_url: conv.avatar_url })
@@ -438,8 +439,9 @@ export function CallsPage() {
         .select('id, name, avatar_url')
         .eq('id', id)
         .maybeSingle()
-      
+
       if (conversation) {
+        await signFieldsBatch([conversation as any], ['avatar_url'])
         setFavoriteGroups(prev => {
           const newMap = new Map(prev)
           newMap.set(conversation.id, { name: conversation.name || 'Groupe', avatar_url: conversation.avatar_url })
@@ -534,7 +536,8 @@ export function CallsPage() {
         .from('conversations')
         .select('id, name, avatar_url')
         .in('id', Array.from(groupCallConversationIds))
-      
+
+      if (conversations) await signFieldsBatch(conversations as any[], ['avatar_url'])
       conversationMap = new Map(conversations?.map(c => [c.id, { name: c.name, avatar_url: c.avatar_url }]) || [])
     }
 
@@ -814,6 +817,7 @@ export function CallsPage() {
       .select('display_name, username, avatar_url')
       .eq('id', contactId)
       .single()
+    if (profile) await signFieldsBatch([profile as any], ['avatar_url'])
 
     // Trouver ou créer une conversation avec ce contact
     const { data: existingMembers } = await supabase
@@ -902,6 +906,7 @@ export function CallsPage() {
         .select('display_name, username, avatar_url')
         .eq('id', otherUserId)
         .single()
+      if (profile) await signFieldsBatch([profile as any], ['avatar_url'])
 
       console.log('🔍 DEBUG: Recall button clicked')
       console.log('  - conversationId:', selectedCall.conversation_id)
@@ -978,6 +983,7 @@ export function CallsPage() {
         console.error('Profile not found for user:', otherUserId)
         return
       }
+      await signFieldsBatch([profile as any], ['avatar_url'])
 
       try {
         await startCall(otherUserId, contextMenuCall.conversation_id, {

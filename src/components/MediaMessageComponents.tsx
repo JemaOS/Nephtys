@@ -296,11 +296,29 @@ export const ImageRenderer: React.FC<{
   
   const hasKnownDimensions = !!imageDimensions;
   
+  // Pour un rendu WhatsApp-like : on impose une largeur max puis on garde le
+  // ratio naturel de l'image. Si on connaît les dimensions, on applique
+  // aspectRatio pour réserver l'espace correct dès le départ (anti-CLS).
+  const buttonStyle: React.CSSProperties = {};
+  if (imageDimensions) {
+    const ratio = imageDimensions.width / Math.max(1, imageDimensions.height);
+    buttonStyle.aspectRatio = `${imageDimensions.width} / ${imageDimensions.height}`;
+    // Limite hauteur (image très verticale ne doit pas exploser le fil)
+    buttonStyle.maxHeight = '420px';
+    // Si très verticale, on réduit la largeur pour ne pas avoir une bande étroite
+    if (ratio < 0.6) {
+      buttonStyle.width = '240px';
+    }
+  } else {
+    buttonStyle.aspectRatio = '4 / 3';
+  }
+
   return (
     <>
       <button
         type="button"
-        className="relative cursor-pointer overflow-hidden rounded-xl border-[3px] border-[#787add] group message-media-container text-left w-full bg-transparent p-0"
+        className="relative cursor-pointer overflow-hidden rounded-xl border-[3px] border-[#787add] group message-media-container text-left w-full max-w-[260px] sm:max-w-[330px] bg-transparent p-0"
+        style={buttonStyle}
         onClick={onImageClick}
         aria-label="Afficher l'image en plein écran"
       >
@@ -348,7 +366,7 @@ export const ImageRenderer: React.FC<{
           srcSet={srcSet}
           sizes="(max-width: 480px) 100vw, (max-width: 768px) 50vw, 33vw"
           alt=""
-          className={`w-full h-full object-cover transition-opacity duration-300 ${
+          className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${
             imageLoaded ? 'opacity-100' : 'opacity-0'
           }`}
           loading="lazy"
@@ -397,7 +415,7 @@ export const VideoRenderer: React.FC<{
     <>
       <button
         type="button"
-        className="relative cursor-pointer overflow-hidden rounded-xl border-[3px] border-[#787add] max-w-[280px] group message-media-container text-left w-full bg-transparent p-0"
+        className="relative cursor-pointer overflow-hidden rounded-xl border-[3px] border-[#787add] max-w-[260px] sm:max-w-[330px] group message-media-container text-left w-full bg-transparent p-0"
         onClick={onVideoClick}
         aria-label="Lire la vidéo"
       >
