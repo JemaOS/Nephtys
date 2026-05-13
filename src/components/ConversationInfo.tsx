@@ -67,6 +67,8 @@ interface ConversationInfoProps {
   initialTab?: 'overview' | 'members' | 'media' | 'files' | 'links';
   openAddMemberModal?: boolean;
   onSystemMessage?: (message: Message) => void;
+  /** Appelé après changement d'avatar pour que le parent mette à jour son state */
+  onAvatarChange?: (newPath: string) => void;
 }
 
 interface GroupMember {
@@ -82,6 +84,7 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
   conversationId,
   conversationType,
   conversationName,
+  onAvatarChange,
   conversationDescription,
   conversationAvatar,
   otherUser,
@@ -403,17 +406,27 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
       
       if (updateError) throw updateError;
       
-      setCurrentAvatar(fileName);
-      // Invalider les caches qui contiennent l'ancien avatar pour qu'au reload
-      // la nouvelle photo apparaisse immédiatement.
+      // Affichage immédiat via blob URL local (pas d'attente de signed URL)
+      const blobPreview = URL.createObjectURL(file);
+      setCurrentAvatar(blobPreview);
+
+      // Invalider les caches de l'ancienne URL signée
       try {
         localStorage.removeItem(`anu_cache_conv_${conversationId}`);
         invalidateMediaUrl(fileName);
       } catch {
         // ignore
       }
-      alert('✅ Photo mise à jour !');
-      globalThis.location.reload();
+
+      // Notifier le parent (met à jour conversation.avatar_url avec le path nu)
+      onAvatarChange?.(fileName);
+
+      // Après 100ms on remplace le blob par le path nu pour que useMediaUrl
+      // génère une signed URL persistante (le blob URL sera révoqué)
+      setTimeout(() => {
+        URL.revokeObjectURL(blobPreview);
+        setCurrentAvatar(fileName);
+      }, 2000);
     } catch (err) {
       console.error('Photo upload error:', err);
       alert('❌ Erreur lors de l\'upload de la photo');

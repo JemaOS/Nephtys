@@ -2913,8 +2913,23 @@ export function ChatViewPage() {
             setShowConversationInfo(false)
             setShowAddMemberModal(false)
             refreshConversation()
-            // Reload ephemeral setting in case it was changed
             loadEphemeralSetting()
+          }}
+          onAvatarChange={(newPath) => {
+            // Met à jour le state local conversation immédiatement sans reload
+            setConversation(prev => prev ? { ...prev, avatar_url: newPath } : prev)
+            // Mise à jour du cache localStorage
+            try {
+              const cacheKey = `conv_${conversationId}`
+              const existing = localStorage.getItem(`anu_cache_${cacheKey}`)
+              if (existing) {
+                const parsed = JSON.parse(existing)
+                if (parsed?.data) {
+                  parsed.data.avatar_url = newPath
+                  localStorage.setItem(`anu_cache_${cacheKey}`, JSON.stringify(parsed))
+                }
+              }
+            } catch { /* ignore */ }
           }}
             onStartVideoCall={handleStartVideoCall}
             onStartAudioCall={handleStartAudioCall}
