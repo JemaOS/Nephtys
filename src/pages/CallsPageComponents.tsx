@@ -1,6 +1,7 @@
 import React from 'react'
 import { ArrowLeft, CheckCheck, Trash2, UserPlus, Search, Phone, Video, PhoneIncoming, PhoneOutgoing, PhoneMissed, Users, Check, Star, MessageCircle } from 'lucide-react'
 import { formatCallDuration, formatCallDate } from './CallsPage'
+import { MediaImg } from '@/components/MediaImg'
 
 // CallLog type from CallsPage
 export interface CallLog {
@@ -48,27 +49,29 @@ const getCallStatus = (call: any) => {
 }
 
 // Helper to render avatar
+// On utilise <MediaImg> pour résoudre/resigner à la demande les paths du
+// bucket privé : si la signed URL d'origine a expiré (cache 50 min), il en
+// regénère une silencieusement.
 const renderCallAvatar = (avatarUrl: string | null | undefined, isGroupCall: boolean, displayName: string) => {
-  if (avatarUrl) {
-    return (
-      <img
-        src={avatarUrl}
-        alt={displayName}
-        className="w-12 h-12 rounded-full object-cover flex-shrink-0"
-      />
-    )
-  }
-  if (isGroupCall) {
-    return (
-      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-accent to-primary-600 flex items-center justify-center text-white flex-shrink-0">
-        <Users size={24} />
-      </div>
-    )
-  }
-  return (
+  const fallback = isGroupCall ? (
+    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-accent to-primary-600 flex items-center justify-center text-white flex-shrink-0">
+      <Users size={24} />
+    </div>
+  ) : (
     <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold text-lg flex-shrink-0">
       {displayName[0]?.toUpperCase()}
     </div>
+  )
+
+  if (!avatarUrl) return fallback
+
+  return (
+    <MediaImg
+      src={avatarUrl}
+      alt={displayName}
+      className="w-12 h-12 rounded-full object-cover flex-shrink-0"
+      fallback={fallback}
+    />
   )
 }
 

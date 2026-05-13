@@ -7,6 +7,7 @@ import { Profile, Message } from '@/lib/supabase';
 import { formatFileSize, formatDate, getEphemeralLabel } from './ConversationInfo';
 import { useDecryptedMedia } from '@/hooks/useDecryptedMedia';
 import { useAuth } from '@/context/AuthContext';
+import { MediaImg } from './MediaImg';
 
 // Re-export interfaces if needed, or define them here
 export interface GroupMember {
@@ -205,17 +206,16 @@ export const MembersTab: React.FC<MembersTabProps> = ({
             key={member.id}
             className="bg-bg-surface rounded-xl p-4 flex items-center gap-3"
           >
-            {member.avatar_url ? (
-              <img
-                src={member.avatar_url}
-                alt={member.display_name || member.username}
-                className="w-12 h-12 rounded-full object-cover"
-              />
-            ) : (
-              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold">
-                {(member.display_name || member.username)[0].toUpperCase()}
-              </div>
-            )}
+            <MediaImg
+              src={member.avatar_url}
+              alt={member.display_name || member.username}
+              className="w-12 h-12 rounded-full object-cover"
+              fallback={
+                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold">
+                  {(member.display_name || member.username)[0].toUpperCase()}
+                </div>
+              }
+            />
             <div className="flex-1">
               <div className="font-medium text-text-primary">
                 {member.display_name || member.username}
@@ -241,17 +241,16 @@ export const MembersTab: React.FC<MembersTabProps> = ({
             key={participant.user.id}
             className="bg-bg-surface rounded-xl p-4 flex items-center gap-3"
           >
-            {participant.user.avatar_url ? (
-              <img
-                src={participant.user.avatar_url}
-                alt={participant.user.display_name || participant.user.username}
-                className="w-12 h-12 rounded-full object-cover"
-              />
-            ) : (
-              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold">
-                {(participant.user.display_name || participant.user.username)[0].toUpperCase()}
-              </div>
-            )}
+            <MediaImg
+              src={participant.user.avatar_url}
+              alt={participant.user.display_name || participant.user.username}
+              className="w-12 h-12 rounded-full object-cover"
+              fallback={
+                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold">
+                  {(participant.user.display_name || participant.user.username)[0].toUpperCase()}
+                </div>
+              }
+            />
             <div className="flex-1">
               <div className="font-medium text-text-primary">
                 {participant.user.display_name || participant.user.username}

@@ -63,45 +63,118 @@ export function extractDomain(url: string): string {
   }
 }
 
-/**
- * Fetch Open Graph metadata for a URL using Microlink API
- * @param url - The URL to fetch metadata for
- * @returns LinkPreviewData or null if fetch fails
- */
-export async function fetchLinkPreview(url: string): Promise<LinkPreviewData | null> {
+// Cache local en mémoire pour éviter les fetches répétés sur le même URL
+// pendant la même session (ex: l'utilisateur efface puis retape le même lien).
+const memoryCache = new Map<string, { data: LinkPreviewData | null; expires: number }>();
+const MEMORY_TTL_MS = 30 * 60 * 1000; // 30 min
+
+const SUPABASE_URL =
+  (import.meta as any).env?.VITE_SUPABASE_URL || 'https://imkfbalgviqeotpjogff.supabase.co';
+const SUPABASE_ANON_KEY = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY as string | undefined;
+
+const EDGE_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/link-preview`;
+// Timeout côté client : on laisse une marge au-dessus du timeout serveur (4s)
+const CLIENT_TIMEOUT_MS = 5000;
+
+async function fetchFromEdgeFunction(url: string): Promise<LinkPreviewData | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), CLIENT_TIMEOUT_MS);
   try {
-    // Use Microlink API for fetching Open Graph data
-    // This is a free API that handles CORS and returns OG metadata
-    const apiUrl = `https://api.microlink.io/?url=${encodeURIComponent(url)}`;
-    
-    const response = await fetch(apiUrl);
-    
-    if (!response.ok) {
-      console.error('Failed to fetch link preview:', response.status);
-      return null;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (SUPABASE_ANON_KEY) {
+      headers.apikey = SUPABASE_ANON_KEY;
+      headers.Authorization = `Bearer ${SUPABASE_ANON_KEY}`;
     }
-    
-    const data = await response.json();
-    
-    if (data.status !== 'success' || !data.data) {
-      console.error('Invalid response from Microlink API:', data);
-      return null;
+    const res = await fetch(EDGE_FUNCTION_URL, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ url }),
+      signal: controller.signal,
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { data?: LinkPreviewData };
+    return json.data ?? null;
+  } catch (err) {
+    if ((err as Error).name === 'AbortError') {
+      console.warn('[linkPreview] edge function timeout');
     }
-    
-    const { title, description, image, publisher } = data.data;
-    
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Fallback rapide : pour YouTube on peut utiliser oEmbed directement depuis le
+ * navigateur (CORS ouvert, < 200ms). Utile si l'edge function est down.
+ */
+async function fetchYouTubeOEmbedClient(url: string): Promise<LinkPreviewData | null> {
+  try {
+    const u = new URL(url);
+    const isYT =
+      u.hostname.endsWith('youtube.com') ||
+      u.hostname.endsWith('youtu.be') ||
+      u.hostname.endsWith('youtube-nocookie.com');
+    if (!isYT) return null;
+
+    const oembed = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
+    const res = await fetch(oembed);
+    if (!res.ok) return null;
+    const data = await res.json();
     return {
       url,
-      title: title || null,
-      description: description || null,
-      image: image?.url || null,
-      siteName: publisher || null,
+      title: data.title || null,
+      description: null,
+      image: data.thumbnail_url || null,
+      siteName: data.author_name || 'YouTube',
       domain: extractDomain(url),
     };
-  } catch (error) {
-    console.error('Error fetching link preview:', error);
+  } catch {
     return null;
   }
+}
+
+/**
+ * Fetch Open Graph metadata for a URL.
+ *
+ * Stratégie :
+ *   1. Cache mémoire (30 min) — instantané
+ *   2. Edge function `link-preview` — rapide grâce au cache DB et au cas
+ *      spécial YouTube oEmbed côté serveur
+ *   3. Fallback YouTube oEmbed côté client si edge function indispo
+ *   4. Sinon, on retourne un preview minimal avec juste le domaine pour
+ *      que l'UI affiche QUELQUE CHOSE plutôt que rien
+ */
+export async function fetchLinkPreview(url: string): Promise<LinkPreviewData | null> {
+  // 1) Cache mémoire
+  const cached = memoryCache.get(url);
+  if (cached && cached.expires > Date.now()) {
+    return cached.data;
+  }
+
+  // 2) Edge function
+  let data = await fetchFromEdgeFunction(url);
+
+  // 3) Fallback YouTube côté client si pas de titre dans la réponse
+  if (!data?.title) {
+    const yt = await fetchYouTubeOEmbedClient(url);
+    if (yt?.title) data = yt;
+  }
+
+  // 4) Fallback minimal — au moins le domaine s'affiche
+  if (!data) {
+    data = {
+      url,
+      title: null,
+      description: null,
+      image: null,
+      siteName: null,
+      domain: extractDomain(url),
+    };
+  }
+
+  memoryCache.set(url, { data, expires: Date.now() + MEMORY_TTL_MS });
+  return data;
 }
 
 /**

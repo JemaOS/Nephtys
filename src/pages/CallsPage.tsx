@@ -7,6 +7,7 @@ import { MainLayout } from '@/components/MainLayout'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { signFieldsBatch } from '@/lib/mediaUrl'
+import { MediaImg } from '@/components/MediaImg'
 import { useCall } from '@/context/CallContext'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { Phone, Video, Search, Star, Link2, X, Trash2, UserPlus, Check, ArrowLeft, CheckCheck, Users } from 'lucide-react'
@@ -1101,21 +1102,29 @@ export function CallsPage() {
   }
 
   // Consolidated helper for rendering call avatar
+  // Note : on passe par <MediaImg> pour que les paths du bucket privé soient
+  // (re-)signés à la demande, même si l'URL signée d'origine a expiré entre
+  // le chargement de la liste et l'ouverture du panneau de détails.
   const renderCallAvatar = (avatarUrl: string | null | undefined, isGroupCall: boolean, displayName: string) => {
-    if (avatarUrl) {
-      return <img src={avatarUrl} alt={displayName} className="w-20 h-20 rounded-full object-cover" />
-    }
-    if (isGroupCall) {
-      return (
-        <div className="w-20 h-20 rounded-full bg-gradient-to-br from-accent to-primary-600 flex items-center justify-center text-white">
-          <Users size={36} />
-        </div>
-      )
-    }
-    return (
+    const fallback = isGroupCall ? (
+      <div className="w-20 h-20 rounded-full bg-gradient-to-br from-accent to-primary-600 flex items-center justify-center text-white">
+        <Users size={36} />
+      </div>
+    ) : (
       <div className="w-20 h-20 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-2xl">
         {displayName[0]?.toUpperCase()}
       </div>
+    )
+
+    if (!avatarUrl) return fallback
+
+    return (
+      <MediaImg
+        src={avatarUrl}
+        alt={displayName}
+        className="w-20 h-20 rounded-full object-cover"
+        fallback={fallback}
+      />
     )
   }
 
@@ -1266,17 +1275,16 @@ export function CallsPage() {
                       className="w-full px-4 py-3 flex items-center gap-3 hover:bg-bg-surface transition-colors rounded-lg cursor-pointer text-left"
                       onClick={() => handleCallContact(favId)}
                     >
-                      {contact.profile.avatar_url ? (
-                        <img
-                          src={contact.profile.avatar_url}
-                          alt={contact.profile.display_name || contact.profile.username}
-                          className="w-12 h-12 rounded-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold">
-                          {contact.profile.username[0].toUpperCase()}
-                        </div>
-                      )}
+                      <MediaImg
+                        src={contact.profile.avatar_url}
+                        alt={contact.profile.display_name || contact.profile.username}
+                        className="w-12 h-12 rounded-full object-cover"
+                        fallback={
+                          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold">
+                            {contact.profile.username[0].toUpperCase()}
+                          </div>
+                        }
+                      />
                       <div className="flex-1">
                         <span className="text-text-primary">{contact.profile.display_name || contact.profile.username}</span>
                       </div>
@@ -1308,17 +1316,17 @@ export function CallsPage() {
                         }
                       }}
                     >
-                      {groupInfo.avatar_url ? (
-                        <img
-                          src={groupInfo.avatar_url}
-                          alt={groupInfo.name}
-                          className="w-12 h-12 rounded-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-accent to-primary-600 flex items-center justify-center text-white">
-                          <Users size={24} />
-                        </div>
-                      )}
+                      <MediaImg
+                        src={groupInfo.avatar_url}
+                        alt={groupInfo.name}
+                        className="w-12 h-12 rounded-full object-cover"
+                        fallback={
+                          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-accent to-primary-600 flex items-center justify-center text-white">
+                            <Users size={24} />
+                          </div>
+                        }
+                      />
+
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
                           <Users size={14} className="text-text-secondary" />
@@ -1546,18 +1554,17 @@ export function CallsPage() {
                     onClick={() => handleCallContact(contact.contact_user_id)}
                   >
                     <div className="flex items-center gap-3">
-                      {contact.profile.avatar_url ? (
-                        <img
-                          src={contact.profile.avatar_url}
-                          alt={contact.profile.display_name || contact.profile.username}
-                          className="w-12 h-12 rounded-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold">
-                          {contact.profile.username[0].toUpperCase()}
-                        </div>
-                      )}
-                      
+                      <MediaImg
+                        src={contact.profile.avatar_url}
+                        alt={contact.profile.display_name || contact.profile.username}
+                        className="w-12 h-12 rounded-full object-cover"
+                        fallback={
+                          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold">
+                            {contact.profile.username[0].toUpperCase()}
+                          </div>
+                        }
+                      />
+
                       <div className="flex-1 min-w-0">
                         <h3 className="text-text-primary font-normal truncate">
                           {contact.profile.display_name || contact.profile.username}
@@ -1638,17 +1645,16 @@ export function CallsPage() {
                       }}
                     >
                       <div className="flex items-center gap-3">
-                        {contact.profile.avatar_url ? (
-                          <img
-                            src={contact.profile.avatar_url}
-                            alt={contact.profile.display_name || contact.profile.username}
-                            className="w-12 h-12 rounded-full object-cover"
-                          />
-                        ) : (
-                          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold">
-                            {contact.profile.username[0].toUpperCase()}
-                          </div>
-                        )}
+                        <MediaImg
+                          src={contact.profile.avatar_url}
+                          alt={contact.profile.display_name || contact.profile.username}
+                          className="w-12 h-12 rounded-full object-cover"
+                          fallback={
+                            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold">
+                              {contact.profile.username[0].toUpperCase()}
+                            </div>
+                          }
+                        />
                         
                         <div className="flex-1 min-w-0">
                           <h3 className="text-text-primary font-normal truncate">

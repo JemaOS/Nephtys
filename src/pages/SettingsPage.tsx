@@ -7,6 +7,7 @@ import { MainLayout } from '@/components/MainLayout'
 import { useAuth } from '@/context/AuthContext'
 import { useTheme } from '@/context/ThemeContext'
 import { supabase } from '@/lib/supabase'
+import { MediaImg } from '@/components/MediaImg'
 import {
   check2FAStatus,
   enroll2FA,
@@ -694,13 +695,16 @@ export function SettingsPage() {
       >
         <div className="flex items-center gap-4">
           <div className="relative">
-            {profile?.avatar_url ? (
-              <img src={profile.avatar_url} alt={profile.username} className="w-16 h-16 rounded-full object-cover" />
-            ) : (
-              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-2xl">
-                {profile?.username?.[0]?.toUpperCase()}
-              </div>
-            )}
+            <MediaImg
+              src={profile?.avatar_url}
+              alt={profile?.username || ''}
+              className="w-16 h-16 rounded-full object-cover"
+              fallback={
+                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-2xl">
+                  {profile?.username?.[0]?.toUpperCase()}
+                </div>
+              }
+            />
             <label className="absolute bottom-0 right-0 w-6 h-6 rounded-full bg-accent flex items-center justify-center cursor-pointer hover:bg-[#5a5ec9]">
               <Camera size={14} className="text-white" />
               <input type="file" accept="image/*" onChange={handleUploadPhoto} className="hidden" disabled={uploadingPhoto} aria-label="Changer la photo de profil" />
@@ -743,13 +747,16 @@ export function SettingsPage() {
       <div className="px-6 py-8 space-y-6">
         <div className="flex flex-col items-center gap-4">
           <div className="relative">
-            {profile?.avatar_url ? (
-              <img src={profile.avatar_url} alt={profile.username} className="w-32 h-32 rounded-full object-cover" />
-            ) : (
-              <div className="w-32 h-32 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-5xl">
-                {profile?.username?.[0]?.toUpperCase()}
-              </div>
-            )}
+            <MediaImg
+              src={profile?.avatar_url}
+              alt={profile?.username || ''}
+              className="w-32 h-32 rounded-full object-cover"
+              fallback={
+                <div className="w-32 h-32 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-5xl">
+                  {profile?.username?.[0]?.toUpperCase()}
+                </div>
+              }
+            />
             <label className="absolute bottom-2 right-2 w-10 h-10 rounded-full bg-accent flex items-center justify-center hover:bg-[#5a5ec9] transition-colors cursor-pointer">
               <Camera size={20} className="text-white" />
               <input type="file" accept="image/*" onChange={handleUploadPhoto} className="hidden" disabled={uploadingPhoto} aria-label="Changer la photo de profil" />

@@ -1048,24 +1048,29 @@ export function ChatViewPage() {
     return 'instant'
   }
 
-  // Debounced function to fetch link preview
+  // Debounced function to fetch link preview.
+  // 250ms est un bon compromis : on évite de spammer l'edge function pendant
+  // que l'utilisateur tape, mais le skeleton apparaît rapidement.
   const debouncedFetchPreview = useCallback(
     debounce(async (url: string) => {
-      setIsLoadingPreview(true)
       const preview = await fetchLinkPreview(url)
       setLinkPreview(preview)
       setIsLoadingPreview(false)
-    }, 500),
+    }, 250),
     []
   )
 
   // Effect to detect URLs in input and fetch preview
   useEffect(() => {
     const url = getFirstPreviewUrl(newMessage)
-    
+
     if (url && url !== dismissedPreviewUrl) {
       // Only fetch if URL changed
       if (linkPreview?.url !== url) {
+        // Allume le skeleton IMMÉDIATEMENT pour que l'UX soit
+        // « instantanée », même si la requête prend quelques centaines
+        // de ms. Ça évite l'effet « rien ne se passe » que voyait l'user.
+        setIsLoadingPreview(true)
         debouncedFetchPreview(url)
       }
     } else if (!url) {
