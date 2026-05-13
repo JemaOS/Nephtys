@@ -29,6 +29,7 @@ export function PersistentCallScreen() {
     isGroupCall,
     groupParticipants,
     addParticipant,
+    currentCallUserId,
   } = useCall()
 
   const localVideoRef = useRef<HTMLVideoElement>(null)
@@ -257,6 +258,8 @@ export function PersistentCallScreen() {
       onRejectCall={rejectCall}
       onAddParticipant={() => setShowAddParticipant(true)}
       onCloseAddParticipant={() => setShowAddParticipant(false)}
+      addParticipant={addParticipant}
+      currentParticipantIds={currentCallUserId ? [currentCallUserId] : []}
       localVideoRef={localVideoRef}
       remoteVideoRef={remoteVideoRef}
     />

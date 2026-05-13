@@ -52,6 +52,10 @@ interface CallContextType {
   // Group call specific
   isGroupCall: boolean
   groupParticipants: GroupCallParticipant[]
+  // ID of the remote peer in a 1-on-1 call (null otherwise). Exposed so the
+  // call UI can pre-populate the "add participant" selector with the peer
+  // already in the call (avoid showing them as selectable / re-inviting).
+  currentCallUserId: string | null
   // Methods
   startCall: (userId: string, conversationId: string, config: CallConfig) => Promise<void>
   startGroupCall: (conversationId: string, config: GroupCallConfig) => Promise<void>
@@ -1216,6 +1220,7 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
     incomingCall,
     isGroupCall,
     groupParticipants,
+    currentCallUserId,
     startCall,
     startGroupCall,
     answerCall,
@@ -1224,7 +1229,7 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
     toggleVideo,
     rejectCall,
     addParticipant,
-  }), [isInCall, isRinging, isCalling, localStream, remoteStream, audioEnabled, videoEnabled, remoteVideoEnabled, incomingCall, isGroupCall, groupParticipants]);
+  }), [isInCall, isRinging, isCalling, localStream, remoteStream, audioEnabled, videoEnabled, remoteVideoEnabled, incomingCall, isGroupCall, groupParticipants, currentCallUserId]);
 
   // Actions séparées : référence stable pour toute la durée de vie du
   // provider. Les consommateurs de useCallActions() ne re-render jamais

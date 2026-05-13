@@ -312,6 +312,9 @@ export function OneToOneCallUI({
   onAnswerCall,
   onRejectCall,
   onAddParticipant,
+  onCloseAddParticipant,
+  addParticipant,
+  currentParticipantIds,
   localVideoRef,
   remoteVideoRef,
 }: {
@@ -339,16 +342,12 @@ export function OneToOneCallUI({
   readonly onAnswerCall: () => void;
   readonly onRejectCall: () => void;
   readonly onAddParticipant: () => void;
+  readonly onCloseAddParticipant: () => void;
+  readonly addParticipant: (contactId: string) => void | Promise<void>;
+  readonly currentParticipantIds?: readonly string[];
   readonly localVideoRef: RefObject<HTMLVideoElement>;
   readonly remoteVideoRef: RefObject<HTMLVideoElement>;
 }) {
-  // showAddParticipant is used to conditionally render the participant selector modal
-  // This variable is intentionally used to track modal state
-  if (showAddParticipant) {
-    // Modal state is tracked but rendering is handled by parent component
-    // This block prevents the 'void' operator pattern and uses the variable
-  }
-
   return (
     <div className="fixed inset-0 z-[100] bg-gray-900 flex flex-col overflow-hidden">
       <audio ref={(el) => { if (el && el.srcObject !== remoteStream) el.srcObject = remoteStream }} autoPlay style={{ display: 'none' }}>
@@ -489,6 +488,22 @@ export function OneToOneCallUI({
           </div>
         </div>
       </div>
+
+      {/* Add-participant selector — opens when the top-right "+" button is
+          clicked. Selecting a contact triggers the 1-on-1 → group upgrade
+          flow handled by CallContext.addParticipant (sends a
+          `group-call-invite` signal without ending the current call). */}
+      {showAddParticipant && (
+        <CallParticipantSelector
+          onClose={onCloseAddParticipant}
+          onSelect={(contactId) => {
+            addParticipant(contactId)
+            // Don't close the modal — let the user invite multiple contacts
+            // in a row, mirroring the GroupCallUI behavior.
+          }}
+          currentParticipants={currentParticipantIds ? [...currentParticipantIds] : []}
+        />
+      )}
     </div>
   )
 }
