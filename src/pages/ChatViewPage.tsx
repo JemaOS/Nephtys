@@ -1621,7 +1621,11 @@ export function ChatViewPage() {
         type, status: 'sent', reply_to_id: optimisticMessage.reply_to_id,
         media_url: url, media_type: type, file_name: fileName, file_size: fileSize,
         file_url: url, // Fallback for older schema
-        is_media_encrypted: isEncrypted,
+      }
+      // is_media_encrypted ajouté seulement si la colonne existe (migration appliquée).
+      // On essaie d'abord avec, on retombe sans en cas d'erreur sur ce champ.
+      if (isEncrypted) {
+        messageData.is_media_encrypted = true
       }
 
       // Add image dimensions if available
@@ -1642,7 +1646,15 @@ export function ChatViewPage() {
           : null
       }
 
-      const { data, error } = await supabase.from('messages').insert(messageData).select().single()
+      // Tentative d'INSERT. Si la colonne is_media_encrypted n'existe pas
+      // (migration pas encore appliquée), on retire le champ et on retente.
+      let insertResult = await supabase.from('messages').insert(messageData).select().single()
+      if (insertResult.error?.message?.includes('is_media_encrypted')) {
+        console.warn('[E2EE] colonne is_media_encrypted absente, fallback sans')
+        delete messageData.is_media_encrypted
+        insertResult = await supabase.from('messages').insert(messageData).select().single()
+      }
+      const { data, error } = insertResult
 
       if (!error && data) {
         // Si le média est chiffré E2EE, créer les clés enveloppées pour chaque destinataire
@@ -1655,6 +1667,7 @@ export function ChatViewPage() {
               rawKey: encryptionKey,
               mediaIvBase64: mediaIv,
             })
+            console.log('[E2EE] Clés enveloppées créées:', result.inserted, '/', result.inserted + result.missingKeys.length, 'destinataires')
             if (result.missingKeys.length > 0) {
               console.warn('[E2EE] Membres sans clé publique (média non déchiffrable pour eux):', result.missingKeys)
             }

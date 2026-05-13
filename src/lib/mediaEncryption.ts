@@ -130,10 +130,20 @@ export async function ensureUserKeyPair(userId: string): Promise<{
   await idbSet(idbKey, { publicKey: publicKeyBase64, privateKey: privateKeyBase64 });
 
   // Publier la clé publique
-  await supabase
+  const { error: pubError } = await supabase
     .from('profiles')
     .update({ public_key: publicKeyBase64 })
     .eq('id', userId);
+
+  if (pubError) {
+    if (pubError.message?.includes('public_key')) {
+      console.warn('[E2EE] Colonne profiles.public_key manquante. Applique la migration 20260513_e2ee_media_keys.sql');
+    } else {
+      console.error('[E2EE] Échec publication clé publique:', pubError);
+    }
+  } else {
+    console.log('[E2EE] Paire de clés générée et clé publique publiée pour user', userId);
+  }
 
   return { publicKey: kp.publicKey, privateKey: kp.privateKey, publicKeyBase64 };
 }

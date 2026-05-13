@@ -151,7 +151,13 @@ export async function createMediaKeysForMessage(params: {
       .from('message_media_keys')
       .insert(rows);
     if (error) {
-      console.error('[encryptedMediaService] failed to insert media keys:', error);
+      if (error.message?.includes('message_media_keys')) {
+        console.error(
+          '[E2EE] Table message_media_keys manquante. Applique la migration 20260513_e2ee_media_keys.sql avant d\'envoyer des m\u00e9dias chiffr\u00e9s.'
+        );
+      } else {
+        console.error('[E2EE] failed to insert media keys:', error);
+      }
       throw new Error('Échec de la sauvegarde des clés de chiffrement');
     }
   }
