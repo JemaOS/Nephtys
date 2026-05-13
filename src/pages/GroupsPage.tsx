@@ -40,7 +40,7 @@ export function GroupsPage() {
   const loadContacts = async () => {
     if (!user) return
 
-    // Only load contacts that the current user has explicitly added
+    // 1) Contacts ajoutés explicitement
     const { data: myContacts } = await supabase
       .from('contacts')
       .select('id, contact_user_id')
@@ -48,23 +48,44 @@ export function GroupsPage() {
       .eq('is_blocked', false)
       .order('added_at', { ascending: false })
 
-    if (!myContacts || myContacts.length === 0) {
+    // 2) Utilisateurs avec qui j'ai déjà une conversation directe
+    //    (pattern WhatsApp : pas besoin d'ajout manuel pour pouvoir les inviter)
+    //    On récupère mes memberships, puis les autres membres des conversations directes.
+    const { data: myMemberships } = await supabase
+      .from('conversation_members')
+      .select('conversation_id, conversations!inner(type)')
+      .eq('user_id', user.id)
+      .eq('conversations.type', 'direct')
+
+    let directPeerIds: string[] = []
+    if (myMemberships && myMemberships.length > 0) {
+      const directConvIds = myMemberships.map((m: any) => m.conversation_id)
+      const { data: peers } = await supabase
+        .from('conversation_members')
+        .select('user_id')
+        .in('conversation_id', directConvIds)
+        .neq('user_id', user.id)
+      directPeerIds = peers?.map((p: any) => p.user_id) ?? []
+    }
+
+    // 3) Fusionner les deux sources sans doublons
+    const contactsFromTable = myContacts?.map(c => c.contact_user_id) ?? []
+    const allCandidateIds = [...new Set([...contactsFromTable, ...directPeerIds])]
+
+    if (allCandidateIds.length === 0) {
       setContacts([])
       return
     }
 
-    // Get unique contact IDs
-    const contactIds = [...new Set(myContacts.map(c => c.contact_user_id))]
-
-    // Fetch profiles
+    // 4) Charger les profils
     const { data: profiles } = await supabase
       .from('profiles')
       .select('*')
-      .in('id', contactIds)
+      .in('id', allCandidateIds)
 
-    if (profiles) {
+    if (profiles && profiles.length > 0) {
       const contactsWithProfiles = profiles.map(profile => {
-        const contact = myContacts.find(c => c.contact_user_id === profile.id)
+        const contact = myContacts?.find(c => c.contact_user_id === profile.id)
         return {
           id: contact?.id || `contact-${profile.id}`,
           contact_user_id: profile.id,

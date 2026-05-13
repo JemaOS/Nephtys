@@ -34,11 +34,8 @@ export const AddMemberModal: React.FC<AddMemberModalProps> = ({
 
   const loadAvailableContacts = async () => {
     const memberUserIds = new Set(existingMemberIds);
-    
-    // Only load contacts that the current user has explicitly added
-    // If a user deletes a contact, they should no longer see that person
-    // even if that person had added them as a contact
-    // Order by added_at DESC to get the most recent entry first (handles re-added contacts)
+
+    // Source 1 : contacts ajoutés explicitement
     const { data: myContacts } = await supabase
       .from('contacts')
       .select('contact_user_id, added_at')
@@ -46,25 +43,38 @@ export const AddMemberModal: React.FC<AddMemberModalProps> = ({
       .eq('is_blocked', false)
       .order('added_at', { ascending: false });
 
-    // Deduplicate contacts by contact_user_id, keeping the most recent entry
     const uniqueContactIds = new Set<string>();
-    const deduplicatedContacts: string[] = [];
     for (const contact of (myContacts || [])) {
-      if (!uniqueContactIds.has(contact.contact_user_id)) {
-        uniqueContactIds.add(contact.contact_user_id);
-        deduplicatedContacts.push(contact.contact_user_id);
-      }
+      uniqueContactIds.add(contact.contact_user_id);
     }
 
-    // Filter out current group members using Set.has for better performance
-    const myContactIds = deduplicatedContacts.filter(id => !memberUserIds.has(id));
+    // Source 2 : utilisateurs avec qui j'ai déjà une conversation directe
+    // (pattern WhatsApp : pas besoin d'ajout manuel pour pouvoir les inviter)
+    const { data: myMemberships } = await supabase
+      .from('conversation_members')
+      .select('conversation_id, conversations!inner(type)')
+      .eq('user_id', currentUserId)
+      .eq('conversations.type', 'direct');
 
-    if (myContactIds.length > 0) {
+    if (myMemberships && myMemberships.length > 0) {
+      const directConvIds = myMemberships.map((m: any) => m.conversation_id);
+      const { data: peers } = await supabase
+        .from('conversation_members')
+        .select('user_id')
+        .in('conversation_id', directConvIds)
+        .neq('user_id', currentUserId);
+      peers?.forEach((p: any) => uniqueContactIds.add(p.user_id));
+    }
+
+    // Exclure les membres déjà dans le groupe
+    const candidateIds = [...uniqueContactIds].filter(id => !memberUserIds.has(id));
+
+    if (candidateIds.length > 0) {
       const { data: profiles } = await supabase
         .from('profiles')
         .select('*')
-        .in('id', myContactIds);
-      
+        .in('id', candidateIds);
+
       setAvailableContacts(profiles || []);
     } else {
       setAvailableContacts([]);

@@ -784,6 +784,22 @@ export function ChatsPage() {
             handleNewMessageInConversation(payload)
           }
         )
+        .on('postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'messages'
+          },
+          (payload) => {
+            // On déclenche un reload uniquement si le statut change vers 'read'
+            // (multi-device sync : l'utilisateur a lu sur un autre appareil)
+            const oldStatus = (payload.old as { status?: string })?.status
+            const newStatus = (payload.new as { status?: string })?.status
+            if (oldStatus !== newStatus && newStatus === 'read') {
+              debouncedReload()
+            }
+          }
+        )
         .subscribe((status) => {
           console.log('[ChatsPage] Messages channel status:', status)
         })
@@ -854,9 +870,26 @@ export function ChatsPage() {
         // Just mark that we need to reload when connection is restored
       }
       
+      // Écoute l'événement émis par ChatViewPage quand des messages passent
+      // au statut 'read'. Permet de décrémenter le compteur d'unread sans
+      // attendre le prochain reload (la subscription realtime sur messages
+      // n'écoute que les INSERT, pas les UPDATE).
+      const handleMessagesMarkedRead = (event: Event) => {
+        const detail = (event as CustomEvent<{ conversationId?: string }>).detail
+        if (!detail?.conversationId) return
+        setConversations(prev =>
+          prev.map(conv =>
+            conv.id === detail.conversationId
+              ? { ...conv, unreadCount: 0 }
+              : conv
+          )
+        )
+      }
+
       globalThis.addEventListener('supabase-reconnected', handleSupabaseReconnect)
       globalThis.addEventListener('supabase-connection-lost', handleConnectionLost)
       globalThis.addEventListener('message-sent-in-chat', handleMessageSentFromChat as EventListener)
+      globalThis.addEventListener('messages-marked-read', handleMessagesMarkedRead)
       globalThis.addEventListener('focus', handleFocus)
 
       return () => {
@@ -869,6 +902,7 @@ export function ChatsPage() {
         globalThis.removeEventListener('supabase-reconnected', handleSupabaseReconnect)
         globalThis.removeEventListener('supabase-connection-lost', handleConnectionLost)
         globalThis.removeEventListener('message-sent-in-chat', handleMessageSentFromChat as EventListener)
+        globalThis.removeEventListener('messages-marked-read', handleMessagesMarkedRead)
         globalThis.removeEventListener('focus', handleFocus)
       }
     }

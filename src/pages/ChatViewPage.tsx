@@ -1240,12 +1240,31 @@ export function ChatViewPage() {
 
   async function markMessagesAsRead(messages: Message[], currentUserId: string) {
     const unreadMessages = messages.filter(msg => msg.sender_id !== currentUserId && msg.status !== 'read')
-    if (unreadMessages.length > 0) {
-      const { error } = await supabase.from('messages').update({ status: 'read' }).in('id', unreadMessages.map(msg => msg.id))
-      if (error) {
-        console.error('[ChatViewPage] Error marking messages as read:', error)
-      }
+    if (unreadMessages.length === 0) return
+
+    const ids = unreadMessages.map(msg => msg.id)
+    const conversationIdRef = unreadMessages[0]?.conversation_id
+
+    const { error } = await supabase
+      .from('messages')
+      .update({ status: 'read' })
+      .in('id', ids)
+
+    if (error) {
+      console.error('[ChatViewPage] Error marking messages as read:', error)
+      return
     }
+
+    // Mise à jour optimiste de l'état local pour refléter immédiatement le statut "read"
+    setMessages(prev =>
+      prev.map(m => (ids.includes(m.id) ? { ...m, status: 'read' as const } : m))
+    )
+
+    // Notifier ChatsPage pour qu'elle décrémente son compteur d'unread sans
+    // attendre le prochain reload (la subscription realtime n'écoute que les INSERT)
+    globalThis.dispatchEvent(new CustomEvent('messages-marked-read', {
+      detail: { conversationId: conversationIdRef, count: ids.length }
+    }))
   }
 
   const loadMessages = async () => {
