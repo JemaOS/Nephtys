@@ -2931,7 +2931,10 @@ export function ChatViewPage() {
           onClose={() => setGifStickerViewer(null)}
           onReaction={(emoji) => addReaction(gifStickerViewer.messageId, emoji)}
           onForward={() => {
+            // Fermer le viewer plein écran AVANT d'ouvrir le ForwardMessageModal
+            // sinon le top layer du <dialog showModal()> masque le modal de transfert.
             const message = messages.find(m => m.id === gifStickerViewer.messageId)
+            setGifStickerViewer(null)
             if (message) handleForwardMessage(message)
           }}
           onStar={() => handleStarMessage(gifStickerViewer.messageId)}

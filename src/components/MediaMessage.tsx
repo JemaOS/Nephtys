@@ -231,6 +231,16 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
   };
 
   // Helper: Render MediaViewer - extracted to reduce complexity
+  // Note : on ferme le viewer plein écran AVANT de propager l'action (forward,
+  // star, pin, react) pour éviter que le modal cible (ex. ForwardMessageModal)
+  // se retrouve sous le top layer du <dialog showModal()> du viewer.
+  const closeFullscreen = () => {
+    setIsFullscreen(false);
+    if (currentIndex !== undefined) {
+      setViewerIndex(currentIndex);
+    }
+  };
+
   const renderMediaViewer = (mediaInfo: ReturnType<typeof getCurrentMediaInfo>) => (
     <MediaViewer
       isOpen={isFullscreen}
@@ -241,13 +251,8 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
       timestamp={mediaInfo.timestamp}
       isOwn={mediaInfo.isOwn}
       isStarred={isStarred}
-      onClose={() => {
-        setIsFullscreen(false);
-        if (currentIndex !== undefined) {
-          setViewerIndex(currentIndex);
-        }
-      }}
-      onForward={onForward}
+      onClose={closeFullscreen}
+      onForward={onForward ? () => { closeFullscreen(); onForward(); } : undefined}
       onStar={onStar}
       onPin={onPin}
       onReaction={onReaction}
