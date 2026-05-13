@@ -23,6 +23,7 @@ const ALLOWED_ORIGINS = [
     'https://nephtys.app',
     'https://www.nephtys.app',
     'https://nephtys.vercel.app',
+    'https://anu-nine.vercel.app',
     'http://localhost:5173',
     'http://localhost:3000'
 ];
