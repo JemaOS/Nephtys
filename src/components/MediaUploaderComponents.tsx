@@ -16,6 +16,21 @@ export const AudioPreviewPlayer: React.FC<{ file: File; preview: string | null }
   const [duration, setDuration] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
 
+  // On crée le blob URL UNE SEULE FOIS à partir du File pour éviter de
+  // recréer le src à chaque render (sinon l'audio se reset en boucle).
+  const audioSrc = React.useMemo(() => {
+    if (preview) return preview;
+    return URL.createObjectURL(file);
+  }, [file, preview]);
+
+  React.useEffect(() => {
+    return () => {
+      if (!preview && audioSrc) {
+        URL.revokeObjectURL(audioSrc);
+      }
+    };
+  }, [audioSrc, preview]);
+
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
@@ -124,10 +139,11 @@ export const AudioPreviewPlayer: React.FC<{ file: File; preview: string | null }
         {/* Hidden audio element */}
         <audio
           ref={audioRef}
-          src={preview || URL.createObjectURL(file)}
+          src={audioSrc}
           onTimeUpdate={handleTimeUpdate}
           onLoadedMetadata={handleLoadedMetadata}
           onEnded={handleEnded}
+          preload="metadata"
           className="hidden"
         >
           <track kind="captions" src="" label="English" />

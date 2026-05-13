@@ -2,13 +2,20 @@
 // Distributed under the license specified in the root directory of this project.
 
 import React, { useRef, useState } from 'react';
-import { Play, Pause, SkipBack, SkipForward } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Loader2 } from 'lucide-react';
+import { useDecryptedMedia } from '@/hooks/useDecryptedMedia';
 
 interface AudioFilePlayerProps {
   url: string;
   fileName?: string;
   duration?: number;
   isOwn?: boolean;
+  /** Indique si le média est chiffré E2EE (déchiffrement requis) */
+  isEncrypted?: boolean;
+  /** ID du message (requis si encrypted=true) */
+  messageId?: string;
+  /** ID du user courant (requis si encrypted=true) */
+  currentUserId?: string;
 }
 
 // Format time in mm:ss
@@ -56,12 +63,24 @@ export const AudioFilePlayer: React.FC<AudioFilePlayerProps> = ({
   fileName,
   duration: initialDuration,
   isOwn = false,
+  isEncrypted = false,
+  messageId,
+  currentUserId,
 }) => {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(initialDuration || 0);
   const [isDragging, setIsDragging] = useState(false);
+
+  // Résolution de l'URL : signed URL (bucket privé) ou blob déchiffré (E2EE)
+  const { url: resolvedUrl, loading: urlLoading, error: urlError } = useDecryptedMedia({
+    encrypted: isEncrypted,
+    messageId,
+    userId: currentUserId,
+    src: url,
+  });
+  const effectiveUrl = resolvedUrl || url;
 
   // Extract file name without extension and clean it up
   const displayName = fileName 
@@ -120,6 +139,27 @@ export const AudioFilePlayer: React.FC<AudioFilePlayerProps> = ({
   };
 
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+
+  // Pendant le chargement de l'URL signée / déchiffrement
+  if (urlLoading) {
+    return (
+      <div className={`w-full max-w-[280px] rounded-2xl overflow-hidden backdrop-blur-sm ${getBackgroundColor(isOwn)} px-4 py-4 flex items-center gap-3`}>
+        <Loader2 size={18} className="animate-spin text-white/70" />
+        <span className="text-[13px] text-white/70">
+          {isEncrypted ? 'Déchiffrement…' : 'Chargement…'}
+        </span>
+      </div>
+    );
+  }
+
+  // Erreur de déchiffrement
+  if (urlError && isEncrypted) {
+    return (
+      <div className={`w-full max-w-[280px] rounded-2xl overflow-hidden backdrop-blur-sm ${getBackgroundColor(isOwn)} px-4 py-4 text-[13px] text-white/70`}>
+        🔒 Audio chiffré — clé indisponible
+      </div>
+    );
+  }
 
   // Modern 2025 design - compact, elegant, high contrast
   // Works in both light and dark mode with proper contrast
@@ -201,7 +241,7 @@ export const AudioFilePlayer: React.FC<AudioFilePlayerProps> = ({
       {/* Hidden audio element */}
       <audio
         ref={audioRef}
-        src={url}
+        src={effectiveUrl}
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
         onEnded={handleEnded}

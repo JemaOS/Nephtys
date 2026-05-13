@@ -2,7 +2,8 @@
 // Distributed under the license specified in the root directory of this project.
 
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Play, Pause, Download } from 'lucide-react';
+import { Play, Pause, Download, Loader2 } from 'lucide-react';
+import { useDecryptedMedia } from '@/hooks/useDecryptedMedia';
 
 // Audio context for decoding audio that browsers can't play natively
 let audioContext: AudioContext | null = null;
@@ -17,6 +18,12 @@ interface VoiceMessageProps {
   url: string;
   duration: number;
   isOwn: boolean;
+  /** Indique si le média est chiffré E2EE (déchiffrement requis) */
+  isEncrypted?: boolean;
+  /** ID du message (requis si encrypted=true) */
+  messageId?: string;
+  /** ID du user courant (requis si encrypted=true) */
+  currentUserId?: string;
 }
 
 // Generate a consistent waveform pattern based on a seed
@@ -44,12 +51,24 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
   url,
   duration,
   isOwn,
+  isEncrypted = false,
+  messageId,
+  currentUserId,
 }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [audioDuration, setAudioDuration] = useState(duration);
   const audioRef = useRef<HTMLAudioElement>(null);
-  
+
+  // Résolution de l'URL : signed URL (bucket privé) ou blob déchiffré (E2EE)
+  const { url: resolvedUrl, loading: urlLoading, error: urlError } = useDecryptedMedia({
+    encrypted: isEncrypted,
+    messageId,
+    userId: currentUserId,
+    src: url,
+  });
+  const effectiveUrl = resolvedUrl || url;
+
   // Generate waveform heights once based on URL hash
   const waveformHeights = useMemo(() => {
     const seed = url.split('').reduce((acc, char) => acc + (char.codePointAt(0) || 0), 0);
@@ -166,7 +185,7 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
       
       // Fetch and decode the audio if not already cached
       if (!audioBufferRef.current) {
-        const response = await fetch(url);
+        const response = await fetch(effectiveUrl);
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
@@ -254,8 +273,8 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
   const tryBlobPlayback = async (): Promise<boolean> => {
     try {
       console.log('Trying blob URL playback...');
-      
-      const response = await fetch(url);
+
+      const response = await fetch(effectiveUrl);
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
@@ -363,7 +382,7 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
 
   const handleDownload = async () => {
     try {
-      const response = await fetch(url);
+      const response = await fetch(effectiveUrl);
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
@@ -405,11 +424,31 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
 
   const progress = audioDuration > 0 ? (currentTime / audioDuration) * 100 : 0;
 
+  // Pendant le chargement de l'URL signée / déchiffrement
+  if (urlLoading) {
+    return (
+      <div className={`flex items-center gap-3 min-w-[250px] max-w-[350px] px-4 py-3 rounded-2xl ${isOwn ? 'bg-[#5a5cc9]' : 'bg-[#1a1d21]'}`}>
+        <Loader2 size={18} className="animate-spin text-white/70" />
+        <span className="text-[13px] text-white/70">
+          {isEncrypted ? 'Déchiffrement…' : 'Chargement…'}
+        </span>
+      </div>
+    );
+  }
+
+  if (urlError && isEncrypted) {
+    return (
+      <div className={`flex items-center gap-3 min-w-[250px] max-w-[350px] px-4 py-3 rounded-2xl ${isOwn ? 'bg-[#5a5cc9]' : 'bg-[#1a1d21]'} text-[13px] text-white/70`}>
+        🔒 Audio chiffré — clé indisponible
+      </div>
+    );
+  }
+
   return (
     <div className="flex items-center gap-3 min-w-[250px] max-w-[350px]">
       <audio
         ref={audioRef}
-        src={url}
+        src={effectiveUrl}
         preload="auto"
       >
         <track kind="captions" />

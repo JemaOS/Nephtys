@@ -946,13 +946,23 @@ const TextMessageDisplay = ({ message, hoveredMessageId, isOwn, setContextMenu, 
       })()}
       {message.type === 'audio' && (message.media_url || message.file_url) && (
         message.file_name?.startsWith('voice-') ? (
-          <VoiceMessage url={message.media_url || message.file_url || ''} duration={message.ephemeral_duration || 0} isOwn={isOwn} />
+          <VoiceMessage
+            url={message.media_url || message.file_url || ''}
+            duration={message.ephemeral_duration || 0}
+            isOwn={isOwn}
+            isEncrypted={!!(message as any).is_media_encrypted}
+            messageId={message.id}
+            currentUserId={user?.id}
+          />
         ) : (
           <AudioFilePlayer
             url={message.media_url || message.file_url || ''}
             fileName={message.file_name || undefined}
             duration={message.ephemeral_duration || undefined}
             isOwn={isOwn}
+            isEncrypted={!!(message as any).is_media_encrypted}
+            messageId={message.id}
+            currentUserId={user?.id}
           />
         )
       )}

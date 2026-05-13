@@ -1276,7 +1276,11 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
           {/* Selected File Preview */}
           {selectedFile && !showImageEditor && !showDocumentPreview && (
             <div className="space-y-4">
-              <div className="relative aspect-video bg-bg-hover rounded-xl overflow-hidden">
+              <div
+                className={`relative bg-bg-hover rounded-xl overflow-hidden ${
+                  selectedFileType === 'audio' ? '' : 'aspect-video'
+                }`}
+              >
                 {selectedFileType === 'image' && preview && (
                   <img src={preview} alt="Preview" className="w-full h-full object-contain" />
                 )}
@@ -1294,7 +1298,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
                     setSelectedFileType(null);
                     setPreview(null);
                   }}
-                  className="absolute top-2 right-2 p-1 bg-black/50 rounded-full hover:bg-black/70 transition-colors"
+                  className="absolute top-2 right-2 p-1 bg-black/50 rounded-full hover:bg-black/70 transition-colors z-10"
                 >
                   <X size={16} className="text-white" />
                 </button>
