@@ -79,12 +79,15 @@ globalThis.addEventListener('fetch', (event) => {
   }
 
   // Media requests - simple cache-first
+  // Note: on ne cache PAS les réponses 206 (Partial Content = range requests
+  // pour la lecture progressive de vidéos/audio). L'API Cache ne supporte pas
+  // les réponses partielles et lèverait TypeError si on essayait.
   if (isMediaRequest(request)) {
     event.respondWith(
       caches.match(request).then((cached) => {
         if (cached) return cached;
         return fetch(request).then((response) => {
-          if (response.ok) {
+          if (response.ok && response.status !== 206) {
             const clone = response.clone();
             caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
           }
