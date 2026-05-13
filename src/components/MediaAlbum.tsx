@@ -29,22 +29,30 @@ const AlbumItem: React.FC<AlbumItemProps> = ({
     src,
   });
 
+  // Le button doit toujours occuper toute la cellule flex. On s'assure que
+  // height:100% est défini via style inline pour ne pas dépendre du parsing
+  // Tailwind (qui peut ignorer h-full si le parent n'a pas de hauteur résolue
+  // lors du premier paint).
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`relative overflow-hidden bg-bg-hover cursor-pointer block p-0 m-0 border-0 ${className || ''}`}
+      className={`relative overflow-hidden bg-[#1a1a1a] cursor-pointer block p-0 m-0 border-0 ${className || ''}`}
+      style={{ width: '100%', height: '100%' }}
       aria-label="Afficher le média"
     >
+      {/* Fond sombre toujours visible — évite le fond blanc natif du browser */}
+      <div className="absolute inset-0 bg-[#1a1a1a]" />
+
       {loading || !url ? (
-        <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[#1a1a1a] to-[#2a2a2a]">
+        <div className="absolute inset-0 flex items-center justify-center">
           <div className="w-7 h-7 border-2 border-white/30 border-t-white rounded-full animate-spin" />
         </div>
       ) : isVideo ? (
         <>
           <video
             src={`${url}#t=0.1`}
-            className="w-full h-full object-cover"
+            className="absolute inset-0 w-full h-full object-cover"
             muted
             playsInline
             preload="metadata"
@@ -59,7 +67,7 @@ const AlbumItem: React.FC<AlbumItemProps> = ({
         <img
           src={url}
           alt=""
-          className="w-full h-full object-cover"
+          className="absolute inset-0 w-full h-full object-cover"
           loading="lazy"
           decoding="async"
         />
@@ -170,39 +178,49 @@ export const MediaAlbum: React.FC<MediaAlbumProps> = ({
 
   let grid: React.ReactNode = null;
 
+  // Helper : cellule flex dont les enfants héritent bien de 100% de hauteur.
+  // `min-h-0` est requis pour que flex-children puissent être plus petits que
+  // leur contenu et prennent la hauteur de leur conteneur.
+  const cell = (child: React.ReactNode, extra = '') => (
+    <div className={`relative min-h-0 overflow-hidden ${extra}`} style={{ height: '100%' }}>
+      {child}
+    </div>
+  );
+
   if (count === 2) {
-    // 2 carrés côte à côte (~165x165 chacun pour total 330)
     grid = (
-      <div className="flex gap-[2px] w-full h-[165px]">
-        <div className="flex-1 h-full">{renderItem(displayed[0], { className: 'w-full h-full' })}</div>
-        <div className="flex-1 h-full">{renderItem(displayed[1], { className: 'w-full h-full' })}</div>
+      <div className="flex gap-[2px] w-full" style={{ height: '165px' }}>
+        <div className="flex-1 min-h-0" style={{ height: '100%' }}>
+          {cell(renderItem(displayed[0]))}
+        </div>
+        <div className="flex-1 min-h-0" style={{ height: '100%' }}>
+          {cell(renderItem(displayed[1]))}
+        </div>
       </div>
     );
   } else if (count === 3) {
-    // 1 grand carré à gauche + 2 plus petits empilés à droite
-    // Total ~330x220, gauche 220x220, droite 110x110 chacun
     grid = (
-      <div className="flex gap-[2px] w-full h-[220px]">
-        <div className="flex-[2] h-full">
-          {renderItem(displayed[0], { className: 'w-full h-full' })}
+      <div className="flex gap-[2px] w-full" style={{ height: '220px' }}>
+        <div style={{ flex: '2', minHeight: 0, height: '100%' }}>
+          {cell(renderItem(displayed[0]), 'h-full')}
         </div>
-        <div className="flex-1 flex flex-col gap-[2px] h-full">
-          <div className="flex-1">{renderItem(displayed[1], { className: 'w-full h-full' })}</div>
-          <div className="flex-1">{renderItem(displayed[2], { className: 'w-full h-full' })}</div>
+        <div style={{ flex: '1', minHeight: 0, height: '100%', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+          <div style={{ flex: 1, minHeight: 0 }}>{cell(renderItem(displayed[1]))}</div>
+          <div style={{ flex: 1, minHeight: 0 }}>{cell(renderItem(displayed[2]))}</div>
         </div>
       </div>
     );
   } else {
-    // 4+ : grille 2x2 carrée
+    // 4+ : grille 2x2
     grid = (
-      <div className="flex flex-col gap-[2px] w-full h-[330px]">
-        <div className="flex gap-[2px] flex-1">
-          <div className="flex-1">{renderItem(displayed[0], { className: 'w-full h-full' })}</div>
-          <div className="flex-1">{renderItem(displayed[1], { className: 'w-full h-full' })}</div>
+      <div className="flex flex-col gap-[2px] w-full" style={{ height: '330px' }}>
+        <div className="flex gap-[2px]" style={{ flex: 1, minHeight: 0 }}>
+          <div style={{ flex: 1, minHeight: 0, height: '100%' }}>{cell(renderItem(displayed[0]))}</div>
+          <div style={{ flex: 1, minHeight: 0, height: '100%' }}>{cell(renderItem(displayed[1]))}</div>
         </div>
-        <div className="flex gap-[2px] flex-1">
-          <div className="flex-1">{renderItem(displayed[2], { className: 'w-full h-full' })}</div>
-          <div className="flex-1">{renderItem(displayed[3], { className: 'w-full h-full', overlay: remaining })}</div>
+        <div className="flex gap-[2px]" style={{ flex: 1, minHeight: 0 }}>
+          <div style={{ flex: 1, minHeight: 0, height: '100%' }}>{cell(renderItem(displayed[2]))}</div>
+          <div style={{ flex: 1, minHeight: 0, height: '100%' }}>{cell(renderItem(displayed[3], { overlay: remaining }))}</div>
         </div>
       </div>
     );
