@@ -24,6 +24,12 @@
  */
 
 import { supabase } from './supabase';
+import {
+  decryptPrivateKeyWithPassphrase,
+  encryptPrivateKeyWithPassphrase,
+  fetchEncryptedPrivateKey,
+  uploadEncryptedPrivateKey,
+} from './passphraseKeyStore';
 
 const ECDH_PARAMS: EcKeyGenParams = { name: 'ECDH', namedCurve: 'P-256' };
 const AES_PARAMS: AesKeyAlgorithm = { name: 'AES-GCM', length: 256 };
@@ -88,64 +94,193 @@ interface KeyPairExport {
   privateKey: string; // base64 PKCS8
 }
 
-/**
- * Récupère ou génère la paire de clés ECDH du user courant.
- * - Stocke la clé privée en IndexedDB (jamais envoyée au serveur)
- * - Publie la clé publique dans profiles.public_key
- */
-export async function ensureUserKeyPair(userId: string): Promise<{
+/** Erreur signalant qu'une action utilisateur est requise pour les clés. */
+export class KeyRecoveryRequiredError extends Error {
+  /** 'setup' = première fois, 'unlock' = clé chiffrée existe en DB */
+  kind: 'setup' | 'unlock';
+  constructor(kind: 'setup' | 'unlock') {
+    super(`Key ${kind} required`);
+    this.name = 'KeyRecoveryRequiredError';
+    this.kind = kind;
+  }
+}
+
+interface KeyPair {
   publicKey: CryptoKey;
   privateKey: CryptoKey;
   publicKeyBase64: string;
-}> {
+}
+
+async function importKeyPairFromExport(exp: KeyPairExport): Promise<KeyPair> {
+  const publicKey = await crypto.subtle.importKey(
+    'spki',
+    base64ToBuf(exp.publicKey),
+    ECDH_PARAMS,
+    true,
+    [],
+  );
+  const privateKey = await crypto.subtle.importKey(
+    'pkcs8',
+    base64ToBuf(exp.privateKey),
+    ECDH_PARAMS,
+    false,
+    ['deriveKey', 'deriveBits'],
+  );
+  return { publicKey, privateKey, publicKeyBase64: exp.publicKey };
+}
+
+/**
+ * Récupère la paire de clés ECDH du user :
+ *   - depuis IndexedDB local si déjà déverrouillée sur ce device, sinon
+ *   - throw KeyRecoveryRequiredError pour que l'UI demande la passphrase
+ *
+ * Utilise `setupUserKeyPairWithPassphrase` (1ère fois) ou
+ * `unlockUserKeyPairWithPassphrase` (autres devices) pour fournir la
+ * passphrase et stocker la clé en IDB.
+ */
+export async function getUserKeyPair(userId: string): Promise<KeyPair> {
   const idbKey = `${IDB_KEY_PREFIX}:${userId}`;
   const cached = (await idbGet(idbKey)) as KeyPairExport | undefined;
+  if (cached) return await importKeyPairFromExport(cached);
 
-  if (cached) {
-    const publicKey = await crypto.subtle.importKey(
-      'spki',
-      base64ToBuf(cached.publicKey),
-      ECDH_PARAMS,
-      true,
-      []
-    );
-    const privateKey = await crypto.subtle.importKey(
-      'pkcs8',
-      base64ToBuf(cached.privateKey),
-      ECDH_PARAMS,
-      false,
-      ['deriveKey', 'deriveBits']
-    );
-    return { publicKey, privateKey, publicKeyBase64: cached.publicKey };
-  }
+  // Pas de clé locale → la DB doit en avoir une
+  const remote = await fetchEncryptedPrivateKey(userId);
+  if (remote) throw new KeyRecoveryRequiredError('unlock');
+  throw new KeyRecoveryRequiredError('setup');
+}
 
-  // Génération
-  const kp = await crypto.subtle.generateKey(ECDH_PARAMS, true, ['deriveKey', 'deriveBits']);
+/**
+ * Première fois : génère une paire fraîche, chiffre la privée avec la
+ * passphrase, publie la publique + la privée chiffrée en DB, stocke la
+ * paire en IDB local.
+ */
+export async function setupUserKeyPairWithPassphrase(
+  userId: string,
+  passphrase: string,
+): Promise<KeyPair> {
+  // Si une paire chiffrée existe DÉJÀ côté DB, on bascule sur unlock pour
+  // éviter d'écraser ce que les autres expéditeurs ont utilisé.
+  const existing = await fetchEncryptedPrivateKey(userId);
+  if (existing) return await unlockUserKeyPairWithPassphrase(userId, passphrase);
+
+  const kp = await crypto.subtle.generateKey(ECDH_PARAMS, true, [
+    'deriveKey',
+    'deriveBits',
+  ]);
   const spki = await crypto.subtle.exportKey('spki', kp.publicKey);
   const pkcs8 = await crypto.subtle.exportKey('pkcs8', kp.privateKey);
-
   const publicKeyBase64 = bufToBase64(spki);
   const privateKeyBase64 = bufToBase64(pkcs8);
 
+  // 1) Sauvegarde locale (IDB)
+  const idbKey = `${IDB_KEY_PREFIX}:${userId}`;
   await idbSet(idbKey, { publicKey: publicKeyBase64, privateKey: privateKeyBase64 });
 
-  // Publier la clé publique
+  // 2) Chiffre la privée avec la passphrase
+  const enc = await encryptPrivateKeyWithPassphrase(privateKeyBase64, passphrase);
+
+  // 3) Publie public_key + clé privée chiffrée en DB
   const { error: pubError } = await supabase
     .from('profiles')
-    .update({ public_key: publicKeyBase64 })
+    .update({
+      public_key: publicKeyBase64,
+      encrypted_private_key: enc.encryptedPrivateKey,
+      private_key_salt: enc.salt,
+      private_key_iv: enc.iv,
+      public_key_updated_at: new Date().toISOString(),
+    })
     .eq('id', userId);
-
   if (pubError) {
-    if (pubError.message?.includes('public_key')) {
-      console.warn('[E2EE] Colonne profiles.public_key manquante. Applique la migration 20260513_e2ee_media_keys.sql');
-    } else {
-      console.error('[E2EE] Échec publication clé publique:', pubError);
+    console.error('[E2EE] Setup failed publishing key material:', pubError);
+    if (pubError.message?.includes('encrypted_private_key')) {
+      throw new Error(
+        'Migration manquante : applique 20260513_passphrase_recovery.sql',
+      );
     }
-  } else {
-    console.log('[E2EE] Paire de clés générée et clé publique publiée pour user', userId);
+    throw pubError;
   }
 
+  console.log('[E2EE] Paire générée + privée chiffrée publiée pour user', userId);
   return { publicKey: kp.publicKey, privateKey: kp.privateKey, publicKeyBase64 };
+}
+
+/**
+ * Sur un nouveau device : télécharge la privée chiffrée, la déchiffre avec
+ * la passphrase, et la stocke en IDB local.
+ */
+export async function unlockUserKeyPairWithPassphrase(
+  userId: string,
+  passphrase: string,
+): Promise<KeyPair> {
+  const enc = await fetchEncryptedPrivateKey(userId);
+  if (!enc) throw new Error('Aucune clé chiffrée en DB pour cet utilisateur.');
+
+  // Déchiffrement : si la passphrase est fausse, AES-GCM lève une erreur
+  // (OperationError). On laisse remonter pour que l'UI affiche le message.
+  const privateKeyPkcs8Base64 = await decryptPrivateKeyWithPassphrase(enc, passphrase);
+
+  // Récupère la public_key publiée
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('public_key')
+    .eq('id', userId)
+    .maybeSingle();
+  const publicKeyBase64 = profile?.public_key as string | undefined;
+  if (!publicKeyBase64) {
+    throw new Error('Clé publique introuvable. Réinitialisation des clés requise.');
+  }
+
+  const idbKey = `${IDB_KEY_PREFIX}:${userId}`;
+  await idbSet(idbKey, { publicKey: publicKeyBase64, privateKey: privateKeyPkcs8Base64 });
+  return await importKeyPairFromExport({
+    publicKey: publicKeyBase64,
+    privateKey: privateKeyPkcs8Base64,
+  });
+}
+
+/**
+ * Réinitialisation : génère une nouvelle paire, écrase tout en DB et IDB.
+ * Les anciens médias chiffrés deviennent illisibles (équivalent perte de
+ * passphrase Signal). À utiliser quand l'utilisateur a oublié sa passphrase.
+ */
+export async function resetUserKeyPairWithPassphrase(
+  userId: string,
+  newPassphrase: string,
+): Promise<KeyPair> {
+  // Purge IDB local
+  const idbKey = `${IDB_KEY_PREFIX}:${userId}`;
+  try {
+    const db = await openIdb();
+    await new Promise<void>((resolve) => {
+      const tx = db.transaction(IDB_STORE, 'readwrite');
+      tx.objectStore(IDB_STORE).delete(idbKey);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    });
+  } catch {
+    // ignore
+  }
+
+  // Force le setup en effaçant la version chiffrée DB d'abord
+  await supabase
+    .from('profiles')
+    .update({
+      encrypted_private_key: null,
+      private_key_salt: null,
+      private_key_iv: null,
+    })
+    .eq('id', userId);
+
+  return await setupUserKeyPairWithPassphrase(userId, newPassphrase);
+}
+
+/**
+ * @deprecated Utilise getUserKeyPair + setup/unlock avec passphrase.
+ * Conservé pour compat avec les callers existants. Lance
+ * KeyRecoveryRequiredError si la clé n'est pas disponible localement.
+ */
+export async function ensureUserKeyPair(userId: string): Promise<KeyPair> {
+  return await getUserKeyPair(userId);
 }
 
 /**

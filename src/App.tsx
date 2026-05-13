@@ -11,6 +11,7 @@ import { useSupabaseReconnect } from './hooks/useSupabaseReconnect'
 import { useKeepAlive } from './hooks/useKeepAlive'
 import { useEffect, useState, useCallback, lazy, Suspense } from 'react'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import { PassphraseModal } from './components/PassphraseModal'
 
 // Create a QueryClient with optimized caching for instant user profile display
 const queryClient = new QueryClient({
@@ -122,10 +123,40 @@ function PublicRoute({ children }: { readonly children: React.ReactNode }) {
   return user ? <Navigate to="/chats" /> : <>{children}</>
 }
 
+/**
+ * Affiche la modale de passphrase E2EE quand l'AuthContext signale qu'il
+ * lui faut une action utilisateur (1ère config sur ce navigateur, ou
+ * déverrouillage sur un nouveau device).
+ */
+function KeyRecoveryGate() {
+  const { keyRecoveryMode, setupKeyPair, unlockKeyPair, resetKeyPair, user } = useAuth();
+  if (!user || !keyRecoveryMode) return null;
+
+  if (keyRecoveryMode === 'setup') {
+    return <PassphraseModal mode="setup" onSubmit={setupKeyPair} />;
+  }
+  return (
+    <PassphraseModal
+      mode="unlock"
+      onSubmit={unlockKeyPair}
+      onReset={async () => {
+        // Demander une nouvelle passphrase via prompt natif (rare)
+        const newPass = globalThis.prompt(
+          'Nouvelle passphrase pour vos clés (>= 4 caractères) :',
+        );
+        if (newPass && newPass.length >= 4) {
+          await resetKeyPair(newPass);
+        }
+      }}
+    />
+  );
+}
+
 function AppRoutes() {
   return (
     <ErrorBoundary>
       <Suspense fallback={<LoadingScreen />}>
+        <KeyRecoveryGate />
         <Routes>
           <Route path="/auth" element={
           <PublicRoute>

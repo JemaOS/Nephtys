@@ -6,7 +6,13 @@ import { User } from '@supabase/supabase-js'
 import { supabase, Profile } from '@/lib/supabase'
 import { initializePresence, cleanupPresence } from '@/hooks/usePresence'
 import { resolveMediaUrl } from '@/lib/mediaUrl'
-import { ensureUserKeyPair } from '@/lib/mediaEncryption'
+import {
+  getUserKeyPair,
+  setupUserKeyPairWithPassphrase,
+  unlockUserKeyPairWithPassphrase,
+  resetUserKeyPairWithPassphrase,
+  KeyRecoveryRequiredError,
+} from '@/lib/mediaEncryption'
 
 // Timeout for auth operations (in milliseconds)
 const AUTH_TIMEOUT = 5000;
@@ -25,6 +31,14 @@ interface AuthContextType {
   signUp: (username: string, password: string) => Promise<void>
   signInAsGuest: (username: string) => Promise<void>
   signOut: () => Promise<void>
+  /** Indique si l'app doit demander la passphrase à l'utilisateur */
+  keyRecoveryMode: 'setup' | 'unlock' | null
+  /** Crée la paire E2EE pour la 1ère fois en chiffrant avec la passphrase */
+  setupKeyPair: (passphrase: string) => Promise<void>
+  /** Déverrouille la paire E2EE existante avec la passphrase */
+  unlockKeyPair: (passphrase: string) => Promise<void>
+  /** Réinitialise la paire E2EE (perd l'historique média chiffré) */
+  resetKeyPair: (newPassphrase: string) => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -147,6 +161,7 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
   const [isOffline, setIsOffline] = useState(!navigator.onLine)
+  const [keyRecoveryMode, setKeyRecoveryMode] = useState<'setup' | 'unlock' | null>(null)
 
   // Monitor online/offline status
   useEffect(() => {
@@ -295,10 +310,16 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
         setProfile(data);
         cacheProfile(data);
 
-        // Initialiser la paire de clés E2EE pour le chiffrement des médias.
-        // Si déjà existante, ne fait rien. Sinon génère + publie la clé publique.
-        ensureUserKeyPair(userId).catch(e => {
-          console.error('[Auth] E2EE key init failed:', e);
+        // Tente de charger la paire de clés E2EE depuis IndexedDB local.
+        // Si la clé n'est pas locale, on demande une passphrase via la modale
+        // (mode 'unlock' si la DB en a une chiffrée, 'setup' sinon).
+        getUserKeyPair(userId).catch((e) => {
+          if (e instanceof KeyRecoveryRequiredError) {
+            console.log('[Auth] Passphrase required:', e.kind);
+            setKeyRecoveryMode(e.kind);
+          } else {
+            console.error('[Auth] E2EE key init failed:', e);
+          }
         });
       }
     } catch (error) {
@@ -519,6 +540,25 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
     if (error) throw error
   }
 
+  // ─── Passphrase-based key recovery ─────────────────────────────────
+  const setupKeyPair = async (passphrase: string) => {
+    if (!user) throw new Error('Not authenticated');
+    await setupUserKeyPairWithPassphrase(user.id, passphrase);
+    setKeyRecoveryMode(null);
+  }
+
+  const unlockKeyPair = async (passphrase: string) => {
+    if (!user) throw new Error('Not authenticated');
+    await unlockUserKeyPairWithPassphrase(user.id, passphrase);
+    setKeyRecoveryMode(null);
+  }
+
+  const resetKeyPair = async (newPassphrase: string) => {
+    if (!user) throw new Error('Not authenticated');
+    await resetUserKeyPairWithPassphrase(user.id, newPassphrase);
+    setKeyRecoveryMode(null);
+  }
+
   const value = useMemo(() => ({
     user,
     profile,
@@ -527,8 +567,12 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
     signIn,
     signUp,
     signInAsGuest,
-    signOut
-  }), [user, profile, loading, isOffline]);
+    signOut,
+    keyRecoveryMode,
+    setupKeyPair,
+    unlockKeyPair,
+    resetKeyPair,
+  }), [user, profile, loading, isOffline, keyRecoveryMode]);
 
   return (
     <AuthContext.Provider value={value}>

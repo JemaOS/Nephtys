@@ -142,11 +142,16 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
     }
     loadMuteStatus();
     loadEphemeralSetting();
-    
-    if (conversationType === 'direct' && otherUser?.avatar_url) {
-      setCurrentAvatar(otherUser.avatar_url);
+
+    // Sync currentAvatar avec les props quand elles changent (ex: après
+    // upload d'une nouvelle photo de groupe, le parent re-fetch et passe
+    // une nouvelle conversationAvatar)
+    if (conversationType === 'direct') {
+      setCurrentAvatar(otherUser?.avatar_url ?? null);
+    } else {
+      setCurrentAvatar(conversationAvatar ?? null);
     }
-  }, [conversationId, otherUser?.avatar_url, conversationType, shouldLoadMembers, shouldLoadDirectParticipants]);
+  }, [conversationId, otherUser?.avatar_url, conversationAvatar, conversationType, shouldLoadMembers, shouldLoadDirectParticipants]);
 
   useEffect(() => {
     if (openAddMemberModal && conversationType === 'group' && isAdmin) {
