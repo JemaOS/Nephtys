@@ -1245,25 +1245,39 @@ export function ChatViewPage() {
     const ids = unreadMessages.map(msg => msg.id)
     const conversationIdRef = unreadMessages[0]?.conversation_id
 
-    const { error } = await supabase
+    // .select() permet de récupérer les rows réellement modifiées et de
+    // détecter les cas où RLS bloque silencieusement l'UPDATE.
+    const { data: updated, error } = await supabase
       .from('messages')
       .update({ status: 'read' })
       .in('id', ids)
+      .select('id, status')
 
     if (error) {
       console.error('[ChatViewPage] Error marking messages as read:', error)
       return
     }
 
+    if (!updated || updated.length === 0) {
+      console.warn('[ChatViewPage] markMessagesAsRead: 0 rows updated', {
+        attempted: ids.length,
+        conversationId: conversationIdRef,
+      })
+      return
+    }
+
+    console.log('[ChatViewPage] Marked as read:', updated.length, '/', ids.length)
+
     // Mise à jour optimiste de l'état local pour refléter immédiatement le statut "read"
+    const updatedIds = new Set(updated.map(u => u.id))
     setMessages(prev =>
-      prev.map(m => (ids.includes(m.id) ? { ...m, status: 'read' as const } : m))
+      prev.map(m => (updatedIds.has(m.id) ? { ...m, status: 'read' as const } : m))
     )
 
-    // Notifier ChatsPage pour qu'elle décrémente son compteur d'unread sans
-    // attendre le prochain reload (la subscription realtime n'écoute que les INSERT)
+    // Notifier ChatsPage pour qu'elle remette le compteur d'unread à 0
+    // immédiatement, sans attendre le prochain reload.
     globalThis.dispatchEvent(new CustomEvent('messages-marked-read', {
-      detail: { conversationId: conversationIdRef, count: ids.length }
+      detail: { conversationId: conversationIdRef, count: updated.length }
     }))
   }
 

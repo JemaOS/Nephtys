@@ -45,12 +45,16 @@ export const ForwardMessageModal: React.FC<ForwardMessageModalProps> = ({
     setLoading(true);
 
     try {
-      // Get all conversations the user is a member of
-      const { data: memberData } = await supabase
+      // 1) Toutes les conversations dont l'utilisateur est membre actif
+      const { data: memberData, error: memberError } = await supabase
         .from('conversation_members')
         .select('conversation_id')
         .eq('user_id', user.id)
         .eq('is_active', true);
+
+      if (memberError) {
+        console.error('[ForwardModal] members error:', memberError);
+      }
 
       if (!memberData || memberData.length === 0) {
         setConversations([]);
@@ -60,32 +64,28 @@ export const ForwardMessageModal: React.FC<ForwardMessageModalProps> = ({
 
       const conversationIds = memberData.map(m => m.conversation_id);
 
-      // Get conversation details
-      const { data: conversationsData } = await supabase
+      // 2) Détails des conversations
+      const { data: conversationsData, error: convError } = await supabase
         .from('conversations')
         .select('*')
         .in('id', conversationIds)
-        .order('last_message_at', { ascending: false });
+        .order('last_message_at', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false });
 
-      if (!conversationsData) {
+      if (convError) {
+        console.error('[ForwardModal] conversations error:', convError);
+      }
+
+      if (!conversationsData || conversationsData.length === 0) {
         setConversations([]);
         setLoading(false);
         return;
       }
 
-      // Get user's contacts to filter direct conversations
-      const { data: contactsData } = await supabase
-        .from('contacts')
-        .select('contact_user_id')
-        .eq('user_id', user.id);
-
-      const contactIds = new Set(contactsData?.map(c => c.contact_user_id) || []);
-
-      // Get details for each conversation
+      // 3) Pour chaque conv, charger les profils des autres membres
       const conversationsWithDetails = await Promise.all(
         conversationsData.map(async (conv) => {
           if (conv.type === 'direct') {
-            // Get the other user in direct conversations
             const { data: members } = await supabase
               .from('conversation_members')
               .select('user_id')
@@ -101,40 +101,37 @@ export const ForwardMessageModal: React.FC<ForwardMessageModalProps> = ({
 
               return { ...conv, otherUser: otherUserData || undefined };
             }
-          } else {
-            // Get member names for group conversations
-            const { data: members } = await supabase
-              .from('conversation_members')
-              .select('user_id')
-              .eq('conversation_id', conv.id);
+            // Conversation directe avec soi-même (Saved Messages)
+            return conv;
+          }
 
-            if (members) {
-              const memberIds = members.map(m => m.user_id);
-              const { data: profiles } = await supabase
-                .from('profiles')
-                .select('display_name, username')
-                .in('id', memberIds);
+          // Conversation de groupe
+          const { data: members } = await supabase
+            .from('conversation_members')
+            .select('user_id')
+            .eq('conversation_id', conv.id);
 
-              const memberNames = profiles?.map(p => p.display_name || p.username) || [];
-              return { ...conv, memberNames };
-            }
+          if (members && members.length > 0) {
+            const memberIds = members.map(m => m.user_id);
+            const { data: profiles } = await supabase
+              .from('profiles')
+              .select('display_name, username')
+              .in('id', memberIds);
+
+            const memberNames = profiles?.map(p => p.display_name || p.username) || [];
+            return { ...conv, memberNames };
           }
           return conv;
         })
       );
 
-      // Filter out direct conversations with users who are not in contacts
-      const validConversations = conversationsWithDetails.filter(conv => {
-        if (conv.type === 'group') return true;
-        if (conv.type === 'direct' && conv.otherUser) {
-          return contactIds.has(conv.otherUser.id);
-        }
-        return false;
-      });
-
-      setConversations(validConversations);
+      // 4) Pas de filtre par contacts : on liste toutes les conversations actives.
+      //    L'utilisateur veut pouvoir transférer vers n'importe quelle discussion
+      //    qu'il a déjà ouverte (pattern WhatsApp), pas seulement vers ses
+      //    contacts ajoutés explicitement.
+      setConversations(conversationsWithDetails);
     } catch (error) {
-      console.error('Error loading conversations:', error);
+      console.error('[ForwardModal] Error loading conversations:', error);
     } finally {
       setLoading(false);
     }
