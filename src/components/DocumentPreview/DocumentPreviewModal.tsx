@@ -3,12 +3,11 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { X, Send, Plus, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RotateCw, Loader2, FileText, FileSpreadsheet, Presentation, File, FileArchive } from 'lucide-react';
-import { pdfjs } from 'react-pdf';
-import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { DocumentPreviewContent, FileTypeInfo } from './DocumentPreviewComponents';
+import { configurePDFWorker } from './pdfWorkerConfig';
 
-// Configure PDF.js worker
-pdfjs.GlobalWorkerOptions.workerSrc = pdfjsWorker;
+// Configure PDF.js worker (centralisé, une seule fois)
+configurePDFWorker();
 
 // Helper functions to reduce component complexity
 

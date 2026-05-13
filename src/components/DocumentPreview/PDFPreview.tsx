@@ -2,12 +2,11 @@
 // Distributed under the license specified in the root directory of this project.
 
 import React, { useState, useCallback } from 'react';
-import { Document, Page, pdfjs } from 'react-pdf';
+import { Document, Page } from 'react-pdf';
 import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Loader2 } from 'lucide-react';
-import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import { configurePDFWorker } from './pdfWorkerConfig';
 
-// Configure PDF.js worker
-pdfjs.GlobalWorkerOptions.workerSrc = pdfjsWorker;
+configurePDFWorker();
 
 interface PDFPreviewProps {
   file: File | string; // File object or URL

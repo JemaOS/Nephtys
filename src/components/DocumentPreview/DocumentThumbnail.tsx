@@ -3,11 +3,9 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { pdfjs } from 'react-pdf';
-import { FileText, Loader2 } from 'lucide-react';
-import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import { configurePDFWorker } from './pdfWorkerConfig';
 
-// Configure PDF.js worker
-pdfjs.GlobalWorkerOptions.workerSrc = pdfjsWorker;
+configurePDFWorker();
 
 // Cache for generated thumbnails
 const thumbnailCache = new Map<string, string>();

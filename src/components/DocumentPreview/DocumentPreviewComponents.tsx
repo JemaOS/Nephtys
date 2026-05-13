@@ -328,7 +328,7 @@ export const DocumentPreviewContent: React.FC<DocumentPreviewContentProps> = ({
     )}
 
     {/* PDF Document - Using CSS transform for smooth zooming - Responsive */}
-    {isPDF && fileUrl && containerWidth > 0 && (
+    {isPDF && fileUrl && (
       <div
         ref={pdfWrapperRef}
         className="py-2 sm:py-4 transition-transform duration-100 ease-out origin-top touch-none"
@@ -346,7 +346,7 @@ export const DocumentPreviewContent: React.FC<DocumentPreviewContentProps> = ({
         >
           <Page
             pageNumber={currentPage}
-            width={containerWidth}
+            width={containerWidth > 0 ? containerWidth : (isMobile ? window.innerWidth - 16 : Math.min(800, window.innerWidth - 100))}
             className="shadow-2xl rounded-sm sm:rounded-lg overflow-hidden"
             renderTextLayer={false}
             renderAnnotationLayer={false}
@@ -354,7 +354,7 @@ export const DocumentPreviewContent: React.FC<DocumentPreviewContentProps> = ({
               <div
                 className="flex items-center justify-center bg-white"
                 style={{
-                  width: containerWidth,
+                  width: containerWidth > 0 ? containerWidth : '100%',
                   height: isMobile ? '70vh' : '600px'
                 }}
               >
