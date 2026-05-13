@@ -7,8 +7,9 @@ import {
 } from 'lucide-react';
 import { supabase, Profile, Message } from '@/lib/supabase';
 import { MediaViewer } from './MediaViewer';
-import { signFieldsBatch, resolveMediaUrl } from '@/lib/mediaUrl';
+import { signFieldsBatch, resolveMediaUrl, invalidateMediaUrl } from '@/lib/mediaUrl';
 import { fetchAndDecryptMedia } from '@/lib/encryptedMediaService';
+import { MediaImg } from './MediaImg';
 import { OverviewTab, MembersTab, MediaTab, FilesTab, LinksTab } from './ConversationInfoTabs';
 import { AddMemberModal } from './AddMemberModal';
 import { EphemeralDurationMenu } from './EphemeralDurationMenu';
@@ -398,6 +399,14 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
       if (updateError) throw updateError;
       
       setCurrentAvatar(fileName);
+      // Invalider les caches qui contiennent l'ancien avatar pour qu'au reload
+      // la nouvelle photo apparaisse immédiatement.
+      try {
+        localStorage.removeItem(`anu_cache_conv_${conversationId}`);
+        invalidateMediaUrl(fileName);
+      } catch {
+        // ignore
+      }
       alert('✅ Photo mise à jour !');
       globalThis.location.reload();
     } catch (err) {
@@ -671,17 +680,16 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
             {/* Avatar & Name */}
             <div className="px-6 py-4 text-center">
               <div className="relative inline-block mb-3">
-                {currentAvatar ? (
-                  <img
-                    src={currentAvatar}
-                    alt={conversationName}
-                    className="w-32 h-32 rounded-full object-cover"
-                  />
-                ) : (
-                  <div className="w-32 h-32 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-5xl">
-                    {conversationName[0]?.toUpperCase()}
-                  </div>
-                )}
+                <MediaImg
+                  src={currentAvatar}
+                  alt={conversationName}
+                  className="w-32 h-32 rounded-full object-cover"
+                  fallback={
+                    <div className="w-32 h-32 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-5xl">
+                      {conversationName[0]?.toUpperCase()}
+                    </div>
+                  }
+                />
                 {/* Only show camera button for groups where user is admin - not for direct conversations */}
                 {conversationType === 'group' && isAdmin && (
                   <label className="absolute bottom-2 right-2 w-10 h-10 rounded-full bg-accent flex items-center justify-center cursor-pointer hover:bg-[#5a5ec9] transition-colors shadow-lg">

@@ -4,6 +4,7 @@
 import React, { useState } from 'react';
 import { UserPlus, UserMinus, Edit, Trash2, LogOut, Crown, Camera } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { invalidateMediaUrl } from '@/lib/mediaUrl';
 
 interface GroupMember {
   id: string;
@@ -207,6 +208,13 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({
         throw new Error('Erreur lors de la mise à jour du groupe');
       }
       
+      // Invalider les caches qui contiennent l'ancien avatar
+      try {
+        localStorage.removeItem(`anu_cache_conv_${conversationId}`);
+        invalidateMediaUrl(fileName);
+      } catch {
+        // ignore
+      }
       alert('✅ Photo du groupe mise à jour !');
       globalThis.location.reload();
     } catch (err: any) {

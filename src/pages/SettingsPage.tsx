@@ -8,6 +8,7 @@ import { useAuth } from '@/context/AuthContext'
 import { useTheme } from '@/context/ThemeContext'
 import { supabase } from '@/lib/supabase'
 import { MediaImg } from '@/components/MediaImg'
+import { invalidateMediaUrl } from '@/lib/mediaUrl'
 import {
   check2FAStatus,
   enroll2FA,
@@ -490,6 +491,8 @@ export function SettingsPage() {
         throw new Error('Erreur lors de la mise à jour du profil')
       }
       
+      // Invalider le cache pour qu'au reload la nouvelle photo apparaisse
+      try { invalidateMediaUrl(fileName) } catch { /* ignore */ }
       alert('✅ Photo de profil mise à jour !')
       globalThis.location.reload()
     } catch (err: any) {
