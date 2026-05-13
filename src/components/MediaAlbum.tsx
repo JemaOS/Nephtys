@@ -44,9 +44,15 @@ const AlbumItem: React.FC<AlbumItemProps> = ({
       {/* Fond sombre toujours visible — évite le fond blanc natif du browser */}
       <div className="absolute inset-0 bg-[#1a1a1a]" />
 
-      {loading || !url ? (
+      {loading ? (
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="w-7 h-7 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+        </div>
+      ) : !url ? (
+        // URL vide après chargement = erreur silencieuse (clé manquante, RLS, etc.)
+        // On affiche un fond neutre sans icône cassée native du navigateur
+        <div className="absolute inset-0 flex items-center justify-center bg-[#1a1a1a]">
+          <div className="w-7 h-7 border-2 border-white/10 rounded-full" />
         </div>
       ) : isVideo ? (
         <>

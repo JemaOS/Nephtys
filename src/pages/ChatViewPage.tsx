@@ -1846,6 +1846,14 @@ export function ChatViewPage() {
           messageData.media_thumbnail = file.thumbnail
         }
         
+        // Chiffrement E2EE : marquer le message + créer les clés wrappées
+        const isEncrypted = !!(file as any).encrypted
+        const encryptionKey = (file as any).encryptionKey as Uint8Array | undefined
+        const mediaIv = (file as any).mediaIv as string | undefined
+        if (isEncrypted) {
+          messageData.is_media_encrypted = true
+        }
+
         // Add ephemeral fields if enabled
         if (ephemeralDuration) {
           messageData.is_ephemeral = true
@@ -1855,10 +1863,32 @@ export function ChatViewPage() {
             : null
         }
         
-        const { data, error } = await supabase.from('messages').insert(messageData).select().single()
+        let insertResult = await supabase.from('messages').insert(messageData).select().single()
+        if (insertResult.error?.message?.includes('is_media_encrypted')) {
+          delete messageData.is_media_encrypted
+          insertResult = await supabase.from('messages').insert(messageData).select().single()
+        }
+        const { data, error } = insertResult
         
         if (!error && data) {
-             setMessages(prev => prev.map(m => m.id === tempId ? data : m))
+          setMessages(prev => prev.map(m => m.id === tempId ? data : m))
+          // Créer les clés enveloppées pour les médias chiffrés
+          if (isEncrypted && encryptionKey && mediaIv) {
+            try {
+              const result = await createMediaKeysForMessage({
+                messageId: data.id,
+                senderId: user.id,
+                conversationId: conversationId!,
+                rawKey: encryptionKey,
+                mediaIvBase64: mediaIv,
+              })
+              if (result.missingKeys.length > 0) {
+                console.warn('[E2EE] Membres sans clé publique:', result.missingKeys)
+              }
+            } catch (e) {
+              console.error('[E2EE] Échec création clés enveloppées (multi):', e)
+            }
+          }
         } else {
             // Remove failed message
             setMessages(prev => prev.filter(m => m.id !== tempId))
