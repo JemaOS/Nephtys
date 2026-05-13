@@ -871,12 +871,13 @@ export function ChatsPage() {
       }
       
       // Écoute l'événement émis par ChatViewPage quand des messages passent
-      // au statut 'read'. Permet de décrémenter le compteur d'unread sans
-      // attendre le prochain reload (la subscription realtime sur messages
-      // n'écoute que les INSERT, pas les UPDATE).
+      // au statut 'read'. Décrémente immédiatement le compteur localement,
+      // PUIS force un reload depuis le serveur pour garantir la cohérence
+      // (au cas où l'UPDATE en base ne se serait pas propagé pour une raison X).
       const handleMessagesMarkedRead = (event: Event) => {
         const detail = (event as CustomEvent<{ conversationId?: string }>).detail
         if (!detail?.conversationId) return
+        // 1. Update optimiste instantané
         setConversations(prev =>
           prev.map(conv =>
             conv.id === detail.conversationId
@@ -884,6 +885,11 @@ export function ChatsPage() {
               : conv
           )
         )
+        // 2. Reload serveur après un court délai pour confirmer (et corriger
+        //    si l'UPDATE en base n'a pas eu lieu, ex: erreur réseau côté client)
+        setTimeout(() => {
+          loadConversationsFromServer(false, true)
+        }, 500)
       }
 
       globalThis.addEventListener('supabase-reconnected', handleSupabaseReconnect)

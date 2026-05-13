@@ -1242,42 +1242,46 @@ export function ChatViewPage() {
     const unreadMessages = messages.filter(msg => msg.sender_id !== currentUserId && msg.status !== 'read')
     if (unreadMessages.length === 0) return
 
-    const ids = unreadMessages.map(msg => msg.id)
     const conversationIdRef = unreadMessages[0]?.conversation_id
+    if (!conversationIdRef) return
 
-    // .select() permet de récupérer les rows réellement modifiées et de
-    // détecter les cas où RLS bloque silencieusement l'UPDATE.
-    const { data: updated, error } = await supabase
-      .from('messages')
-      .update({ status: 'read' })
-      .in('id', ids)
-      .select('id, status')
+    // Utilise la RPC mark_messages_as_read (SECURITY DEFINER) pour bypass
+    // d'\u00e9ventuels probl\u00e8mes RLS sur la table messages. Met \u00e0 jour TOUS les
+    // messages non-lus de la conv en une seule requ\u00eate.
+    const { data, error } = await supabase.rpc('mark_messages_as_read', {
+      p_conversation_id: conversationIdRef,
+      p_user_id: currentUserId,
+    })
 
     if (error) {
-      console.error('[ChatViewPage] Error marking messages as read:', error)
-      return
+      console.error('[ChatViewPage] mark_messages_as_read RPC error:', error)
+      // Fallback : tenter l'UPDATE direct (au cas o\u00f9 la migration RPC n'est pas appliqu\u00e9e)
+      const ids = unreadMessages.map(msg => msg.id)
+      const { error: fallbackError } = await supabase
+        .from('messages')
+        .update({ status: 'read' })
+        .in('id', ids)
+      if (fallbackError) {
+        console.error('[ChatViewPage] Fallback UPDATE also failed:', fallbackError)
+        return
+      }
     }
 
-    if (!updated || updated.length === 0) {
-      console.warn('[ChatViewPage] markMessagesAsRead: 0 rows updated', {
-        attempted: ids.length,
-        conversationId: conversationIdRef,
-      })
-      return
-    }
+    const updatedCount = Array.isArray(data) ? (data[0]?.updated_count ?? 0) : (data?.updated_count ?? unreadMessages.length)
+    console.log('[ChatViewPage] Marked as read:', updatedCount, 'messages in conv', conversationIdRef)
 
-    console.log('[ChatViewPage] Marked as read:', updated.length, '/', ids.length)
-
-    // Mise à jour optimiste de l'état local pour refléter immédiatement le statut "read"
-    const updatedIds = new Set(updated.map(u => u.id))
+    // Mise \u00e0 jour optimiste de l'\u00e9tat local
     setMessages(prev =>
-      prev.map(m => (updatedIds.has(m.id) ? { ...m, status: 'read' as const } : m))
+      prev.map(m =>
+        m.sender_id !== currentUserId && m.status !== 'read'
+          ? { ...m, status: 'read' as const }
+          : m
+      )
     )
 
-    // Notifier ChatsPage pour qu'elle remette le compteur d'unread à 0
-    // immédiatement, sans attendre le prochain reload.
+    // Notifier ChatsPage pour qu'elle remette le compteur \u00e0 0 imm\u00e9diatement
     globalThis.dispatchEvent(new CustomEvent('messages-marked-read', {
-      detail: { conversationId: conversationIdRef, count: updated.length }
+      detail: { conversationId: conversationIdRef, count: updatedCount }
     }))
   }
 
