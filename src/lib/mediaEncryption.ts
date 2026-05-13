@@ -94,9 +94,8 @@ interface KeyPairExport {
   privateKey: string; // base64 PKCS8
 }
 
-/** Erreur signalant qu'une action utilisateur est requise pour les clés. */
+/** @deprecated — laissé pour rétrocompatibilité, plus utilisé en prod */
 export class KeyRecoveryRequiredError extends Error {
-  /** 'setup' = première fois, 'unlock' = clé chiffrée existe en DB */
   kind: 'setup' | 'unlock';
   constructor(kind: 'setup' | 'unlock') {
     super(`Key ${kind} required`);
@@ -515,3 +514,68 @@ export const cryptoB64 = {
   toBase64: bufToBase64,
   fromBase64: base64ToBuf,
 };
+
+// ─── Fonctions de gestion automatique des clés (multi-device simple) ──
+//
+// Ces deux fonctions remplacent entièrement la modale passphrase :
+// le mot de passe du compte sert directement de secret pour chiffrer la
+// clé privée. L'utilisateur ne voit rien de plus que son login habituel.
+
+/**
+ * À la CRÉATION de compte :
+ * Génère une paire ECDH, chiffre la privée avec le password, publie tout.
+ * Idempotent : si la clé existe déjà en DB elle est préservée.
+ */
+export async function initKeyPairOnSignup(userId: string, password: string): Promise<void> {
+  try {
+    await setupUserKeyPairWithPassphrase(userId, password);
+  } catch (err) {
+    // Si la migration n'est pas encore appliquée → fallback silencieux.
+    console.error('[E2EE] initKeyPairOnSignup failed (migration?)', err);
+  }
+}
+
+/**
+ * À la CONNEXION :
+ * Télécharge la clé chiffrée depuis DB, la déchiffre avec le password,
+ * et la stocke en IDB local pour la session.
+ *
+ * Si la clé chiffrée est absente en DB (compte créé avant ce système),
+ * on publie la clé locale existante chiffrée avec le password.
+ *
+ * Silencieux : aucune interaction utilisateur requise.
+ */
+export async function initKeyPairOnSignin(userId: string, password: string): Promise<void> {
+  try {
+    const idbKey = `${IDB_KEY_PREFIX}:${userId}`;
+    const enc = await fetchEncryptedPrivateKey(userId);
+
+    if (enc) {
+      // Tenter de déchiffrer avec le password fourni
+      try {
+        await unlockUserKeyPairWithPassphrase(userId, password);
+        console.log('[E2EE] Clé restaurée depuis DB pour user', userId);
+      } catch {
+        // Mauvais password ou clé corrompue : on ne plante pas, la session
+        // s'ouvre quand même et les médias chiffrés restent inaccessibles
+        // jusqu'à la prochaine connexion avec le bon mot de passe.
+        console.warn('[E2EE] Déchiffrement de la clé échoué (password incorrect ?)');
+      }
+    } else {
+      // Pas de clé chiffrée en DB → vérifier si IDB local a quelque chose
+      const cached = (await idbGet(idbKey)) as KeyPairExport | undefined;
+      if (cached) {
+        // Publier la clé locale chiffrée avec ce password pour activer le
+        // multi-device à partir de maintenant
+        await setupUserKeyPairWithPassphrase(userId, password);
+        console.log('[E2EE] Clé locale publiée chiffrée pour user', userId);
+      } else {
+        // Vraiment aucune clé → générer + publier
+        await setupUserKeyPairWithPassphrase(userId, password);
+        console.log('[E2EE] Nouvelle paire générée pour user', userId);
+      }
+    }
+  } catch (err) {
+    console.error('[E2EE] initKeyPairOnSignin failed', err);
+  }
+}

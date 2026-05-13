@@ -6,13 +6,7 @@ import { User } from '@supabase/supabase-js'
 import { supabase, Profile } from '@/lib/supabase'
 import { initializePresence, cleanupPresence } from '@/hooks/usePresence'
 import { resolveMediaUrl } from '@/lib/mediaUrl'
-import {
-  getUserKeyPair,
-  setupUserKeyPairWithPassphrase,
-  unlockUserKeyPairWithPassphrase,
-  resetUserKeyPairWithPassphrase,
-  KeyRecoveryRequiredError,
-} from '@/lib/mediaEncryption'
+import { initKeyPairOnSignin, initKeyPairOnSignup } from '@/lib/mediaEncryption'
 
 // Timeout for auth operations (in milliseconds)
 const AUTH_TIMEOUT = 5000;
@@ -31,14 +25,6 @@ interface AuthContextType {
   signUp: (username: string, password: string) => Promise<void>
   signInAsGuest: (username: string) => Promise<void>
   signOut: () => Promise<void>
-  /** Indique si l'app doit demander la passphrase à l'utilisateur */
-  keyRecoveryMode: 'setup' | 'unlock' | null
-  /** Crée la paire E2EE pour la 1ère fois en chiffrant avec la passphrase */
-  setupKeyPair: (passphrase: string) => Promise<void>
-  /** Déverrouille la paire E2EE existante avec la passphrase */
-  unlockKeyPair: (passphrase: string) => Promise<void>
-  /** Réinitialise la paire E2EE (perd l'historique média chiffré) */
-  resetKeyPair: (newPassphrase: string) => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -161,7 +147,7 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
   const [isOffline, setIsOffline] = useState(!navigator.onLine)
-  const [keyRecoveryMode, setKeyRecoveryMode] = useState<'setup' | 'unlock' | null>(null)
+
 
   // Monitor online/offline status
   useEffect(() => {
@@ -310,17 +296,8 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
         setProfile(data);
         cacheProfile(data);
 
-        // Tente de charger la paire de clés E2EE depuis IndexedDB local.
-        // Si la clé n'est pas locale, on demande une passphrase via la modale
-        // (mode 'unlock' si la DB en a une chiffrée, 'setup' sinon).
-        getUserKeyPair(userId).catch((e) => {
-          if (e instanceof KeyRecoveryRequiredError) {
-            console.log('[Auth] Passphrase required:', e.kind);
-            setKeyRecoveryMode(e.kind);
-          } else {
-            console.error('[Auth] E2EE key init failed:', e);
-          }
-        });
+        // La clé E2EE est initialisée au moment du signin/signup (où on a
+        // le password). Ici on ne peut plus rien faire sans le password.
       }
     } catch (error) {
       // Profile fetch failed - use cached profile if available
@@ -365,6 +342,11 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
         if (sessionError) {
           console.error('Session error:', sessionError)
           throw new Error('❌ Erreur de session\n\nImpossible de vous connecter.')
+        }
+        // Restaurer (ou créer) la clé E2EE silencieusement avec le password
+        const userId = data.data.session.user?.id
+        if (userId) {
+          initKeyPairOnSignin(userId, password)
         }
       } else {
         throw new Error('❌ Erreur de connexion\n\nAucune session reçue.')
@@ -414,6 +396,11 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
         if (sessionError) {
           console.error('Session error:', sessionError)
           throw new Error('❌ Erreur de session\n\nCompte créé mais impossible de vous connecter.')
+        }
+        // Générer + chiffrer + publier la paire E2EE avec le password
+        const userId = data.data.session.user?.id
+        if (userId) {
+          initKeyPairOnSignup(userId, password)
         }
       } else {
         throw new Error('❌ Erreur d\'inscription\n\nAucune session reçue.')
@@ -540,25 +527,6 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
     if (error) throw error
   }
 
-  // ─── Passphrase-based key recovery ─────────────────────────────────
-  const setupKeyPair = async (passphrase: string) => {
-    if (!user) throw new Error('Not authenticated');
-    await setupUserKeyPairWithPassphrase(user.id, passphrase);
-    setKeyRecoveryMode(null);
-  }
-
-  const unlockKeyPair = async (passphrase: string) => {
-    if (!user) throw new Error('Not authenticated');
-    await unlockUserKeyPairWithPassphrase(user.id, passphrase);
-    setKeyRecoveryMode(null);
-  }
-
-  const resetKeyPair = async (newPassphrase: string) => {
-    if (!user) throw new Error('Not authenticated');
-    await resetUserKeyPairWithPassphrase(user.id, newPassphrase);
-    setKeyRecoveryMode(null);
-  }
-
   const value = useMemo(() => ({
     user,
     profile,
@@ -568,11 +536,7 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
     signUp,
     signInAsGuest,
     signOut,
-    keyRecoveryMode,
-    setupKeyPair,
-    unlockKeyPair,
-    resetKeyPair,
-  }), [user, profile, loading, isOffline, keyRecoveryMode]);
+  }), [user, profile, loading, isOffline]);
 
   return (
     <AuthContext.Provider value={value}>
