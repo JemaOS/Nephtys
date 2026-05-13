@@ -294,9 +294,9 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
       onStar={onStar}
       onPin={onPin}
       onReaction={onReaction}
-      allMedia={isEncrypted ? undefined : allMedia}
-      currentIndex={isEncrypted ? 0 : viewerIndex}
-      onNavigate={isEncrypted ? undefined : handleNavigate}
+      allMedia={allMedia}
+      currentIndex={viewerIndex}
+      onNavigate={handleNavigate}
     />
   );
 

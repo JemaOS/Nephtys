@@ -423,8 +423,10 @@ export function ChatViewPage() {
     return { name: 'Utilisateur', avatar: undefined }
   }, [user?.id, profile, conversation?.type, groupMemberProfiles, otherUser])
 
-  // Collect all media from messages for navigation in MediaViewer
-  const allMediaItems = useMemo(() => {
+  // Collect all media from messages for navigation in MediaViewer.
+  // On construit d'abord la liste brute (paths nus), puis on signe
+  // les URLs en batch pour que la navigation ← → fonctionne.
+  const rawMediaItems = useMemo(() => {
     // Ensure messages is always an array
     const msgs = Array.isArray(messages) ? messages : []
     return msgs
@@ -478,6 +480,32 @@ export function ChatViewPage() {
         }
       })
   }, [messages, user?.id, getSenderInfo])
+
+  // URLs signées pour la navigation viewer — on résout en batch
+  // quand la liste brute change. Les GIFs/stickers ont déjà des https,
+  // seuls les paths du bucket privé sont signés.
+  const [allMediaItems, setAllMediaItems] = useState(rawMediaItems)
+
+  useEffect(() => {
+    let cancelled = false
+    const resolveAll = async () => {
+      // Résolution parallèle de toutes les URLs
+      const resolved = await Promise.all(
+        rawMediaItems.map(async (item) => {
+          if (!item.url || item.url.startsWith('http')) return item // déjà URL complète
+          try {
+            const signed = await resolveMediaUrl(item.url)
+            return signed ? { ...item, url: signed } : item
+          } catch {
+            return item
+          }
+        })
+      )
+      if (!cancelled) setAllMediaItems(resolved)
+    }
+    resolveAll()
+    return () => { cancelled = true }
+  }, [rawMediaItems])
 
   // Handler for media navigation
   const handleMediaNavigate = useCallback((index: number) => {
