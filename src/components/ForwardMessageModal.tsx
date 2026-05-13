@@ -6,6 +6,7 @@ import { X, Search, Check } from 'lucide-react';
 import { supabase, Conversation, Profile } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { signFieldsBatch } from '@/lib/mediaUrl';
+import { MediaImg } from './MediaImg';
 
 interface ConversationWithDetails extends Conversation {
   otherUser?: Profile;
@@ -231,17 +232,16 @@ export const ForwardMessageModal: React.FC<ForwardMessageModalProps> = ({
           </div>
 
           {/* Avatar */}
-          {avatarUrl ? (
-            <img
-              src={avatarUrl}
-              alt={getConversationName(conv)}
-              className="w-12 h-12 rounded-full object-cover"
-            />
-          ) : (
-            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-accent/80 to-accent flex items-center justify-center text-white font-semibold text-lg">
-              {getInitial(conv)}
-            </div>
-          )}
+          <MediaImg
+            src={avatarUrl}
+            alt={getConversationName(conv)}
+            className="w-12 h-12 rounded-full object-cover"
+            fallback={
+              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-accent/80 to-accent flex items-center justify-center text-white font-semibold text-lg">
+                {getInitial(conv)}
+              </div>
+            }
+          />
 
           {/* Info */}
           <div className="flex-1 min-w-0 text-left">

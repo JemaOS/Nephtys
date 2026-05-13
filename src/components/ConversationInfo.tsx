@@ -7,6 +7,8 @@ import {
 } from 'lucide-react';
 import { supabase, Profile, Message } from '@/lib/supabase';
 import { MediaViewer } from './MediaViewer';
+import { signFieldsBatch, resolveMediaUrl } from '@/lib/mediaUrl';
+import { fetchAndDecryptMedia } from '@/lib/encryptedMediaService';
 import { OverviewTab, MembersTab, MediaTab, FilesTab, LinksTab } from './ConversationInfoTabs';
 import { AddMemberModal } from './AddMemberModal';
 import { EphemeralDurationMenu } from './EphemeralDurationMenu';
@@ -121,6 +123,10 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
   // Media Viewer State
   const [selectedMedia, setSelectedMedia] = useState<Message | null>(null);
   const [isMediaViewerOpen, setIsMediaViewerOpen] = useState(false);
+  // URLs résolues (signed URL ou blob déchiffré E2EE) indexées par message.id
+  // Construit à la volée à l'ouverture du viewer pour ne pas tout télécharger
+  // d'un coup et économiser la mémoire.
+  const [resolvedMediaUrls, setResolvedMediaUrls] = useState<Map<string, string>>(new Map());
 
   // Helper to determine if initial data load is needed
   const shouldLoadMembers = conversationType === 'group';
@@ -156,15 +162,21 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
         .single();
 
       const participants: {user: Profile, isCurrentUser: boolean}[] = [];
-      
+
       if (currentUserProfile) {
+        // Signer l'avatar (bucket privé)
+        await signFieldsBatch([currentUserProfile as any], ['avatar_url']);
         participants.push({ user: currentUserProfile, isCurrentUser: true });
       }
-      
+
       if (otherUser) {
-        participants.push({ user: otherUser, isCurrentUser: false });
+        // otherUser peut déjà être signé en amont, mais on s'assure que
+        // l'avatar est résolu pour ce viewer
+        const otherCopy = { ...otherUser };
+        await signFieldsBatch([otherCopy as any], ['avatar_url']);
+        participants.push({ user: otherCopy, isCurrentUser: false });
       }
-      
+
       setDirectParticipants(participants);
     } catch (err) {
       console.error('Error loading direct participants:', err);
@@ -204,6 +216,8 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
           };
         })
       );
+      // Signer en batch les avatars (bucket privé)
+      await signFieldsBatch(enrichedMembers as any[], ['avatar_url']);
       setMembers(enrichedMembers);
     }
   };
@@ -570,11 +584,63 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
     return null;
   };
 
-  // Transform media messages for MediaViewer
+  // Résolution des URLs au moment où le viewer s'ouvre. On résout en
+  // priorité le média sélectionné (pour qu'il s'affiche tout de suite) puis
+  // les voisins (pour la navigation).
+  useEffect(() => {
+    if (!isMediaViewerOpen || !selectedMedia) return;
+
+    let cancelled = false;
+
+    const resolveOne = async (m: Message): Promise<[string, string] | null> => {
+      const raw = m.media_url || m.file_url || '';
+      if (!raw) return null;
+      try {
+        if ((m as any).is_media_encrypted) {
+          if (!currentUserId) return null;
+          const blobUrl = await fetchAndDecryptMedia(m.id, raw, currentUserId);
+          return [m.id, blobUrl];
+        }
+        const signed = (await resolveMediaUrl(raw)) ?? raw;
+        return [m.id, signed];
+      } catch (err) {
+        console.warn('[ConversationInfo] resolve media failed', m.id, err);
+        return null;
+      }
+    };
+
+    const run = async () => {
+      // 1) Le média actuellement sélectionné en priorité
+      const first = await resolveOne(selectedMedia);
+      if (cancelled) return;
+      if (first) {
+        setResolvedMediaUrls(prev => {
+          const next = new Map(prev);
+          next.set(first[0], first[1]);
+          return next;
+        });
+      }
+
+      // 2) Les autres en parallèle, sans bloquer le rendu
+      const others = mediaMessages.filter(m => m.id !== selectedMedia.id);
+      const results = await Promise.all(others.map(resolveOne));
+      if (cancelled) return;
+      setResolvedMediaUrls(prev => {
+        const next = new Map(prev);
+        for (const r of results) if (r) next.set(r[0], r[1]);
+        return next;
+      });
+    };
+
+    run();
+    return () => { cancelled = true; };
+  }, [isMediaViewerOpen, selectedMedia?.id, mediaMessages, currentUserId]);
+
+  // Transform media messages for MediaViewer (en utilisant les URLs résolues)
   const getMediaViewerItems = () => mediaMessages.map(m => {
     const isVideo = m.type === 'video' || m.media_type === 'video';
     return {
-      url: m.media_url || m.file_url || '',
+      url: resolvedMediaUrls.get(m.id) || '',
       type: isVideo ? 'video' as const : 'image' as const,
       senderName: getSenderName(m.sender_id),
       senderAvatar: getSenderAvatar(m.sender_id),
@@ -739,7 +805,7 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
       {isMediaViewerOpen && selectedMedia && (
         <MediaViewer
           isOpen={isMediaViewerOpen}
-          mediaUrl={selectedMedia.media_url || selectedMedia.file_url || ''}
+          mediaUrl={resolvedMediaUrls.get(selectedMedia.id) || selectedMedia.media_url || selectedMedia.file_url || ''}
           mediaType={(selectedMedia.type === 'video' || selectedMedia.media_type === 'video') ? 'video' : 'image'}
           senderName={getSenderName(selectedMedia.sender_id)}
           senderAvatar={getSenderAvatar(selectedMedia.sender_id)}

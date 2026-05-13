@@ -12,6 +12,7 @@ import {
   UserPlus
 } from 'lucide-react'
 import { CallParticipantSelector } from './CallParticipantSelector'
+import { MediaImg } from './MediaImg'
 
 // Helper component for call duration
 export function CallDuration({ isActive }: { readonly isActive: boolean }) {
@@ -89,10 +90,15 @@ export function ParticipantVideo({
       ) : (
         <div className="flex flex-col items-center justify-center p-4">
           {participant.avatar ? (
-            <img
+            <MediaImg
               src={participant.avatar}
               alt={participant.name}
               className="w-16 h-16 md:w-20 md:h-20 rounded-full object-cover border-2 border-white/20 shadow-md mb-2"
+              fallback={
+                <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-2xl mb-2 shadow-md">
+                  {participant.name[0]?.toUpperCase() || '?'}
+                </div>
+              }
             />
           ) : (
             <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-2xl mb-2 shadow-md">
@@ -444,17 +450,16 @@ export function OneToOneCallUI({
               </video>
             ) : (
               <div className="w-full h-full flex items-center justify-center bg-gray-800">
-                {profile?.avatar_url ? (
-                  <img
-                    src={profile.avatar_url}
-                    alt="Vous"
-                    className="w-16 h-16 md:w-20 md:h-20 rounded-full object-cover border-2 border-white/20"
-                  />
-                ) : (
-                  <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-2xl">
-                    {profile?.display_name?.[0]?.toUpperCase() || profile?.username?.[0]?.toUpperCase() || '?'}
-                  </div>
-                )}
+                <MediaImg
+                  src={profile?.avatar_url}
+                  alt="Vous"
+                  className="w-16 h-16 md:w-20 md:h-20 rounded-full object-cover border-2 border-white/20"
+                  fallback={
+                    <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-2xl">
+                      {profile?.display_name?.[0]?.toUpperCase() || profile?.username?.[0]?.toUpperCase() || '?'}
+                    </div>
+                  }
+                />
               </div>
             )}
             <div className="absolute bottom-0 inset-x-0 p-2 bg-gradient-to-t from-black/60 to-transparent pointer-events-none">

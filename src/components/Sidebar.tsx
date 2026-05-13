@@ -6,6 +6,7 @@ import { MessageCircle, Users, Settings, Phone, Archive } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { MediaImg } from './MediaImg'
 
 export function Sidebar() {
   const navigate = useNavigate()
@@ -63,18 +64,16 @@ export function Sidebar() {
         onClick={() => navigate('/settings')}
         title="Paramètres"
       >
-        {avatarUrl ? (
-          <img
-            src={avatarUrl}
-            alt={profile?.username}
-            className="w-full h-full object-cover"
-            key={avatarUrl}
-          />
-        ) : (
-          <div className="w-full h-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-sm">
-            {profile?.username?.[0]?.toUpperCase() || 'N'}
-          </div>
-        )}
+        <MediaImg
+          src={avatarUrl}
+          alt={profile?.username || ''}
+          className="w-full h-full object-cover"
+          fallback={
+            <div className="w-full h-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-sm">
+              {profile?.username?.[0]?.toUpperCase() || 'N'}
+            </div>
+          }
+        />
       </button>
 
       {/* Separator */}

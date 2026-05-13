@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Search, Users, Check, Loader2 } from 'lucide-react';
 import { supabase, Profile } from '@/lib/supabase';
 import { signFieldsBatch } from '@/lib/mediaUrl';
+import { MediaImg } from './MediaImg';
 
 interface AddMemberModalProps {
   isOpen: boolean;
@@ -174,17 +175,16 @@ export const AddMemberModal: React.FC<AddMemberModalProps> = ({
                     : 'hover:bg-bg-hover'
                 }`}
               >
-                {contact.avatar_url ? (
-                  <img
-                    src={contact.avatar_url}
-                    alt={contact.display_name || contact.username}
-                    className="w-10 h-10 rounded-full object-cover"
-                  />
-                ) : (
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold">
-                    {(contact.display_name || contact.username)[0].toUpperCase()}
-                  </div>
-                )}
+                <MediaImg
+                  src={contact.avatar_url}
+                  alt={contact.display_name || contact.username}
+                  className="w-10 h-10 rounded-full object-cover"
+                  fallback={
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold">
+                      {(contact.display_name || contact.username)[0].toUpperCase()}
+                    </div>
+                  }
+                />
                 <div className="flex-1 text-left">
                   <p className="text-sm font-medium text-text-primary">
                     {contact.display_name || contact.username}

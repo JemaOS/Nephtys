@@ -7,6 +7,8 @@ import { MainLayout } from '@/components/MainLayout'
 import { supabase, Conversation, Profile, Message } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { Archive, ArchiveRestore } from 'lucide-react'
+import { MediaImg } from '@/components/MediaImg'
+import { signFieldsBatch } from '@/lib/mediaUrl'
 
 // Cache helpers for instant display like WhatsApp
 const CACHE_PREFIX = 'anu_cache_'
@@ -86,6 +88,9 @@ export function ArchivedPage() {
         .order('last_message_at', { ascending: false })
 
       if (data) {
+        // Signer les avatars de groupe (bucket privé)
+        await signFieldsBatch(data as any[], ['avatar_url'])
+
         const enriched = await Promise.all(
           data.map(async (conv) => {
             const enrichedConv: ConversationWithDetails = { ...conv }
@@ -102,7 +107,11 @@ export function ArchivedPage() {
                   .select('*')
                   .eq('id', members[0].user_id)
                   .maybeSingle()
-                if (profile) enrichedConv.otherUserProfile = profile
+                if (profile) {
+                  // Signer l'avatar du contact (bucket privé)
+                  await signFieldsBatch([profile as any], ['avatar_url'])
+                  enrichedConv.otherUserProfile = profile
+                }
               }
             }
             return enrichedConv
@@ -179,18 +188,16 @@ export function ArchivedPage() {
                       {/* For direct conversations, show the other user's avatar if available */}
                       {/* For group conversations, show the group avatar if available */}
                       <div className="relative">
-                        {(conversation.type === 'direct' && conversation.otherUserProfile?.avatar_url) || conversation.avatar_url ? (
-                          <img
-                            src={conversation.type === 'direct' ? conversation.otherUserProfile?.avatar_url : conversation.avatar_url}
-                            alt={displayName}
-                            className="w-12 h-12 rounded-full object-cover flex-shrink-0"
-                            key={conversation.type === 'direct' ? conversation.otherUserProfile?.avatar_url : conversation.avatar_url}
-                          />
-                        ) : (
-                          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold text-lg flex-shrink-0">
-                            {displayName[0]?.toUpperCase()}
-                          </div>
-                        )}
+                        <MediaImg
+                          src={conversation.type === 'direct' ? conversation.otherUserProfile?.avatar_url : conversation.avatar_url}
+                          alt={displayName}
+                          className="w-12 h-12 rounded-full object-cover flex-shrink-0"
+                          fallback={
+                            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold text-lg flex-shrink-0">
+                              {displayName[0]?.toUpperCase()}
+                            </div>
+                          }
+                        />
                       </div>
                         
                         <button

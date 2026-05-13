@@ -8,6 +8,7 @@ import { supabase, Contact, Profile } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { offlineStorage } from '@/lib/offlineStorage'
 import { signFieldsBatch } from '@/lib/mediaUrl'
+import { MediaImg } from '@/components/MediaImg'
 import { Search, UserPlus, MessageCircle, X, Check, Trash2, CheckSquare, Square } from 'lucide-react'
 
 // Cache helpers for instant display like WhatsApp
@@ -1069,17 +1070,16 @@ const getContactsToDelete = (
                       )}
                       
                       {/* Avatar with profile photo */}
-                      {contact.profile.avatar_url ? (
-                        <img
-                          src={contact.profile.avatar_url}
-                          alt={contact.profile.display_name || contact.profile.username}
-                          className="w-12 h-12 rounded-full object-cover flex-shrink-0"
-                        />
-                      ) : (
-                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold text-lg flex-shrink-0">
-                          {(contact.profile.display_name || contact.profile.username)[0].toUpperCase()}
-                        </div>
-                      )}
+                      <MediaImg
+                        src={contact.profile.avatar_url}
+                        alt={contact.profile.display_name || contact.profile.username}
+                        className="w-12 h-12 rounded-full object-cover flex-shrink-0"
+                        fallback={
+                          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold text-lg flex-shrink-0">
+                            {(contact.profile.display_name || contact.profile.username)[0].toUpperCase()}
+                          </div>
+                        }
+                      />
                       
                       <div className="flex-1 min-w-0 border-b border-bg-hover pb-3">
                         <h3 className="text-text-primary font-normal truncate">

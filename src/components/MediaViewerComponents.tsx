@@ -1,5 +1,6 @@
 import React from 'react';
 import { X, Forward, Star, Pin, Smile, Share2, Download, Play, Pause, Volume2, VolumeX, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
+import { MediaImg } from './MediaImg';
 
 // Format timestamp helper
 export const formatTimestamp = (ts: string): string => {
@@ -243,17 +244,16 @@ export const MediaViewerHeader: React.FC<MediaViewerHeaderProps> = ({
     <div className="flex items-center justify-between p-3 md:p-4 bg-gradient-to-b from-black/80 to-transparent">
       {/* Left side - Sender info */}
       <div className="flex items-center gap-2 md:gap-3 flex-1 min-w-0">
-        {senderAvatar ? (
-          <img
-            src={senderAvatar}
-            alt={senderName}
-            className="w-8 h-8 md:w-10 md:h-10 rounded-full object-cover flex-shrink-0"
-          />
-        ) : (
-          <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold text-sm md:text-base flex-shrink-0">
-            {senderName[0]?.toUpperCase()}
-          </div>
-        )}
+        <MediaImg
+          src={senderAvatar}
+          alt={senderName}
+          className="w-8 h-8 md:w-10 md:h-10 rounded-full object-cover flex-shrink-0"
+          fallback={
+            <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold text-sm md:text-base flex-shrink-0">
+              {senderName[0]?.toUpperCase()}
+            </div>
+          }
+        />
         <div className="min-w-0 flex-1">
           <p className="text-white font-medium text-sm md:text-base truncate">{senderName}</p>
           <p className="text-white/60 text-xs md:text-sm truncate">{formatTimestamp(timestamp)}</p>

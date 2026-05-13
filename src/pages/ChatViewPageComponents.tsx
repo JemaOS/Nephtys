@@ -7,6 +7,7 @@ import { MessageReactions } from '@/components/MessageReactions'
 import { MessageReply } from '@/components/MessageReply'
 import { MediaMessage } from '@/components/MediaMessage'
 import { MediaAlbum } from '@/components/MediaAlbum'
+import { MediaImg } from '@/components/MediaImg'
 import { VoiceMessage } from '@/components/VoiceMessage'
 import { AudioFilePlayer } from '@/components/AudioFilePlayer'
 import { LinkPreview } from '@/components/LinkPreview'
@@ -462,18 +463,16 @@ export const ChatHeader: React.FC<ChatHeaderProps> = React.memo(({
         className="flex-1 flex items-center gap-3 cursor-pointer hover:bg-bg-hover -mx-2 px-2 py-1 rounded transition-colors text-left border-none bg-transparent"
         onClick={() => setShowConversationInfo(true)}
       >
-        {(conversation?.type === 'direct' && otherUser?.avatar_url) || conversation?.avatar_url ? (
-          <img
-            src={conversation?.type === 'direct' ? otherUser?.avatar_url : conversation?.avatar_url}
-            alt={displayName}
-            className="w-10 h-10 rounded-full object-cover"
-            key={conversation?.type === 'direct' ? otherUser?.avatar_url : conversation?.avatar_url}
-          />
-        ) : (
-          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold">
-            {displayName[0]?.toUpperCase()}
-          </div>
-        )}
+        <MediaImg
+          src={conversation?.type === 'direct' ? otherUser?.avatar_url : conversation?.avatar_url}
+          alt={displayName}
+          className="w-10 h-10 rounded-full object-cover"
+          fallback={
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold">
+              {displayName[0]?.toUpperCase()}
+            </div>
+          }
+        />
         <div className="flex-1 min-w-0">
           <h2 className="font-medium text-text-primary truncate">{displayName}</h2>
           {conversation?.type === 'direct' && otherUserStatusText && (

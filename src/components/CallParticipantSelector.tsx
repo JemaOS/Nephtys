@@ -5,6 +5,8 @@ import React, { useState, useEffect } from 'react'
 import { Search, UserPlus, Check, Loader2 } from 'lucide-react'
 import { supabase, Contact, Profile } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
+import { signFieldsBatch } from '@/lib/mediaUrl'
+import { MediaImg } from './MediaImg'
 
 interface CallParticipantSelectorProps {
   readonly onClose: () => void
@@ -97,7 +99,10 @@ export function CallParticipantSelector({ onClose, onSelect, currentParticipants
           // Filter out users already in the call
           const filteredContacts = contactsWithProfiles
             .filter(c => c.profile && !currentParticipants.includes(c.contact_user_id)) as (Contact & { profile: Profile })[]
-            
+
+          // Signer les avatars (bucket privé)
+          await signFieldsBatch(filteredContacts.map(c => c.profile) as any[], ['avatar_url'])
+
           setContacts(filteredContacts)
         }
       } else {
@@ -222,17 +227,16 @@ export function CallParticipantSelector({ onClose, onSelect, currentParticipants
                     }`}
                   >
                     {/* Avatar */}
-                    {contact.profile.avatar_url ? (
-                      <img
-                        src={contact.profile.avatar_url}
-                        alt={contact.profile.display_name || contact.profile.username}
-                        className="w-10 h-10 rounded-full object-cover flex-shrink-0 border border-white/10"
-                      />
-                    ) : (
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold text-sm flex-shrink-0 shadow-lg">
-                        {(contact.profile.display_name || contact.profile.username)[0].toUpperCase()}
-                      </div>
-                    )}
+                    <MediaImg
+                      src={contact.profile.avatar_url}
+                      alt={contact.profile.display_name || contact.profile.username}
+                      className="w-10 h-10 rounded-full object-cover flex-shrink-0 border border-white/10"
+                      fallback={
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold text-sm flex-shrink-0 shadow-lg">
+                          {(contact.profile.display_name || contact.profile.username)[0].toUpperCase()}
+                        </div>
+                      }
+                    />
                     
                     <div className="flex-1 min-w-0">
                       <h3 className={`font-medium truncate transition-colors ${

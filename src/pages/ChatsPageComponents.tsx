@@ -1,6 +1,7 @@
 import React from 'react'
 import { ArrowLeft, Pin, Volume2, VolumeX, Archive, Trash2, Plus, UserPlus, Users, MoreVertical, Check, Search, MessageCircle, BellOff } from 'lucide-react'
 import { Conversation, Profile, Message } from '@/lib/supabase'
+import { MediaImg } from '@/components/MediaImg'
 
 export interface ConversationWithDetails extends Omit<Conversation, 'is_pinned'> {
   otherUserProfile?: Profile
@@ -463,26 +464,16 @@ const ConversationItem = ({
         )}
         
         <div className="relative">
-          {(() => {
-            const avatarUrl = conversation.type === 'direct'
-              ? conversation.otherUserProfile?.avatar_url
-              : conversation.avatar_url
-            if (avatarUrl) {
-              return (
-                <img
-                  src={avatarUrl}
-                  alt={displayName}
-                  className="w-12 h-12 rounded-full object-cover flex-shrink-0"
-                  key={avatarUrl}
-                />
-              )
-            }
-            return (
+          <MediaImg
+            src={conversation.type === 'direct' ? conversation.otherUserProfile?.avatar_url : conversation.avatar_url}
+            alt={displayName}
+            className="w-12 h-12 rounded-full object-cover flex-shrink-0"
+            fallback={
               <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-semibold text-lg flex-shrink-0">
                 {displayName[0]?.toUpperCase()}
               </div>
-            )
-          })()}
+            }
+          />
           {!isSelectionMode && conversation.is_pinned && (
             <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-accent flex items-center justify-center">
               <Pin size={12} className="text-white" />
