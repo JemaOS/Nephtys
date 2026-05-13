@@ -1,7 +1,7 @@
 // Copyright (c) 2025 Jema Technology.
 // Distributed under the license specified in the root directory of this project.
 
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { ThemeProvider } from './context/ThemeContext'
@@ -112,6 +112,16 @@ function SupabaseReconnectHandler() {
   return null // This component doesn't render anything
 }
 
+// WhatsApp-style: force a fresh ChatViewPage instance whenever the conversation
+// changes. Without the `key`, switching from /chat/A to /chat/B reuses the same
+// React component instance, leaking the previous conversation's `messages`
+// state into the next conversation — which polluted MediaViewer's media list
+// (wrong count, prev/next jumping between conversations).
+function ChatViewPageWithKey() {
+  const { conversationId } = useParams<{ conversationId: string }>()
+  return <ChatViewPage key={conversationId} />
+}
+
 function PublicRoute({ children }: { readonly children: React.ReactNode }) {
   const { user, loading } = useAuth()
   
@@ -142,7 +152,7 @@ function AppRoutes() {
         
         <Route path="/chat/:conversationId" element={
           <PrivateRoute>
-            <ChatViewPage />
+            <ChatViewPageWithKey />
           </PrivateRoute>
         } />
         

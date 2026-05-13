@@ -327,12 +327,19 @@ export function ChatViewPage() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [messageToDelete, setMessageToDelete] = useState<Message | null>(null)
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false)
-  // Using useRef for deletedForMeIds - we only need to track IDs for local filtering
+  // IDs of messages the current user has "deleted for me" (per-user soft delete
+  // stored in the `deleted_messages` table). Kept as STATE (not a ref) so that
+  // `rawMediaItems` / message list / MediaViewer counter re-render correctly
+  // when the user deletes-for-me. A ref mirror is kept for stable access from
+  // event handlers (realtime, optimistic updates) without re-creating callbacks.
+  const [deletedForMeIds, setDeletedForMeIdsState] = useState<Set<string>>(new Set())
   const deletedForMeIdsRef = useRef<Set<string>>(new Set())
   const setDeletedForMeIds = useCallback((updater: Set<string> | ((prev: Set<string>) => Set<string>)) => {
-    deletedForMeIdsRef.current = typeof updater === 'function' 
-      ? updater(deletedForMeIdsRef.current) 
-      : updater
+    setDeletedForMeIdsState(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater
+      deletedForMeIdsRef.current = next
+      return next
+    })
   }, [])
   const [showForwardModal, setShowForwardModal] = useState(false)
   const [messageToForward, setMessageToForward] = useState<Message | null>(null)
@@ -473,6 +480,14 @@ export function ChatViewPage() {
     const msgs = Array.isArray(messages) ? messages : []
     return msgs
       .filter(m => {
+        // WhatsApp-style: never expose deleted media in the navigator.
+        // - `deleted_at` = "delete for everyone" (soft delete on the row)
+        // - `deletedForMeIds` = "delete for me" (per-user soft delete)
+        // Both must be excluded so the counter and prev/next match what the
+        // user actually sees in the thread.
+        if ((m as any).deleted_at) return false
+        if (deletedForMeIds.has(m.id)) return false
+
         // Include image and video messages
         if (m.media_url && m.media_type && (m.media_type === 'image' || m.media_type === 'video') && m.type !== 'audio') {
           return true
@@ -525,7 +540,7 @@ export function ChatViewPage() {
           isEncrypted: !!(m as any).is_media_encrypted,
         }
       })
-  }, [messages, user?.id, getSenderInfo])
+  }, [messages, user?.id, getSenderInfo, deletedForMeIds])
 
   // URLs signées pour la navigation viewer — on résout en batch
   // quand la liste brute change. Les GIFs/stickers ont déjà des https,
@@ -726,6 +741,18 @@ export function ChatViewPage() {
   // Helper to handle new message insertion with deduplication and optimistic update replacement
   const handleNewMessage = useCallback(async (payload: any) => {
     const newMsg = payload.new as Message
+    // WhatsApp-style defensive guards: never inject a message that the
+    // server already marked deleted, that the current user soft-deleted
+    // for themselves, or whose ephemeral lifetime has already expired.
+    // Without these, MediaViewer's count and prev/next navigation drift
+    // out of sync with what's actually rendered in the thread.
+    if ((newMsg as any).deleted_at) return
+    if (deletedForMeIdsRef.current.has(newMsg.id)) return
+    if ((newMsg as any).is_ephemeral && (newMsg as any).ephemeral_expires_at) {
+      const expiresAt = new Date((newMsg as any).ephemeral_expires_at).getTime()
+      if (expiresAt <= Date.now()) return
+    }
+
     // Signer les paths storage (bucket privé) avant injection dans le state.
     // On skip la signature pour les médias chiffrés E2EE (télécharge auto via fetchAndDecryptMedia).
     if (!(newMsg as any).is_media_encrypted) {
@@ -1459,23 +1486,49 @@ export function ChatViewPage() {
       }
     }
     
-    const { data, error } = await supabase
-      .from('messages')
-      .select('*')
-      .eq('conversation_id', conversationId!)
-      .is('deleted_at', null)
-      .or(`ephemeral_expires_at.is.null,ephemeral_expires_at.gt.${new Date().toISOString()}`)
-      .order('created_at', { ascending: true })
-      .limit(100)
-    
+    // Load in parallel: the message page AND the user's "delete for me"
+    // entries for this conversation. Without this, messages the user
+    // previously deleted-for-me would resurface on every reload (refresh,
+    // reconnect, navigation) and pollute MediaViewer's count + navigation.
+    const [messagesRes, deletedForMeRes] = await Promise.all([
+      supabase
+        .from('messages')
+        .select('*')
+        .eq('conversation_id', conversationId!)
+        .is('deleted_at', null)
+        .or(`ephemeral_expires_at.is.null,ephemeral_expires_at.gt.${new Date().toISOString()}`)
+        .order('created_at', { ascending: true })
+        .limit(100),
+      user
+        ? supabase
+            .from('deleted_messages')
+            .select('message_id')
+            .eq('user_id', user.id)
+        : Promise.resolve({ data: [] as { message_id: string }[], error: null as any }),
+    ])
+
+    const { data, error } = messagesRes
+
+    // Build the deleted-for-me set BEFORE applying it to messages so the
+    // UI never flashes a message the user already removed locally.
+    let deletedForMeSet = deletedForMeIdsRef.current
+    if (!deletedForMeRes.error && deletedForMeRes.data) {
+      deletedForMeSet = new Set<string>(
+        (deletedForMeRes.data as { message_id: string }[]).map(r => r.message_id)
+      )
+      setDeletedForMeIds(deletedForMeSet)
+    }
+
     if (error) {
       console.error('Error loading messages:', error)
     }
-    
+
     if (!error && data) {
-      // Filter out expired ephemeral messages
+      // Filter out expired ephemeral messages AND messages the user
+      // soft-deleted-for-themselves (delete-for-me).
       const now = Date.now();
       const validData = data.filter(msg => {
+        if (deletedForMeSet.has(msg.id)) return false;
         if (msg.is_ephemeral && msg.ephemeral_expires_at) {
           const expiresAt = new Date(msg.ephemeral_expires_at).getTime();
           return expiresAt > now;
@@ -1548,9 +1601,13 @@ export function ChatViewPage() {
           .limit(50)
       
       if (!error && data && data.length > 0) {
-        // Filter out expired ephemeral messages
+        // Filter out expired ephemeral messages AND messages the user
+        // soft-deleted-for-themselves (delete-for-me) — paginated history
+        // must respect the same rules as initial load.
         const now = Date.now();
+        const deletedForMeSet = deletedForMeIdsRef.current
         const validData = data.filter(msg => {
+          if (deletedForMeSet.has(msg.id)) return false;
           if (msg.is_ephemeral && msg.ephemeral_expires_at) {
             const expiresAt = new Date(msg.ephemeral_expires_at).getTime();
             return expiresAt > now;

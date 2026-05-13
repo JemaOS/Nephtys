@@ -297,18 +297,36 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
     setShowAddMemberModal(true);
   };
 
+  // Fetch the set of message IDs the current user has soft-deleted-for-themselves.
+  // The "Médias" / "Fichiers" / "Liens" tabs must exclude these so that the
+  // counts and the MediaViewer they open match what the user sees in the
+  // thread (WhatsApp parity).
+  const fetchDeletedForMeIds = async (): Promise<Set<string>> => {
+    if (!currentUserId) return new Set();
+    const { data, error } = await supabase
+      .from('deleted_messages')
+      .select('message_id')
+      .eq('user_id', currentUserId);
+    if (error || !data) return new Set();
+    return new Set((data as { message_id: string }[]).map(r => r.message_id));
+  };
+
   const loadMedia = async () => {
     setLoadingMedia(true);
     try {
-      const { data } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('conversation_id', conversationId)
-        .or('type.eq.image,type.eq.video,media_type.eq.image,media_type.eq.video')
-        .is('deleted_at', null) // Exclude deleted messages
-        .order('created_at', { ascending: false });
-      
-      setMediaMessages(data || []);
+      const [{ data }, deletedForMe] = await Promise.all([
+        supabase
+          .from('messages')
+          .select('*')
+          .eq('conversation_id', conversationId)
+          .or('type.eq.image,type.eq.video,media_type.eq.image,media_type.eq.video')
+          .is('deleted_at', null) // Exclude deleted messages
+          .order('created_at', { ascending: false }),
+        fetchDeletedForMeIds(),
+      ]);
+
+      const filtered = (data || []).filter(m => !deletedForMe.has(m.id));
+      setMediaMessages(filtered);
     } catch (err) {
       console.error('Error loading media:', err);
     } finally {
@@ -319,15 +337,19 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
   const loadFiles = async () => {
     setLoadingFiles(true);
     try {
-      const { data } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('conversation_id', conversationId)
-        .or('type.eq.file,media_type.eq.file')
-        .is('deleted_at', null) // Exclude deleted messages
-        .order('created_at', { ascending: false });
-      
-      setFileMessages(data || []);
+      const [{ data }, deletedForMe] = await Promise.all([
+        supabase
+          .from('messages')
+          .select('*')
+          .eq('conversation_id', conversationId)
+          .or('type.eq.file,media_type.eq.file')
+          .is('deleted_at', null) // Exclude deleted messages
+          .order('created_at', { ascending: false }),
+        fetchDeletedForMeIds(),
+      ]);
+
+      const filtered = (data || []).filter(m => !deletedForMe.has(m.id));
+      setFileMessages(filtered);
     } catch (err) {
       console.error('Error loading files:', err);
     } finally {
@@ -338,17 +360,21 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
   const loadLinks = async () => {
     setLoadingLinks(true);
     try {
-      const { data } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('conversation_id', conversationId)
-        .eq('type', 'text')
-        .is('deleted_at', null) // Exclude deleted messages
-        .order('created_at', { ascending: false });
+      const [{ data }, deletedForMe] = await Promise.all([
+        supabase
+          .from('messages')
+          .select('*')
+          .eq('conversation_id', conversationId)
+          .eq('type', 'text')
+          .is('deleted_at', null) // Exclude deleted messages
+          .order('created_at', { ascending: false }),
+        fetchDeletedForMeIds(),
+      ]);
       
       if (data) {
         const urlRegex = /(https?:\/\/[^\s]+)/g;
         const messagesWithLinks = data
+          .filter(message => !deletedForMe.has(message.id))
           .map(message => {
             // Remove GIF and Sticker markdown before extracting links
             // Pattern: [GIF](url) or [STICKER](url)
