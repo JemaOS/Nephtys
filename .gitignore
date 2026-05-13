@@ -33,4 +33,6 @@ test-results/
 
 # Supabase
 supabase/.env
+supabase/.temp/
+supabase/.branches/
 
