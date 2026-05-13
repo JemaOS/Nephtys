@@ -131,30 +131,39 @@ const setCache = <T,>(key: string, data: T) => {
 
 // Extract call error handling to reduce complexity in handleStartVideoCall and handleStartAudioCall
 const getCallErrorMessage = (error: any): string => {
-  if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
-    return '❌ Permissions refusées\n\nVeuillez autoriser l\'accès à votre caméra et microphone dans les paramètres de votre navigateur pour passer des appels vidéo.'
+  const name = error?.name || '';
+  if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+    return '❌ Permissions refusées\n\nVeuillez autoriser l\'accès à votre caméra et microphone dans les paramètres de votre navigateur.'
   }
-  if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
-    return '❌ Aucun appareil trouvé\n\nAucune caméra ou microphone n\'a été détecté sur votre appareil.'
+  if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+    return '❌ Aucun appareil trouvé\n\nAucune caméra ou microphone n\'a été détecté.'
   }
-  if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
-    return '❌ Appareil occupé\n\nVotre caméra ou microphone est déjà utilisé par une autre application.'
+  if (name === 'NotReadableError' || name === 'TrackStartError') {
+    return '❌ Appareil occupé\n\nVotre caméra ou microphone est utilisé par une autre application.'
   }
-  return '❌ Erreur\n\nImpossible de démarrer l\'appel vidéo. Vérifiez vos permissions et réessayez.'
+  if (name === 'OverconstrainedError' || name === 'ConstraintNotSatisfiedError') {
+    return '❌ Caméra incompatible\n\nLa résolution demandée n\'est pas supportée. L\'appel démarrera en audio seulement.'
+  }
+  // Erreur WebRTC interne ou réseau — ne pas mentionner "permissions"
+  const msg = error?.message || '';
+  console.error('[Call] Unexpected error:', name, msg);
+  return `❌ Impossible de démarrer l\'appel\n\nUne erreur technique s\'est produite. Réessayez dans quelques instants.\n(${name || msg || 'Erreur inconnue'})`
 }
 
-// Helper to get audio call error message
 const getAudioCallErrorMessage = (error: any): string => {
-  if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
-    return '❌ Permission refusée\n\nVeuillez autoriser l\'accès à votre microphone dans les paramètres de votre navigateur pour passer des appels audio.'
+  const name = error?.name || '';
+  if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+    return '❌ Permission refusée\n\nVeuillez autoriser l\'accès à votre microphone dans les paramètres de votre navigateur.'
   }
-  if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
-    return '❌ Aucun microphone trouvé\n\nAucun microphone n\'a été détecté sur votre appareil.'
+  if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+    return '❌ Aucun microphone trouvé\n\nAucun microphone n\'a été détecté.'
   }
-  if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
-    return '❌ Microphone occupé\n\nVotre microphone est déjà utilisé par une autre application.'
+  if (name === 'NotReadableError' || name === 'TrackStartError') {
+    return '❌ Microphone occupé\n\nVotre microphone est utilisé par une autre application.'
   }
-  return '❌ Erreur\n\nImpossible de démarrer l\'appel audio. Vérifiez vos permissions et réessayez.'
+  const msg = error?.message || '';
+  console.error('[Call] Unexpected audio error:', name, msg);
+  return `❌ Impossible de démarrer l\'appel audio\n\nUne erreur technique s\'est produite. Réessayez.\n(${name || msg || 'Erreur inconnue'})`
 }
 
 // Helper to request media permissions and get stream
@@ -1997,36 +2006,13 @@ export function ChatViewPage() {
 
   const handleStartVideoCall = async () => {
     if (!conversationId) return
-    
-    // For group conversations, use group call
-    if (conversation?.type === 'group') {
-      try {
-        // Request permissions before starting the call
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true })
-        
-        // Stop test stream
-        stream.getTracks().forEach(track => track.stop())
-        
-        // Start group video call
-        await startGroupCall(conversationId, { audio: true, video: true })
-      } catch (error: any) {
-        console.error('Error starting group video call:', error)
-        alert(getCallErrorMessage(error))
-      }
-      return
-    }
-    
-    if (!otherUser) return
-    
     try {
-      // Demander les permissions avant de démarrer l'appel
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true })
-      
-      // Arrêter le stream de test
-      stream.getTracks().forEach(track => track.stop())
-      
-      // Démarrer l'appel
-      await startCall(otherUser.id, conversationId, { audio: true, video: true })
+      if (conversation?.type === 'group') {
+        await startGroupCall(conversationId, { audio: true, video: true })
+      } else {
+        if (!otherUser) return
+        await startCall(otherUser.id, conversationId, { audio: true, video: true })
+      }
     } catch (error: any) {
       console.error('Error starting video call:', error)
       alert(getCallErrorMessage(error))
@@ -2035,36 +2021,13 @@ export function ChatViewPage() {
 
   const handleStartAudioCall = async () => {
     if (!conversationId) return
-    
-    // For group conversations, use group call
-    if (conversation?.type === 'group') {
-      try {
-        // Request permissions before starting the call
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
-        
-        // Stop test stream
-        stream.getTracks().forEach(track => track.stop())
-        
-        // Start group audio call
-        await startGroupCall(conversationId, { audio: true, video: false })
-      } catch (error: any) {
-        console.error('Error starting group audio call:', error)
-        alert(getAudioCallErrorMessage(error))
-      }
-      return
-    }
-    
-    if (!otherUser) return
-    
     try {
-      // Demander les permissions avant de démarrer l'appel
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
-      
-      // Arrêter le stream de test
-      stream.getTracks().forEach(track => track.stop())
-      
-      // Démarrer l'appel
-      await startCall(otherUser.id, conversationId, { audio: true, video: false })
+      if (conversation?.type === 'group') {
+        await startGroupCall(conversationId, { audio: true, video: false })
+      } else {
+        if (!otherUser) return
+        await startCall(otherUser.id, conversationId, { audio: true, video: false })
+      }
     } catch (error: any) {
       console.error('Error starting audio call:', error)
       alert(getAudioCallErrorMessage(error))

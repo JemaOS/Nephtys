@@ -43,20 +43,49 @@ export class WebRTCManager {
       console.log('🎥 WebRTC: Requesting permissions for audio:', config.audio, 'video:', config.video);
       
       // Obtenir le stream local (audio/vidéo)
-      // Configuration audio améliorée pour la fiabilité
-      this.localStream = await navigator.mediaDevices.getUserMedia({
-        audio: config.audio ? {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        } : false,
-        video: config.video ? {
-          facingMode: 'user',
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-          frameRate: { ideal: 60 }
-        } : false,
-      });
+      // On utilise des contraintes lâches (ideal) pour maximiser la compat
+      // mobile. Si la résolution idéale n'est pas dispo le navigateur prend
+      // la meilleure disponible au lieu de rejeter.
+      const videoConstraints: MediaTrackConstraints = {
+        facingMode: 'user',
+        width: { ideal: 640, max: 1280 },
+        height: { ideal: 480, max: 720 },
+      };
+
+      // Première tentative : avec vidéo/audio demandés
+      let gotStream = false;
+      try {
+        this.localStream = await navigator.mediaDevices.getUserMedia({
+          audio: config.audio ? {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          } : false,
+          video: config.video ? videoConstraints : false,
+        });
+        gotStream = true;
+      } catch (mediaErr: any) {
+        // OverconstrainedError : réessayer sans contraintes vidéo spécifiques
+        if (config.video && (mediaErr.name === 'OverconstrainedError' || mediaErr.name === 'ConstraintNotSatisfiedError')) {
+          console.warn('🎥 WebRTC: Overconstrained, retrying with basic video');
+          this.localStream = await navigator.mediaDevices.getUserMedia({
+            audio: config.audio ? { echoCancellation: true, noiseSuppression: true } : false,
+            video: true,
+          });
+          gotStream = true;
+        } else if (config.video && mediaErr.name !== 'NotAllowedError' && mediaErr.name !== 'PermissionDeniedError') {
+          // Caméra indispo mais micro OK → audio seulement
+          console.warn('🎥 WebRTC: Video unavailable, falling back to audio only:', mediaErr.name);
+          this.localStream = await navigator.mediaDevices.getUserMedia({
+            audio: config.audio ? { echoCancellation: true, noiseSuppression: true } : false,
+            video: false,
+          });
+          gotStream = true;
+        } else {
+          throw mediaErr; // permission refusée → laisser remonter
+        }
+      }
+      if (!gotStream) throw new Error('Could not obtain media stream');
 
       console.log('🎥 WebRTC: Local stream obtained:', this.localStream.getTracks().length, 'tracks');
       this.localStream.getTracks().forEach((track, i) => {
