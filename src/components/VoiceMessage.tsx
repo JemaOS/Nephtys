@@ -424,22 +424,23 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
 
   const progress = audioDuration > 0 ? (currentTime / audioDuration) * 100 : 0;
 
-  // Pendant le chargement de l'URL signée / déchiffrement
+  // Pendant le chargement — spinner seul, sans texte technique
   if (urlLoading) {
     return (
-      <div className={`flex items-center gap-3 min-w-[250px] max-w-[350px] px-4 py-3 rounded-2xl ${isOwn ? 'bg-[#5a5cc9]' : 'bg-[#1a1d21]'}`}>
-        <Loader2 size={18} className="animate-spin text-white/70" />
-        <span className="text-[13px] text-white/70">
-          {isEncrypted ? 'Déchiffrement…' : 'Chargement…'}
-        </span>
+      <div className={`flex items-center justify-center min-w-[250px] max-w-[350px] px-4 py-4 rounded-2xl ${isOwn ? 'bg-[#5a5cc9]' : 'bg-[#1a1d21]'}`}>
+        <Loader2 size={20} className="animate-spin text-white/50" />
       </div>
     );
   }
 
-  if (urlError && isEncrypted) {
+  // Erreur silencieuse — placeholder discret
+  if (urlError) {
     return (
-      <div className={`flex items-center gap-3 min-w-[250px] max-w-[350px] px-4 py-3 rounded-2xl ${isOwn ? 'bg-[#5a5cc9]' : 'bg-[#1a1d21]'} text-[13px] text-white/70`}>
-        🔒 Audio chiffré — clé indisponible
+      <div className={`flex items-center gap-3 min-w-[250px] max-w-[350px] px-4 py-3 rounded-2xl ${isOwn ? 'bg-[#5a5cc9]' : 'bg-[#1a1d21]'}`}>
+        <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0">
+          <Loader2 size={18} className="text-white/30" />
+        </div>
+        <div className="flex-1 h-1 bg-white/10 rounded-full" />
       </div>
     );
   }

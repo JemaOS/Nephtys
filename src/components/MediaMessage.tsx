@@ -11,6 +11,8 @@ import {
   formatVideoDuration
 } from './MediaMessageComponents';
 import { useDecryptedMedia } from '@/hooks/useDecryptedMedia';
+import { PDFPreview } from './DocumentPreview/PDFPreview';
+import { X, Download } from 'lucide-react';
 
 interface MediaMessageProps {
   url: string;
@@ -98,6 +100,7 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
   const effectiveUrl = resolvedUrl || url;
 
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showPdfViewer, setShowPdfViewer] = useState(false);
   // Track the currently displayed media index in the viewer (for navigation)
   const [viewerIndex, setViewerIndex] = useState(currentIndex ?? 0);
   
@@ -195,30 +198,35 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
     setTimeout(() => URL.revokeObjectURL(fileUrl), 5000);
   };
 
-  // Open file with native app using Web Share API (shows "Open with" dialog on mobile)
+  // Detect if the file is a PDF
+  const isPDF = (fileName?.toLowerCase().endsWith('.pdf')) ||
+    effectiveUrl.toLowerCase().includes('.pdf');
+
+  // Open file — uses effectiveUrl (signed or decrypted blob), never the raw path
   const handleOpenFile = useCallback(async () => {
-    // On mobile/PWA, try to use Web Share API to show "Open with" dialog
+    // PDFs : ouvrir dans le viewer interne intégré (plus fiable que window.open)
+    if (isPDF) {
+      setShowPdfViewer(true);
+      return;
+    }
+
+    // Autres fichiers : Web Share sur mobile, nouvel onglet sur desktop
     if (isMobile || isPWA) {
       const fileData = await fetchFileBlob();
       if (!fileData) {
         handleDownload();
         return;
       }
-      
       const { blob, mimeType } = fileData;
-      
-      // Try Web Share API first
       const shareResult = await shareFileWithAPI(blob, mimeType);
       if (shareResult === true) return;
       if (shareResult === 'aborted') return;
-      
-      // Fallback: try to open directly
       await openFileWithFallback(blob, mimeType);
     } else {
-      // On desktop, open in new tab
-      globalThis.open(url, '_blank', 'noopener,noreferrer');
+      // Utilise effectiveUrl (URL signée ou blob URL), PAS le path nu
+      globalThis.open(effectiveUrl, '_blank', 'noopener,noreferrer');
     }
-  }, [url, fileName, isMobile, isPWA]);
+  }, [effectiveUrl, fileName, isMobile, isPWA, isPDF]);
 
 
   // Helper: Determine media type for viewer (handle GIF detection) - extracted
@@ -306,20 +314,19 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
     }
   }, [type]);
 
-  // Si erreur de déchiffrement, afficher un placeholder explicite
-  if (urlError && isEncrypted) {
-    return (
-      <div className="rounded-lg bg-bg-hover px-4 py-3 text-sm text-text-tertiary border border-bg-elevated">
-        🔒 Média chiffré — clé de déchiffrement indisponible
-      </div>
-    );
-  }
+  // Erreur de déchiffrement : on rend quand même le composant de fichier
+  // (il affichera son état normal et l'action télécharger sera disponible)
+  // Rien de visible lié au chiffrement — on ne divulgue pas cette info.
 
-  // Pendant le déchiffrement, afficher un placeholder
-  if (urlLoading && isEncrypted) {
+  // Pendant le chargement/déchiffrement : spinner discret intégré dans la
+  // bulle — pas de message texte visible.
+  if (urlLoading) {
     return (
-      <div className="rounded-lg bg-bg-hover px-4 py-3 text-sm text-text-tertiary border border-bg-elevated">
-        🔓 Déchiffrement en cours…
+      <div
+        className="block w-[260px] sm:w-[330px] max-w-full rounded-xl border-[3px] border-[#787add] bg-bg-hover flex items-center justify-center"
+        style={{ aspectRatio: type === 'image' || type === 'video' ? '4/3' : undefined, minHeight: type === 'file' ? '72px' : undefined }}
+      >
+        <div className="w-8 h-8 border-2 border-[#787add]/40 border-t-[#787add] rounded-full animate-spin" />
       </div>
     );
   }
@@ -385,18 +392,71 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
   }
 
   return (
-    <FileMessage
-      fileName={fileName}
-      fileSize={fileSize}
-      timestamp={timestamp}
-      status={status}
-      isOwn={isOwn}
-      thumbnail={thumbnail}
-      caption={caption}
-      handleOpenFile={handleOpenFile}
-      handleDownload={handleDownload}
-      onOpenMenu={onOpenMenu}
-      showHoverActions={showHoverActions}
-    />
+    <>
+      <FileMessage
+        fileName={fileName}
+        fileSize={fileSize}
+        timestamp={timestamp}
+        status={status}
+        isOwn={isOwn}
+        thumbnail={thumbnail}
+        caption={caption}
+        handleOpenFile={handleOpenFile}
+        handleDownload={handleDownload}
+        onOpenMenu={onOpenMenu}
+        showHoverActions={showHoverActions}
+      />
+
+      {/* Viewer PDF interne — s'ouvre quand on clique "Ouvrir" sur un PDF */}
+      {showPdfViewer && isPDF && effectiveUrl && (
+        <div
+          className="fixed inset-0 bg-black/90 z-[100] flex flex-col"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Visionneur PDF"
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 py-3 bg-[#1f2c34] flex-shrink-0">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-8 h-8 rounded-md bg-red-500 flex items-center justify-center flex-shrink-0">
+                <span className="text-white text-[9px] font-bold">PDF</span>
+              </div>
+              <div className="min-w-0">
+                <p className="text-white text-sm font-medium truncate">{fileName || 'Document.pdf'}</p>
+                {fileSize && (
+                  <p className="text-white/50 text-xs">{(fileSize / 1024).toFixed(0)} ko • PDF</p>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button
+                onClick={handleDownload}
+                className="p-2 rounded-full hover:bg-white/10 transition-colors text-white/70 hover:text-white"
+                aria-label="Télécharger"
+              >
+                <Download size={20} />
+              </button>
+              <button
+                onClick={() => setShowPdfViewer(false)}
+                className="p-2 rounded-full hover:bg-white/10 transition-colors text-white"
+                aria-label="Fermer"
+              >
+                <X size={22} />
+              </button>
+            </div>
+          </div>
+
+          {/* PDF Content */}
+          <div className="flex-1 overflow-hidden">
+            <PDFPreview
+              file={effectiveUrl}
+              showAllPages={false}
+              maxHeight={globalThis.innerHeight - 80}
+              className="h-full"
+            />
+          </div>
+        </div>
+      )}
+    </>
   );
 };

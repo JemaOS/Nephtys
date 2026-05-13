@@ -140,23 +140,21 @@ export const AudioFilePlayer: React.FC<AudioFilePlayerProps> = ({
 
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
-  // Pendant le chargement de l'URL signée / déchiffrement
+  // Pendant le chargement — spinner discret, aucun texte technique
   if (urlLoading) {
     return (
-      <div className={`w-full max-w-[280px] rounded-2xl overflow-hidden backdrop-blur-sm ${getBackgroundColor(isOwn)} px-4 py-4 flex items-center gap-3`}>
-        <Loader2 size={18} className="animate-spin text-white/70" />
-        <span className="text-[13px] text-white/70">
-          {isEncrypted ? 'Déchiffrement…' : 'Chargement…'}
-        </span>
+      <div className={`w-full max-w-[280px] rounded-2xl overflow-hidden backdrop-blur-sm ${getBackgroundColor(isOwn)} px-4 py-4 flex items-center justify-center`}>
+        <Loader2 size={20} className="animate-spin text-white/50" />
       </div>
     );
   }
 
-  // Erreur de déchiffrement
-  if (urlError && isEncrypted) {
+  // Erreur silencieuse : on affiche un état dégradé sans exposer les détails
+  if (urlError) {
     return (
-      <div className={`w-full max-w-[280px] rounded-2xl overflow-hidden backdrop-blur-sm ${getBackgroundColor(isOwn)} px-4 py-4 text-[13px] text-white/70`}>
-        🔒 Audio chiffré — clé indisponible
+      <div className={`w-full max-w-[280px] rounded-2xl overflow-hidden backdrop-blur-sm ${getBackgroundColor(isOwn)} px-4 py-4 flex items-center gap-3`}>
+        <Loader2 size={18} className="text-white/30" />
+        <span className="text-[13px] text-white/40">Audio</span>
       </div>
     );
   }
