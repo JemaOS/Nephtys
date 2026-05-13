@@ -48,25 +48,28 @@ export interface EncryptedUploadResult {
 
 /**
  * Chiffre un fichier puis l'upload dans le bucket sous forme de binaire opaque.
- * Le serveur ne voit que des octets aléatoires.
+ * Le serveur ne voit que des octets aléatoires, mais on conserve le MIME type
+ * d'origine du fichier pour passer la whitelist du bucket. Le contenu reste
+ * indéchiffrable sans la clé AES.
  */
 export async function uploadEncryptedMedia(
   file: Blob | File,
-  pathPrefix: string // ex. `${userId}/encrypted/${Date.now()}.bin`
+  pathPrefix: string
 ): Promise<EncryptedUploadResult> {
   const { ciphertext, rawKey, iv } = await encryptMedia(file);
 
-  // On upload le binaire chiffré comme application/octet-stream
-  // L'extension .bin évite que les clients essaient de l'interpréter directement
-  const uploadPath = pathPrefix.endsWith('.bin') ? pathPrefix : `${pathPrefix}.bin`;
-  const blob = new Blob([ciphertext as BlobPart], { type: 'application/octet-stream' });
+  // On garde l'extension d'origine du path (ex. .jpg, .mp4) pour rester
+  // compatible avec la whitelist MIME du bucket. Le serveur voit "image/jpeg"
+  // mais le binaire est en réalité chiffré : aucune image décodable sans la clé.
+  const originalMime = file.type || 'application/octet-stream';
+  const blob = new Blob([ciphertext as BlobPart], { type: originalMime });
 
   const { error } = await supabase.storage
     .from('media')
-    .upload(uploadPath, blob, {
+    .upload(pathPrefix, blob, {
       cacheControl: '3600',
       upsert: false,
-      contentType: 'application/octet-stream',
+      contentType: originalMime,
     });
 
   if (error) {
@@ -74,7 +77,7 @@ export async function uploadEncryptedMedia(
   }
 
   return {
-    path: uploadPath,
+    path: pathPrefix,
     mediaIvBase64: cryptoB64.toBase64(iv.buffer as ArrayBuffer),
     rawKey,
     originalSize: file.size,
