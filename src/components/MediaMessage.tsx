@@ -235,7 +235,20 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
   };
 
   // Helper: Get current media info (from allMedia or defaults) - extracted to reduce complexity
+  // Pour les médias E2EE, on force l'usage du blob URL local (effectiveUrl) car
+  // les autres entrées de allMedia pointent vers des paths chiffrés qui ne peuvent
+  // pas être affichés directement par le viewer.
   const getCurrentMediaInfo = () => {
+    if (isEncrypted) {
+      return {
+        url: effectiveUrl,
+        type: getViewerMediaType(),
+        senderName,
+        senderAvatar,
+        timestamp,
+        isOwn,
+      };
+    }
     const media = allMedia?.[viewerIndex];
     return {
       url: media?.url ?? effectiveUrl,
@@ -273,9 +286,9 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
       onStar={onStar}
       onPin={onPin}
       onReaction={onReaction}
-      allMedia={allMedia}
-      currentIndex={viewerIndex}
-      onNavigate={handleNavigate}
+      allMedia={isEncrypted ? undefined : allMedia}
+      currentIndex={isEncrypted ? 0 : viewerIndex}
+      onNavigate={isEncrypted ? undefined : handleNavigate}
     />
   );
 

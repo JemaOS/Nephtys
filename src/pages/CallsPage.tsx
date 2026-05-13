@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom'
 import { MainLayout } from '@/components/MainLayout'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
+import { signFieldsBatch } from '@/lib/mediaUrl'
 import { useCall } from '@/context/CallContext'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { Phone, Video, Search, Star, Link2, X, Trash2, UserPlus, Check, ArrowLeft, CheckCheck, Users } from 'lucide-react'
@@ -345,6 +346,9 @@ export function CallsPage() {
           .select('*')
           .in('id', allContactIds)
 
+        // Signer les avatars (bucket privé)
+        await signFieldsBatch(profiles as any[] | null, ['avatar_url'])
+
         if (profiles) {
           const contactsWithProfiles = profiles.map(profile => {
             // Check if this is an explicit contact
@@ -517,6 +521,9 @@ export function CallsPage() {
       .from('profiles')
       .select('*')
       .in('id', Array.from(userIds))
+
+    // Signer les avatars (bucket privé)
+    await signFieldsBatch(profiles as any[] | null, ['avatar_url'])
 
     const profileMap = new Map(profiles?.map(p => [p.id, p]) || [])
 

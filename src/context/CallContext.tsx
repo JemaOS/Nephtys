@@ -3,6 +3,7 @@
 
 import { createContext, useContext, useEffect, useState, useRef, useMemo, ReactNode } from 'react'
 import { supabase } from '@/lib/supabase'
+import { resolveMediaUrl } from '@/lib/mediaUrl'
 import { webrtcManager, CallConfig } from '@/lib/webrtc'
 import { groupCallManager, GroupCallConfig } from '@/lib/groupWebRTC'
 import { useAuth } from './AuthContext'
@@ -231,6 +232,9 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
       .select('display_name, username, avatar_url')
       .eq('id', userId)
       .maybeSingle()
+    if (profile?.avatar_url) {
+      profile.avatar_url = (await resolveMediaUrl(profile.avatar_url)) ?? profile.avatar_url
+    }
     return profile
   }
 
