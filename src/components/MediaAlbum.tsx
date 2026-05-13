@@ -33,7 +33,7 @@ const AlbumItem: React.FC<AlbumItemProps> = ({
     <button
       type="button"
       onClick={onClick}
-      className={`relative overflow-hidden bg-bg-hover cursor-pointer ${className || ''}`}
+      className={`relative overflow-hidden bg-bg-hover cursor-pointer block p-0 m-0 border-0 ${className || ''}`}
       aria-label="Afficher le média"
     >
       {loading || !url ? (
@@ -171,30 +171,39 @@ export const MediaAlbum: React.FC<MediaAlbumProps> = ({
   let grid: React.ReactNode = null;
 
   if (count === 2) {
+    // 2 carrés côte à côte (~165x165 chacun pour total 330)
     grid = (
-      <div className="grid grid-cols-2 gap-0.5 w-full h-[220px]">
-        {renderItem(displayed[0])}
-        {renderItem(displayed[1])}
+      <div className="flex gap-[2px] w-full h-[165px]">
+        <div className="flex-1 h-full">{renderItem(displayed[0], { className: 'w-full h-full' })}</div>
+        <div className="flex-1 h-full">{renderItem(displayed[1], { className: 'w-full h-full' })}</div>
       </div>
     );
   } else if (count === 3) {
+    // 1 grand carré à gauche + 2 plus petits empilés à droite
+    // Total ~330x220, gauche 220x220, droite 110x110 chacun
     grid = (
-      <div className="grid grid-cols-2 gap-0.5 w-full h-[260px]">
-        {renderItem(displayed[0], { className: 'row-span-2 h-full' })}
-        <div className="grid grid-rows-2 gap-0.5 h-full">
-          {renderItem(displayed[1])}
-          {renderItem(displayed[2])}
+      <div className="flex gap-[2px] w-full h-[220px]">
+        <div className="flex-[2] h-full">
+          {renderItem(displayed[0], { className: 'w-full h-full' })}
+        </div>
+        <div className="flex-1 flex flex-col gap-[2px] h-full">
+          <div className="flex-1">{renderItem(displayed[1], { className: 'w-full h-full' })}</div>
+          <div className="flex-1">{renderItem(displayed[2], { className: 'w-full h-full' })}</div>
         </div>
       </div>
     );
   } else {
-    // 4+ : grille 2x2 carrée, +N sur la dernière si plus de 4
+    // 4+ : grille 2x2 carrée
     grid = (
-      <div className="grid grid-cols-2 grid-rows-2 gap-0.5 w-full h-[280px]">
-        {renderItem(displayed[0])}
-        {renderItem(displayed[1])}
-        {renderItem(displayed[2])}
-        {renderItem(displayed[3], { overlay: remaining })}
+      <div className="flex flex-col gap-[2px] w-full h-[330px]">
+        <div className="flex gap-[2px] flex-1">
+          <div className="flex-1">{renderItem(displayed[0], { className: 'w-full h-full' })}</div>
+          <div className="flex-1">{renderItem(displayed[1], { className: 'w-full h-full' })}</div>
+        </div>
+        <div className="flex gap-[2px] flex-1">
+          <div className="flex-1">{renderItem(displayed[2], { className: 'w-full h-full' })}</div>
+          <div className="flex-1">{renderItem(displayed[3], { className: 'w-full h-full', overlay: remaining })}</div>
+        </div>
       </div>
     );
   }
@@ -211,7 +220,10 @@ export const MediaAlbum: React.FC<MediaAlbumProps> = ({
 
   return (
     <>
-      <div className="relative w-[300px] sm:w-[330px] max-w-full rounded-xl overflow-hidden border-[3px] border-[#787add] group bg-transparent">
+      <div
+        className="relative rounded-xl overflow-hidden border-[3px] border-[#787add] group bg-transparent"
+        style={{ width: '330px', maxWidth: '100%' }}
+      >
         {onOpenMenu && (
           <MessageHoverActions
             isVisible={showHoverActions}
