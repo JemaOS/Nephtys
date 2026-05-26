@@ -2,52 +2,40 @@
 // Distributed under the license specified in the root directory of this project.
 
 // Service Worker for Nephtys PWA
-// Version: 7.2.0 - Force refresh: HTML always network, JS chunks revalidated
+// Version: 8.0.0 - Network-only for app shell. Cache only media (offline).
+// Avoids stale JS/HTML on deploys. App is always fresh from network.
 
-const CACHE_NAME = 'nephtys-app-v8';
-const STATIC_CACHE = 'nephtys-static-v8';
+const MEDIA_CACHE = 'nephtys-media-v8';
 
-// Static assets to cache immediately (shell)
-// IMPORTANT : ne PAS pré-cacher index.html ni '/' — ils doivent toujours
-// être servis en network-first pour que les nouveaux hashes de chunks JS
-// soient pris en compte sans cache stale.
-const STATIC_ASSETS = [
-  '/manifest.json',
-  '/icon.svg'
-];
-
-// Install event - cache static assets
-globalThis.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(STATIC_CACHE)
-      .then((cache) => cache.addAll(STATIC_ASSETS))
-      .then(() => globalThis.skipWaiting())
-      .catch(() => globalThis.skipWaiting())
-  );
+// Install: take over immediately
+globalThis.addEventListener('install', () => {
+  globalThis.skipWaiting();
 });
 
-// Activate event - clean old caches
+// Activate: claim all clients and purge all old app/static caches.
+// We only keep the media cache.
 globalThis.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames.map((cacheName) => {
-          if (cacheName !== STATIC_CACHE) {
-            return caches.delete(cacheName);
-          }
-          return Promise.resolve();
-        })
-      );
-    }).then(() => globalThis.clients.claim())
+    caches.keys()
+      .then((cacheNames) =>
+        Promise.all(
+          cacheNames.map((cacheName) =>
+            cacheName === MEDIA_CACHE
+              ? Promise.resolve()
+              : caches.delete(cacheName)
+          )
+        )
+      )
+      .then(() => globalThis.clients.claim())
   );
 });
 
-// Helper: Check if request is for Supabase API
+// Helper: Supabase API/realtime — never intercept
 function isSupabaseRequest(url) {
   return url.hostname.includes('supabase');
 }
 
-// Helper: Check if request is for media
+// Helper: media request (images, video, audio, fonts, pdf)
 function isMediaRequest(request) {
   const url = new URL(request.url);
   const pathname = url.pathname.toLowerCase();
@@ -58,31 +46,23 @@ function isMediaRequest(request) {
          url.hostname.includes('cdn');
 }
 
-// Fetch event - MINIMAL strategy (WhatsApp-style)
+// Fetch: only intercept media for offline cache. Everything else goes to
+// network so deploys are always picked up.
 globalThis.addEventListener('fetch', (event) => {
   const { request } = event;
+
+  if (request.method !== 'GET') return;
+
   const url = new URL(request.url);
 
-  // Skip non-GET requests
-  if (request.method !== 'GET') {
-    return;
-  }
+  if (isSupabaseRequest(url)) return;
 
-  // WHATSAPP-LEVEL STABILITY: Don't intercept Supabase requests at all
-  // Let them go directly to network for realtime performance
-  if (isSupabaseRequest(url)) {
-    return;
-  }
-
-  // Skip cross-origin requests (except media CDNs)
+  // Cross-origin non-media → don't touch
   if (url.origin !== globalThis.location.origin && !isMediaRequest(request)) {
     return;
   }
 
-  // Media requests - simple cache-first
-  // Note: on ne cache PAS les réponses 206 (Partial Content = range requests
-  // pour la lecture progressive de vidéos/audio). L'API Cache ne supporte pas
-  // les réponses partielles et lèverait TypeError si on essayait.
+  // Media: cache-first for offline support
   if (isMediaRequest(request)) {
     event.respondWith(
       caches.match(request).then((cached) => {
@@ -90,7 +70,7 @@ globalThis.addEventListener('fetch', (event) => {
         return fetch(request).then((response) => {
           if (response.ok && response.status !== 206) {
             const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+            caches.open(MEDIA_CACHE).then((cache) => cache.put(request, clone));
           }
           return response;
         }).catch(() => cached);
@@ -99,53 +79,13 @@ globalThis.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Navigation requests - network-first with cache fallback
-  if (request.mode === 'navigate') {
-    event.respondWith(
-      fetch(request).then((response) => {
-        if (response.ok) {
-          const clone = response.clone();
-          caches.open(STATIC_CACHE).then((cache) => cache.put(request, clone));
-        }
-        return response;
-      }).catch(() => {
-        return caches.match('/index.html');
-      })
-    );
-    return;
-  }
-
-  // Static assets - cache-first
-  if (url.pathname.match(/\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot)$/)) {
-    event.respondWith(
-      caches.match(request).then((cached) => {
-        if (cached) return cached;
-        return fetch(request).then((response) => {
-          if (response.ok) {
-            const clone = response.clone();
-            caches.open(STATIC_CACHE).then((cache) => cache.put(request, clone));
-          }
-          return response;
-        });
-      })
-    );
-    return;
-  }
-
-  // Default: network-first
-  event.respondWith(
-    fetch(request).then((response) => {
-      return response;
-    }).catch(() => {
-      return caches.match(request);
-    })
-  );
+  // Everything else (HTML, JS, CSS, app shell) → network-only.
+  // No respondWith → browser handles it directly. Always fresh on deploy.
 });
 
-// Push notification event
+// Push notifications
 globalThis.addEventListener('push', (event) => {
   const data = event.data?.json() || {};
-
   const title = data.title || 'Nouveau message';
   const options = {
     body: data.body || 'Vous avez reçu un nouveau message',
@@ -160,11 +100,9 @@ globalThis.addEventListener('push', (event) => {
       { action: 'close', title: 'Fermer' },
     ],
   };
-
   event.waitUntil(globalThis.registration.showNotification(title, options));
 });
 
-// Notification click event
 globalThis.addEventListener('notificationclick', (event) => {
   event.notification.close();
   if (event.action === 'open' || !event.action) {
@@ -182,10 +120,8 @@ globalThis.addEventListener('notificationclick', (event) => {
   }
 });
 
-// Message event - minimal handlers
 globalThis.addEventListener('message', (event) => {
   if (!event.data || !event.data.type) return;
-
   if (event.data.type === 'SKIP_WAITING') {
     globalThis.skipWaiting();
   }
