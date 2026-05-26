@@ -2954,11 +2954,18 @@ export function ChatViewPage() {
                     content: replyToMessage.content,
                     sender_id: replyToMessage.sender_id,
                     senderName: getSenderInfo(replyToMessage.sender_id).name,
-                    mediaUrl: (replyToMessage as any).is_media_encrypted
-                      ? (replyToMessage as any).media_thumbnail || null
-                      : replyToMessage.media_url || replyToMessage.file_url,
+                    mediaUrl: (replyToMessage as any).media_thumbnail
+                      ? (replyToMessage as any).media_thumbnail
+                      : (replyToMessage as any).is_media_encrypted
+                        ? null
+                        : replyToMessage.media_url || replyToMessage.file_url,
                     mediaType: replyToMessage.media_type || replyToMessage.type,
-                    fileName: replyToMessage.file_name
+                    fileName: replyToMessage.file_name,
+                    isEncrypted: !!(replyToMessage as any).is_media_encrypted,
+                    currentUserId: user?.id,
+                    encryptedSrc: (replyToMessage as any).is_media_encrypted
+                      ? replyToMessage.media_url || replyToMessage.file_url
+                      : null,
                   }}
                   onCancel={() => setReplyToMessage(null)}
                   isPreview={true}

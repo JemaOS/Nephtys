@@ -103,13 +103,16 @@ export const ReplyQuote: React.FC<{
     ? 'Vous'
     : otherUserDisplayName ?? 'Utilisateur'
   
-  // Pour les médias chiffrés E2EE, la media_url est un path chiffré inutilisable
-  // comme src d'image. On utilise media_thumbnail (data URL base64 non chiffré)
-  // comme miniature de prévisualisation dans la citation.
+  // Pour la miniature dans la citation, on préfère media_thumbnail (data URL
+  // base64 non chiffré, toujours affichable) puis en fallback media_url/file_url
+  // (qui fonctionnent seulement si le média n'est pas chiffré E2EE).
+  const mediaThumbnail = (replyMessage as any).media_thumbnail
   const isEncrypted = !!(replyMessage as any).is_media_encrypted
-  const thumbnailUrl = isEncrypted
-    ? (replyMessage as any).media_thumbnail || null
-    : replyMessage.media_url || replyMessage.file_url
+  const thumbnailUrl = mediaThumbnail
+    ? mediaThumbnail
+    : isEncrypted
+      ? null
+      : replyMessage.media_url || replyMessage.file_url
 
   return (
     <button
@@ -125,7 +128,10 @@ export const ReplyQuote: React.FC<{
           senderName: replySenderName,
           mediaUrl: thumbnailUrl,
           mediaType: replyMessage.media_type || replyMessage.type,
-          fileName: replyMessage.file_name
+          fileName: replyMessage.file_name,
+          isEncrypted,
+          currentUserId: userId,
+          encryptedSrc: isEncrypted ? (replyMessage.media_url || replyMessage.file_url) : null,
         }}
         isPreview={false}
       />

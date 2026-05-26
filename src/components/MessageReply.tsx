@@ -3,6 +3,7 @@
 
 import React from 'react';
 import { X, Image as ImageIcon, FileVideo, Sticker, FileText } from 'lucide-react';
+import { useDecryptedMedia } from '@/hooks/useDecryptedMedia';
 
 interface MessageReplyProps {
   replyToMessage: {
@@ -13,11 +14,59 @@ interface MessageReplyProps {
     mediaUrl?: string | null;
     mediaType?: string | null;
     fileName?: string | null;
+    /** Si true, le média est chiffré E2EE et nécessite un déchiffrement pour la miniature */
+    isEncrypted?: boolean;
+    /** ID de l'utilisateur courant (pour déchiffrement) */
+    currentUserId?: string;
+    /** URL source du média chiffré (path storage) */
+    encryptedSrc?: string | null;
   } | null;
   onCancel?: () => void;
   onClick?: () => void;
   isPreview?: boolean; // true = dans la barre d'input, false = dans le message
 }
+
+/**
+ * Miniature déchiffrée pour les médias E2EE dans les citations de réponse.
+ * Utilise useDecryptedMedia pour obtenir un blob URL affichable.
+ */
+const EncryptedReplyThumbnail: React.FC<{
+  messageId: string;
+  src: string;
+  userId: string;
+}> = ({ messageId, src, userId }) => {
+  const { url, loading } = useDecryptedMedia({
+    encrypted: true,
+    messageId,
+    userId,
+    src,
+  });
+
+  if (loading) {
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-black/20">
+        <div className="w-4 h-4 border-2 border-[#787add]/40 border-t-[#787add] rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (!url) {
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-black/20">
+        <ImageIcon size={16} className="text-text-secondary" />
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={url}
+      alt="Thumbnail"
+      className="h-full w-full object-cover"
+      onError={(e) => { e.currentTarget.style.display = 'none'; }}
+    />
+  );
+};
 
 export const MessageReply: React.FC<MessageReplyProps> = ({
   replyToMessage,
@@ -121,13 +170,13 @@ export const MessageReply: React.FC<MessageReplyProps> = ({
         </div>
 
         {/* Thumbnail for images/GIFs/Stickers */}
-        {mediaUrl && (mediaType === 'image' || mediaType === 'gif' || mediaType === 'sticker' || mediaType === 'video') && (
+        {(mediaUrl || (replyToMessage.isEncrypted && replyToMessage.encryptedSrc)) && (mediaType === 'image' || mediaType === 'gif' || mediaType === 'sticker' || mediaType === 'video') && (
           <div className="h-10 w-10 rounded overflow-hidden flex-shrink-0 bg-black/5 border border-white/10">
             {mediaType === 'video' ? (
               <div className="w-full h-full flex items-center justify-center bg-black/20">
                 <FileVideo size={20} className="text-text-secondary" />
               </div>
-            ) : (
+            ) : mediaUrl ? (
               <img 
                 src={mediaUrl} 
                 alt="Thumbnail" 
@@ -137,7 +186,13 @@ export const MessageReply: React.FC<MessageReplyProps> = ({
                   e.currentTarget.style.display = 'none';
                 }}
               />
-            )}
+            ) : replyToMessage.isEncrypted && replyToMessage.encryptedSrc && replyToMessage.currentUserId ? (
+              <EncryptedReplyThumbnail
+                messageId={replyToMessage.id}
+                src={replyToMessage.encryptedSrc}
+                userId={replyToMessage.currentUserId}
+              />
+            ) : null}
           </div>
         )}
       </div>
