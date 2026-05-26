@@ -103,31 +103,28 @@ export const ReplyQuote: React.FC<{
     ? 'Vous'
     : otherUserDisplayName ?? 'Utilisateur'
   
-  // Pour la miniature dans la citation, on préfère media_thumbnail (data URL
-  // base64 non chiffré, toujours affichable) puis en fallback media_url/file_url
-  // (qui fonctionnent seulement si le média n'est pas chiffré E2EE).
-  const mediaThumbnail = (replyMessage as any).media_thumbnail
+  // Stratégie miniature pour la citation de réponse :
+  // 1. Si media_thumbnail (data URL base64) existe → on l'utilise directement
+  // 2. Sinon, si message non chiffré → media_url/file_url (signed URL)
+  // 3. Sinon → on passera media_url comme encryptedSrc et le composant
+  //    EncryptedReplyThumbnail le déchiffrera à la volée.
+  const mediaThumbnail = (replyMessage as any).media_thumbnail as string | null | undefined
   const isEncrypted = !!(replyMessage as any).is_media_encrypted
-  const thumbnailUrl = mediaThumbnail
+  const rawSrc = replyMessage.media_url || replyMessage.file_url
+
+  // mediaUrl direct (utilisé en <img src>) : data URL ou URL non chiffrée
+  const directThumbnailUrl: string | null = mediaThumbnail
     ? mediaThumbnail
     : isEncrypted
       ? null
-      : replyMessage.media_url || replyMessage.file_url
+      : (rawSrc || null)
 
-  // TEMP DEBUG: log what we have for this reply
-  console.log('[ReplyQuote] DEBUG', {
-    replyToId,
-    found: !!replyMessage,
-    media_type: replyMessage.media_type,
-    type: replyMessage.type,
-    has_media_thumbnail: !!mediaThumbnail,
-    media_thumbnail_preview: typeof mediaThumbnail === 'string' ? mediaThumbnail.substring(0, 60) : mediaThumbnail,
-    is_media_encrypted: isEncrypted,
-    media_url: replyMessage.media_url,
-    file_url: replyMessage.file_url,
-    thumbnailUrl_preview: typeof thumbnailUrl === 'string' ? thumbnailUrl.substring(0, 60) : thumbnailUrl,
-    encryptedSrc: isEncrypted ? (replyMessage.media_url || replyMessage.file_url) : null,
-  })
+  // Source à déchiffrer si pas de miniature directe et qu'on a un raw path
+  // chiffré. On essaie même si is_media_encrypted est false : si la décryption
+  // échoue, le composant fallback affichera l'icône image.
+  const decryptableSrc: string | null = !directThumbnailUrl && rawSrc
+    ? rawSrc
+    : null
 
   return (
     <button
@@ -141,11 +138,11 @@ export const ReplyQuote: React.FC<{
           content: replyMessage.content,
           sender_id: replyMessage.sender_id,
           senderName: replySenderName,
-          mediaUrl: thumbnailUrl,
+          mediaUrl: directThumbnailUrl,
           mediaType: replyMessage.media_type || replyMessage.type,
           fileName: replyMessage.file_name,
           isEncrypted,
-          encryptedSrc: isEncrypted ? (replyMessage.media_url || replyMessage.file_url) : null,
+          encryptedSrc: decryptableSrc,
         }}
         isPreview={false}
       />

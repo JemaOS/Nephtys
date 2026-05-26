@@ -169,24 +169,27 @@ export const MessageReply: React.FC<MessageReplyProps> = ({
           </div>
         </div>
 
-        {/* Thumbnail for images/GIFs/Stickers */}
-        {(mediaUrl || (replyToMessage.isEncrypted && replyToMessage.encryptedSrc)) && (mediaType === 'image' || mediaType === 'gif' || mediaType === 'sticker' || mediaType === 'video') && (
-          <div className="h-10 w-10 rounded overflow-hidden flex-shrink-0 bg-black/5 border border-white/10">
+        {/* Thumbnail for images/GIFs/Stickers/Videos.
+            Affiche systématiquement si on a un mediaUrl OU si le média est
+            chiffré (on tente alors la décryption). On retire la dépendance
+            au flag is_media_encrypted (parfois absent en DB) en utilisant
+            simplement la présence d'un encryptedSrc. */}
+        {(mediaUrl || replyToMessage.encryptedSrc) && (mediaType === 'image' || mediaType === 'gif' || mediaType === 'sticker' || mediaType === 'video') && (
+          <div className="h-10 w-10 rounded overflow-hidden flex-shrink-0 bg-black/5 border border-white/10 ml-2">
             {mediaType === 'video' ? (
               <div className="w-full h-full flex items-center justify-center bg-black/20">
                 <FileVideo size={20} className="text-text-secondary" />
               </div>
             ) : mediaUrl ? (
-              <img 
-                src={mediaUrl} 
-                alt="Thumbnail" 
+              <img
+                src={mediaUrl}
+                alt="Aperçu"
                 className="h-full w-full object-cover"
                 onError={(e) => {
-                  // Fallback if image fails to load
                   e.currentTarget.style.display = 'none';
                 }}
               />
-            ) : replyToMessage.isEncrypted && replyToMessage.encryptedSrc ? (
+            ) : replyToMessage.encryptedSrc ? (
               <EncryptedReplyThumbnail
                 messageId={replyToMessage.id}
                 src={replyToMessage.encryptedSrc}
