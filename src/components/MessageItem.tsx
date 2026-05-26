@@ -436,6 +436,9 @@ export const MessageItem: React.FC<MessageItemProps> = React.memo(({
     )
   }
 
+  // Whether this message is a reply (used to show ReplyQuote above bubbles)
+  const hasReply = !!message.reply_to_id
+
   if (msgType.isEmojiOnlyMessage) {
     const emojiSize = getEmojiSizeClass(msgType.emojiCount);
     return renderBubbleWrapper(
@@ -444,7 +447,8 @@ export const MessageItem: React.FC<MessageItemProps> = React.memo(({
           {message.content}
         </div>
         {renderTimestampBubble()}
-      </>
+      </>,
+      hasReply
     )
   }
 
@@ -457,7 +461,8 @@ export const MessageItem: React.FC<MessageItemProps> = React.memo(({
         gifMatch={gifMatch}
         stickerMatch={stickerMatch}
         isGifMessage={msgType.isGifMessage}
-      />
+      />,
+      hasReply
     )
   }
 
@@ -490,7 +495,8 @@ export const MessageItem: React.FC<MessageItemProps> = React.memo(({
         onNavigate={() => {}}
         isEncrypted={(message as any).is_media_encrypted}
         currentUserId={currentUserId}
-      />
+      />,
+      hasReply
     )
   }
 
@@ -517,7 +523,8 @@ export const MessageItem: React.FC<MessageItemProps> = React.memo(({
         onOpenMenu={() => {}}
         isEncrypted={(message as any).is_media_encrypted}
         currentUserId={currentUserId}
-      />
+      />,
+      hasReply
     )
   }
 
