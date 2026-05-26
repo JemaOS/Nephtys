@@ -105,24 +105,20 @@ export const ReplyQuote: React.FC<{
   
   // Stratégie miniature pour la citation de réponse :
   // 1. Si media_thumbnail (data URL base64) existe → on l'utilise directement
-  // 2. Sinon, si message non chiffré → media_url/file_url (signed URL)
-  // 3. Sinon → on passera media_url comme encryptedSrc et le composant
-  //    EncryptedReplyThumbnail le déchiffrera à la volée.
+  // 2. Sinon, si message non chiffré → on passe le path/URL brut, le composant
+  //    PlainReplyThumbnail le signera via useMediaUrl à la volée
+  // 3. Si chiffré → encryptedSrc, déchiffrement via EncryptedReplyThumbnail
   const mediaThumbnail = (replyMessage as any).media_thumbnail as string | null | undefined
   const isEncrypted = !!(replyMessage as any).is_media_encrypted
   const rawSrc = replyMessage.media_url || replyMessage.file_url
 
-  // mediaUrl direct (utilisé en <img src>) : data URL ou URL non chiffrée
   const directThumbnailUrl: string | null = mediaThumbnail
     ? mediaThumbnail
     : isEncrypted
       ? null
       : (rawSrc || null)
 
-  // Source à déchiffrer si pas de miniature directe et qu'on a un raw path
-  // chiffré. On essaie même si is_media_encrypted est false : si la décryption
-  // échoue, le composant fallback affichera l'icône image.
-  const decryptableSrc: string | null = !directThumbnailUrl && rawSrc
+  const decryptableSrc: string | null = !directThumbnailUrl && isEncrypted && rawSrc
     ? rawSrc
     : null
 

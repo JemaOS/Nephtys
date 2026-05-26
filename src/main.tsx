@@ -12,7 +12,7 @@ import App from './App.tsx'
 // referencing an old build, this constant won't match what the SW registers
 // for, and we trigger a one-shot self-heal: unregister the SW, purge caches,
 // hard-reload.
-const APP_BUILD_ID = '2026-05-26-thumb-fix-v3';
+const APP_BUILD_ID = '2026-05-26-thumb-fix-v4';
 const BUILD_ID_KEY = 'nephtys_app_build_id';
 
 const selfHealStaleClient = async () => {

@@ -4,7 +4,46 @@
 import React from 'react';
 import { X, Image as ImageIcon, FileVideo, Sticker, FileText } from 'lucide-react';
 import { useDecryptedMedia } from '@/hooks/useDecryptedMedia';
+import { useMediaUrl } from '@/hooks/useMediaUrl';
 import { useAuth } from '@/context/AuthContext';
+
+/**
+ * Affiche une miniature pour un media non chiffré dont la valeur est soit
+ * une data URL (affichable directe), soit un path bucket brut (à signer).
+ * Le hook useMediaUrl gère le cache + signature à la volée.
+ */
+const PlainReplyThumbnail: React.FC<{ src: string }> = ({ src }) => {
+  // Si c'est déjà une data URL ou une URL HTTPS publique, on l'affiche tel quel
+  // sinon useMediaUrl résout en URL signée du bucket privé.
+  const isDataOrHttp = src.startsWith('data:') || src.startsWith('http');
+  const { url, loading } = useMediaUrl(isDataOrHttp ? null : src);
+  const finalSrc = isDataOrHttp ? src : url;
+
+  if (!isDataOrHttp && loading && !finalSrc) {
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-black/20">
+        <div className="w-4 h-4 border-2 border-[#787add]/40 border-t-[#787add] rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (!finalSrc) {
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-black/20">
+        <ImageIcon size={16} className="text-text-secondary" />
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={finalSrc}
+      alt="Aperçu"
+      className="h-full w-full object-cover"
+      onError={(e) => { e.currentTarget.style.display = 'none'; }}
+    />
+  );
+};
 
 interface MessageReplyProps {
   replyToMessage: {
@@ -35,16 +74,12 @@ const EncryptedReplyThumbnail: React.FC<{
 }> = ({ messageId, src }) => {
   const { user } = useAuth();
   const userId = user?.id;
-  const { url, loading, error } = useDecryptedMedia({
+  const { url, loading } = useDecryptedMedia({
     encrypted: true,
     messageId,
     userId,
     src,
   });
-
-  React.useEffect(() => {
-    console.log('[EncryptedReplyThumbnail]', { messageId, src: src?.substring(0, 80), userId, hasUrl: !!url, loading, error });
-  }, [messageId, src, userId, url, loading, error]);
 
   if (loading) {
     return (
@@ -79,17 +114,6 @@ export const MessageReply: React.FC<MessageReplyProps> = ({
   isPreview = false,
 }) => {
   if (!replyToMessage) return null;
-
-  // TEMP DEBUG: log every render of MessageReply to trace thumbnail issues
-  console.log('[MessageReply]', {
-    isPreview,
-    id: replyToMessage.id,
-    mediaType: replyToMessage.mediaType,
-    hasMediaUrl: !!replyToMessage.mediaUrl,
-    mediaUrlPreview: typeof replyToMessage.mediaUrl === 'string' ? replyToMessage.mediaUrl.substring(0, 80) : replyToMessage.mediaUrl,
-    isEncrypted: replyToMessage.isEncrypted,
-    encryptedSrcPreview: typeof replyToMessage.encryptedSrc === 'string' ? replyToMessage.encryptedSrc.substring(0, 80) : replyToMessage.encryptedSrc,
-  });
 
   const truncateText = (text: string, maxLength: number = 100) => {
     if (!text) return '';
@@ -196,14 +220,7 @@ export const MessageReply: React.FC<MessageReplyProps> = ({
                 <FileVideo size={20} className="text-text-secondary" />
               </div>
             ) : mediaUrl ? (
-              <img
-                src={mediaUrl}
-                alt="Aperçu"
-                className="h-full w-full object-cover"
-                onError={(e) => {
-                  e.currentTarget.style.display = 'none';
-                }}
-              />
+              <PlainReplyThumbnail src={mediaUrl} />
             ) : replyToMessage.encryptedSrc ? (
               <EncryptedReplyThumbnail
                 messageId={replyToMessage.id}
