@@ -2947,29 +2947,39 @@ export function ChatViewPage() {
                 />
               )}
               
-              {replyToMessage && (
-                <MessageReply
-                  replyToMessage={{
-                    id: replyToMessage.id,
-                    content: replyToMessage.content,
-                    sender_id: replyToMessage.sender_id,
-                    senderName: getSenderInfo(replyToMessage.sender_id).name,
-                    mediaUrl: (replyToMessage as any).media_thumbnail
-                      ? (replyToMessage as any).media_thumbnail
-                      : (replyToMessage as any).is_media_encrypted
-                        ? null
-                        : replyToMessage.media_url || replyToMessage.file_url,
-                    mediaType: replyToMessage.media_type || replyToMessage.type,
-                    fileName: replyToMessage.file_name,
-                    isEncrypted: !!(replyToMessage as any).is_media_encrypted,
-                    encryptedSrc: (replyToMessage as any).is_media_encrypted
-                      ? replyToMessage.media_url || replyToMessage.file_url
-                      : null,
-                  }}
-                  onCancel={() => setReplyToMessage(null)}
-                  isPreview={true}
-                />
-              )}
+              {replyToMessage && (() => {
+                // Même stratégie que ReplyQuote (cf. MessageItemComponents.tsx) :
+                // - data URL base64 (media_thumbnail) si dispo → affichable direct
+                // - sinon URL signée pour les non-chiffrés
+                // - sinon path brut → décryption à la volée via EncryptedReplyThumbnail
+                const reply = replyToMessage as any
+                const mediaThumbnail = reply.media_thumbnail as string | null | undefined
+                const isReplyEncrypted = !!reply.is_media_encrypted
+                const rawSrc = replyToMessage.media_url || replyToMessage.file_url
+                const directThumb: string | null = mediaThumbnail
+                  ? mediaThumbnail
+                  : isReplyEncrypted
+                    ? null
+                    : (rawSrc || null)
+                const decryptable: string | null = !directThumb && rawSrc ? rawSrc : null
+                return (
+                  <MessageReply
+                    replyToMessage={{
+                      id: replyToMessage.id,
+                      content: replyToMessage.content,
+                      sender_id: replyToMessage.sender_id,
+                      senderName: getSenderInfo(replyToMessage.sender_id).name,
+                      mediaUrl: directThumb,
+                      mediaType: replyToMessage.media_type || replyToMessage.type,
+                      fileName: replyToMessage.file_name,
+                      isEncrypted: isReplyEncrypted,
+                      encryptedSrc: decryptable,
+                    }}
+                    onCancel={() => setReplyToMessage(null)}
+                    isPreview={true}
+                  />
+                )
+              })()}
               <form onSubmit={handleSendMessage} className="flex items-center gap-1 md:gap-2">
                 <Suspense fallback={<div className="w-9 h-9 md:w-10 md:h-10" />}>
                   <EmojiPicker

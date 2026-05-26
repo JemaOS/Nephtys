@@ -35,12 +35,16 @@ const EncryptedReplyThumbnail: React.FC<{
 }> = ({ messageId, src }) => {
   const { user } = useAuth();
   const userId = user?.id;
-  const { url, loading } = useDecryptedMedia({
+  const { url, loading, error } = useDecryptedMedia({
     encrypted: true,
     messageId,
     userId,
     src,
   });
+
+  React.useEffect(() => {
+    console.log('[EncryptedReplyThumbnail]', { messageId, src: src?.substring(0, 80), userId, hasUrl: !!url, loading, error });
+  }, [messageId, src, userId, url, loading, error]);
 
   if (loading) {
     return (
@@ -75,6 +79,17 @@ export const MessageReply: React.FC<MessageReplyProps> = ({
   isPreview = false,
 }) => {
   if (!replyToMessage) return null;
+
+  // TEMP DEBUG: log every render of MessageReply to trace thumbnail issues
+  console.log('[MessageReply]', {
+    isPreview,
+    id: replyToMessage.id,
+    mediaType: replyToMessage.mediaType,
+    hasMediaUrl: !!replyToMessage.mediaUrl,
+    mediaUrlPreview: typeof replyToMessage.mediaUrl === 'string' ? replyToMessage.mediaUrl.substring(0, 80) : replyToMessage.mediaUrl,
+    isEncrypted: replyToMessage.isEncrypted,
+    encryptedSrcPreview: typeof replyToMessage.encryptedSrc === 'string' ? replyToMessage.encryptedSrc.substring(0, 80) : replyToMessage.encryptedSrc,
+  });
 
   const truncateText = (text: string, maxLength: number = 100) => {
     if (!text) return '';
