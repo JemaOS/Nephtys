@@ -2,15 +2,16 @@
 // Distributed under the license specified in the root directory of this project.
 
 // Service Worker for Nephtys PWA
-// Version: 7.1.0 - Minimal SW for maximum stability (WhatsApp-style)
+// Version: 7.2.0 - Force refresh: HTML always network, JS chunks revalidated
 
-const CACHE_NAME = 'nephtys-app-v7';
-const STATIC_CACHE = 'nephtys-static-v7';
+const CACHE_NAME = 'nephtys-app-v8';
+const STATIC_CACHE = 'nephtys-static-v8';
 
 // Static assets to cache immediately (shell)
+// IMPORTANT : ne PAS pré-cacher index.html ni '/' — ils doivent toujours
+// être servis en network-first pour que les nouveaux hashes de chunks JS
+// soient pris en compte sans cache stale.
 const STATIC_ASSETS = [
-  '/',
-  '/index.html',
   '/manifest.json',
   '/icon.svg'
 ];
