@@ -8,20 +8,37 @@ import { useMediaUrl } from '@/hooks/useMediaUrl';
 import { useAuth } from '@/context/AuthContext';
 
 /**
- * Affiche une miniature pour un media non chiffré dont la valeur est soit
- * une data URL (affichable directe), soit un path bucket brut (à signer).
- * Le hook useMediaUrl gère le cache + signature à la volée.
+ * Affiche une miniature pour un media. Stratégie progressive :
+ *  1. data URL → affichage direct
+ *  2. path bucket → URL signée via useMediaUrl
+ *  3. si l'<img> échoue (octets chiffrés ?) → fallback vers décryption E2EE
+ *
+ * Beaucoup d'anciens messages ont is_media_encrypted=null en DB mais sont
+ * en réalité chiffrés. Le fallback onError les rattrape automatiquement.
  */
-const PlainReplyThumbnail: React.FC<{ src: string }> = ({ src }) => {
-  // Si c'est déjà une data URL ou une URL HTTPS publique, on l'affiche tel quel
-  // sinon useMediaUrl résout en URL signée du bucket privé.
+const PlainReplyThumbnail: React.FC<{ messageId: string; src: string }> = ({
+  messageId,
+  src,
+}) => {
+  const [imgError, setImgError] = React.useState(false);
   const isDataOrHttp = src.startsWith('data:') || src.startsWith('http');
   const { url, loading } = useMediaUrl(isDataOrHttp ? null : src);
   const finalSrc = isDataOrHttp ? src : url;
 
   React.useEffect(() => {
-    console.log('[ReplyThumb-P]', { srcPrefix: src.substring(0, 60), isDataOrHttp, hasFinalSrc: !!finalSrc, loading });
-  }, [src, isDataOrHttp, finalSrc, loading]);
+    console.log('[ReplyThumb-P]', {
+      srcPrefix: src.substring(0, 60),
+      isDataOrHttp,
+      hasFinalSrc: !!finalSrc,
+      loading,
+      imgError,
+    });
+  }, [src, isDataOrHttp, finalSrc, loading, imgError]);
+
+  // Si l'image en clair échoue, on tente la décryption E2EE.
+  if (imgError && !isDataOrHttp) {
+    return <EncryptedReplyThumbnail messageId={messageId} src={src} />;
+  }
 
   if (!isDataOrHttp && loading && !finalSrc) {
     return (
@@ -44,7 +61,7 @@ const PlainReplyThumbnail: React.FC<{ src: string }> = ({ src }) => {
       src={finalSrc}
       alt="Aperçu"
       className="h-full w-full object-cover"
-      onError={(e) => { e.currentTarget.style.display = 'none'; }}
+      onError={() => setImgError(true)}
     />
   );
 };
@@ -228,7 +245,7 @@ export const MessageReply: React.FC<MessageReplyProps> = ({
                 <FileVideo size={20} className="text-text-secondary" />
               </div>
             ) : mediaUrl ? (
-              <PlainReplyThumbnail src={mediaUrl} />
+              <PlainReplyThumbnail messageId={replyToMessage.id} src={mediaUrl} />
             ) : replyToMessage.encryptedSrc ? (
               <EncryptedReplyThumbnail
                 messageId={replyToMessage.id}
