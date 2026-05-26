@@ -2962,7 +2962,6 @@ export function ChatViewPage() {
                     mediaType: replyToMessage.media_type || replyToMessage.type,
                     fileName: replyToMessage.file_name,
                     isEncrypted: !!(replyToMessage as any).is_media_encrypted,
-                    currentUserId: user?.id,
                     encryptedSrc: (replyToMessage as any).is_media_encrypted
                       ? replyToMessage.media_url || replyToMessage.file_url
                       : null,

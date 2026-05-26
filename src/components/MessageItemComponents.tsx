@@ -130,7 +130,6 @@ export const ReplyQuote: React.FC<{
           mediaType: replyMessage.media_type || replyMessage.type,
           fileName: replyMessage.file_name,
           isEncrypted,
-          currentUserId: userId,
           encryptedSrc: isEncrypted ? (replyMessage.media_url || replyMessage.file_url) : null,
         }}
         isPreview={false}

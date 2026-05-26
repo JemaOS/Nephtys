@@ -4,6 +4,7 @@
 import React from 'react';
 import { X, Image as ImageIcon, FileVideo, Sticker, FileText } from 'lucide-react';
 import { useDecryptedMedia } from '@/hooks/useDecryptedMedia';
+import { useAuth } from '@/context/AuthContext';
 
 interface MessageReplyProps {
   replyToMessage: {
@@ -16,8 +17,6 @@ interface MessageReplyProps {
     fileName?: string | null;
     /** Si true, le média est chiffré E2EE et nécessite un déchiffrement pour la miniature */
     isEncrypted?: boolean;
-    /** ID de l'utilisateur courant (pour déchiffrement) */
-    currentUserId?: string;
     /** URL source du média chiffré (path storage) */
     encryptedSrc?: string | null;
   } | null;
@@ -33,8 +32,9 @@ interface MessageReplyProps {
 const EncryptedReplyThumbnail: React.FC<{
   messageId: string;
   src: string;
-  userId: string;
-}> = ({ messageId, src, userId }) => {
+}> = ({ messageId, src }) => {
+  const { user } = useAuth();
+  const userId = user?.id;
   const { url, loading } = useDecryptedMedia({
     encrypted: true,
     messageId,
@@ -186,11 +186,10 @@ export const MessageReply: React.FC<MessageReplyProps> = ({
                   e.currentTarget.style.display = 'none';
                 }}
               />
-            ) : replyToMessage.isEncrypted && replyToMessage.encryptedSrc && replyToMessage.currentUserId ? (
+            ) : replyToMessage.isEncrypted && replyToMessage.encryptedSrc ? (
               <EncryptedReplyThumbnail
                 messageId={replyToMessage.id}
                 src={replyToMessage.encryptedSrc}
-                userId={replyToMessage.currentUserId}
               />
             ) : null}
           </div>
