@@ -251,3 +251,42 @@ export function clearAllDecryptedMedia(): void {
   decryptedBlobCache.forEach(v => URL.revokeObjectURL(v.url));
   decryptedBlobCache.clear();
 }
+
+// ─── Récupération de la clé AES brute (pour transfert) ────────────────
+
+/**
+ * Récupère la clé AES brute d'un message chiffré pour un utilisateur donné.
+ * Utile lors du transfert d'un message E2EE : on déchiffre la clé du message
+ * source puis on la re-wrap pour les membres de la conversation cible.
+ *
+ * Retourne { rawKey, mediaIvBase64 } ou null si la clé est introuvable.
+ */
+export async function fetchMediaRawKey(
+  messageId: string,
+  userId: string
+): Promise<{ rawKey: Uint8Array; mediaIvBase64: string } | null> {
+  // 1. Récupère la clé enveloppée
+  const { data: keyRow, error: keyError } = await supabase
+    .from('message_media_keys')
+    .select('encrypted_key, iv, sender_public_key, media_iv')
+    .eq('message_id', messageId)
+    .eq('recipient_id', userId)
+    .maybeSingle();
+
+  if (keyError || !keyRow) {
+    console.warn('[fetchMediaRawKey] key not found for message', messageId);
+    return null;
+  }
+
+  const wrapped: WrappedKey = {
+    encryptedKey: keyRow.encrypted_key,
+    iv: keyRow.iv,
+    senderPublicKey: keyRow.sender_public_key,
+  };
+
+  // 2. Déchiffre la clé AES
+  const myKeyPair = await ensureUserKeyPair(userId);
+  const rawKey = await unwrapKeyFromSender(wrapped, myKeyPair.privateKey);
+
+  return { rawKey, mediaIvBase64: keyRow.media_iv };
+}

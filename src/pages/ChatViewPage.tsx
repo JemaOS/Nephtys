@@ -8,7 +8,7 @@ import { useTheme } from '@/context/ThemeContext'
 import { MainLayout } from '@/components/MainLayout'
 import { supabase, Message, Conversation, Profile, sendBroadcastMessage } from '@/lib/supabase'
 import { signFieldsBatch, resolveMediaUrl, extractStoragePath } from '@/lib/mediaUrl'
-import { createMediaKeysForMessage } from '@/lib/encryptedMediaService'
+import { createMediaKeysForMessage, fetchMediaRawKey } from '@/lib/encryptedMediaService'
 import { downloadMedia } from '@/lib/downloadMedia'
 import { offlineStorage } from '@/lib/offlineStorage'
 import { useUserPresence } from '@/hooks/usePresence'
@@ -2337,6 +2337,19 @@ export function ChatViewPage() {
     if (messageToForward.file_size) {
       messageData.file_size = messageToForward.file_size
     }
+    // Copier les métadonnées de média (dimensions, thumbnail, chiffrement)
+    if ((messageToForward as any).media_thumbnail) {
+      messageData.media_thumbnail = (messageToForward as any).media_thumbnail
+    }
+    if (messageToForward.media_width) {
+      messageData.media_width = messageToForward.media_width
+    }
+    if (messageToForward.media_height) {
+      messageData.media_height = messageToForward.media_height
+    }
+    if ((messageToForward as any).is_media_encrypted) {
+      messageData.is_media_encrypted = true
+    }
 
     return messageData
   }
@@ -2358,17 +2371,54 @@ export function ChatViewPage() {
     let successCount = 0
     let errorCount = 0
 
+    // Si le message source est chiffré E2EE, on récupère la clé AES une seule
+    // fois pour la re-wrapper vers les membres de chaque conversation cible.
+    const isSourceEncrypted = !!(messageToForward as any)?.is_media_encrypted
+    let sourceKeyData: { rawKey: Uint8Array; mediaIvBase64: string } | null = null
+    if (isSourceEncrypted && messageToForward) {
+      try {
+        sourceKeyData = await fetchMediaRawKey(messageToForward.id, userId)
+      } catch (e) {
+        console.error('[forward] failed to fetch source media key:', e)
+      }
+    }
+
     for (const targetConversationId of conversationIds) {
       const messageData = buildForwardMessageData(targetConversationId, messageToForward!, userId)
 
-      const { error: insertError } = await supabase.from('messages').insert(messageData)
-      
+      // Si la clé source n'a pas pu être récupérée pour un message chiffré,
+      // on retire le flag chiffré car les destinataires ne pourront pas déchiffrer.
+      if (isSourceEncrypted && !sourceKeyData) {
+        delete messageData.is_media_encrypted
+      }
+
+      const { data: insertedRows, error: insertError } = await supabase
+        .from('messages')
+        .insert(messageData)
+        .select('id')
+
       if (insertError) {
         console.error('Error inserting forwarded message:', insertError)
         errorCount++
       } else {
         successCount++
         await updateConversationLastMessage(targetConversationId)
+
+        // Re-créer les clés de chiffrement pour le message transféré
+        // afin que les membres de la conversation cible puissent déchiffrer le média.
+        if (isSourceEncrypted && sourceKeyData && insertedRows?.[0]?.id) {
+          try {
+            await createMediaKeysForMessage({
+              messageId: insertedRows[0].id,
+              senderId: userId,
+              conversationId: targetConversationId,
+              rawKey: sourceKeyData.rawKey,
+              mediaIvBase64: sourceKeyData.mediaIvBase64,
+            })
+          } catch (e) {
+            console.error('[forward] failed to create media keys for target:', e)
+          }
+        }
       }
     }
 
@@ -2904,7 +2954,9 @@ export function ChatViewPage() {
                     content: replyToMessage.content,
                     sender_id: replyToMessage.sender_id,
                     senderName: getSenderInfo(replyToMessage.sender_id).name,
-                    mediaUrl: replyToMessage.media_url || replyToMessage.file_url,
+                    mediaUrl: (replyToMessage as any).is_media_encrypted
+                      ? (replyToMessage as any).media_thumbnail || null
+                      : replyToMessage.media_url || replyToMessage.file_url,
                     mediaType: replyToMessage.media_type || replyToMessage.type,
                     fileName: replyToMessage.file_name
                   }}
