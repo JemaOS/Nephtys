@@ -25,17 +25,7 @@ const PlainReplyThumbnail: React.FC<{ messageId: string; src: string }> = ({
   const { url, loading } = useMediaUrl(isDataOrHttp ? null : src);
   const finalSrc = isDataOrHttp ? src : url;
 
-  React.useEffect(() => {
-    console.log('[ReplyThumb-P]', {
-      srcPrefix: src.substring(0, 60),
-      isDataOrHttp,
-      hasFinalSrc: !!finalSrc,
-      loading,
-      imgError,
-    });
-  }, [src, isDataOrHttp, finalSrc, loading, imgError]);
-
-  // Si l'image en clair échoue, on tente la décryption E2EE.
+  // Si l'image en clair échoue (octets chiffrés), on tente la décryption E2EE.
   if (imgError && !isDataOrHttp) {
     return <EncryptedReplyThumbnail messageId={messageId} src={src} />;
   }
@@ -95,16 +85,12 @@ const EncryptedReplyThumbnail: React.FC<{
 }> = ({ messageId, src }) => {
   const { user } = useAuth();
   const userId = user?.id;
-  const { url, loading, error } = useDecryptedMedia({
+  const { url, loading } = useDecryptedMedia({
     encrypted: true,
     messageId,
     userId,
     src,
   });
-
-  React.useEffect(() => {
-    console.log('[ReplyThumb-E]', { messageId, userId, hasUrl: !!url, loading, error: error?.toString() });
-  }, [messageId, userId, url, loading, error]);
 
   if (loading) {
     return (
