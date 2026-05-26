@@ -122,6 +122,17 @@ export const ReplyQuote: React.FC<{
     ? rawSrc
     : null
 
+  console.log('[ReplyQuote]', {
+    id: replyMessage.id,
+    media_type: replyMessage.media_type,
+    type: replyMessage.type,
+    is_media_encrypted: (replyMessage as any).is_media_encrypted,
+    has_thumbnail: !!mediaThumbnail,
+    rawSrc: rawSrc?.substring(0, 80),
+    directThumbnailUrl: directThumbnailUrl?.substring(0, 80),
+    decryptableSrc: decryptableSrc?.substring(0, 80),
+  })
+
   return (
     <button
       type="button"

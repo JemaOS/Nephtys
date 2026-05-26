@@ -19,6 +19,10 @@ const PlainReplyThumbnail: React.FC<{ src: string }> = ({ src }) => {
   const { url, loading } = useMediaUrl(isDataOrHttp ? null : src);
   const finalSrc = isDataOrHttp ? src : url;
 
+  React.useEffect(() => {
+    console.log('[ReplyThumb-P]', { srcPrefix: src.substring(0, 60), isDataOrHttp, hasFinalSrc: !!finalSrc, loading });
+  }, [src, isDataOrHttp, finalSrc, loading]);
+
   if (!isDataOrHttp && loading && !finalSrc) {
     return (
       <div className="w-full h-full flex items-center justify-center bg-black/20">
@@ -74,12 +78,16 @@ const EncryptedReplyThumbnail: React.FC<{
 }> = ({ messageId, src }) => {
   const { user } = useAuth();
   const userId = user?.id;
-  const { url, loading } = useDecryptedMedia({
+  const { url, loading, error } = useDecryptedMedia({
     encrypted: true,
     messageId,
     userId,
     src,
   });
+
+  React.useEffect(() => {
+    console.log('[ReplyThumb-E]', { messageId, userId, hasUrl: !!url, loading, error: error?.toString() });
+  }, [messageId, userId, url, loading, error]);
 
   if (loading) {
     return (
