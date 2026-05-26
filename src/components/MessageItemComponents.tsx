@@ -114,6 +114,18 @@ export const ReplyQuote: React.FC<{
       ? null
       : replyMessage.media_url || replyMessage.file_url
 
+  // Debug: log reply data
+  console.log('[ReplyQuote] debug', {
+    messageId: replyMessage.id,
+    media_url: replyMessage.media_url,
+    file_url: replyMessage.file_url,
+    media_thumbnail: mediaThumbnail,
+    is_media_encrypted: isEncrypted,
+    media_type: replyMessage.media_type,
+    type: replyMessage.type,
+    thumbnailUrl,
+  })
+
   return (
     <button
       type="button"

@@ -35,12 +35,19 @@ const EncryptedReplyThumbnail: React.FC<{
 }> = ({ messageId, src }) => {
   const { user } = useAuth();
   const userId = user?.id;
-  const { url, loading } = useDecryptedMedia({
+  const { url, loading, error } = useDecryptedMedia({
     encrypted: true,
     messageId,
     userId,
     src,
   });
+
+  // Debug: log the state
+  React.useEffect(() => {
+    console.log('[EncryptedReplyThumbnail] state', {
+      messageId, src, userId, url, loading, error,
+    });
+  }, [messageId, src, userId, url, loading, error]);
 
   if (loading) {
     return (
