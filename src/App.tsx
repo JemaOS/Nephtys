@@ -11,6 +11,7 @@ import { useSupabaseReconnect } from './hooks/useSupabaseReconnect'
 import { useKeepAlive } from './hooks/useKeepAlive'
 import { useEffect, useState, useCallback, lazy, Suspense } from 'react'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import { SubscriptionGuard } from './SubscriptionGuard'
 
 
 // Create a QueryClient with optimized caching for instant user profile display
@@ -195,6 +196,7 @@ function AppRoutes() {
 
 function App() {
   return (
+    <SubscriptionGuard appName="Nephtys">
     <BrowserRouter>
       <QueryClientProvider client={queryClient}>
         <ThemeProvider>
@@ -208,6 +210,7 @@ function App() {
         </ThemeProvider>
       </QueryClientProvider>
     </BrowserRouter>
+    </SubscriptionGuard>
   )
 }
 
