@@ -20,6 +20,8 @@
 
 /** Origines autorisées (CORS). Adapter à votre domaine de production. */
 const ALLOWED_ORIGINS = [
+    'https://nephtys.jemaos.com',
+    'https://www.nephtys.jemaos.com',
     'https://nephtys.app',
     'https://www.nephtys.app',
     'https://nephtys.vercel.app',
