@@ -89,8 +89,8 @@ globalThis.addEventListener('push', (event) => {
   const title = data.title || 'Nouveau message';
   const options = {
     body: data.body || 'Vous avez reçu un nouveau message',
-    icon: data.icon || '/icon.svg',
-    badge: '/icon.svg',
+    icon: data.icon || '/icon-192x192.png',
+    badge: '/icon-192x192.png',
     tag: data.tag || 'message',
     data: data.data || {},
     vibrate: [200, 100, 200],
