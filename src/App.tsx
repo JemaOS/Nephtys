@@ -123,6 +123,25 @@ function ChatViewPageWithKey() {
   return <ChatViewPage key={conversationId} />
 }
 
+// Valide le paramètre ?return_to= du flux SSO : seules les apps JemaOS
+// (*.jemaos.com) et localhost (dev) sont acceptées — protection open-redirect.
+function getValidatedReturnTo(): string | null {
+  try {
+    const raw = new URLSearchParams(globalThis.location.search).get('return_to')
+    if (!raw) return null
+    const url = new URL(raw)
+    const host = url.hostname
+    const isLocal = host === 'localhost' || host === '127.0.0.1'
+    if (url.protocol !== 'https:' && !isLocal) return null
+    if (host === 'jemaos.com' || host.endsWith('.jemaos.com') || isLocal) {
+      return url.href
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
 function PublicRoute({ children }: { readonly children: React.ReactNode }) {
   const { user, loading } = useAuth()
   
@@ -131,7 +150,19 @@ function PublicRoute({ children }: { readonly children: React.ReactNode }) {
     return <LoadingScreen />;
   }
   
-  return user ? <Navigate to="/chats" /> : <>{children}</>
+  if (user) {
+    // Flux SSO : un utilisateur authentifié qui arrive sur /auth avec un
+    // return_to valide est renvoyé vers l'app d'origine (ex. un PWA JemaOS
+    // dont la session a expiré), au lieu de rester bloqué sur Nephtys.
+    const returnTo = getValidatedReturnTo()
+    if (returnTo) {
+      globalThis.location.replace(returnTo)
+      return <LoadingScreen message="Redirection vers votre application…" />
+    }
+    return <Navigate to="/chats" />
+  }
+  
+  return <>{children}</>
 }
 
 function AppRoutes() {
