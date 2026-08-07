@@ -114,14 +114,9 @@ export function AuthPage() {
       <div className="w-full max-w-md lg:max-w-lg xl:max-w-xl space-y-1 sm:space-y-2 lg:space-y-4">
         {/* Logo & Title */}
         <div className="text-center space-y-0.5 sm:space-y-1">
-          <div className="w-10 h-10 sm:w-12 sm:h-12 lg:w-16 lg:h-16 mx-auto rounded-2xl bg-gradient-to-br from-[#7578db] to-[#6b6fdb] flex items-center justify-center shadow-xl">
-            <svg width="24" height="24" viewBox="0 0 60 60" fill="none" className="sm:w-[28px] sm:h-[28px] lg:w-[38px] lg:h-[38px]">
-              <path d="M 30 10 C 18 10 8 18 8 28 C 8 33 10 37 13 40 L 11 46 L 17 43 C 21 45 25 46 30 46 C 42 46 52 38 52 28 C 52 18 42 10 30 10 Z"
-                    fill="white"
-                    opacity="0.95"/>
-              <text x="30" y="35" fontFamily="system-ui" fontSize="24" fontWeight="700" fill="#6b6fdb" textAnchor="middle">N</text>
-            </svg>
-          </div>
+          {/* Logo officiel de l'app (public/icon.svg) — source unique, identique
+              au favicon et à l'icône PWA, pastille de notification incluse. */}
+          <img src="/icon.svg" alt="Nephtys" className="w-10 h-10 sm:w-12 sm:h-12 lg:w-16 lg:h-16 mx-auto rounded-2xl shadow-xl" />
           <div>
             <h1 className="text-lg sm:text-xl lg:text-3xl font-bold text-text-primary">Nephtys</h1>
             <p className="text-[10px] sm:text-xs lg:text-sm text-text-secondary">Messagerie sécurisée</p>
