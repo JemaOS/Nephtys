@@ -7,6 +7,7 @@ import { supabase, Conversation, Profile } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { signFieldsBatch } from '@/lib/mediaUrl';
 import { MediaImg } from './MediaImg';
+import { useI18n } from '@/i18n';
 
 interface ConversationWithDetails extends Conversation {
   otherUser?: Profile;
@@ -31,6 +32,7 @@ export const ForwardMessageModal: React.FC<ForwardMessageModalProps> = ({
   onForward,
 }) => {
   const { user } = useAuth();
+  const { t } = useI18n();
   const [conversations, setConversations] = useState<ConversationWithDetails[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedConversations, setSelectedConversations] = useState<Set<string>>(new Set());
@@ -165,14 +167,14 @@ export const ForwardMessageModal: React.FC<ForwardMessageModalProps> = ({
 
   const getConversationName = (conv: ConversationWithDetails): string => {
     if (conv.type === 'direct' && conv.otherUser) {
-      return conv.otherUser.display_name || conv.otherUser.username || 'Utilisateur';
+      return conv.otherUser.display_name || conv.otherUser.username || t('userFallback');
     }
-    return conv.name || 'Groupe';
+    return conv.name || t('groupFallback');
   };
 
   const getConversationSubtitle = (conv: ConversationWithDetails): string => {
     if (conv.type === 'direct' && conv.otherUser) {
-      return 'Envoyez-vous un message';
+      return t('messageYourself');
     }
     if (conv.memberNames && conv.memberNames.length > 0) {
       return conv.memberNames.slice(0, 4).join(', ') + (conv.memberNames.length > 4 ? '...' : '');
@@ -205,7 +207,7 @@ export const ForwardMessageModal: React.FC<ForwardMessageModalProps> = ({
     if (filteredConversations.length === 0) {
       return (
         <div className="flex flex-col items-center justify-center py-8 text-center px-4">
-          <p className="text-text-secondary">Aucune conversation trouvée</p>
+          <p className="text-text-secondary">{t('noConversationsFound')}</p>
         </div>
       );
     }
@@ -273,7 +275,7 @@ export const ForwardMessageModal: React.FC<ForwardMessageModalProps> = ({
         type="button"
         className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[250] border-none cursor-default"
         onClick={() => onClose()}
-        aria-label="Fermer le modal"
+        aria-label={t('closeModal')}
       />
       <div className="fixed inset-0 z-[250] flex items-center justify-center p-4">
         <div className="w-full max-w-md bg-bg-surface rounded-2xl shadow-2xl overflow-hidden max-h-[80vh] flex flex-col">
@@ -285,7 +287,7 @@ export const ForwardMessageModal: React.FC<ForwardMessageModalProps> = ({
             >
               <X size={20} />
             </button>
-            <h2 className="text-lg font-medium text-text-primary flex-1">Transférer le message à</h2>
+            <h2 className="text-lg font-medium text-text-primary flex-1">{t('forwardMessageTo')}</h2>
           </div>
 
           {/* Search Bar */}
@@ -294,7 +296,7 @@ export const ForwardMessageModal: React.FC<ForwardMessageModalProps> = ({
               <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary" />
               <input
                 type="text"
-                placeholder="Rechercher un nom ou un numéro"
+                placeholder={t('searchNameOrNumber')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full h-10 pl-10 pr-4 bg-bg-hover text-text-primary text-sm rounded-xl border border-accent/50 focus:border-accent outline-none placeholder:text-text-tertiary transition-colors"
@@ -304,7 +306,7 @@ export const ForwardMessageModal: React.FC<ForwardMessageModalProps> = ({
 
           {/* Section Title */}
           <div className="px-4 py-2">
-            <span className="text-sm text-text-tertiary">Discussions récentes</span>
+            <span className="text-sm text-text-tertiary">{t('recentChats')}</span>
           </div>
 
           {/* Conversations List */}
@@ -319,7 +321,7 @@ export const ForwardMessageModal: React.FC<ForwardMessageModalProps> = ({
                 onClick={handleForward}
                 className="w-full py-3 rounded-xl bg-accent hover:bg-accent/90 text-white font-medium transition-colors flex items-center justify-center gap-2"
               >
-                Transférer à {selectedConversations.size} conversation{selectedConversations.size > 1 ? 's' : ''}
+                {t('forwardToCount', { count: selectedConversations.size })}
               </button>
             </div>
           )}

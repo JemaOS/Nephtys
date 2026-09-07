@@ -4,6 +4,7 @@
 import React, { useState } from 'react';
 import { Star, Ban, Trash2, MessageCircle, Phone, Video } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { useI18n } from '@/i18n';
 
 interface ContactManagementProps {
   contactId: string;
@@ -28,6 +29,7 @@ export const ContactManagement: React.FC<ContactManagementProps> = ({
 }) => {
   const [favorite, setFavorite] = useState(isFavorite);
   const [blocked, setBlocked] = useState(isBlocked);
+  const { t } = useI18n();
   const [loading, setLoading] = useState(false);
 
   const handleToggleFavorite = async () => {
@@ -43,14 +45,14 @@ export const ContactManagement: React.FC<ContactManagementProps> = ({
       }
     } catch (error) {
       console.error('Error toggling favorite:', error);
-      alert('Erreur lors de la mise à jour');
+      alert(t('updateErrorShort'));
     } finally {
       setLoading(false);
     }
   };
 
   const handleToggleBlock = async () => {
-    if (!confirm(blocked ? 'Débloquer ce contact?' : 'Bloquer ce contact?')) {
+    if (!confirm(blocked ? t('unblockContactConfirm') : t('blockContactConfirm'))) {
       return;
     }
 
@@ -63,18 +65,18 @@ export const ContactManagement: React.FC<ContactManagementProps> = ({
 
       if (!error) {
         setBlocked(!blocked);
-        alert(blocked ? 'Contact débloqué' : 'Contact bloqué');
+        alert(blocked ? t('contactUnblocked') : t('contactBlocked'));
       }
     } catch (error) {
       console.error('Error toggling block:', error);
-      alert('Erreur lors de la mise à jour');
+      alert(t('updateErrorShort'));
     } finally {
       setLoading(false);
     }
   };
 
   const handleDeleteContact = async () => {
-    if (!confirm('Voulez-vous vraiment supprimer ce contact?')) {
+    if (!confirm(t('deleteContactConfirmShort'))) {
       return;
     }
 
@@ -86,12 +88,12 @@ export const ContactManagement: React.FC<ContactManagementProps> = ({
         .eq('id', contactId);
 
       if (!error) {
-        alert('Contact supprimé');
+        alert(t('contactDeleted'));
         onClose();
       }
     } catch (error) {
       console.error('Error deleting contact:', error);
-      alert('Erreur lors de la suppression');
+      alert(t('deleteError'));
     } finally {
       setLoading(false);
     }
@@ -113,13 +115,13 @@ export const ContactManagement: React.FC<ContactManagementProps> = ({
             {favorite && (
               <span className="px-3 py-1 rounded-full bg-yellow-500/20 text-yellow-500 text-xs font-medium flex items-center gap-1">
                 <Star size={12} fill="currentColor" />
-                Favori
+                {t('favoriteBadge')}
               </span>
             )}
             {blocked && (
               <span className="px-3 py-1 rounded-full bg-red-500/20 text-red-500 text-xs font-medium flex items-center gap-1">
                 <Ban size={12} />
-                Bloqué
+                {t('blockedBadge')}
               </span>
             )}
           </div>
@@ -133,19 +135,19 @@ export const ContactManagement: React.FC<ContactManagementProps> = ({
               className="flex flex-col items-center gap-2 p-4 rounded-xl bg-glass-surface-medium hover:bg-white/10 transition-colors"
             >
               <MessageCircle size={24} className="text-primary-500" />
-              <span className="text-xs">Message</span>
+              <span className="text-xs">{t('messageAction')}</span>
             </button>
             <button
               className="flex flex-col items-center gap-2 p-4 rounded-xl bg-glass-surface-medium hover:bg-white/10 transition-colors"
             >
               <Phone size={24} className="text-primary-500" />
-              <span className="text-xs">Appeler</span>
+              <span className="text-xs">{t('callAction')}</span>
             </button>
             <button
               className="flex flex-col items-center gap-2 p-4 rounded-xl bg-glass-surface-medium hover:bg-white/10 transition-colors"
             >
               <Video size={24} className="text-primary-500" />
-              <span className="text-xs">Vidéo</span>
+              <span className="text-xs">{t('videoShort')}</span>
             </button>
           </div>
         )}
@@ -158,7 +160,7 @@ export const ContactManagement: React.FC<ContactManagementProps> = ({
             className="w-full py-3 rounded-xl bg-glass-surface-medium hover:bg-white/10 border border-glass-border transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
           >
             <Star size={20} className={favorite ? 'text-yellow-500' : 'text-text-tertiary'} fill={favorite ? 'currentColor' : 'none'} />
-            {favorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
+            {favorite ? t('removeFromFavorites') : t('addToFavorites')}
           </button>
 
           <button
@@ -171,7 +173,7 @@ export const ContactManagement: React.FC<ContactManagementProps> = ({
             }`}
           >
             <Ban size={20} />
-            {blocked ? 'Débloquer le contact' : 'Bloquer le contact'}
+            {blocked ? t('unblockContact') : t('blockContact')}
           </button>
 
           <button
@@ -180,7 +182,7 @@ export const ContactManagement: React.FC<ContactManagementProps> = ({
             className="w-full py-3 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-500 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
           >
             <Trash2 size={20} />
-            Supprimer le contact
+            {t('deleteContactAction')}
           </button>
         </div>
 
@@ -189,7 +191,7 @@ export const ContactManagement: React.FC<ContactManagementProps> = ({
           onClick={onClose}
           className="w-full mt-4 py-3 rounded-xl bg-glass-surface-medium hover:bg-white/10 transition-colors"
         >
-          Fermer
+          {t('close')}
         </button>
       </div>
     </div>

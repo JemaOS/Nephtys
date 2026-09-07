@@ -6,11 +6,13 @@ import { MessageCircle, Users, Settings, Phone, Archive } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { prefetchRoute } from '@/lib/routePrefetch'
 import { MediaImg } from './MediaImg'
+import { useI18n } from '@/i18n'
 
 export function Sidebar() {
   const navigate = useNavigate()
   const location = useLocation()
   const { profile } = useAuth()
+  const { t } = useI18n()
   // L'avatar vient directement du profile du contexte Auth, qui est déjà
   // synchronisé en temps réel via le canal `profile-changes` ouvert dans
   // AuthContext. On évite ainsi un canal Supabase supplémentaire qui se
@@ -18,11 +20,11 @@ export function Sidebar() {
   const avatarUrl = profile?.avatar_url
 
   const navItems = [
-    { path: '/chats', icon: MessageCircle, label: 'Discussions' },
-    { path: '/calls', icon: Phone, label: 'Appels' },
-    { path: '/archived', icon: Archive, label: 'Archivées' },
-    { path: '/contacts', icon: Users, label: 'Contacts' },
-    { path: '/settings', icon: Settings, label: 'Paramètres' },
+    { path: '/chats', icon: MessageCircle, label: t('navChats') },
+    { path: '/calls', icon: Phone, label: t('navCalls') },
+    { path: '/archived', icon: Archive, label: t('navArchived') },
+    { path: '/contacts', icon: Users, label: t('navContacts') },
+    { path: '/settings', icon: Settings, label: t('navSettings') },
   ]
 
   const isActive = (path: string) => location.pathname.startsWith(path)
@@ -36,7 +38,7 @@ export function Sidebar() {
         onClick={() => navigate('/settings')}
         onMouseEnter={() => prefetchRoute('/settings')}
         onTouchStart={() => prefetchRoute('/settings')}
-        title="Paramètres"
+        title={t('navSettings')}
       >
         <MediaImg
           src={avatarUrl}

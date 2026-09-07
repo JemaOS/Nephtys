@@ -14,6 +14,7 @@ import { AudioFilePlayer } from '@/components/AudioFilePlayer'
 import { LinkPreview } from '@/components/LinkPreview'
 import { formatTime } from '@/components/MessageItemComponents'
 import { cleanLinkPreviewContent } from '@/lib/utils'
+import { useI18n } from '@/i18n'
 
 // Helper to extract message type info - extracted to reduce complexity in MessageList
 const getMessageTypeInfo = (message: Message) => {
@@ -255,6 +256,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = React.memo(({
   setShowForwardModal,
   supabase
 }) => {
+  const { t } = useI18n()
   if (isSelectionMode && isMobile) {
     return (
       <div className="bg-bg-surface px-2 sm:px-4 py-2 sm:py-3 flex items-center justify-between flex-shrink-0 z-50">
@@ -262,7 +264,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = React.memo(({
           <button
             onClick={exitSelectionMode}
             className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1]"
-            aria-label="Quitter le mode sélection"
+            aria-label={t('exitSelectionMode')}
           >
             <ArrowLeft size={20} />
           </button>
@@ -279,8 +281,8 @@ export const ChatHeader: React.FC<ChatHeaderProps> = React.memo(({
             }}
             disabled={selectedMessages.size !== 1}
             className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1] disabled:opacity-50"
-            title="Répondre"
-            aria-label="Répondre"
+            title={t('reply')}
+            aria-label={t('reply')}
           >
             <Reply size={20} />
           </button>
@@ -288,8 +290,8 @@ export const ChatHeader: React.FC<ChatHeaderProps> = React.memo(({
             onClick={handleBulkDelete}
             disabled={selectedMessages.size === 0}
             className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1] disabled:opacity-50"
-            title="Supprimer"
-            aria-label="Supprimer"
+            title={t('delete')}
+            aria-label={t('delete')}
           >
             <Trash2 size={20} />
           </button>
@@ -305,8 +307,8 @@ export const ChatHeader: React.FC<ChatHeaderProps> = React.memo(({
             }}
             disabled={selectedMessages.size === 0}
             className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1] disabled:opacity-50"
-            title="Transférer"
-            aria-label="Transférer"
+            title={t('forward')}
+            aria-label={t('forward')}
           >
             <Forward size={20} />
           </button>
@@ -314,7 +316,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = React.memo(({
             <button
               onClick={() => setShowSelectionMenu(!showSelectionMenu)}
               className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1]"
-              aria-label="Plus d'options"
+              aria-label={t('moreOptions')}
             >
               <MoreVertical size={20} />
             </button>
@@ -326,7 +328,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = React.memo(({
                   type="button"
                   className="fixed inset-0 z-40 cursor-default"
                   onClick={() => setShowSelectionMenu(false)}
-                  aria-label="Fermer le menu"
+                  aria-label={t('closeMenu')}
                   onKeyDown={(e) => {
                     if (e.key === 'Escape') {
                       setShowSelectionMenu(false)
@@ -343,7 +345,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = React.memo(({
                     className="w-full px-4 py-3 text-left hover:bg-bg-hover transition-colors text-text-primary text-sm flex items-center gap-3 disabled:opacity-50"
                   >
                     <Star size={18} />
-                    <span>Important</span>
+                    <span>{t('important')}</span>
                   </button>
                   <button
                     onClick={() => {
@@ -352,7 +354,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = React.memo(({
                         const msgId = Array.from(selectedMessages)[0]
                         const msg = messages.find(m => m.id === msgId)
                         if (msg) {
-                          alert(`Infos du message:\n\nEnvoyé le: ${new Date(msg.created_at).toLocaleString('fr-FR')}\nType: ${msg.type}\nStatut: ${msg.status || 'envoyé'}`)
+                          alert(t('messageInfoAlert', { date: new Date(msg.created_at).toLocaleString('fr-FR'), type: msg.type, status: msg.status || t('statusSent') }))
                         }
                       }
                       setShowSelectionMenu(false)
@@ -361,7 +363,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = React.memo(({
                     className="w-full px-4 py-3 text-left hover:bg-bg-hover transition-colors text-text-primary text-sm flex items-center gap-3 disabled:opacity-50"
                   >
                     <Info size={18} />
-                    <span>Infos</span>
+                    <span>{t('info')}</span>
                   </button>
                   <button
                     onClick={() => {
@@ -376,7 +378,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = React.memo(({
                     className="w-full px-4 py-3 text-left hover:bg-bg-hover transition-colors text-text-primary text-sm flex items-center gap-3 disabled:opacity-50"
                   >
                     <Pin size={18} />
-                    <span>Épingler</span>
+                    <span>{t('pin')}</span>
                   </button>
                   <button
                     onClick={() => {
@@ -387,7 +389,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = React.memo(({
                     className="w-full px-4 py-3 text-left hover:bg-bg-hover transition-colors text-text-primary text-sm flex items-center gap-3 disabled:opacity-50"
                   >
                     <Copy size={18} />
-                    <span>Copier</span>
+                    <span>{t('copy')}</span>
                   </button>
                 </div>
               </>
@@ -407,7 +409,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = React.memo(({
   if (isLoading) {
     return (
       <div className="bg-bg-surface px-2 sm:px-4 py-2 sm:py-3 flex items-center gap-2 sm:gap-4 flex-shrink-0 z-50">
-      <button onClick={() => navigate('/chats')} className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1]" aria-label="Retour aux discussions">
+      <button onClick={() => navigate('/chats')} className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1]" aria-label={t('backToChats')}>
         <ArrowLeft size={20} />
       </button>
         <div className="flex-1 flex items-center gap-3 -mx-2 px-2 py-1">
@@ -429,7 +431,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = React.memo(({
 
   return (
     <div className="bg-bg-surface px-2 sm:px-4 py-2 sm:py-3 flex items-center gap-2 sm:gap-4 flex-shrink-0 z-50">
-      <button onClick={() => navigate('/chats')} className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1]" aria-label="Retour aux discussions">
+      <button onClick={() => navigate('/chats')} className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1]" aria-label={t('backToChats')}>
         <ArrowLeft size={20} />
       </button>
       <button
@@ -456,21 +458,21 @@ export const ChatHeader: React.FC<ChatHeaderProps> = React.memo(({
           )}
           {conversation?.type === 'group' && (
             <span className="text-xs text-text-secondary">
-              Groupe
+              {t('groupTag')}
             </span>
           )}
         </div>
       </button>
       <div className="flex gap-1 sm:gap-2">
-        <button onClick={() => setIsSearching(!isSearching)} className="w-8 h-8 sm:w-10 sm:h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1]" aria-label="Rechercher">
+        <button onClick={() => setIsSearching(!isSearching)} className="w-8 h-8 sm:w-10 sm:h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1]" aria-label={t('search')}>
           <Search size={18} className="sm:hidden" />
           <Search size={20} className="hidden sm:block" />
         </button>
-        <button onClick={handleStartAudioCall} className="w-8 h-8 sm:w-10 sm:h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1]" aria-label="Appel vocal">
+        <button onClick={handleStartAudioCall} className="w-8 h-8 sm:w-10 sm:h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1]" aria-label={t('voiceCall')}>
           <Phone size={18} className="sm:hidden" />
           <Phone size={20} className="hidden sm:block" />
         </button>
-        <button onClick={handleStartVideoCall} className="w-8 h-8 sm:w-10 sm:h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1]" aria-label="Appel vidéo">
+        <button onClick={handleStartVideoCall} className="w-8 h-8 sm:w-10 sm:h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1]" aria-label={t('videoCall')}>
           <Video size={18} className="sm:hidden" />
           <Video size={20} className="hidden sm:block" />
         </button>
@@ -478,7 +480,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = React.memo(({
           <button
             onClick={() => setShowConversationMenu(!showConversationMenu)}
             className="w-8 h-8 sm:w-10 sm:h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1]"
-            aria-label="Plus d'options"
+            aria-label={t('moreOptions')}
           >
             <MoreVertical size={18} className="sm:hidden" />
             <MoreVertical size={20} className="hidden sm:block" />
@@ -490,7 +492,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = React.memo(({
                 type="button"
                 className="fixed inset-0 z-40 cursor-default"
                 onClick={() => setShowConversationMenu(false)}
-                aria-label="Fermer le menu"
+                aria-label={t('closeMenu')}
                 onKeyDown={(e) => {
                   if (e.key === 'Escape') {
                     setShowConversationMenu(false)
@@ -515,7 +517,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = React.memo(({
                   className="w-full px-4 py-3 text-left hover:bg-bg-hover transition-colors text-text-primary text-sm flex items-center gap-3"
                 >
                   <UserPlus size={18} />
-                  <span>{conversation?.type === 'group' ? 'Ajouter des membres' : 'Créer un groupe'}</span>
+                  <span>{conversation?.type === 'group' ? t('addMembers') : t('createGroup')}</span>
                 </button>
                 <button
                   onClick={async () => {
@@ -525,12 +527,12 @@ export const ChatHeader: React.FC<ChatHeaderProps> = React.memo(({
                       .eq('conversation_id', conversationId!)
                       .eq('user_id', user!.id)
                     setShowConversationMenu(false)
-                    alert('Notifications désactivées pour cette conversation')
+                    alert(t('notificationsMutedForConversation'))
                   }}
                   className="w-full px-4 py-3 text-left hover:bg-bg-hover transition-colors text-text-primary text-sm flex items-center gap-3"
                 >
                   <BellOff size={18} />
-                  <span>Désactiver les notifications</span>
+                  <span>{t('muteNotifications')}</span>
                 </button>
                 <button
                   onClick={async () => {
@@ -545,11 +547,11 @@ export const ChatHeader: React.FC<ChatHeaderProps> = React.memo(({
                   className="w-full px-4 py-3 text-left hover:bg-bg-hover transition-colors text-text-primary text-sm flex items-center gap-3"
                 >
                   <Archive size={18} />
-                  <span>Archiver la discussion</span>
+                  <span>{t('archiveChat')}</span>
                 </button>
                 <button
                   onClick={() => {
-                    if (confirm('Voulez-vous vraiment supprimer cette conversation ?')) {
+                    if (confirm(t('deleteConversationConfirmShort'))) {
                       supabase.from('conversation_members').delete().eq('conversation_id', conversationId).eq('user_id', user.id)
                       navigate('/chats')
                     }
@@ -558,7 +560,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = React.memo(({
                   className="w-full px-4 py-3 text-left hover:bg-bg-hover transition-colors text-[#ea4335] text-sm flex items-center gap-3"
                 >
                   <Trash2 size={18} />
-                  <span>Supprimer la discussion</span>
+                  <span>{t('deleteChat')}</span>
                 </button>
                 <div className="border-t border-bg-hover my-2" />
                 <button
@@ -568,7 +570,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = React.memo(({
                   className="w-full px-4 py-3 text-left hover:bg-bg-hover transition-colors text-text-primary text-sm flex items-center gap-3"
                 >
                   <Lock size={18} />
-                  <span>Chiffrement : Activé</span>
+                  <span>{t('encryptionEnabledLabel')}</span>
                 </button>
               </div>
             </>
@@ -638,6 +640,7 @@ const EmojiMessageDisplay = ({ message, typeInfo, hoveredMessageId, isOwn, setCo
 )
 
 const GifStickerMessageDisplay = ({ message, typeInfo, hoveredMessageId, isOwn, setContextMenu, getSenderInfo, setGifStickerViewer, user }: any) => {
+  const { t } = useI18n()
   const { isGifMessage, gifMatch, isStickerMessage, stickerMatch } = typeInfo
   
   return (
@@ -676,7 +679,7 @@ const GifStickerMessageDisplay = ({ message, typeInfo, hoveredMessageId, isOwn, 
                   messageId: message.id
                 })
               }}
-              aria-label="Voir le GIF"
+              aria-label={t('viewGif')}
             >
               <img
                 src={gifUrl}
@@ -715,7 +718,7 @@ const GifStickerMessageDisplay = ({ message, typeInfo, hoveredMessageId, isOwn, 
                   messageId: message.id
                 })
               }}
-              aria-label="Voir le sticker"
+              aria-label={t('viewSticker')}
             >
               <img
                 src={stickerUrl}
@@ -1002,22 +1005,23 @@ const MessageContent = (props: any) => {
 }
 
 const MessageSideActions = ({ isOwn, hoveredMessageId, message, isSelectionMode, setReplyToMessage, handleForwardMessage, setQuickReactionBar }: any) => {
+  const { t } = useI18n()
   if (isOwn && hoveredMessageId === message.id && !isSelectionMode) {
     return (
       <div className="flex items-center gap-0.5 md:gap-1 mr-1 md:mr-2">
         <button
           onClick={() => setReplyToMessage(message)}
           className="w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] flex items-center justify-center transition-colors shadow-md"
-          title="Répondre"
-          aria-label="Répondre"
+          title={t('reply')}
+          aria-label={t('reply')}
         >
           <Reply size={16} className="text-[#8696a0]" />
         </button>
         <button
           onClick={() => handleForwardMessage(message)}
           className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
-          title="Transférer"
-          aria-label="Transférer"
+          title={t('forward')}
+          aria-label={t('forward')}
         >
           <Forward size={16} className="text-[#8696a0]" />
         </button>
@@ -1031,8 +1035,8 @@ const MessageSideActions = ({ isOwn, hoveredMessageId, message, isSelectionMode,
             });
           }}
           className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
-          title="Réagir"
-          aria-label="Réagir"
+          title={t('react')}
+          aria-label={t('react')}
         >
           <Smile size={16} className="text-[#8696a0]" />
         </button>
@@ -1046,8 +1050,8 @@ const MessageSideActions = ({ isOwn, hoveredMessageId, message, isSelectionMode,
           <button
           onClick={() => setReplyToMessage(message)}
           className="w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] flex items-center justify-center transition-colors shadow-md"
-          title="Répondre"
-          aria-label="Répondre"
+          title={t('reply')}
+          aria-label={t('reply')}
         >
           <Reply size={16} className="text-[#8696a0]" />
         </button>
@@ -1061,16 +1065,16 @@ const MessageSideActions = ({ isOwn, hoveredMessageId, message, isSelectionMode,
             });
           }}
           className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
-          title="Réagir"
-          aria-label="Réagir"
+          title={t('react')}
+          aria-label={t('react')}
         >
           <Smile size={16} className="text-[#8696a0]" />
         </button>
         <button
           onClick={() => handleForwardMessage(message)}
           className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
-          title="Transférer"
-          aria-label="Transférer"
+          title={t('forward')}
+          aria-label={t('forward')}
         >
           <Forward size={16} className="text-[#8696a0]" />
         </button>
@@ -1115,6 +1119,7 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = React.memo((
   otherUser,
   messages
 }) => {
+  const { t } = useI18n()
   if (item.type === 'call') {
     const call = item.data as CallLog
     const isOutgoing = call.caller_id === user?.id
@@ -1175,7 +1180,7 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = React.memo((
       key={message.id}
       id={`message-${message.id}`}
       className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-1 ${isSelected ? 'bg-[#787add]/10' : ''} transition-colors duration-500`}
-      aria-label={`Message de ${isOwn ? 'vous' : getSenderInfo(message.sender_id).name}`}
+      aria-label={t('messageFrom', { name: isOwn ? t('you').toLowerCase() : getSenderInfo(message.sender_id).name })}
       onMouseEnter={() => setHoveredMessageId(message.id)}
       onMouseLeave={() => setHoveredMessageId(null)}
       onTouchStart={() => handleTouchStart(message)}
@@ -1203,7 +1208,7 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = React.memo((
         
         <div
           role="group"
-          aria-label="Contenu du message"
+          aria-label={t('messageContent')}
           className={`max-w-[85%] sm:max-w-[75%] md:max-w-[70%] lg:max-w-[65%] relative group`}
           data-message-id={message.id}
           onContextMenu={(e) => {
@@ -1250,7 +1255,7 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = React.memo((
                   : 'bg-bg-surface hover:bg-bg-hover text-text-tertiary border border-bg-hover'
               }`}
               type="button"
-              aria-label={isSelected ? 'Désélectionner le message' : 'Sélectionner le message'}
+              aria-label={isSelected ? t('deselectMessage') : t('selectMessage')}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="20 6 9 17 4 12"></polyline>
@@ -1371,10 +1376,11 @@ export const MessageList: React.FC<MessageListProps> = React.memo(({
   hasMoreMessages,
   messagesContentRef
 }) => {
+  const { t } = useI18n()
   return (
     <section
       ref={messagesContainerRef}
-      aria-label="Liste des messages"
+      aria-label={t('messageList')}
       className={`flex-1 overflow-y-auto p-2 sm:p-3 md:p-4 space-y-2 md:pb-4 md:messages-container-mobile-reset ${
         (linkPreview || replyToMessage || isLoadingPreview)
           ? 'pb-[calc(56px+56px+env(safe-area-inset-bottom,0px)+100px)]'
@@ -1394,7 +1400,7 @@ export const MessageList: React.FC<MessageListProps> = React.memo(({
       {/* "Load more" hint */}
       {!isLoadingMore && hasMoreMessages && messages.length > 0 && (
         <div className="flex justify-center py-2 opacity-50" aria-hidden="true">
-          <span className="text-xs text-text-secondary">↓ Faire défiler vers le haut pour charger plus</span>
+          <span className="text-xs text-text-secondary">{t('scrollUpToLoadMore')}</span>
         </div>
       )}
       {(() => {
@@ -1410,8 +1416,8 @@ export const MessageList: React.FC<MessageListProps> = React.memo(({
                 </svg>
               </div>
               <div>
-                <p className="text-sm text-text-secondary mb-1">Les messages sont chiffrés de bout en bout</p>
-                <p className="text-xs text-text-secondary">Personne en dehors de cette discussion ne peut les lire</p>
+                <p className="text-sm text-text-secondary mb-1">{t('messagesEncrypted')}</p>
+                <p className="text-xs text-text-secondary">{t('messagesEncryptedDesc')}</p>
               </div>
             </div>
           )

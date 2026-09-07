@@ -1,5 +1,6 @@
 import React, { useRef, useEffect } from 'react';
 import { File, Play, Copy, FileText, FileSpreadsheet, FileImage, FileArchive, Star } from 'lucide-react';
+import { useI18n } from '@/i18n';
 import { MessageHoverActions } from './MessageHoverActions';
 
 // Custom hook to preload next images in viewport
@@ -211,6 +212,7 @@ export const MediaTimestampOverlay: React.FC<{
   isOwn: boolean;
   isStarred?: boolean;
 }> = ({ timestamp, status, isOwn, isStarred = false }) => {
+  const { t } = useI18n();
   const formatTime = (ts: string) => {
     const date = new Date(ts);
     return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
@@ -222,7 +224,7 @@ export const MediaTimestampOverlay: React.FC<{
         <Star
           size={10}
           className="fill-current text-white drop-shadow-sm"
-          aria-label="Message favori"
+          aria-label={t('starredMessage')}
         />
       )}
       <span className="text-[11px] text-white font-medium drop-shadow-sm">
@@ -290,6 +292,7 @@ export const ImageRenderer: React.FC<{
   showHoverActions, onOpenMenu, onImageLoad, onImageError, onImageClick,
   preloadNext, nextImageUrl
 }) => {
+  const { t } = useI18n();
   // Preload next image when this one loads
   useEffect(() => {
     if (imageLoaded && preloadNext && nextImageUrl) {
@@ -328,7 +331,7 @@ export const ImageRenderer: React.FC<{
         className="relative block cursor-pointer overflow-hidden rounded-xl border-[3px] border-[#787add] group message-media-container text-left w-[260px] sm:w-[330px] max-w-full bg-transparent p-0 m-0"
         style={buttonStyle}
         onClick={onImageClick}
-        aria-label="Afficher l'image en plein écran"
+        aria-label={t('viewImageFullscreen')}
       >
         {onOpenMenu && (
           <MessageHoverActions
@@ -419,6 +422,7 @@ export const VideoRenderer: React.FC<{
   url, caption, videoDuration, timestamp, status, isOwn, isStarred = false,
   showHoverActions, onOpenMenu, onVideoClick
 }) => {
+  const { t } = useI18n();
   const videoRef = useRef<HTMLVideoElement>(null);
   
   return (
@@ -427,7 +431,7 @@ export const VideoRenderer: React.FC<{
         type="button"
         className="relative cursor-pointer overflow-hidden rounded-xl border-[3px] border-[#787add] max-w-[260px] sm:max-w-[330px] group message-media-container text-left w-full bg-transparent p-0"
         onClick={onVideoClick}
-        aria-label="Lire la vidéo"
+        aria-label={t('playVideo')}
       >
         {onOpenMenu && (
           <MessageHoverActions
@@ -509,6 +513,7 @@ export const FileMessage: React.FC<FileMessageProps> = ({
   onOpenMenu,
   showHoverActions,
 }) => {
+  const { t } = useI18n();
   const extension = getFileExtension(fileName);
   const { bgColor, icon } = getFileIconConfig(extension);
   const isPDF = extension === 'pdf';
@@ -532,7 +537,7 @@ export const FileMessage: React.FC<FileMessageProps> = ({
           <button
             className="relative w-full bg-white cursor-pointer block"
             onClick={handleOpenFile}
-            aria-label="Ouvrir le fichier"
+            aria-label={t('openFile')}
           >
             <img
               src={thumbnail}
@@ -568,7 +573,7 @@ export const FileMessage: React.FC<FileMessageProps> = ({
                   <Star
                     size={10}
                     className="fill-current text-white/80"
-                    aria-label="Message favori"
+                    aria-label={t('starredMessage')}
                   />
                 )}
                 <span className="text-[11px] text-white/70">
@@ -623,7 +628,7 @@ export const FileMessage: React.FC<FileMessageProps> = ({
                   <Star
                     size={10}
                     className="fill-current text-white/80"
-                    aria-label="Message favori"
+                    aria-label={t('starredMessage')}
                   />
                 )}
                 <span className="text-[11px] text-white/70">

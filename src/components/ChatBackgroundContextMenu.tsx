@@ -2,6 +2,7 @@
 // Distributed under the license specified in the root directory of this project.
 
 import React, { useEffect, useRef, useState } from 'react';
+import { useI18n } from '@/i18n';
 import { CheckSquare, XCircle } from 'lucide-react';
 
 interface ChatBackgroundContextMenuProps {
@@ -19,6 +20,7 @@ export const ChatBackgroundContextMenu: React.FC<ChatBackgroundContextMenuProps>
   onSelectMessages,
   onCloseDiscussion,
 }) => {
+  const { t } = useI18n();
   const menuRef = useRef<HTMLDivElement>(null);
   const [adjustedPosition, setAdjustedPosition] = useState(position);
 
@@ -83,7 +85,7 @@ export const ChatBackgroundContextMenu: React.FC<ChatBackgroundContextMenuProps>
   const menuItems = [
     {
       icon: CheckSquare,
-      label: 'Sélectionner des messages',
+      label: t('selectMessages'),
       onClick: () => {
         onSelectMessages();
         onClose();

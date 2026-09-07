@@ -2,8 +2,10 @@
 // Distributed under the license specified in the root directory of this project.
 
 import { useEffect, useState } from 'react';
+
 import { fetchAndDecryptMedia } from '@/lib/encryptedMediaService';
 import { useMediaUrl } from './useMediaUrl';
+import { tStatic } from '@/i18n';
 
 interface Options {
   /** Si true, le média est chiffré E2EE et passe par fetchAndDecryptMedia */
@@ -51,7 +53,7 @@ export function useDecryptedMedia(opts: Options): { url: string; loading: boolea
       .catch(err => {
         if (!cancelled) {
           console.warn('[useDecryptedMedia] decrypt failed:', err);
-          setError(err.message || 'Déchiffrement échoué');
+          setError(err.message || tStatic('decryptionFailed'));
           setLoading(false);
         }
       });

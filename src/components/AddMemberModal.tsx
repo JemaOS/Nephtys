@@ -3,6 +3,7 @@ import { X, Search, Users, Check, Loader2 } from 'lucide-react';
 import { supabase, Profile } from '@/lib/supabase';
 import { signFieldsBatch } from '@/lib/mediaUrl';
 import { MediaImg } from './MediaImg';
+import { useI18n } from '@/i18n';
 
 interface AddMemberModalProps {
   isOpen: boolean;
@@ -21,6 +22,7 @@ export const AddMemberModal: React.FC<AddMemberModalProps> = ({
   existingMemberIds,
   onMembersAdded,
 }) => {
+  const { t } = useI18n();
   const [availableContacts, setAvailableContacts] = useState<Profile[]>([]);
   const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
   const [addingMembers, setAddingMembers] = useState(false);
@@ -105,10 +107,10 @@ export const AddMemberModal: React.FC<AddMemberModalProps> = ({
       onMembersAdded();
       onClose();
       setSelectedContacts([]);
-      alert('✅ Membres ajoutés avec succès !');
+      alert(t('membersAddedSuccess'));
     } catch (err) {
       console.error('Error adding members:', err);
-      alert('❌ Erreur lors de l\'ajout des membres');
+      alert(t('membersAddError'));
     } finally {
       setAddingMembers(false);
     }
@@ -134,7 +136,7 @@ export const AddMemberModal: React.FC<AddMemberModalProps> = ({
       <div className="bg-bg-surface w-full max-w-md rounded-2xl overflow-hidden shadow-2xl">
         {/* Modal Header */}
         <div className="px-4 py-3 border-b border-bg-hover flex items-center justify-between">
-          <h3 className="text-lg font-medium text-text-primary">Ajouter des membres</h3>
+          <h3 className="text-lg font-medium text-text-primary">{t('addMembers')}</h3>
           <button
             onClick={onClose}
             className="w-8 h-8 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors"
@@ -151,7 +153,7 @@ export const AddMemberModal: React.FC<AddMemberModalProps> = ({
               type="text"
               value={contactSearchQuery}
               onChange={(e) => setContactSearchQuery(e.target.value)}
-              placeholder="Rechercher un contact..."
+              placeholder={t('searchContact')}
               className="w-full pl-10 pr-4 py-2 bg-bg-hover text-text-primary rounded-xl outline-none focus:ring-2 focus:ring-accent"
             />
           </div>
@@ -162,7 +164,7 @@ export const AddMemberModal: React.FC<AddMemberModalProps> = ({
           {filteredContacts.length === 0 ? (
             <div className="text-center py-8 text-text-secondary">
               <Users size={32} className="mx-auto mb-2 opacity-50" />
-              <p className="text-sm">Aucun contact disponible</p>
+              <p className="text-sm">{t('noContactsAvailable')}</p>
             </div>
           ) : (
             filteredContacts.map((contact) => (
@@ -211,7 +213,7 @@ export const AddMemberModal: React.FC<AddMemberModalProps> = ({
             onClick={onClose}
             className="flex-1 py-2 bg-bg-hover text-text-primary rounded-xl text-sm font-medium hover:bg-bg-hover/80 transition-colors"
           >
-            Annuler
+            {t('cancel')}
           </button>
           <button
             onClick={handleAddMembers}
@@ -221,10 +223,10 @@ export const AddMemberModal: React.FC<AddMemberModalProps> = ({
             {addingMembers ? (
               <>
                 <Loader2 size={16} className="animate-spin" />
-                Ajout...
+                {t('adding')}
               </>
             ) : (
-              `Ajouter (${selectedContacts.length})`
+              t('addCount', { count: selectedContacts.length })
             )}
           </button>
         </div>

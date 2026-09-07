@@ -3,6 +3,7 @@
 
 import React from 'react';
 import { X, Image as ImageIcon, FileVideo, Sticker, FileText } from 'lucide-react';
+import { useI18n, tStatic } from '@/i18n';
 import { useDecryptedMedia } from '@/hooks/useDecryptedMedia';
 import { useMediaUrl } from '@/hooks/useMediaUrl';
 import { useAuth } from '@/context/AuthContext';
@@ -49,7 +50,7 @@ const PlainReplyThumbnail: React.FC<{ messageId: string; src: string }> = ({
   return (
     <img
       src={finalSrc}
-      alt="Aperçu"
+      alt={tStatic('previewAlt')}
       className="h-full w-full object-cover"
       onError={() => setImgError(true)}
     />
@@ -111,7 +112,7 @@ const EncryptedReplyThumbnail: React.FC<{
   return (
     <img
       src={url}
-      alt="Thumbnail"
+      alt={tStatic('thumbnailAlt')}
       className="h-full w-full object-cover"
       onError={(e) => { e.currentTarget.style.display = 'none'; }}
     />
@@ -124,6 +125,7 @@ export const MessageReply: React.FC<MessageReplyProps> = ({
   onClick,
   isPreview = false,
 }) => {
+  const { t } = useI18n();
   if (!replyToMessage) return null;
 
   const truncateText = (text: string, maxLength: number = 100) => {
@@ -178,16 +180,16 @@ export const MessageReply: React.FC<MessageReplyProps> = ({
     mediaUrl = stickerMatch[2];
     mediaType = 'sticker';
     Icon = Sticker;
-    typeLabel = 'Sticker';
+    typeLabel = t('stickerLabel');
   } else if (mediaType === 'image') {
     Icon = ImageIcon;
-    typeLabel = 'Photo';
+    typeLabel = t('photoPreview');
   } else if (mediaType === 'video') {
     Icon = FileVideo;
-    typeLabel = 'Vidéo';
+    typeLabel = t('videoShort');
   } else if (mediaType === 'file') {
     Icon = FileText;
-    typeLabel = replyToMessage.fileName || 'Fichier';
+    typeLabel = replyToMessage.fileName || t('fileFallback');
   }
 
   // Determine what text to display
@@ -247,7 +249,7 @@ export const MessageReply: React.FC<MessageReplyProps> = ({
         <button
           onClick={onCancel}
           className="px-3 flex items-center justify-center hover:bg-bg-surface/50 transition-colors flex-shrink-0 border-l border-white/5"
-          aria-label="Annuler la réponse"
+          aria-label={t('cancelReply')}
         >
           <X size={20} className="text-text-secondary" />
         </button>

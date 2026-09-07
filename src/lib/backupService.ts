@@ -2,6 +2,7 @@
 // Distributed under the license specified in the root directory of this project.
 
 import { supabase } from './supabase'
+import { tStatic } from '@/i18n';
 
 export interface MediaFile {
   messageId: string
@@ -327,10 +328,10 @@ export async function createBackup(
   settings: BackupSettings,
   onProgress?: (progress: number, status: string) => void
 ): Promise<{ data: BackupData; size: number }> {
-  onProgress?.(0, 'Préparation de la sauvegarde...')
+  onProgress?.(0, tStatic('backupPreparing'))
 
   // Get user profile
-  onProgress?.(5, 'Récupération du profil...')
+  onProgress?.(5, tStatic('backupFetchingProfile'))
   const { data: profile } = await supabase
     .from('profiles')
     .select('*')
@@ -338,7 +339,7 @@ export async function createBackup(
     .single()
 
   // Get user's conversations
-  onProgress?.(10, 'Récupération des conversations...')
+  onProgress?.(10, tStatic('backupFetchingConversations'))
   const { data: memberData } = await supabase
     .from('conversation_members')
     .select('conversation_id')
@@ -347,7 +348,7 @@ export async function createBackup(
   const conversationIds = memberData?.map(m => m.conversation_id) || []
 
   // Get conversation details
-  onProgress?.(15, 'Récupération des détails des conversations...')
+  onProgress?.(15, tStatic('backupFetchingDetails'))
   const { data: conversations } = await supabase
     .from('conversations')
     .select('*')
@@ -366,7 +367,7 @@ export async function createBackup(
   })) || []
 
   // Get messages
-  onProgress?.(20, 'Récupération des messages...')
+  onProgress?.(20, tStatic('backupFetchingMessages'))
   let messagesQuery = supabase
     .from('messages')
     .select('*')
@@ -381,14 +382,14 @@ export async function createBackup(
   const { data: messages } = await messagesQuery
 
   // Get contacts
-  onProgress?.(25, 'Récupération des contacts...')
+  onProgress?.(25, tStatic('backupFetchingContacts'))
   const { data: contacts } = await supabase
     .from('contacts')
     .select('*, contact:contact_id(id, username, display_name, avatar_url)')
     .eq('user_id', userId)
 
   // Download media files based on settings (with memory optimization)
-  onProgress?.(30, 'Téléchargement des fichiers médias...')
+  onProgress?.(30, tStatic('backupDownloadingMedia'))
   let mediaFiles: MediaFile[] = []
   
   if (messages && messages.length > 0) {
@@ -442,7 +443,7 @@ export async function createBackup(
   const jsonString = JSON.stringify(backupData)
   const size = new Blob([jsonString]).size
 
-  onProgress?.(100, 'Sauvegarde terminée !')
+  onProgress?.(100, tStatic('backupDoneStatus'))
 
   return { data: backupData, size }
 }
@@ -573,11 +574,11 @@ export async function restoreBackup(
   onProgress?: (progress: number, status: string) => void
 ): Promise<{ success: boolean; error?: string; stats?: { conversations: number; messages: number; contacts: number; media: number } }> {
   try {
-    onProgress?.(0, 'Vérification de la sauvegarde...')
+    onProgress?.(0, tStatic('restoreVerifying'))
 
     // Verify backup belongs to user or is being restored to same user
     if (backupData.userId !== userId) {
-      return { success: false, error: 'Cette sauvegarde appartient à un autre utilisateur' }
+      return { success: false, error: tStatic('restoreOtherUser') }
     }
 
     const stats = { conversations: 0, messages: 0, contacts: 0, media: 0 }
@@ -774,7 +775,7 @@ async function uploadMediaFiles(
     return mediaUrlMap
   }
 
-  onProgress?.(25, 'Restauration des fichiers médias...')
+  onProgress?.(25, tStatic('restoreRestoringMedia'))
 
   const totalMedia = backupData.mediaFiles.length
   let uploadedCount = 0

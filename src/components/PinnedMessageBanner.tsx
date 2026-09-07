@@ -2,6 +2,7 @@
 // Distributed under the license specified in the root directory of this project.
 
 import React from 'react';
+import { useI18n } from '@/i18n';
 import { Pin, X } from 'lucide-react';
 
 interface PinnedMessage {
@@ -23,6 +24,7 @@ export const PinnedMessageBanner: React.FC<PinnedMessageBannerProps> = ({
   onUnpin,
   onClick,
 }) => {
+  const { t } = useI18n();
   // Truncate message content if too long
   const truncatedContent = pinnedMessage.content.length > 100
     ? pinnedMessage.content.substring(0, 100) + '...'
@@ -42,7 +44,7 @@ export const PinnedMessageBanner: React.FC<PinnedMessageBannerProps> = ({
       {/* Message Content */}
       <div className="flex-1 min-w-0">
         <p className="text-sm text-text-primary truncate">
-          {truncatedContent || 'Message épinglé'}
+          {truncatedContent || t('pinnedMessage')}
         </p>
       </div>
 

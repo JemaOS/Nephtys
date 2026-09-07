@@ -4,16 +4,18 @@
 import React from 'react';
 import { Bell, BellOff, Check } from 'lucide-react';
 import { useNotifications } from '@/hooks/useNotifications';
+import { useI18n } from '@/i18n';
 
 export const NotificationSettings: React.FC = () => {
+  const { t } = useI18n();
   const { permission, isSupported, requestPermission } = useNotifications();
 
   const handleEnableNotifications = async () => {
     const granted = await requestPermission();
     if (granted) {
-      alert('Notifications activées avec succès!');
+      alert(t('notificationsEnabledSuccess'));
     } else {
-      alert('Permission refusée. Activez les notifications dans les paramètres de votre navigateur.');
+      alert(t('permissionDeniedAlert'));
     }
   };
 
@@ -23,8 +25,8 @@ export const NotificationSettings: React.FC = () => {
         <div className="flex items-center gap-3">
           <BellOff size={24} className="text-text-tertiary" />
           <div className="flex-1">
-            <h3 className="font-semibold">Notifications non supportées</h3>
-            <p className="text-sm text-text-tertiary">Votre navigateur ne supporte pas les notifications</p>
+            <h3 className="font-semibold">{t('notificationsUnsupported')}</h3>
+            <p className="text-sm text-text-tertiary">{t('browserNoNotifications')}</p>
           </div>
         </div>
       </div>
@@ -38,16 +40,16 @@ export const NotificationSettings: React.FC = () => {
           <div className="flex items-center gap-3">
             <Bell size={24} className={permission === 'granted' ? 'text-success-500' : 'text-text-tertiary'} />
             <div className="flex-1">
-              <h3 className="font-semibold">Notifications push</h3>
+              <h3 className="font-semibold">{t('pushNotifications')}</h3>
               <p className="text-sm text-text-tertiary">
                 {(() => {
                   if (permission === 'granted') {
-                    return 'Activées - Vous recevrez des notifications pour les nouveaux messages';
+                    return t('notifGrantedDesc');
                   }
                   if (permission === 'denied') {
-                    return 'Refusées - Activez-les dans les paramètres de votre navigateur';
+                    return t('notifDeniedDesc');
                   }
-                  return 'Désactivées - Activez pour recevoir des notifications';
+                  return t('notifDefaultDesc');
                 })()}
               </p>
             </div>
@@ -63,7 +65,7 @@ export const NotificationSettings: React.FC = () => {
                   onClick={handleEnableNotifications}
                   className="px-4 py-2 rounded-lg bg-primary-500 hover:bg-primary-600 text-white transition-colors"
                 >
-                  Activer
+                  {t('enableAction')}
                 </button>
               );
             }

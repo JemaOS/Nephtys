@@ -2,6 +2,7 @@
 // Distributed under the license specified in the root directory of this project.
 
 import React, { useState } from 'react';
+import { useI18n } from '@/i18n';
 import { Timer, Check } from 'lucide-react';
 
 interface EphemeralMessageToggleProps {
@@ -19,6 +20,7 @@ export const EphemeralMessageToggle: React.FC<EphemeralMessageToggleProps> = ({
   onToggle,
   currentDuration,
 }) => {
+  const { t } = useI18n();
   const [isOpen, setIsOpen] = useState(false);
 
   const handleDurationSelect = (duration: number) => {
@@ -40,7 +42,7 @@ export const EphemeralMessageToggle: React.FC<EphemeralMessageToggleProps> = ({
             ? 'bg-primary-500/20 text-primary-500' 
             : 'hover:bg-white/10 text-text-tertiary'
         }`}
-        aria-label="Messages éphémères"
+        aria-label={t('ephemeralMessages')}
         type="button"
       >
         <Timer size={20} />

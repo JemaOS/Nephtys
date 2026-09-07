@@ -2,6 +2,7 @@
 // Distributed under the license specified in the root directory of this project.
 
 import React, { useState } from 'react';
+import { useI18n } from '@/i18n';
 import { Star, Trash2, Edit, Copy, Forward, MoreVertical } from 'lucide-react';
 import { DeleteMessageDialog } from './DeleteMessageDialog';
 
@@ -34,12 +35,13 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
   onForward,
   onCopy,
 }) => {
+  const { t } = useI18n();
   const [isOpen, setIsOpen] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(content);
-    alert('Message copié!');
+    alert(t('messageCopied'));
     setIsOpen(false);
   };
 
@@ -84,7 +86,7 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="p-1.5 rounded-full hover:bg-white/10 transition-colors"
-        aria-label="Actions du message"
+        aria-label={t('messageActions')}
       >
         <MoreVertical size={16} className="text-text-tertiary" />
       </button>
@@ -96,7 +98,7 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
             type="button"
             className="fixed inset-0 z-40 w-full h-full cursor-default"
             onClick={() => setIsOpen(false)}
-            aria-label="Fermer le menu"
+            aria-label={t('closeMenu')}
           />
 
           {/* Menu */}

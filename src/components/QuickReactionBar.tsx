@@ -2,6 +2,7 @@
 // Distributed under the license specified in the root directory of this project.
 
 import { Plus } from 'lucide-react'
+import { useI18n } from '@/i18n';
 
 interface QuickReactionBarProps {
   readonly isOpen: boolean
@@ -20,6 +21,7 @@ export function QuickReactionBar({
   onMoreOptions,
   onClose,
 }: QuickReactionBarProps) {
+  const { t } = useI18n()
   if (!isOpen) return null
 
   // Calculate position to keep the bar on screen
@@ -45,7 +47,7 @@ export function QuickReactionBar({
         type="button"
         className="fixed inset-0 z-50 w-full h-full cursor-default"
         onClick={onClose}
-        aria-label="Fermer"
+        aria-label={t('close')}
       />
       
       {/* Reaction Bar */}

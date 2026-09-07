@@ -11,10 +11,11 @@ import { offlineStorage } from '@/lib/offlineStorage'
 import { useIsMobile } from '@/hooks/use-mobile'
 
 import { fetchAllConversationData } from '@/lib/conversationService'
+import { useI18n } from '@/i18n'
 import { ChatsSelectionHeader, ChatsHeader, ChatsList, ConversationWithDetails } from './ChatsPageComponents'
 
 // Memoized formatDate function outside component to prevent recreation on every render
-const formatDate = (dateStr: string): string => {
+const formatDate = (dateStr: string, yesterdayLabel: string = 'Hier'): string => {
   const date = new Date(dateStr)
   const now = new Date()
   const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24))
@@ -22,7 +23,7 @@ const formatDate = (dateStr: string): string => {
   if (diffDays === 0) {
     return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
   } else if (diffDays === 1) {
-    return 'Hier'
+    return yesterdayLabel
   } else if (diffDays < 7) {
     return date.toLocaleDateString('fr-FR', { weekday: 'short' })
   } else {
@@ -174,6 +175,7 @@ export function ChatsPage() {
     return cached !== null && cached.length > 0
   })
   const { user } = useAuth()
+  const { t } = useI18n()
   const navigate = useNavigate()
   const isMobile = useIsMobile()
   
@@ -643,7 +645,7 @@ export function ChatsPage() {
     const selectedIds = Array.from(selectedConversations)
     const count = selectedIds.length
     
-    if (!confirm(`Voulez-vous vraiment supprimer ${count} conversation${count > 1 ? 's' : ''} ?`)) {
+    if (!confirm(t('deleteConversationsConfirm', { count }))) {
       return
     }
     
@@ -969,7 +971,7 @@ export function ChatsPage() {
   }
 
   const handleClearMessages = async (conversationId: string) => {
-    if (confirm('Voulez-vous vraiment effacer tous les messages de cette conversation ?')) {
+    if (confirm(t('clearMessagesConfirm'))) {
       // Soft-delete all messages in the conversation (set deleted_at timestamp)
       const { error } = await supabase
         .from('messages')
@@ -988,7 +990,7 @@ export function ChatsPage() {
   }
 
   const handleDeleteConversation = async (conversationId: string) => {
-    if (confirm('Voulez-vous vraiment supprimer cette conversation ? La conversation sera supprimée de votre liste.')) {
+    if (confirm(t('deleteConversationConfirm'))) {
       // Cancel any pending debounced reload to prevent re-adding the conversation
       if (reloadTimeoutRef.current) {
         clearTimeout(reloadTimeoutRef.current)
@@ -1102,17 +1104,17 @@ export function ChatsPage() {
           handleTouchEnd={handleTouchEnd}
           handleTouchMove={handleTouchMove}
           isMobile={isMobile}
-          formatDate={formatDate}
+          formatDate={(dateStr: string) => formatDate(dateStr, t('yesterday'))}
         />
       </div>
 
       {/* Zone de chat vide - Style JemaOS - Desktop only */}
       <div className="hidden md:flex flex-1 bg-bg-primary flex-col items-center justify-center relative">
         <div className="text-center">
-          <h2 className="text-3xl font-light text-text-secondary mb-4">Nephtys optimisé pour JemaOS</h2>
+          <h2 className="text-3xl font-light text-text-secondary mb-4">{t('optimizedForJemaos')}</h2>
           <p className="text-text-secondary max-w-lg mx-auto leading-relaxed mb-6">
-            Messagerie sécurisée qui protège votre vie privée.<br/>
-            Vos conversations sont chiffrées de bout en bout. Une architecture hybride conçue pour garantir votre confidentialité absolue.
+            {t('chatsEmptyDesc1')}<br/>
+            {t('chatsEmptyDesc2')}
           </p>
           
           <div className="space-y-6 max-w-md mx-auto mt-8">
@@ -1123,8 +1125,8 @@ export function ChatsPage() {
                 </svg>
               </div>
               <div>
-                <p className="text-base text-text-primary font-medium mb-1">Chiffrement de bout en bout</p>
-                <p className="text-sm text-text-secondary leading-relaxed">Personne ne peut lire vos messages, même pas nous</p>
+                <p className="text-base text-text-primary font-medium mb-1">{t('endToEndEncryption')}</p>
+                <p className="text-sm text-text-secondary leading-relaxed">{t('e2eeFeatureDesc')}</p>
               </div>
             </div>
             
@@ -1139,8 +1141,8 @@ export function ChatsPage() {
                 </svg>
               </div>
               <div>
-                <p className="text-base text-text-primary font-medium mb-1">Architecture Hybride & Appels P2P</p>
-                <p className="text-sm text-text-secondary leading-relaxed">Messagerie sécurisée via le cloud, et appels audio/vidéo en Peer-to-Peer direct sans intermédiaire.</p>
+                <p className="text-base text-text-primary font-medium mb-1">{t('hybridArchitectureTitle')}</p>
+                <p className="text-sm text-text-secondary leading-relaxed">{t('hybridArchitectureDesc')}</p>
               </div>
             </div>
             
@@ -1153,8 +1155,8 @@ export function ChatsPage() {
                 </svg>
               </div>
               <div>
-                <p className="text-base text-text-primary font-medium mb-1">Zéro collecte de données</p>
-                <p className="text-sm text-text-secondary leading-relaxed">Aucun tracking, aucune publicité, aucun log</p>
+                <p className="text-base text-text-primary font-medium mb-1">{t('zeroDataCollection')}</p>
+                <p className="text-sm text-text-secondary leading-relaxed">{t('zeroDataCollectionDesc')}</p>
               </div>
             </div>
           </div>
@@ -1162,7 +1164,7 @@ export function ChatsPage() {
 
         <div className="absolute bottom-6 text-center">
           <p className="text-xs text-gray-500">
-            Développé par <a href="https://www.jematechnology.fr/" target="_blank" rel="noopener noreferrer" className="text-[#6b6fdb] hover:underline">Jema Technology</a> © 2025 • Open Source & sous licence AGPL
+            {t('developedBy')} <a href="https://www.jematechnology.fr/" target="_blank" rel="noopener noreferrer" className="text-[#6b6fdb] hover:underline">Jema Technology</a> {t('footerLicense')}
           </p>
         </div>
       </div>

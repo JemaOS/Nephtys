@@ -2,6 +2,7 @@
 // Distributed under the license specified in the root directory of this project.
 
 import React, { useState, useEffect } from 'react'
+import { useI18n } from '@/i18n';
 import { Search, UserPlus, Check, Loader2 } from 'lucide-react'
 import { supabase, Contact, Profile } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
@@ -15,6 +16,7 @@ interface CallParticipantSelectorProps {
 }
 
 export function CallParticipantSelector({ onClose, onSelect, currentParticipants = [] }: CallParticipantSelectorProps) {
+  const { t } = useI18n();
   const [contacts, setContacts] = useState<(Contact & { profile: Profile })[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [loading, setLoading] = useState(true)
@@ -169,7 +171,7 @@ export function CallParticipantSelector({ onClose, onSelect, currentParticipants
             <h2 className="text-xl font-semibold text-white">Ajouter des participants</h2>
             {invitedIds.size > 0 && (
               <p className="text-xs text-green-400 mt-1">
-                {invitedIds.size} invitation{invitedIds.size > 1 ? 's' : ''} envoyée{invitedIds.size > 1 ? 's' : ''}
+                {t('invitationsSent', { count: invitedIds.size })}
               </p>
             )}
           </div>
@@ -187,7 +189,7 @@ export function CallParticipantSelector({ onClose, onSelect, currentParticipants
             <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/50" />
             <input
               type="text"
-              placeholder="Rechercher..."
+              placeholder={t('search')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full h-10 pl-10 pr-3 bg-white/5 text-white text-sm rounded-xl border-none outline-none placeholder:text-white/30 focus:bg-white/10 transition-colors"
@@ -245,7 +247,7 @@ export function CallParticipantSelector({ onClose, onSelect, currentParticipants
                         {contact.nickname || contact.profile.display_name || contact.profile.username}
                       </h3>
                       <p className="text-xs text-white/50 truncate">
-                        {isInvited ? 'Invitation envoyée ✓' : `@${contact.profile.username}`}
+                        {isInvited ? t('invitationSentCheck') : `@${contact.profile.username}`}
                       </p>
                     </div>
                     

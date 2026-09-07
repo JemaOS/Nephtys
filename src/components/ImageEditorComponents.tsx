@@ -3,6 +3,7 @@ import {
   X, RotateCcw, Crop, Pencil, Download, Send, Undo2,
   Circle, Triangle, Square, Star, Heart, FlipHorizontal
 } from 'lucide-react';
+import { useI18n } from '@/i18n';
 
 export type Tool = 'none' | 'crop' | 'draw' | 'text' | 'shape' | 'blur';
 export type Shape = 'rectangle' | 'circle' | 'triangle' | 'star' | 'heart' | 'arrow';
@@ -58,7 +59,9 @@ export const ImageEditorToolbar: React.FC<ImageEditorToolbarProps> = ({
   setShowQualitySettings,
   showQualitySettings,
   downloadImage,
-}) => (
+}) => {
+  const { t } = useI18n();
+  return (
   <div className="flex items-center justify-between px-4 py-3 bg-bg-surface border-b border-bg-hover safe-area-top">
     {/* Close button */}
     <button
@@ -77,7 +80,7 @@ export const ImageEditorToolbar: React.FC<ImageEditorToolbarProps> = ({
           setCropMode(activeTool !== 'crop');
         }}
         className={`p-2 rounded-lg transition-colors ${activeTool === 'crop' ? 'bg-accent text-white' : 'hover:bg-bg-hover text-text-primary'}`}
-        title="Recadrer"
+        title={t('cropTitle')}
       >
         <Crop size={20} />
       </button>
@@ -86,7 +89,7 @@ export const ImageEditorToolbar: React.FC<ImageEditorToolbarProps> = ({
       <button
         onClick={rotateLeft}
         className="p-2 rounded-lg hover:bg-bg-hover transition-colors text-text-primary"
-        title="Rotation gauche"
+        title={t('rotateLeftTitle')}
       >
         <RotateCcw size={20} />
       </button>
@@ -98,7 +101,7 @@ export const ImageEditorToolbar: React.FC<ImageEditorToolbarProps> = ({
           setShowBrushSize(activeTool !== 'draw');
         }}
         className={`p-2 rounded-lg transition-colors ${activeTool === 'draw' ? 'bg-accent text-white' : 'hover:bg-bg-hover text-text-primary'}`}
-        title="Dessiner"
+        title={t('drawTitle')}
       >
         <Pencil size={20} />
       </button>
@@ -107,7 +110,7 @@ export const ImageEditorToolbar: React.FC<ImageEditorToolbarProps> = ({
       <button
         onClick={toggleFlipH}
         className={`p-2 rounded-lg transition-colors ${flipH ? 'bg-accent text-white' : 'hover:bg-bg-hover text-text-primary'}`}
-        title="Retourner horizontalement"
+        title={t('flipHorizontalTitle')}
       >
         <FlipHorizontal size={20} />
       </button>
@@ -116,7 +119,7 @@ export const ImageEditorToolbar: React.FC<ImageEditorToolbarProps> = ({
       <button
         onClick={() => setShowQualitySettings(!showQualitySettings)}
         className={`p-2 rounded-lg transition-colors ${hdQuality ? 'bg-accent text-white' : 'hover:bg-bg-hover text-text-primary'}`}
-        title="Qualité HD"
+        title={t('hdQualityTitle')}
       >
         <div className="w-5 h-5 flex items-center justify-center">
           <span className="text-[10px] font-bold leading-none">HD</span>
@@ -127,13 +130,14 @@ export const ImageEditorToolbar: React.FC<ImageEditorToolbarProps> = ({
       <button
         onClick={downloadImage}
         className="p-2 rounded-lg hover:bg-bg-hover transition-colors text-text-primary"
-        title="Télécharger"
+        title={t('downloadTitle')}
       >
         <Download size={20} />
       </button>
     </div>
   </div>
-);
+  )
+};
 
 interface ImageEditorSecondaryToolbarProps {
   activeTool: Tool;
@@ -172,6 +176,7 @@ export const ImageEditorSecondaryToolbar: React.FC<ImageEditorSecondaryToolbarPr
   setShapeFilled,
   undo,
 }) => {
+  const { t } = useI18n();
   if (activeTool !== 'draw' && activeTool !== 'text' && activeTool !== 'shape') return null;
 
   return (
@@ -270,7 +275,7 @@ export const ImageEditorSecondaryToolbar: React.FC<ImageEditorSecondaryToolbarPr
           <button
             onClick={() => setShapeFilled(!shapeFilled)}
             className={`p-1.5 rounded-lg ml-1 ${shapeFilled ? 'bg-accent text-white' : 'hover:bg-bg-hover text-text-primary'}`}
-            title={shapeFilled ? 'Rempli' : 'Contour'}
+            title={shapeFilled ? t('filled') : t('outline')}
           >
             {shapeFilled ? <Square size={18} className="fill-current" /> : <Square size={18} />}
           </button>
@@ -281,7 +286,7 @@ export const ImageEditorSecondaryToolbar: React.FC<ImageEditorSecondaryToolbarPr
       <button
         onClick={undo}
         className="p-1.5 rounded-lg hover:bg-bg-hover text-text-primary ml-auto"
-        title="Annuler"
+        title={t('undo')}
       >
         <Undo2 size={18} />
       </button>
@@ -301,7 +306,9 @@ export const ImageEditorFooter: React.FC<ImageEditorFooterProps> = ({
   setCaption,
   onSend,
   handleSend,
-}) => (
+}) => {
+  const { t } = useI18n();
+  return (
   <div className="px-4 py-3 border-t border-bg-hover bg-bg-surface safe-area-bottom">
     <div className="flex items-center gap-4">
       {/* Caption input */}
@@ -310,7 +317,7 @@ export const ImageEditorFooter: React.FC<ImageEditorFooterProps> = ({
           type="text"
           value={caption}
           onChange={(e) => setCaption(e.target.value)}
-          placeholder="Entrez un message"
+          placeholder={t('enterMessagePlaceholder')}
           className="w-full px-4 h-11 rounded-full bg-bg-hover text-text-primary placeholder:text-text-secondary outline-none"
         />
       </div>
@@ -326,4 +333,5 @@ export const ImageEditorFooter: React.FC<ImageEditorFooterProps> = ({
       )}
     </div>
   </div>
-);
+  )
+};

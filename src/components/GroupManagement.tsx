@@ -6,6 +6,7 @@ import { UserPlus, UserMinus, Edit, Trash2, LogOut, Crown, Camera } from 'lucide
 import { supabase } from '@/lib/supabase';
 import { invalidateMediaUrl } from '@/lib/mediaUrl';
 import { MediaImg } from './MediaImg';
+import { useI18n } from '@/i18n';
 
 interface GroupMember {
   id: string;
@@ -36,6 +37,7 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({
   isAdmin,
   onClose,
 }) => {
+  const { t } = useI18n();
   const [isEditing, setIsEditing] = useState(false);
   const [newName, setNewName] = useState(groupName);
   const [newDescription, setNewDescription] = useState(groupDescription || '');
@@ -57,11 +59,11 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({
 
       if (!error) {
         setIsEditing(false);
-        alert('Groupe mis à jour avec succès!');
+        alert(t('groupUpdatedSuccess'));
       }
     } catch (error) {
       console.error('Error updating group:', error);
-      alert('Erreur lors de la mise à jour du groupe');
+      alert(t('groupUpdateError'));
     } finally {
       setSaving(false);
     }
@@ -69,11 +71,11 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({
 
   const handleRemoveMember = async (userId: string) => {
     if (!isAdmin) {
-      alert('Seuls les administrateurs peuvent retirer des membres');
+      alert(t('onlyAdminsCanRemoveMembers'));
       return;
     }
 
-    if (!confirm('Voulez-vous vraiment retirer ce membre du groupe?')) {
+    if (!confirm(t('removeMemberConfirm'))) {
       return;
     }
 
@@ -85,17 +87,17 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({
         .eq('user_id', userId);
 
       if (!error) {
-        alert('Membre retiré avec succès');
+        alert(t('memberRemovedSuccess'));
       }
     } catch (error) {
       console.error('Error removing member:', error);
-      alert('Erreur lors du retrait du membre');
+      alert(t('memberRemoveError'));
     }
   };
 
   const handlePromoteToAdmin = async (userId: string) => {
     if (!isAdmin) {
-      alert('Seuls les administrateurs peuvent promouvoir des membres');
+      alert(t('onlyAdminsCanPromote'));
       return;
     }
 
@@ -107,16 +109,16 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({
         .eq('user_id', userId);
 
       if (!error) {
-        alert('Membre promu administrateur');
+        alert(t('memberPromoted'));
       }
     } catch (error) {
       console.error('Error promoting member:', error);
-      alert('Erreur lors de la promotion');
+      alert(t('promoteError'));
     }
   };
 
   const handleLeaveGroup = async () => {
-    if (!confirm('Voulez-vous vraiment quitter ce groupe?')) {
+    if (!confirm(t('leaveGroupConfirm'))) {
       return;
     }
 
@@ -128,22 +130,22 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({
         .eq('user_id', currentUserId);
 
       if (!error) {
-        alert('Vous avez quitté le groupe');
+        alert(t('leftGroup'));
         onClose();
       }
     } catch (error) {
       console.error('Error leaving group:', error);
-      alert('Erreur lors de la sortie du groupe');
+      alert(t('leaveGroupError'));
     }
   };
 
   const handleDeleteGroup = async () => {
     if (!isAdmin) {
-      alert('Seuls les administrateurs peuvent supprimer le groupe');
+      alert(t('onlyAdminsCanDeleteGroup'));
       return;
     }
 
-    if (!confirm('Voulez-vous vraiment supprimer ce groupe? Cette action est irréversible.')) {
+    if (!confirm(t('deleteGroupConfirm'))) {
       return;
     }
 
@@ -154,12 +156,12 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({
         .eq('id', conversationId);
 
       if (!error) {
-        alert('Groupe supprimé');
+        alert(t('groupDeleted'));
         onClose();
       }
     } catch (error) {
       console.error('Error deleting group:', error);
-      alert('Erreur lors de la suppression du groupe');
+      alert(t('groupDeleteError'));
     }
   };
 
@@ -168,19 +170,19 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({
     if (!file) return;
     
     if (!isAdmin) {
-      alert('Seuls les administrateurs peuvent changer la photo du groupe');
+      alert(t('onlyAdminsCanChangePhoto'));
       return;
     }
     
     // Vérifier la taille du fichier (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
-      alert('❌ Fichier trop volumineux\n\nLa photo doit faire moins de 5 MB.');
+      alert(t('fileTooLargeAlert'));
       return;
     }
     
     // Vérifier le type de fichier
     if (!file.type.startsWith('image/')) {
-      alert('❌ Format invalide\n\nVeuillez sélectionner une image (JPG, PNG, etc.).');
+      alert(t('invalidImageFormatAlert'));
       return;
     }
     
@@ -210,7 +212,7 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({
       
       if (updateError) {
         console.error('Group update error:', updateError);
-        throw new Error('Erreur lors de la mise à jour du groupe');
+        throw new Error(t('groupUpdateError'));
       }
       
       // Mise à jour locale immédiate (sans reload)
@@ -222,10 +224,10 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({
       } catch {
         // ignore
       }
-      alert('✅ Photo du groupe mise à jour !');
+      alert(t('groupPhotoUpdated'));
     } catch (err: any) {
       console.error('Group photo upload error:', err);
-      alert(err.message || '❌ Erreur lors de l\'upload de la photo\n\nVeuillez réessayer.');
+      alert(err.message || t('photoUploadErrorAlert'));
     } finally {
       setUploadingPhoto(false);
     }
@@ -282,13 +284,13 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 className="w-full px-4 py-2 rounded-lg bg-glass-surface-light border border-glass-border text-text-primary focus:outline-none focus:ring-2 focus:ring-primary-400"
-                placeholder="Nom du groupe"
+                placeholder={t('groupNameLabel')}
               />
               <textarea
                 value={newDescription}
                 onChange={(e) => setNewDescription(e.target.value)}
                 className="w-full px-4 py-2 rounded-lg bg-glass-surface-light border border-glass-border text-text-primary focus:outline-none focus:ring-2 focus:ring-primary-400 resize-none"
-                placeholder="Description du groupe"
+                placeholder={t('groupDescriptionPlaceholder')}
                 rows={3}
               />
               <div className="flex gap-2">
@@ -297,13 +299,13 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({
                   disabled={saving}
                   className="flex-1 py-2 rounded-lg bg-primary-500 hover:bg-primary-600 text-white transition-colors disabled:opacity-50"
                 >
-                  {saving ? 'Enregistrement...' : 'Enregistrer'}
+                  {saving ? t('saving') : t('save')}
                 </button>
                 <button
                   onClick={() => setIsEditing(false)}
                   className="flex-1 py-2 rounded-lg bg-glass-surface-medium hover:bg-white/10 transition-colors"
                 >
-                  Annuler
+                  {t('cancel')}
                 </button>
               </div>
             </div>
@@ -314,7 +316,7 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({
                 {groupDescription && (
                   <p className="text-sm text-text-tertiary">{groupDescription}</p>
                 )}
-                <p className="text-xs text-text-tertiary mt-2">{members.length} membres</p>
+                <p className="text-xs text-text-tertiary mt-2">{t('membersCount', { count: members.length })}</p>
               </div>
               {isAdmin && (
                 <button
@@ -331,7 +333,7 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({
         {/* Members List */}
         <div className="mb-6">
           <h3 className="text-sm font-semibold text-text-secondary uppercase tracking-wide mb-3">
-            Membres ({members.length})
+            {t('membersCountHeader', { count: members.length })}
           </h3>
           <div className="space-y-2">
             {members.map((member) => (
@@ -345,13 +347,13 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({
                 <div className="flex-1 min-w-0">
                   <div className="font-medium truncate">
                     {member.display_name || member.username}
-                    {member.user_id === currentUserId && ' (Vous)'}
+                    {member.user_id === currentUserId && ` (${t('you')})`}
                   </div>
                   <div className="text-sm text-text-tertiary flex items-center gap-1">
                     {member.role === 'admin' && (
                       <>
                         <Crown size={12} className="text-yellow-500" />
-                        <span>Administrateur</span>
+                        <span>{t('adminLabel')}</span>
                       </>
                     )}
                   </div>
@@ -363,7 +365,7 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({
                       <button
                         onClick={() => handlePromoteToAdmin(member.user_id)}
                         className="p-2 rounded-full hover:bg-primary-500/20 transition-colors"
-                        title="Promouvoir admin"
+                        title={t('promoteAdmin')}
                       >
                         <Crown size={16} className="text-primary-500" />
                       </button>
@@ -371,7 +373,7 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({
                     <button
                       onClick={() => handleRemoveMember(member.user_id)}
                       className="p-2 rounded-full hover:bg-red-500/20 transition-colors"
-                      title="Retirer du groupe"
+                      title={t('removeFromGroup')}
                     >
                       <UserMinus size={16} className="text-red-500" />
                     </button>
@@ -389,7 +391,7 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({
               className="w-full py-3 rounded-xl bg-glass-surface-medium hover:bg-white/10 border border-glass-border transition-colors flex items-center justify-center gap-2"
             >
               <UserPlus size={20} />
-              Ajouter des membres
+              {t('addMembers')}
             </button>
           )}
 
@@ -398,7 +400,7 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({
             className="w-full py-3 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-500 transition-colors flex items-center justify-center gap-2"
           >
             <LogOut size={20} />
-            Quitter le groupe
+            {t('leaveGroup')}
           </button>
 
           {isAdmin && (
@@ -407,7 +409,7 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({
               className="w-full py-3 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-500 transition-colors flex items-center justify-center gap-2"
             >
               <Trash2 size={20} />
-              Supprimer le groupe
+              {t('deleteGroup')}
             </button>
           )}
         </div>

@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Search, X } from 'lucide-react';
+import { useI18n } from '@/i18n';
 
 interface MessageSearchProps {
   messages: any[];
@@ -15,6 +16,7 @@ export const MessageSearch: React.FC<MessageSearchProps> = ({
   onSearchResults,
   onClose,
 }) => {
+  const { t } = useI18n();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
 
@@ -51,7 +53,7 @@ export const MessageSearch: React.FC<MessageSearchProps> = ({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Rechercher dans la conversation..."
+            placeholder={t('searchInConversation')}
             className="w-full h-10 pl-10 pr-4 rounded-full bg-bg-surface backdrop-blur-[20px] border border-glass-border text-base text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-primary-400 transition-all duration-fast"
             autoFocus
           />
@@ -59,14 +61,14 @@ export const MessageSearch: React.FC<MessageSearchProps> = ({
         
         {searchQuery && (
           <div className="text-sm text-text-tertiary whitespace-nowrap">
-            {searchResults.length} résultat{searchResults.length === 1 ? '' : 's'}
+            {t('resultsCount', { count: searchResults.length })}
           </div>
         )}
         
         <button
           onClick={handleClose}
           className="w-10 h-10 rounded-full bg-bg-surface backdrop-blur-[20px] border border-glass-border flex items-center justify-center hover:bg-bg-hover transition-colors"
-          aria-label="Fermer la recherche"
+          aria-label={t('closeSearch')}
         >
           <X size={20} className="text-text-tertiary" />
         </button>

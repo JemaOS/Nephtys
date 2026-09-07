@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom'
 import { MainLayout } from '@/components/MainLayout'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
+import { useI18n } from '@/i18n'
 import { signFieldsBatch } from '@/lib/mediaUrl'
 import { MediaImg } from '@/components/MediaImg'
 import { useCallActions } from '@/context/CallContext'
@@ -142,6 +143,7 @@ export function CallsPage() {
   const longPressTriggeredRef = useRef(false)
   
   const { user } = useAuth()
+  const { t } = useI18n()
   const navigate = useNavigate()
   const isMobile = useIsMobile()
   
@@ -257,7 +259,7 @@ export function CallsPage() {
     const selectedIds = Array.from(selectedCalls)
     const count = selectedIds.length
     
-    if (!confirm(`Voulez-vous vraiment supprimer ${count} appel${count > 1 ? 's' : ''} ?`)) {
+    if (!confirm(t('deleteCallsConfirm', { count }))) {
       return
     }
     
@@ -644,7 +646,7 @@ export function CallsPage() {
       // Check if already a contact using helper
       const existingContact = await findExistingContact(user.id, profileData.id)
       if (existingContact) {
-        setAddContactError('Contact déjà ajouté')
+        setAddContactError(t('contactAlreadyAdded'))
         setAddContactLoading(false)
         return
       }
@@ -652,7 +654,7 @@ export function CallsPage() {
       // Add the contact
       const insertError = await addNewContact(user.id, profileData.id)
       if (insertError) {
-        setAddContactError('Erreur lors de l\'ajout')
+        setAddContactError(t('addError'))
         setAddContactLoading(false)
         return
       }
@@ -884,7 +886,7 @@ export function CallsPage() {
         setShowContactsModal(false)
       } catch (error) {
         console.error('Erreur lors du démarrage de l\'appel:', error)
-        alert('Impossible de démarrer l\'appel')
+        alert(t('callStartError'))
       }
     }
   }
@@ -925,7 +927,7 @@ export function CallsPage() {
         setSelectedCall(null)
       } catch (error) {
         console.error('Erreur lors du rappel:', error)
-        alert('Impossible de démarrer l\'appel')
+        alert(t('callStartError'))
       }
     }
   }
@@ -995,7 +997,7 @@ export function CallsPage() {
         handleCloseContextMenu()
       } catch (error) {
         console.error('Erreur lors de l\'appel:', error)
-        alert('Impossible de démarrer l\'appel')
+        alert(t('callStartError'))
       }
     }
   }
@@ -1006,7 +1008,7 @@ export function CallsPage() {
     const randomString = Array.from(randomBytes, (byte) => byte.toString(16).padStart(2, '0')).join('').substring(0, 8);
     const callLink = `${globalThis.location.origin}/call/${randomString}`
     navigator.clipboard.writeText(callLink)
-    alert(`Lien d'appel copié !\n${callLink}`)
+    alert(t('callLinkCopied', { link: callLink }))
   }
 
   // Helper to filter calls
@@ -1048,7 +1050,7 @@ export function CallsPage() {
         setSelectedCall(null)
       } catch (error) {
         console.error('Erreur lors du rappel de groupe:', error)
-        alert('Impossible de démarrer l\'appel de groupe')
+        alert(t('groupCallStartError'))
       }
     } else {
       handleRecall()
@@ -1058,11 +1060,11 @@ export function CallsPage() {
   // Helper functions for CallDetailsContent that need to be passed as props
   const getCallDisplayName = (call: CallLog, userId: string | undefined): string => {
     if (call.is_group_call) {
-      return call.conversation_name || 'Groupe'
+      return call.conversation_name || t('groupFallback')
     }
     const isOutgoing = call.caller_id === userId
     const otherProfile = isOutgoing ? call.callee_profile : call.caller_profile
-    return otherProfile?.display_name || otherProfile?.username || 'Utilisateur'
+    return otherProfile?.display_name || otherProfile?.username || t('userFallback')
   }
 
   const getCallAvatarUrl = (call: CallLog, userId: string | undefined): string | null | undefined => {
@@ -1077,28 +1079,28 @@ export function CallsPage() {
   // Consolidated helper for call status text - handles both group and direct calls
   const getCallStatusText = (call: CallLog, userId: string | undefined): string => {
     if (call.is_group_call) {
-      return 'Appel de groupe';
+      return t('groupCallLabel');
     }
     const isOutgoing = call.caller_id === userId;
-    return isOutgoing ? 'Appel sortant' : 'Appel entrant';
+    return isOutgoing ? t('outgoingCall') : t('incomingCall');
   }
 
   // Consolidated helper for call type text
   const getCallTypeText = (call: CallLog): string => {
     if (call.is_group_call) {
-      return call.type === 'video' ? 'Appel vidéo de groupe' : 'Appel de groupe'
+      return call.type === 'video' ? t('groupVideoCall') : t('groupCallLabel')
     }
-    return call.type === 'video' ? 'Appel vidéo' : 'Appel vocal'
+    return call.type === 'video' ? t('videoCall') : t('voiceCall')
   }
 
   // Consolidated helper for rendering call status
   const renderCallStatus = (call: CallLog): string => {
     switch (call.status) {
-      case 'answered': return 'Répondu'
-      case 'missed': return 'Manqué'
-      case 'rejected': return 'Refusé'
-      case 'ended': return 'Terminé'
-      default: return 'Initié'
+      case 'answered': return t('statusAnswered')
+      case 'missed': return t('statusMissed')
+      case 'rejected': return t('statusRejected')
+      case 'ended': return t('statusEnded')
+      default: return t('statusInitiated')
     }
   }
 
@@ -1196,7 +1198,7 @@ export function CallsPage() {
                 className={`w-10 h-10 flex items-center justify-center rounded-full hover:bg-bg-hover transition-colors ${
                   allCallsSelected ? 'text-accent' : 'text-text-primary'
                 }`}
-                title={allCallsSelected ? 'Tout sélectionné' : 'Tout sélectionner'}
+                title={allCallsSelected ? t('allSelected') : t('selectAll')}
               >
                 <CheckCheck size={20} />
               </button>
@@ -1205,7 +1207,7 @@ export function CallsPage() {
               <button
                 onClick={handleBulkDelete}
                 className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-bg-hover transition-colors"
-                title="Supprimer"
+                title={t('delete')}
               >
                 <Trash2 size={20} className="text-red-500" />
               </button>
@@ -1220,12 +1222,12 @@ export function CallsPage() {
         {!isSelectionMode && (
         <div className="bg-bg-surface px-4 py-3">
           <div className="flex items-center justify-between mb-4">
-            <h1 className="text-xl font-semibold text-text-primary">Appels</h1>
+            <h1 className="text-xl font-semibold text-text-primary">{t('navCalls')}</h1>
             <button
               onClick={handleAddContact}
               className="w-10 h-10 rounded-full bg-accent hover:bg-[#5a5ec9] flex items-center justify-center transition-colors"
-              title="Ajouter un contact"
-              aria-label="Ajouter un contact"
+              title={t('addContact')}
+              aria-label={t('addContact')}
             >
               <UserPlus size={20} className="text-white" />
             </button>
@@ -1235,11 +1237,11 @@ export function CallsPage() {
             <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" />
             <input
               type="text"
-              placeholder="Rechercher ou démarrer un appel"
+              placeholder={t('searchOrStartCall')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full h-9 pl-10 pr-3 bg-bg-surface text-text-primary text-sm rounded-xl border-none outline-none placeholder:text-text-secondary focus:bg-bg-hover"
-              aria-label="Rechercher ou démarrer un appel"
+              aria-label={t('searchOrStartCall')}
             />
           </div>
         </div>
@@ -1248,7 +1250,7 @@ export function CallsPage() {
         {/* Favoris Section - Hidden in selection mode */}
         {!isSelectionMode && (
         <div className="px-4 py-3 bg-bg-secondary">
-          <p className="text-xs text-text-secondary uppercase tracking-wide mb-2">Favoris</p>
+          <p className="text-xs text-text-secondary uppercase tracking-wide mb-2">{t('favorites')}</p>
           <button
             onClick={() => setShowFavoritesModal(true)}
             className="w-full px-4 py-3 flex items-center gap-3 hover:bg-bg-surface transition-colors rounded-lg"
@@ -1256,7 +1258,7 @@ export function CallsPage() {
             <div className="w-12 h-12 rounded-full bg-bg-surface flex items-center justify-center">
               <Star size={20} className="text-text-secondary" />
             </div>
-            <span className="text-text-primary">Ajouter aux favoris</span>
+            <span className="text-text-primary">{t('addToFavorites')}</span>
           </button>
           {favorites.length > 0 && (
             <div className="space-y-1">
@@ -1313,7 +1315,7 @@ export function CallsPage() {
                           await startGroupCall(favId, { audio: true, video: false })
                         } catch (error) {
                           console.error('Erreur lors de l\'appel de groupe:', error)
-                          alert('Impossible de démarrer l\'appel de groupe')
+                          alert(t('groupCallStartError'))
                         }
                       }}
                     >
@@ -1357,7 +1359,7 @@ export function CallsPage() {
         {/* Separator - Hidden in selection mode */}
         {!isSelectionMode && (
         <div className="px-4 py-2 bg-bg-secondary">
-          <p className="text-xs text-text-secondary uppercase tracking-wide">Récents</p>
+          <p className="text-xs text-text-secondary uppercase tracking-wide">{t('recents')}</p>
         </div>
         )}
 
@@ -1390,8 +1392,8 @@ export function CallsPage() {
               return (
                 <div className="flex flex-col items-center justify-center h-full text-center px-8">
                   <Phone size={64} className="text-[#3b4a54] mb-4" />
-                  <h3 className="text-lg font-medium text-text-secondary mb-2">Aucun appel</h3>
-                  <p className="text-sm text-text-secondary">Votre historique d'appels apparaîtra ici</p>
+                  <h3 className="text-lg font-medium text-text-secondary mb-2">{t('noCalls')}</h3>
+                  <p className="text-sm text-text-secondary">{t('noCallsDesc')}</p>
                 </div>
               )
             }
@@ -1426,7 +1428,7 @@ export function CallsPage() {
         <div className="md:hidden fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="w-full max-w-md bg-bg-surface rounded-3xl flex flex-col max-h-[90vh] overflow-hidden">
             <div className="px-6 py-4 border-b border-bg-hover flex items-center justify-between flex-shrink-0">
-              <h2 className="text-xl font-semibold text-text-primary">Infos de l'appel</h2>
+              <h2 className="text-xl font-semibold text-text-primary">{t('callInfo')}</h2>
               <button
                 onClick={() => setSelectedCall(null)}
                 className="w-8 h-8 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-text-secondary"
@@ -1464,7 +1466,7 @@ export function CallsPage() {
           // Panneau d'informations de l'appel
           <div className="max-w-md mx-auto w-full">
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-medium text-text-primary">Infos de l'appel</h2>
+              <h2 className="text-xl font-medium text-text-primary">{t('callInfo')}</h2>
               <button
                 onClick={() => setSelectedCall(null)}
                 className="w-8 h-8 rounded-full hover:bg-bg-surface flex items-center justify-center transition-colors text-text-secondary"
@@ -1497,7 +1499,7 @@ export function CallsPage() {
           // Zone d'action par défaut
           <div className="flex items-center justify-center h-full">
             <div className="text-center space-y-8 max-w-md">
-              <h2 className="text-2xl font-light text-text-secondary mb-6">Démarrer un appel</h2>
+              <h2 className="text-2xl font-light text-text-secondary mb-6">{t('startCall')}</h2>
               
               <div className="grid grid-cols-2 gap-4">
                 <button
@@ -1507,7 +1509,7 @@ export function CallsPage() {
                   <div className="w-16 h-16 rounded-full bg-accent flex items-center justify-center">
                     <Video size={28} className="text-white" />
                   </div>
-                  <span className="text-sm text-text-primary">Démarrer un appel</span>
+                  <span className="text-sm text-text-primary">{t('startCall')}</span>
                 </button>
                 
                 <button
@@ -1517,7 +1519,7 @@ export function CallsPage() {
                   <div className="w-16 h-16 rounded-full bg-bg-surface flex items-center justify-center border-2 border-accent">
                     <Link2 size={28} className="text-accent" />
                   </div>
-                  <span className="text-sm text-text-primary">Nouveau lien d'appel</span>
+                  <span className="text-sm text-text-primary">{t('newCallLink')}</span>
                 </button>
               </div>
 
@@ -1525,7 +1527,7 @@ export function CallsPage() {
             <svg width="16" height="20" viewBox="0 0 16 20" fill="currentColor" aria-hidden="true">
               <path d="M13 7h-1V5c0-2.21-1.79-4-4-4S4 2.79 4 5v2H3c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2zm-5 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H4.9V5c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/>
             </svg>
-            <span>Appels chiffrés de bout en bout</span>
+            <span>{t('e2eeCalls')}</span>
           </div>
             </div>
           </div>
@@ -1537,7 +1539,7 @@ export function CallsPage() {
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="w-full max-w-md bg-bg-surface rounded-3xl flex flex-col max-h-[80vh] overflow-hidden">
             <div className="px-6 py-4 border-b border-bg-hover flex items-center justify-between flex-shrink-0">
-              <h2 className="text-xl font-semibold text-text-primary">Appeler un contact</h2>
+              <h2 className="text-xl font-semibold text-text-primary">{t('callContact')}</h2>
               <button
                 onClick={() => setShowContactsModal(false)}
                 className="w-8 h-8 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-text-secondary"
@@ -1550,7 +1552,7 @@ export function CallsPage() {
               {contacts.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 px-6 text-center">
                   <Phone size={48} className="text-[#3b4a54] mb-3" />
-                  <p className="text-text-secondary mb-4">Aucun contact disponible</p>
+                  <p className="text-text-secondary mb-4">{t('noContactsAvailable')}</p>
                   <button
                     onClick={() => {
                       setShowContactsModal(false)
@@ -1558,7 +1560,7 @@ export function CallsPage() {
                     }}
                     className="px-6 py-2 rounded-2xl bg-accent hover:bg-[#5a5ec9] text-white font-medium transition-colors"
                   >
-                    Ajouter des contacts
+                    {t('addContacts')}
                   </button>
                 </div>
               ) : (
@@ -1624,7 +1626,7 @@ export function CallsPage() {
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="w-full max-w-md bg-bg-surface rounded-3xl flex flex-col max-h-[80vh] overflow-hidden">
             <div className="px-6 py-4 border-b border-bg-hover flex items-center justify-between flex-shrink-0">
-              <h2 className="text-xl font-semibold text-text-primary">Ajouter aux favoris</h2>
+              <h2 className="text-xl font-semibold text-text-primary">{t('addToFavorites')}</h2>
               <button
                 onClick={() => setShowFavoritesModal(false)}
                 className="w-8 h-8 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-text-secondary"
@@ -1637,7 +1639,7 @@ export function CallsPage() {
               {contacts.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 px-6 text-center">
                   <Star size={48} className="text-[#3b4a54] mb-3" />
-                  <p className="text-text-secondary mb-4">Aucun contact disponible</p>
+                  <p className="text-text-secondary mb-4">{t('noContactsAvailable')}</p>
                   <button
                     onClick={() => {
                       setShowFavoritesModal(false)
@@ -1645,7 +1647,7 @@ export function CallsPage() {
                     }}
                     className="px-6 py-2 rounded-2xl bg-accent hover:bg-[#5a5ec9] text-white font-medium transition-colors"
                   >
-                    Ajouter des contacts
+                    {t('addContacts')}
                   </button>
                 </div>
               ) : (
@@ -1699,7 +1701,7 @@ export function CallsPage() {
                 onClick={() => setShowFavoritesModal(false)}
                 className="w-full py-3 rounded-xl bg-accent hover:bg-[#5a5ec9] text-white font-medium transition-colors"
               >
-                Terminé
+                {t('done')}
               </button>
             </div>
           </div>
@@ -1711,7 +1713,7 @@ export function CallsPage() {
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="w-full max-w-md bg-bg-surface rounded-2xl p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-text-primary">Ajouter un contact</h2>
+              <h2 className="text-xl font-semibold text-text-primary">{t('addContact')}</h2>
               <button
                 onClick={() => {
                   setShowAddContactModal(false)
@@ -1725,13 +1727,13 @@ export function CallsPage() {
             </div>
 
             <div className="space-y-2">
-              <label htmlFor="add-contact-username" className="text-sm text-[#787add]">Nom d'utilisateur (pseudo)</label>
+              <label htmlFor="add-contact-username" className="text-sm text-[#787add]">{t('usernamePseudoLabel')}</label>
               <div className="relative">
                 <UserPlus size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" />
                 <input
                   id="add-contact-username"
                   type="text"
-                  placeholder="pseudo_utilisateur"
+                  placeholder={t('usernameAddPlaceholder')}
                   value={usernameToAdd}
                   onChange={(e) => {
                     setUsernameToAdd(e.target.value)
@@ -1750,7 +1752,7 @@ export function CallsPage() {
             </div>
 
             <p className="text-xs text-text-secondary">
-              Entrez le pseudo de l'utilisateur que vous souhaitez ajouter à vos contacts.
+              {t('addContactHint')}
             </p>
 
             <div className="flex gap-3">
@@ -1762,7 +1764,7 @@ export function CallsPage() {
                 }}
                 className="flex-1 py-2 rounded-xl bg-bg-hover hover:bg-[#3b4a54] text-white transition-colors"
               >
-                Annuler
+                {t('cancel')}
               </button>
               <button
                 onClick={addContact}
@@ -1774,7 +1776,7 @@ export function CallsPage() {
                 ) : (
                   <>
                     <Check size={18} />
-                    Ajouter
+                    {t('add')}
                   </>
                 )}
               </button>
@@ -1791,7 +1793,7 @@ export function CallsPage() {
             type="button"
             className="fixed inset-0 z-40 cursor-default w-full h-full bg-transparent border-none"
             onClick={handleCloseContextMenu}
-            aria-label="Fermer le menu"
+            aria-label={t('closeMenu')}
             onKeyDown={(e) => {
               if (e.key === 'Escape') {
                 handleCloseContextMenu()
@@ -1817,7 +1819,7 @@ export function CallsPage() {
               className="w-full px-4 py-3 text-left hover:bg-bg-surface flex items-center gap-3 text-text-primary transition-colors"
             >
               <Check size={20} />
-              <span>Sélectionner</span>
+              <span>{t('select')}</span>
             </button>
             
             {/* Séparateur */}
@@ -1829,7 +1831,7 @@ export function CallsPage() {
               className="w-full px-4 py-3 text-left hover:bg-bg-surface flex items-center gap-3 text-text-primary transition-colors"
             >
               <Trash2 size={20} />
-              <span>Effacer</span>
+              <span>{t('clearLabel')}</span>
             </button>
             
             {/* Séparateur */}
@@ -1841,7 +1843,7 @@ export function CallsPage() {
               className="w-full px-4 py-3 text-left hover:bg-bg-surface flex items-center gap-3 text-text-primary transition-colors"
             >
               <Phone size={20} />
-              <span>Appel vocal</span>
+              <span>{t('voiceCall')}</span>
             </button>
             
             {/* Option Appel vidéo */}
@@ -1850,7 +1852,7 @@ export function CallsPage() {
               className="w-full px-4 py-3 text-left hover:bg-bg-surface flex items-center gap-3 text-text-primary transition-colors"
             >
               <Video size={20} />
-              <span>Appel vidéo</span>
+              <span>{t('videoCall')}</span>
             </button>
           </div>
         </>

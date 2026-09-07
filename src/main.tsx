@@ -4,6 +4,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { ErrorBoundary } from './components/ErrorBoundary.tsx'
+import { I18nProvider } from './i18n'
 import './critical.css'
 import './index.css'
 import App from './App.tsx'
@@ -88,8 +89,10 @@ if (!rootElement) {
 }
 createRoot(rootElement).render(
   <StrictMode>
-    <ErrorBoundary>
-      <App />
-    </ErrorBoundary>
+    <I18nProvider>
+      <ErrorBoundary>
+        <App />
+      </ErrorBoundary>
+    </I18nProvider>
   </StrictMode>,
 )

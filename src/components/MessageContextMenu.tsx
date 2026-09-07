@@ -17,6 +17,7 @@ import {
   Plus
 } from 'lucide-react';
 import { downloadMedia } from '@/lib/downloadMedia';
+import { useI18n } from '@/i18n';
 
 interface MessageContextMenuProps {
   isOpen: boolean;
@@ -84,6 +85,7 @@ export const MessageContextMenu: React.FC<MessageContextMenuProps> = ({
   onDelete,
   onReaction,
 }) => {
+  const { t } = useI18n();
   const menuRef = useRef<HTMLDivElement>(null);
   const [showExtendedEmojis, setShowExtendedEmojis] = useState(false);
   const [adjustedPosition, setAdjustedPosition] = useState(position);
@@ -177,67 +179,67 @@ export const MessageContextMenu: React.FC<MessageContextMenuProps> = ({
   const menuItems = [
     {
       icon: Reply,
-      label: 'Répondre',
+      label: t('reply'),
       onClick: () => { onReply(); onClose(); },
       show: true,
     },
     {
       icon: User,
-      label: 'Répondre en privé',
+      label: t('replyPrivately'),
       onClick: () => { onReplyPrivately?.(); onClose(); },
       show: isGroupChat && !isOwn,
     },
     {
       icon: MessageSquare,
-      label: `Envoyer un message à ${senderName || 'l\'utilisateur'}`,
+      label: t('sendMessageTo', { name: senderName || t('theUser') }),
       onClick: () => { onSendMessage?.(); onClose(); },
       show: isGroupChat && !isOwn,
     },
     {
       icon: Copy,
-      label: 'Copier',
+      label: t('copy'),
       onClick: handleCopy,
       show: messageType === 'text' && messageContent.length > 0,
     },
     {
       icon: Forward,
-      label: 'Transférer',
+      label: t('forward'),
       onClick: () => { onForward(); onClose(); },
       show: true,
     },
     {
       icon: Pin,
-      label: 'Épingler',
+      label: t('pin'),
       onClick: () => { onPin(); onClose(); },
       show: true,
     },
     {
       icon: Star,
-      label: 'Marquer comme important',
+      label: t('markAsImportant'),
       onClick: () => { onStar(); onClose(); },
       show: true,
     },
     {
       icon: CheckSquare,
-      label: 'Sélectionner',
+      label: t('select'),
       onClick: () => { onSelect(); onClose(); },
       show: true,
     },
     {
       icon: Download,
-      label: 'Enregistrer sous',
+      label: t('saveAs'),
       onClick: handleSaveAs,
       show: ['image', 'video', 'file', 'audio'].includes(messageType) && !!mediaUrl,
     },
     {
       icon: Flag,
-      label: 'Signaler',
+      label: t('report'),
       onClick: () => { onReport(); onClose(); },
       show: !isOwn,
     },
     {
       icon: Trash2,
-      label: 'Supprimer',
+      label: t('delete'),
       onClick: () => { onDelete(); onClose(); },
       show: true,
       danger: true,
@@ -253,7 +255,7 @@ export const MessageContextMenu: React.FC<MessageContextMenuProps> = ({
         type="button"
         className="fixed inset-0 z-50 w-full h-full cursor-default"
         onClick={onClose}
-        aria-label="Fermer le menu"
+        aria-label={t('closeMenu')}
       />
       
       {/* Context Menu */}

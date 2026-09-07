@@ -9,6 +9,7 @@ import { useAuth } from '@/context/AuthContext'
 import { Archive, ArchiveRestore } from 'lucide-react'
 import { MediaImg } from '@/components/MediaImg'
 import { signFieldsBatch } from '@/lib/mediaUrl'
+import { useI18n, tStatic } from '@/i18n'
 
 // Cache helpers for instant display like WhatsApp
 const CACHE_PREFIX = 'anu_cache_'
@@ -55,6 +56,7 @@ export function ArchivedPage() {
     return !cached || cached.length === 0
   })
   const { user } = useAuth()
+  const { t } = useI18n()
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -151,7 +153,7 @@ export function ArchivedPage() {
     <MainLayout>
       <div className="flex-1 flex flex-col bg-bg-primary pb-14 md:pb-0">
         <div className="bg-bg-surface px-4 py-3">
-          <h1 className="text-xl font-semibold text-text-primary">Discussions archivées</h1>
+          <h1 className="text-xl font-semibold text-text-primary">{t('archivedChatsTitle')}</h1>
         </div>
 
         <div className="flex-1 overflow-y-auto">
@@ -167,8 +169,8 @@ export function ArchivedPage() {
               return (
                 <div className="flex flex-col items-center justify-center h-full text-center px-8">
                   <Archive size={64} className="text-[#3b4a54] mb-4" />
-                  <h3 className="text-lg font-medium text-text-secondary mb-2">Aucune discussion archivée</h3>
-                  <p className="text-sm text-text-secondary">Les discussions archivées apparaîtront ici</p>
+                  <h3 className="text-lg font-medium text-text-secondary mb-2">{t('noArchivedChats')}</h3>
+                  <p className="text-sm text-text-secondary">{t('noArchivedChatsDesc')}</p>
                 </div>
               )
             }
@@ -176,8 +178,8 @@ export function ArchivedPage() {
               <>
                 {conversations.map((conversation) => {
                   const displayName = conversation.type === 'group'
-                    ? conversation.name || 'Groupe'
-                    : conversation.otherUserProfile?.display_name || conversation.otherUserProfile?.username || 'Utilisateur'
+                    ? conversation.name || tStatic('groupFallback')
+                    : conversation.otherUserProfile?.display_name || conversation.otherUserProfile?.username || tStatic('userFallback')
 
                   return (
                     <div
@@ -206,13 +208,13 @@ export function ArchivedPage() {
                           onClick={() => navigate(`/chat/${conversation.id}`)}
                         >
                           <h3 className="text-text-primary font-normal truncate">{displayName}</h3>
-                          <p className="text-sm text-text-secondary">Archivée</p>
+                          <p className="text-sm text-text-secondary">{t('archivedLabel')}</p>
                         </button>
 
                         <button
                           onClick={(e) => handleUnarchive(conversation.id, e)}
                           className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors flex-shrink-0"
-                          title="Désarchiver"
+                          title={t('unarchive')}
                         >
                           <ArchiveRestore size={20} className="text-accent" />
                         </button>

@@ -2,6 +2,7 @@
 // Distributed under the license specified in the root directory of this project.
 
 import React, { useState } from 'react';
+import { useI18n } from '@/i18n';
 import { Archive, ArchiveX, Pin, Trash2, Bell, BellOff, MoreVertical } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
@@ -20,6 +21,7 @@ export const ConversationActions: React.FC<ConversationActionsProps> = ({
   isMuted = false,
   onUpdate,
 }) => {
+  const { t } = useI18n();
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -33,7 +35,7 @@ export const ConversationActions: React.FC<ConversationActionsProps> = ({
         .eq('id', conversationId);
 
       if (!error) {
-        alert(isArchived ? 'Conversation désarchivée' : 'Conversation archivée');
+        alert(isArchived ? t('conversationUnarchived') : t('conversationArchived'));
         onUpdate?.();
       }
     } catch (error) {
@@ -54,7 +56,7 @@ export const ConversationActions: React.FC<ConversationActionsProps> = ({
         .eq('id', conversationId);
 
       if (!error) {
-        alert(isPinned ? 'Conversation désépinglée' : 'Conversation épinglée');
+        alert(isPinned ? t('conversationUnpinned') : t('conversationPinned'));
         onUpdate?.();
       }
     } catch (error) {
@@ -79,7 +81,7 @@ export const ConversationActions: React.FC<ConversationActionsProps> = ({
         .eq('user_id', user.id);
 
       if (!error) {
-        alert(isMuted ? 'Notifications activées' : 'Notifications désactivées');
+        alert(isMuted ? t('notificationsEnabled') : t('notificationsDisabled'));
         onUpdate?.();
       }
     } catch (error) {
@@ -91,7 +93,7 @@ export const ConversationActions: React.FC<ConversationActionsProps> = ({
   };
 
   const handleDelete = async () => {
-    if (!confirm('Supprimer cette conversation? Cette action est irréversible.')) {
+    if (!confirm(t('deleteConversationIrreversible'))) {
       return;
     }
 
@@ -103,12 +105,12 @@ export const ConversationActions: React.FC<ConversationActionsProps> = ({
         .eq('id', conversationId);
 
       if (!error) {
-        alert('Conversation supprimée');
+        alert(t('conversationDeleted'));
         onUpdate?.();
       }
     } catch (error) {
       console.error('Error deleting conversation:', error);
-      alert('Erreur lors de la suppression');
+      alert(t('deleteError'));
     } finally {
       setLoading(false);
       setIsOpen(false);
@@ -120,7 +122,7 @@ export const ConversationActions: React.FC<ConversationActionsProps> = ({
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="p-2 rounded-full hover:bg-white/10 transition-colors"
-        aria-label="Actions de la conversation"
+        aria-label={t('conversationActions')}
       >
         <MoreVertical size={20} className="text-text-tertiary" />
       </button>
@@ -132,7 +134,7 @@ export const ConversationActions: React.FC<ConversationActionsProps> = ({
             type="button"
             className="fixed inset-0 z-40 border-none cursor-default"
             onClick={() => setIsOpen(false)}
-            aria-label="Fermer le menu"
+            aria-label={t('closeMenu')}
           />
 
           {/* Menu */}

@@ -2,6 +2,7 @@
 // Distributed under the license specified in the root directory of this project.
 
 import React from 'react';
+import { tStatic } from '@/i18n';
 
 const searilizeError = (error: any) => {
   if (error instanceof Error) {
@@ -48,7 +49,7 @@ export class ErrorBoundary extends React.Component<
           <div className="h-screen flex items-center justify-center bg-gray-900 text-white">
             <div className="flex flex-col items-center">
               <div className="w-8 h-8 border-2 border-primary-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-              <p>Mise à jour de l'application...</p>
+              <p>{tStatic('updatingApp')}</p>
             </div>
           </div>
         );
@@ -56,13 +57,13 @@ export class ErrorBoundary extends React.Component<
 
       return (
         <div className="p-4 border border-red-500 rounded bg-gray-900 text-white h-screen flex flex-col items-center justify-center">
-          <h2 className="text-red-500 text-xl font-bold mb-4">Une erreur est survenue</h2>
-          <p className="mb-4 text-gray-300">Veuillez rafraîchir la page.</p>
+          <h2 className="text-red-500 text-xl font-bold mb-4">{tStatic('errorOccurredTitle')}</h2>
+          <p className="mb-4 text-gray-300">{tStatic('refreshPagePrompt')}</p>
           <button
             onClick={() => globalThis.location.reload()}
             className="px-4 py-2 bg-primary-500 rounded hover:bg-primary-600 transition-colors"
           >
-            Rafraîchir
+            {tStatic('refresh')}
           </button>
           <pre className="mt-8 text-xs text-gray-500 max-w-lg overflow-auto p-4 bg-black/50 rounded">
             {searilizeError(this.state.error)}

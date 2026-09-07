@@ -2,6 +2,7 @@ import React from 'react'
 import { ArrowLeft, CheckCheck, Trash2, UserPlus, Search, Phone, Video, PhoneIncoming, PhoneOutgoing, PhoneMissed, Users, Check, Star, MessageCircle } from 'lucide-react'
 import { formatCallDuration, formatCallDate } from './CallsPage'
 import { MediaImg } from '@/components/MediaImg'
+import { useI18n, tStatic } from '@/i18n'
 
 // CallLog type from CallsPage
 export interface CallLog {
@@ -30,11 +31,11 @@ const getCallDisplayInfo = (call: any, user: any) => {
   let avatarUrl: string | null | undefined
 
   if (isGroupCall) {
-    displayName = call.conversation_name || 'Groupe'
+    displayName = call.conversation_name || tStatic('groupFallback')
     avatarUrl = call.conversation_avatar
   } else {
     const otherProfile = isOutgoing ? call.callee_profile : call.caller_profile
-    displayName = otherProfile?.display_name || otherProfile?.username || 'Utilisateur'
+    displayName = otherProfile?.display_name || otherProfile?.username || tStatic('userFallback')
     avatarUrl = otherProfile?.avatar_url
   }
   
@@ -88,9 +89,9 @@ const renderStatusIcon = (isMissed: boolean, isOutgoing: boolean) => {
 
 // Helper to get status text
 const getStatusText = (call: any, isMissed: boolean, isAnswered: boolean): string => {
-  if (isMissed) return 'Manqué'
+  if (isMissed) return tStatic('statusMissed')
   if (isAnswered && call.duration) return formatCallDuration(call.duration)
-  return 'Non répondu'
+  return tStatic('notAnswered')
 }
 
 // Helper component for rendering a single call item
@@ -129,6 +130,7 @@ export const CallItem = ({
   onTouchMove: () => void;
   isMobile: boolean;
 }) => {
+  const { t } = useI18n()
   const { displayName, avatarUrl, isGroupCall, isOutgoing } = getCallDisplayInfo(call, user)
   const { isMissed, isAnswered } = getCallStatus(call)
   
@@ -198,7 +200,7 @@ export const CallItem = ({
             
             {call.type === 'video' && <Video size={14} />}
             
-            {isGroupCall && <span className="text-xs">Groupe</span>}
+            {isGroupCall && <span className="text-xs">{t('groupTag')}</span>}
             
             <span>
               {getStatusText(call, isMissed, isAnswered)}
@@ -226,7 +228,9 @@ export const CallsSelectionHeader = ({
   exitSelectionMode: () => void;
   selectAllCalls: () => void;
   handleBulkDelete: () => void;
-}) => (
+}) => {
+  const { t } = useI18n()
+  return (
   <div className="fixed top-0 left-0 right-0 z-50 bg-bg-surface border-b border-bg-hover shadow-lg animate-in slide-in-from-top duration-200">
     <div className="flex items-center justify-between h-14 px-2">
       {/* Left side: Back arrow + count */}
@@ -253,7 +257,7 @@ export const CallsSelectionHeader = ({
           className={`w-10 h-10 flex items-center justify-center rounded-full hover:bg-bg-hover transition-colors ${
             allCallsSelected ? 'text-accent' : 'text-text-primary'
           }`}
-          title={allCallsSelected ? 'Tout sélectionné' : 'Tout sélectionner'}
+          title={allCallsSelected ? t('allSelected') : t('selectAll')}
         >
           <CheckCheck size={20} />
         </button>
@@ -262,14 +266,15 @@ export const CallsSelectionHeader = ({
         <button
           onClick={handleBulkDelete}
           className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-bg-hover transition-colors"
-          title="Supprimer"
+          title={t('delete')}
         >
           <Trash2 size={20} className="text-red-500" />
         </button>
       </div>
     </div>
   </div>
-)
+  )
+}
 
 export const CallsHeader = ({
   searchQuery,
@@ -279,14 +284,16 @@ export const CallsHeader = ({
   searchQuery: string;
   setSearchQuery: (query: string) => void;
   handleAddContact: () => void;
-}) => (
+}) => {
+  const { t } = useI18n()
+  return (
   <div className="bg-bg-surface px-4 py-3">
     <div className="flex items-center justify-between mb-4">
-      <h1 className="text-xl font-semibold text-text-primary">Appels</h1>
+      <h1 className="text-xl font-semibold text-text-primary">{t('navCalls')}</h1>
       <button
         onClick={handleAddContact}
         className="w-10 h-10 rounded-full bg-accent hover:bg-[#5a5ec9] flex items-center justify-center transition-colors"
-        title="Ajouter un contact"
+        title={t('addContact')}
       >
         <UserPlus size={20} className="text-white" />
       </button>
@@ -296,14 +303,15 @@ export const CallsHeader = ({
       <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" />
       <input
         type="text"
-        placeholder="Rechercher ou démarrer un appel"
+        placeholder={t('searchOrStartCall')}
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}
         className="w-full h-9 pl-10 pr-3 bg-bg-surface text-text-primary text-sm rounded-xl border-none outline-none placeholder:text-text-secondary focus:bg-bg-hover"
       />
     </div>
   </div>
-)
+  )
+}
 
 export const CallsList = ({
   loading,
@@ -331,7 +339,9 @@ export const CallsList = ({
   handleTouchMove: () => void;
   isMobile: boolean;
   user: any;
-}) => (
+}) => {
+  const { t } = useI18n()
+  return (
   <div className="flex-1 overflow-y-auto pb-2">
     {(() => {
       if (loading) {
@@ -345,8 +355,8 @@ export const CallsList = ({
         return (
           <div className="flex flex-col items-center justify-center h-full text-center px-8">
             <Phone size={64} className="text-[#3b4a54] mb-4" />
-            <h3 className="text-lg font-medium text-text-secondary mb-2">Aucun appel</h3>
-            <p className="text-sm text-text-secondary">Votre historique d'appels apparaîtra ici</p>
+            <h3 className="text-lg font-medium text-text-secondary mb-2">{t('noCalls')}</h3>
+            <p className="text-sm text-text-secondary">{t('noCallsDesc')}</p>
           </div>
         )
       }
@@ -374,7 +384,8 @@ export const CallsList = ({
       )
     })()}
   </div>
-)
+  )
+}
 
 export const CallContextMenu = ({
   contextMenuCall,
@@ -391,6 +402,7 @@ export const CallContextMenu = ({
   handleDeleteCall: (callId: string) => void;
   handleCallFromContextMenu: (isVideo: boolean) => void;
 }) => {
+  const { t } = useI18n()
   if (!contextMenuCall || !contextMenuPosition) return null;
 
   return (
@@ -419,7 +431,7 @@ export const CallContextMenu = ({
           className="w-full px-4 py-3 text-left hover:bg-bg-surface flex items-center gap-3 text-text-primary transition-colors"
         >
           <Check size={20} />
-          <span>Sélectionner</span>
+          <span>{t('select')}</span>
         </button>
         
         {/* Séparateur */}
@@ -431,7 +443,7 @@ export const CallContextMenu = ({
           className="w-full px-4 py-3 text-left hover:bg-bg-surface flex items-center gap-3 text-text-primary transition-colors"
         >
           <Trash2 size={20} />
-          <span>Effacer</span>
+          <span>{t('clearLabel')}</span>
         </button>
         
         {/* Séparateur */}
@@ -443,7 +455,7 @@ export const CallContextMenu = ({
           className="w-full px-4 py-3 text-left hover:bg-bg-surface flex items-center gap-3 text-text-primary transition-colors"
         >
           <Phone size={20} />
-          <span>Appel vocal</span>
+          <span>{t('voiceCall')}</span>
         </button>
         
         {/* Option Appel vidéo */}
@@ -452,7 +464,7 @@ export const CallContextMenu = ({
           className="w-full px-4 py-3 text-left hover:bg-bg-surface flex items-center gap-3 text-text-primary transition-colors"
         >
           <Video size={20} />
-          <span>Appel vidéo</span>
+          <span>{t('videoCall')}</span>
         </button>
       </div>
     </>
@@ -495,6 +507,7 @@ export const CallDetailsContent: React.FC<CallDetailsContentProps> = ({
   isCallFavorite,
   handleCallFavoriteToggle
 }) => {
+  const { t } = useI18n()
   const isGroupCall = call.is_group_call
   
   const displayName = getCallDisplayName(call, userId)
@@ -528,7 +541,7 @@ export const CallDetailsContent: React.FC<CallDetailsContentProps> = ({
       {/* Details Section */}
       <div className="bg-bg-hover rounded-2xl p-4 space-y-3">
         <div className="flex items-center justify-between">
-          <span className="text-text-secondary">Type</span>
+          <span className="text-text-secondary">{t('typeLabel')}</span>
           <div className="flex items-center gap-2">
             {isGroupCall && <Users size={16} className="text-accent" />}
             {call.type === 'video' ? <Video size={16} className="text-accent" /> : <Phone size={16} className="text-accent" />}
@@ -539,19 +552,19 @@ export const CallDetailsContent: React.FC<CallDetailsContentProps> = ({
         </div>
 
         <div className="flex items-center justify-between">
-          <span className="text-text-secondary">Date</span>
+          <span className="text-text-secondary">{t('dateLabel')}</span>
           <span className="text-gray-800 dark:text-white text-sm">{new Date(call.started_at).toLocaleString('fr-FR')}</span>
         </div>
 
         {call.duration !== null && (
           <div className="flex items-center justify-between">
-            <span className="text-text-secondary">Durée</span>
+            <span className="text-text-secondary">{t('durationLabel')}</span>
             <span className="text-gray-800 dark:text-white">{formatCallDuration(call.duration)}</span>
           </div>
         )}
 
         <div className="flex items-center justify-between">
-          <span className="text-text-secondary">Statut</span>
+          <span className="text-text-secondary">{t('statusLabel')}</span>
           <span className={statusClass}>
             {renderCallStatus(call)}
           </span>
@@ -566,7 +579,7 @@ export const CallDetailsContent: React.FC<CallDetailsContentProps> = ({
           className="w-full py-3 rounded-xl bg-bg-hover hover:bg-bg-surface text-text-primary font-medium flex items-center justify-center gap-2"
         >
           <Star size={20} className={isFavorite ? 'fill-[#6b6fdb] text-accent' : ''} />
-          {isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
+          {isFavorite ? t('removeFromFavorites') : t('addToFavorites')}
         </button>
         <button
           onClick={() => {
@@ -576,7 +589,7 @@ export const CallDetailsContent: React.FC<CallDetailsContentProps> = ({
           className="w-full py-3 rounded-xl bg-accent hover:bg-[#5a5ec9] text-white font-medium flex items-center justify-center gap-2"
         >
           <MessageCircle size={20} />
-          Ouvrir la conversation
+          {t('openConversation')}
         </button>
         {/* Rappeler */}
         <button
@@ -584,7 +597,7 @@ export const CallDetailsContent: React.FC<CallDetailsContentProps> = ({
           className="w-full py-3 rounded-xl bg-bg-hover hover:bg-bg-surface text-text-primary font-medium flex items-center justify-center gap-2"
         >
           <Phone size={20} />
-          Rappeler
+          {t('callBack')}
         </button>
       </div>
     </>

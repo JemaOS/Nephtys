@@ -1,4 +1,5 @@
 import React from 'react';
+import { useI18n } from '@/i18n';
 import { Check } from 'lucide-react';
 
 interface EphemeralDurationMenuProps {
@@ -16,6 +17,7 @@ export const EphemeralDurationMenu: React.FC<EphemeralDurationMenuProps> = ({
 }) => {
   // Move useRef before early return to comply with React Hooks rules
   const modalRef = React.useRef<HTMLDialogElement>(null);
+  const { t } = useI18n();
   
   if (!isOpen) return null;
 
@@ -43,7 +45,7 @@ export const EphemeralDurationMenu: React.FC<EphemeralDurationMenuProps> = ({
       <button
         className="absolute inset-0 w-full h-full bg-transparent border-none cursor-default"
         onClick={onClose}
-        aria-label="Fermer le menu"
+        aria-label={t('closeMenu')}
       />
       
       <dialog
@@ -60,7 +62,7 @@ export const EphemeralDurationMenu: React.FC<EphemeralDurationMenuProps> = ({
         </div>
         
         <div className="py-2">
-          {renderEphemeralMenuItem(null, 'Désactivé')}
+          {renderEphemeralMenuItem(null, t('ephemeralOff'))}
           {renderEphemeralMenuItem(3600, '1 heure')}
           {renderEphemeralMenuItem(86400, '24 heures')}
           {renderEphemeralMenuItem(604800, '7 jours')}

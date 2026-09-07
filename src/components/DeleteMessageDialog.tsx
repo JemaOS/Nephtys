@@ -2,6 +2,7 @@
 // Distributed under the license specified in the root directory of this project.
 
 import React, { useEffect, useRef } from 'react';
+import { useI18n } from '@/i18n';
 
 interface DeleteMessageDialogProps {
   isOpen: boolean;
@@ -23,6 +24,7 @@ export const DeleteMessageDialog: React.FC<DeleteMessageDialogProps> = ({
   messageCount = 1,
 }) => {
   const dialogRef = useRef<HTMLDivElement>(null);
+  const { t } = useI18n();
 
   // Close dialog when clicking outside
   useEffect(() => {
@@ -77,15 +79,15 @@ export const DeleteMessageDialog: React.FC<DeleteMessageDialogProps> = ({
           <div className="px-6 pt-6 pb-4">
             <h2 className="text-lg font-medium text-white text-center">
               {messageCount > 1
-                ? `Supprimer ${messageCount} messages ?`
-                : 'Supprimer le message ?'
+                ? t('deleteMessagesTitle', { count: messageCount })
+                : t('deleteMessageTitle')
               }
             </h2>
             {hasMedia && (
               <p className="text-sm text-[#8696a0] text-center mt-2">
                 {messageCount > 1
-                  ? 'Les fichiers associés seront également supprimés.'
-                  : 'Le fichier associé sera également supprimé.'
+                  ? t('deleteMessagesMediaNote')
+                  : t('deleteMessageMediaNote')
                 }
               </p>
             )}
@@ -100,7 +102,7 @@ export const DeleteMessageDialog: React.FC<DeleteMessageDialogProps> = ({
                 className="w-full py-3.5 px-4 rounded-xl bg-[#182229] hover:bg-[#1f2c33] transition-colors text-[#6b6fdb] font-medium text-sm border border-[#2a3942]"
                 type="button"
               >
-                Supprimer pour tout le monde
+                {t('deleteForEveryone')}
               </button>
             )}
 
@@ -110,7 +112,7 @@ export const DeleteMessageDialog: React.FC<DeleteMessageDialogProps> = ({
               className="w-full py-3.5 px-4 rounded-xl bg-[#182229] hover:bg-[#1f2c33] transition-colors text-[#6b6fdb] font-medium text-sm border border-[#2a3942]"
               type="button"
             >
-              Supprimer pour moi
+              {t('deleteForMe')}
             </button>
 
             {/* Cancel */}
@@ -119,7 +121,7 @@ export const DeleteMessageDialog: React.FC<DeleteMessageDialogProps> = ({
               className="w-full py-3.5 px-4 rounded-xl bg-transparent hover:bg-[#182229] transition-colors text-[#8696a0] font-medium text-sm"
               type="button"
             >
-              Annuler
+              {t('cancel')}
             </button>
           </div>
         </div>

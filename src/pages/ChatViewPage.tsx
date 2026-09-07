@@ -4,6 +4,7 @@
 import { useEffect, useLayoutEffect, useState, useRef, useCallback, useMemo, lazy, Suspense } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
+import { useI18n, tStatic } from '@/i18n'
 import { useTheme } from '@/context/ThemeContext'
 import { MainLayout } from '@/components/MainLayout'
 import { supabase, Message, Conversation, Profile, sendBroadcastMessage } from '@/lib/supabase'
@@ -152,37 +153,37 @@ const setCache = <T,>(key: string, data: T) => {
 const getCallErrorMessage = (error: any): string => {
   const name = error?.name || '';
   if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
-    return '❌ Permissions refusées\n\nVeuillez autoriser l\'accès à votre caméra et microphone dans les paramètres de votre navigateur.'
+    return tStatic('callPermError')
   }
   if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
-    return '❌ Aucun appareil trouvé\n\nAucune caméra ou microphone n\'a été détecté.'
+    return tStatic('noDeviceError')
   }
   if (name === 'NotReadableError' || name === 'TrackStartError') {
-    return '❌ Appareil occupé\n\nVotre caméra ou microphone est utilisé par une autre application.'
+    return tStatic('deviceBusyError')
   }
   if (name === 'OverconstrainedError' || name === 'ConstraintNotSatisfiedError') {
-    return '❌ Caméra incompatible\n\nLa résolution demandée n\'est pas supportée. L\'appel démarrera en audio seulement.'
+    return tStatic('camIncompatibleError')
   }
   // Erreur WebRTC interne ou réseau — ne pas mentionner "permissions"
   const msg = error?.message || '';
   console.error('[Call] Unexpected error:', name, msg);
-  return `❌ Impossible de démarrer l\'appel\n\nUne erreur technique s\'est produite. Réessayez dans quelques instants.\n(${name || msg || 'Erreur inconnue'})`
+  return tStatic('callGenericError', { detail: name || msg || tStatic('unknownError') })
 }
 
 const getAudioCallErrorMessage = (error: any): string => {
   const name = error?.name || '';
   if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
-    return '❌ Permission refusée\n\nVeuillez autoriser l\'accès à votre microphone dans les paramètres de votre navigateur.'
+    return tStatic('micPermError')
   }
   if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
-    return '❌ Aucun microphone trouvé\n\nAucun microphone n\'a été détecté.'
+    return tStatic('noMicError')
   }
   if (name === 'NotReadableError' || name === 'TrackStartError') {
-    return '❌ Microphone occupé\n\nVotre microphone est utilisé par une autre application.'
+    return tStatic('micBusyError')
   }
   const msg = error?.message || '';
   console.error('[Call] Unexpected audio error:', name, msg);
-  return `❌ Impossible de démarrer l\'appel audio\n\nUne erreur technique s\'est produite. Réessayez.\n(${name || msg || 'Erreur inconnue'})`
+  return tStatic('audioCallGenericError', { detail: name || msg || tStatic('unknownError') })
 }
 
 // Helper to request media permissions and get stream
@@ -246,6 +247,7 @@ const startAudioCall = async (
 }
 
 export function ChatViewPage() {
+  const { t } = useI18n()
   const { conversationId } = useParams()
   const navigate = useNavigate()
   const location = useLocation()
@@ -444,7 +446,7 @@ export function ChatViewPage() {
     // If it's the current user
     if (senderId === user?.id) {
       return {
-        name: profile?.display_name || profile?.username || 'Vous',
+        name: profile?.display_name || profile?.username || t('you'),
         avatar: profile?.avatar_url
       }
     }
@@ -454,7 +456,7 @@ export function ChatViewPage() {
       const memberProfile = groupMemberProfiles.get(senderId)
       if (memberProfile) {
         return {
-          name: memberProfile.display_name || memberProfile.username || 'Utilisateur',
+          name: memberProfile.display_name || memberProfile.username || t('userFallback'),
           avatar: memberProfile.avatar_url
         }
       }
@@ -463,13 +465,13 @@ export function ChatViewPage() {
     // For direct conversations, use otherUser
     if (otherUser) {
       return {
-        name: otherUser.display_name || otherUser.username || 'Utilisateur',
+        name: otherUser.display_name || otherUser.username || t('userFallback'),
         avatar: otherUser.avatar_url
       }
     }
     
     // Fallback
-    return { name: 'Utilisateur', avatar: undefined }
+    return { name: t('userFallback'), avatar: undefined }
   }, [user?.id, profile, conversation?.type, groupMemberProfiles, otherUser])
 
   // Collect all media from messages for navigation in MediaViewer.
@@ -1896,12 +1898,12 @@ export function ChatViewPage() {
         // Remove optimistic message on error
         setMessages(prev => prev.filter(m => m.id !== tempId))
         console.error('Error sending message:', error)
-        alert('Erreur lors de l\'envoi du message')
+        alert(t('messageSendError'))
       }
     } catch (uploadError) {
       console.error('Error sending message:', uploadError)
       setMessages(prev => prev.filter(m => m.id !== tempId))
-      alert('Erreur lors de l\'envoi du message')
+      alert(t('messageSendError'))
     } finally { setSending(false) }
   }
 
@@ -2119,10 +2121,10 @@ export function ChatViewPage() {
       } else if (error) {
         // Remove optimistic message on error
         setMessages(prev => prev.filter(m => m.id !== tempId))
-        alert('Erreur lors de l\'envoi du message vocal')
+        alert(t('voiceSendError'))
       }
     } catch {
-      alert('Erreur lors de l\'envoi du message vocal')
+      alert(t('voiceSendError'))
     } finally { setSending(false) }
   }
 
@@ -2319,7 +2321,7 @@ export function ChatViewPage() {
     const messageData: any = {
       conversation_id: targetConversationId,
       sender_id: senderId,
-      content: messageToForward.content ? `[Transféré] ${messageToForward.content}` : '[Message transféré]',
+      content: messageToForward.content ? `${t('forwardedPrefix')} ${messageToForward.content}` : t('forwardedMessage'),
       type: messageToForward.type,
       status: 'sent',
     }
@@ -2439,11 +2441,11 @@ export function ChatViewPage() {
       if (successCount > 0 && errorCount === 0) {
         console.log(`Message transféré à ${successCount} conversation(s)`)
       } else if (errorCount > 0) {
-        alert(`Erreur: ${errorCount} transfert(s) échoué(s) sur ${conversationIds.length}`)
+        alert(t('forwardPartialError', { failed: errorCount, total: conversationIds.length }))
       }
     } catch (error) {
       console.error('Error forwarding message:', error)
-      alert('Erreur lors du transfert du message')
+      alert(t('forwardError'))
     }
 
     setMessageToForward(null)
@@ -2484,8 +2486,8 @@ export function ChatViewPage() {
 
       // Set the pinned message for the banner
       const senderName = messageToPin.sender_id === user?.id
-        ? 'Vous'
-        : otherUser?.display_name || otherUser?.username || 'Utilisateur'
+        ? t('you')
+        : otherUser?.display_name || otherUser?.username || t('userFallback')
 
       setPinnedMessage({
         id: messageToPin.id,
@@ -2573,8 +2575,8 @@ export function ChatViewPage() {
 
       if (!error && data) {
         const senderName = data.sender_id === user?.id
-          ? 'Vous'
-          : otherUser?.display_name || otherUser?.username || 'Utilisateur'
+          ? t('you')
+          : otherUser?.display_name || otherUser?.username || t('userFallback')
 
         setPinnedMessage({
           id: data.id,
@@ -2615,11 +2617,11 @@ export function ChatViewPage() {
 
   const handleReportMessage = (messageId: string) => {
     // Report functionality - show confirmation and send to server
-    const confirmed = window.confirm('Voulez-vous signaler ce message aux administrateurs ?')
+    const confirmed = window.confirm(t('reportConfirm'))
     if (confirmed) {
       // In a real implementation, this would send a report to the server
       console.log('Message reported:', messageId)
-      alert('Message signalé aux administrateurs')
+      alert(t('reportedToAdmins'))
     }
   }
 
@@ -2633,9 +2635,9 @@ export function ChatViewPage() {
     
     if (textContent) {
       await navigator.clipboard.writeText(textContent)
-      alert('Messages copiés!')
+      alert(t('messagesCopied'))
     } else {
-      alert('Aucun texte à copier')
+      alert(t('noTextToCopy'))
     }
     exitSelectionMode()
   }, [messages, selectedMessages, exitSelectionMode])
@@ -2751,7 +2753,7 @@ export function ChatViewPage() {
     const mediaMessages = selectedMsgs.filter(m => m.media_url || m.file_url)
 
     if (mediaMessages.length === 0) {
-      alert('Aucun média à télécharger')
+      alert(t('noMediaToDownload'))
       return
     }
 
@@ -2778,7 +2780,7 @@ export function ChatViewPage() {
     if (failCount > 0 && successCount === 0) {
       // L'alerte d'erreur a déjà été affichée par downloadMedia
     } else if (failCount > 0) {
-      alert(`✅ ${successCount} téléchargé(s), ❌ ${failCount} échec(s)`)
+      alert(t('downloadResults', { success: successCount, failed: failCount }))
     }
 
     exitSelectionMode()
@@ -2790,12 +2792,12 @@ export function ChatViewPage() {
   // Extract display name logic to avoid nested ternary
   const getDisplayName = (): string => {
     if (conversation?.type === 'group') {
-      return conversation.name || 'Groupe'
+      return conversation.name || t('groupFallback')
     }
     if (isSavedMessages) {
-      return 'Moi'
+      return t('me')
     }
-    return otherUser?.display_name || otherUser?.username || 'Utilisateur'
+    return otherUser?.display_name || otherUser?.username || t('userFallback')
   }
   
   const displayName = getDisplayName()
@@ -2991,7 +2993,7 @@ export function ChatViewPage() {
                   <Plus size={24} className="hidden md:block" />
                 </button>
                 <div className="flex-1 relative">
-                  <input type="text" value={newMessage} onChange={(e) => setNewMessage(e.target.value)} placeholder="Taper un message" className="w-full h-10 md:h-11 px-3 md:px-4 rounded-2xl bg-bg-hover text-text-primary text-sm border-none outline-none placeholder:text-text-secondary" />
+                  <input type="text" value={newMessage} onChange={(e) => setNewMessage(e.target.value)} placeholder={t('typeMessagePlaceholder')} className="w-full h-10 md:h-11 px-3 md:px-4 rounded-2xl bg-bg-hover text-text-primary text-sm border-none outline-none placeholder:text-text-secondary" />
                 </div>
                 {newMessage.trim() ? (
                   <button type="submit" disabled={sending} className="w-10 h-10 md:w-11 md:h-11 rounded-full bg-accent hover:bg-[#5a5ec9] flex items-center justify-center transition-colors disabled:opacity-50">
@@ -3196,11 +3198,11 @@ export function ChatViewPage() {
           onReply={() => setReplyToMessage(contextMenu.message)}
           onReplyPrivately={() => {
             // TODO: Implement reply privately for group chats
-            alert('Répondre en privé')
+            alert(t('replyPrivately'))
           }}
           onSendMessage={() => {
             // TODO: Navigate to direct message with user
-            alert('Envoyer un message')
+            alert(t('sendMessageLabel'))
           }}
           onCopy={() => {
             // Copy handled in component

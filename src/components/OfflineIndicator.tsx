@@ -4,9 +4,11 @@
 import React from 'react';
 import { WifiOff, Wifi, RefreshCw } from 'lucide-react';
 import { useOfflineSync } from '@/hooks/useOfflineSync';
+import { useI18n } from '@/i18n';
 
 export const OfflineIndicator: React.FC = () => {
   const { isOnline, isSyncing, pendingCount, syncNow } = useOfflineSync();
+  const { t } = useI18n();
 
   if (isOnline && pendingCount === 0) {
     return null; // Ne rien afficher si tout va bien
@@ -17,10 +19,10 @@ export const OfflineIndicator: React.FC = () => {
       return (
         <div className="bg-yellow-500/90 backdrop-blur-sm text-white px-4 py-2 flex items-center justify-center gap-2">
           <WifiOff size={16} />
-          <span className="text-sm font-medium">Mode hors ligne</span>
+          <span className="text-sm font-medium">{t('offlineMode')}</span>
           {pendingCount > 0 && (
             <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">
-              {pendingCount} message{pendingCount > 1 ? 's' : ''} en attente
+              {t('pendingMessages', { count: pendingCount })}
             </span>
           )}
         </div>
@@ -30,7 +32,7 @@ export const OfflineIndicator: React.FC = () => {
       return (
         <div className="bg-primary-500/90 backdrop-blur-sm text-white px-4 py-2 flex items-center justify-center gap-2">
           <RefreshCw size={16} className="animate-spin" />
-          <span className="text-sm font-medium">Synchronisation en cours...</span>
+          <span className="text-sm font-medium">{t('syncing')}</span>
         </div>
       );
     }
@@ -39,13 +41,13 @@ export const OfflineIndicator: React.FC = () => {
         <div className="bg-green-500/90 backdrop-blur-sm text-white px-4 py-2 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <Wifi size={16} />
-            <span className="text-sm font-medium">Connexion rétablie</span>
+            <span className="text-sm font-medium">{t('connectionRestored')}</span>
           </div>
           <button
             onClick={syncNow}
             className="text-xs bg-white/20 hover:bg-white/30 px-3 py-1 rounded-full transition-colors"
           >
-            Synchroniser ({pendingCount})
+            {t('syncNow')} ({pendingCount})
           </button>
         </div>
       );

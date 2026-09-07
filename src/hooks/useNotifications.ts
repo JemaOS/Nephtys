@@ -2,6 +2,7 @@
 // Distributed under the license specified in the root directory of this project.
 
 import { useState, useEffect } from 'react';
+import { tStatic } from '@/i18n';
 import { supabase } from '@/lib/supabase';
 
 interface UseNotificationsReturn {
@@ -100,8 +101,8 @@ export const useNotifications = (): UseNotificationsReturn => {
             // Vérifier si la page est visible
             if (document.hidden) {
               sendNotification(
-                'Nouveau message',
-                message.content || 'Vous avez reçu un nouveau message',
+                tStatic('newMessageNotification'),
+                message.content || tStatic('newMessageBody'),
                 { conversationId, messageId: message.id }
               );
             }

@@ -8,6 +8,7 @@ import { ImageEditor } from './ImageEditor';
 import { processImageForUpload, ProcessedImage } from '@/lib/imageUtils';
 import { compressVideo } from '@/lib/videoCompression';
 import { DocumentPreviewModal, generatePDFThumbnail } from './DocumentPreview';
+import { useI18n } from '@/i18n';
 import { AudioPreviewPlayer, EmojiPicker, StickerPicker } from './MediaUploaderComponents';
 import { uploadEncryptedMedia } from '@/lib/encryptedMediaService';
 
@@ -183,6 +184,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
   onEmojiSelect,
   onGifStickerSend,
 }) => {
+  const { t } = useI18n();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [selectedFileType, setSelectedFileType] = useState<MediaFileType | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
@@ -322,18 +324,18 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       const DOC_SIZE_LIMIT = 2 * 1024 * 1024 * 1024; // 2GB
 
       if (type === 'video' && file.size > VIDEO_SIZE_LIMIT) {
-        alert(`La vidéo "${file.name}" est trop volumineuse (max 200 Mo).`);
+        alert(t('videoTooLargeNamed', { name: file.name }));
         continue;
       }
 
       if (type === 'file' && file.size > DOC_SIZE_LIMIT) {
-        alert(`Le document "${file.name}" est trop volumineux (max 2 Go).`);
+        alert(t('documentTooLargeNamed', { name: file.name }));
         continue;
       }
 
       // Vérifier la taille (max 2GB per file)
       if (file.size > 2 * 1024 * 1024 * 1024) {
-        alert(`Le fichier "${file.name}" est trop volumineux (max 2GB)`);
+        alert(t('fileTooLargeNamed', { name: file.name }));
         continue;
       }
       
@@ -381,19 +383,19 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
 
     // Check video size limit
     if (type === 'video' && file.size > VIDEO_SIZE_LIMIT) {
-      alert('La vidéo est trop volumineuse (max 200 Mo).');
+      alert(t('videoTooLarge'));
       return false;
     }
 
     // Check document size limit
     if (type === 'file' && file.size > DOC_SIZE_LIMIT) {
-      alert('Le document est trop volumineux (max 2 Go).');
+      alert(t('documentTooLarge'));
       return false;
     }
 
     // Check global size limit
     if (file.size > GLOBAL_LIMIT) {
-      alert('Le fichier est trop volumineux (max 2GB)');
+      alert(t('fileTooLargeGeneric'));
       return false;
     }
 
@@ -548,7 +550,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       onCancel();
     } catch (error: any) {
       console.error('Error uploading files:', error);
-      alert(`Erreur lors de l'upload: ${error?.message || 'Erreur inconnue'}`);
+      alert(t('uploadErrorWithReason', { message: error?.message || t('unknownError') }));
     } finally {
       setUploading(false);
     }
@@ -693,7 +695,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
     } catch (error: any) {
       console.error('Error uploading file:', error);
       const errorMessage = error?.message || 'Erreur inconnue';
-      alert(`Erreur lors de l'upload du fichier: ${errorMessage}`);
+      alert(t('fileUploadError', { message: errorMessage }));
     } finally {
       setUploading(false);
       setUploadPhase('idle');
@@ -808,7 +810,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
     } catch (error: any) {
       console.error('Error uploading document:', error);
       const errorMessage = error?.message || 'Erreur inconnue';
-      alert(`Erreur lors de l'upload du document: ${errorMessage}`);
+      alert(t('documentUploadError', { message: errorMessage }));
       setDocumentUploading(false);
       setDocumentUploadPhase('idle');
     }
@@ -909,7 +911,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
     } catch (error: any) {
       console.error('Error uploading file:', error);
       const errorMessage = error?.message || 'Erreur inconnue';
-      alert(`Erreur lors de l'upload du fichier: ${errorMessage}`);
+      alert(t('fileUploadError', { message: errorMessage }));
     } finally {
       setUploading(false);
       setUploadPhase('idle');
@@ -1082,7 +1084,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
               }`}
             >
               <Plus size={16} className="sm:w-[18px] sm:h-[18px]" />
-              <span>Fichier</span>
+              <span>{t('fileTab')}</span>
             </button>
             <button
               onClick={() => setActiveTab('emoji')}
@@ -1091,7 +1093,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
               }`}
             >
               <Sticker size={16} className="sm:w-[18px] sm:h-[18px]" />
-              <span>Emoji</span>
+              <span>{t('emojiTab')}</span>
             </button>
             <button
               onClick={() => setActiveTab('sticker')}
@@ -1100,7 +1102,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
               }`}
             >
               <FileImage size={16} className="sm:w-[18px] sm:h-[18px]" />
-              <span>Stickers</span>
+              <span>{t('stickersTab')}</span>
             </button>
             <button
               onClick={() => setActiveTab('gif')}
@@ -1109,7 +1111,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
               }`}
             >
               <Video size={16} className="sm:w-[18px] sm:h-[18px]" />
-              <span>GIFs</span>
+              <span>{t('gifsTab')}</span>
             </button>
           </div>
 
@@ -1125,7 +1127,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
                   <div className="w-12 h-12 rounded-full bg-[#7578db]/20 flex items-center justify-center flex-shrink-0">
                     <Image size={24} className="text-[#7578db]" />
                   </div>
-                  <span className="text-xs sm:text-sm text-text-secondary text-center w-full truncate px-1">Galerie</span>
+                  <span className="text-xs sm:text-sm text-text-secondary text-center w-full truncate px-1">{t('gallery')}</span>
                 </button>
                 <button
                   onClick={() => cameraInputRef.current?.click()}
@@ -1134,7 +1136,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
                   <div className="w-12 h-12 rounded-full bg-[#7578db]/20 flex items-center justify-center flex-shrink-0">
                     <Camera size={24} className="text-[#7578db]" />
                   </div>
-                  <span className="text-xs sm:text-sm text-text-secondary text-center w-full truncate px-1">Caméra</span>
+                  <span className="text-xs sm:text-sm text-text-secondary text-center w-full truncate px-1">{t('camera')}</span>
                 </button>
                 <button
                   onClick={() => videoInputRef.current?.click()}
@@ -1143,7 +1145,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
                   <div className="w-12 h-12 rounded-full bg-[#7578db]/20 flex items-center justify-center flex-shrink-0">
                     <Video size={24} className="text-[#7578db]" />
                   </div>
-                  <span className="text-xs sm:text-sm text-text-secondary text-center w-full truncate px-1">Vidéo</span>
+                  <span className="text-xs sm:text-sm text-text-secondary text-center w-full truncate px-1">{t('videoShort')}</span>
                 </button>
                 <button
                   onClick={() => fileInputRef.current?.click()}
@@ -1152,7 +1154,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
                   <div className="w-12 h-12 rounded-full bg-[#7578db]/20 flex items-center justify-center flex-shrink-0">
                     <FileIcon size={24} className="text-[#7578db]" />
                   </div>
-                  <span className="text-xs sm:text-sm text-text-secondary text-center w-full truncate px-1">Document</span>
+                  <span className="text-xs sm:text-sm text-text-secondary text-center w-full truncate px-1">{t('documentLabel')}</span>
                 </button>
                 <button
                   onClick={() => audioInputRef.current?.click()}
@@ -1161,7 +1163,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
                   <div className="w-12 h-12 rounded-full bg-[#7578db]/20 flex items-center justify-center flex-shrink-0">
                     <Music size={24} className="text-[#7578db]" />
                   </div>
-                  <span className="text-xs sm:text-sm text-text-secondary text-center w-full truncate px-1">Audio</span>
+                  <span className="text-xs sm:text-sm text-text-secondary text-center w-full truncate px-1">{t('audioLabel')}</span>
                 </button>
               </div>
             )}
@@ -1235,7 +1237,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
                     type="text"
                     value={gifSearchQuery}
                     onChange={(e) => setGifSearchQuery(e.target.value)}
-                    placeholder="Rechercher des GIFs..."
+                    placeholder={t('searchGifs')}
                     className="w-full pl-9 pr-4 py-2 bg-bg-hover text-text-primary rounded-xl text-sm outline-none placeholder:text-text-secondary"
                   />
                 </div>
@@ -1309,8 +1311,8 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-text-secondary">
-                      {uploadPhase === 'compressing' && 'Compression...'}
-                      {uploadPhase === 'uploading' && 'Upload...'}
+                      {uploadPhase === 'compressing' && t('compressing')}
+                      {uploadPhase === 'uploading' && t('uploading')}
                     </span>
                     <span className="text-accent font-medium">{uploadProgress}%</span>
                   </div>
@@ -1383,7 +1385,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
                 type="text"
                 value={multipleCaption}
                 onChange={(e) => setMultipleCaption(e.target.value)}
-                placeholder="Ajouter une légende..."
+                placeholder={t('addCaption')}
                 className="w-full px-4 py-2 bg-bg-hover text-text-primary rounded-xl text-sm outline-none placeholder:text-text-secondary"
               />
 
@@ -1391,7 +1393,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
               {uploading && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-text-secondary">Upload...</span>
+                    <span className="text-text-secondary">{t('uploading')}</span>
                     <span className="text-accent font-medium">{uploadProgress}%</span>
                   </div>
                   <div className="h-2 bg-bg-hover rounded-full overflow-hidden">
@@ -1464,13 +1466,13 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
                 {selectedGifSticker.type === 'gif' ? (
                   <img
                     src={selectedGifSticker.previewUrl}
-                    alt="GIF Preview"
+                    alt={t('gifPreviewAlt')}
                     className="max-w-full max-h-full object-contain"
                   />
                 ) : (
                   <img
                     src={selectedGifSticker.previewUrl}
-                    alt="Sticker Preview"
+                    alt={t('stickerPreviewAlt')}
                     className="max-w-full max-h-full object-contain"
                   />
                 )}
@@ -1481,7 +1483,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
                 type="text"
                 value={gifStickerCaption}
                 onChange={(e) => setGifStickerCaption(e.target.value)}
-                placeholder="Ajouter une légende..."
+                placeholder={t('addCaption')}
                 className="w-full px-4 py-2 bg-bg-hover text-text-primary rounded-xl text-sm outline-none placeholder:text-text-secondary"
               />
 

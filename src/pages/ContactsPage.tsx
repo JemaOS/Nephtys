@@ -9,6 +9,7 @@ import { useAuth } from '@/context/AuthContext'
 import { offlineStorage } from '@/lib/offlineStorage'
 import { signFieldsBatch } from '@/lib/mediaUrl'
 import { MediaImg } from '@/components/MediaImg'
+import { useI18n } from '@/i18n'
 import { Search, UserPlus, MessageCircle, X, Check, Trash2, CheckSquare, Square } from 'lucide-react'
 
 // Cache helpers for instant display like WhatsApp
@@ -255,7 +256,7 @@ const createNewSelfConversationAndAddMembers = async (
           { conversation_id: conversation.id, user_id: userId, role: 'admin', is_active: true }
         ]);
       console.log('Members added successfully');
-    } catch {
+    } catch (err) {
       console.error('Error adding members:', err);
     }
   };
@@ -301,7 +302,7 @@ const createNewDirectConversationAndAddMembers = async (
           { conversation_id: conversation.id, user_id: contactId, role: 'member', is_active: true }
         ]);
       console.log('Members added successfully');
-    } catch {
+    } catch (err) {
       console.error('Error adding members:', err);
     }
   };
@@ -358,6 +359,7 @@ export function ContactsPage() {
   const [isSelectionMode, setIsSelectionMode] = useState(false)
   const [selectedContacts, setSelectedContacts] = useState<Set<string>>(new Set())
   const { user } = useAuth()
+  const { t } = useI18n()
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -486,7 +488,7 @@ export function ContactsPage() {
         .maybeSingle()
 
       if (searchError || !profileData) {
-        setError('Utilisateur introuvable')
+        setError(t('userNotFound'))
         setLoading(false)
         return
       }
@@ -503,7 +505,7 @@ export function ContactsPage() {
         .maybeSingle()
 
       if (existingContact && !existingContact.is_blocked) {
-        setError('Contact déjà ajouté')
+        setError(t('contactAlreadyAdded'))
         setLoading(false)
         return
       }
@@ -524,7 +526,7 @@ export function ContactsPage() {
 
       if (upsertError) {
         console.error('Error upserting contact:', upsertError)
-        setError('Erreur lors de l\'ajout')
+        setError(t('addError'))
         setLoading(false)
         return
       }
@@ -548,7 +550,7 @@ export function ContactsPage() {
       setShowAddModal(false)
       setUsernameToAdd('')
     } catch {
-      setError('Erreur inattendue')
+      setError(t('unexpectedError'))
     } finally {
       setLoading(false)
     }
@@ -627,7 +629,7 @@ export function ContactsPage() {
       }
       
       creatingConversationRef.current.delete(contactId)
-    } catch {
+    } catch (err) {
       console.error('Error in createConversation:', err)
       creatingConversationRef.current.delete(contactId)
     }
@@ -851,8 +853,8 @@ const getContactsToDelete = (
     if (selectedContacts.size === 0 || !user) return
     
     const confirmMessage = selectedContacts.size === 1
-      ? 'Voulez-vous vraiment supprimer ce contact ? La conversation associée sera également supprimée.'
-      : `Voulez-vous vraiment supprimer ces ${selectedContacts.size} contacts ? Les conversations associées seront également supprimées.`
+      ? t('deleteContactConfirm')
+      : t('deleteContactsConfirm', { count: selectedContacts.size })
     
     if (!confirm(confirmMessage)) return
 
@@ -909,9 +911,9 @@ const getContactsToDelete = (
       setSelectedContacts(new Set())
       setIsSelectionMode(false)
       console.log('Contacts reloaded successfully')
-    } catch {
+    } catch (err) {
       console.error('Error deleting contacts:', err)
-      alert('Erreur lors de la suppression des contacts')
+      alert(t('deleteContactsError'))
     }
   }, [selectedContacts, contacts, user])
 
@@ -931,15 +933,15 @@ const getContactsToDelete = (
                     <X size={20} />
                   </button>
                   <span className="text-text-primary font-medium">
-                    {selectedContacts.size} sélectionné{selectedContacts.size > 1 ? 's' : ''}
+                    {t('selectedCount', { count: selectedContacts.size })}
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
                   <button
                     onClick={selectAllContacts}
                     className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-text-secondary"
-                    title={selectedContacts.size === filteredContacts.length ? 'Tout désélectionner' : 'Tout sélectionner'}
-                    aria-label={selectedContacts.size === filteredContacts.length ? 'Tout désélectionner' : 'Tout sélectionner'}
+                    title={selectedContacts.size === filteredContacts.length ? t('deselectAll') : t('selectAll')}
+                    aria-label={selectedContacts.size === filteredContacts.length ? t('deselectAll') : t('selectAll')}
                   >
                     {selectedContacts.size === filteredContacts.length ? (
                       <CheckSquare size={20} className="text-accent" />
@@ -954,8 +956,8 @@ const getContactsToDelete = (
                     }}
                     disabled={selectedContacts.size === 0}
                     className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#ea4335] disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="Supprimer"
-                    aria-label="Supprimer les contacts sélectionnés"
+                    title={t('delete')}
+                    aria-label={t('deleteSelectedContacts')}
                   >
                     <Trash2 size={20} />
                   </button>
@@ -963,14 +965,14 @@ const getContactsToDelete = (
               </>
             ) : (
               <>
-                <h1 className="text-xl font-semibold text-text-primary">Contacts</h1>
+                <h1 className="text-xl font-semibold text-text-primary">{t('navContacts')}</h1>
                 <div className="flex items-center gap-2">
                   {contacts.length > 0 && (
                       <button
                         onClick={toggleSelectionMode}
                         className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-text-secondary"
-                        title="Sélectionner"
-                        aria-label="Activer le mode sélection"
+                        title={t('select')}
+                        aria-label={t('enableSelectionMode')}
                       >
                       <CheckSquare size={20} />
                     </button>
@@ -978,7 +980,7 @@ const getContactsToDelete = (
                   <button
                     onClick={() => setShowAddModal(true)}
                     className="w-10 h-10 rounded-full bg-accent hover:bg-[#5a5ec9] flex items-center justify-center transition-colors"
-                    aria-label="Ajouter un contact"
+                    aria-label={t('addContact')}
                   >
                     <UserPlus size={20} className="text-white" />
                   </button>
@@ -991,11 +993,11 @@ const getContactsToDelete = (
             <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" />
             <input
               type="text"
-              placeholder="Rechercher un contact..."
+              placeholder={t('searchContact')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full h-9 pl-10 pr-3 bg-bg-surface text-text-primary text-sm rounded-xl border-none outline-none placeholder:text-text-secondary focus:bg-bg-hover"
-              aria-label="Rechercher un contact"
+              aria-label={t('searchContact')}
             />
           </div>
         </div>
@@ -1025,13 +1027,13 @@ const getContactsToDelete = (
               return (
                 <div className="flex flex-col items-center justify-center h-full text-center px-8">
                   <UserPlus size={64} className="text-[#3b4a54] mb-4" />
-                  <h3 className="text-lg font-medium text-text-secondary mb-2">Aucun contact</h3>
-                  <p className="text-sm text-text-secondary mb-4">Ajoutez des contacts pour commencer</p>
+                  <h3 className="text-lg font-medium text-text-secondary mb-2">{t('noContacts')}</h3>
+                  <p className="text-sm text-text-secondary mb-4">{t('noContactsDesc')}</p>
                   <button
                     onClick={() => setShowAddModal(true)}
                     className="px-6 py-2 rounded-lg bg-accent hover:bg-[#5a5ec9] text-white font-medium transition-colors"
                   >
-                    Ajouter un contact
+                    {t('addContact')}
                   </button>
                 </div>
               )
@@ -1115,7 +1117,7 @@ const getContactsToDelete = (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="w-full max-w-md bg-bg-surface rounded-2xl p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-text-primary">Ajouter un contact</h2>
+              <h2 className="text-xl font-semibold text-text-primary">{t('addContact')}</h2>
               <button
                 onClick={() => {
                   setShowAddModal(false)
@@ -1123,20 +1125,20 @@ const getContactsToDelete = (
                   setError('')
                 }}
                 className="w-8 h-8 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-text-secondary"
-                aria-label="Fermer"
+                aria-label={t('close')}
               >
                 <X size={18} />
               </button>
             </div>
 
             <div className="space-y-2">
-              <label htmlFor="username-input" className="text-sm text-[#787add]">Nom d'utilisateur</label>
+              <label htmlFor="username-input" className="text-sm text-[#787add]">{t('usernameLabel')}</label>
               <div className="relative">
                 <UserPlus size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" />
                 <input
                   id="username-input"
                   type="text"
-                  placeholder="pseudo_utilisateur"
+                  placeholder={t('usernameAddPlaceholder')}
                   value={usernameToAdd}
                   onChange={(e) => {
                     setUsernameToAdd(e.target.value)
@@ -1157,7 +1159,7 @@ const getContactsToDelete = (
                 }}
                 className="flex-1 py-2 rounded-xl bg-bg-hover hover:bg-[#3b4a54] text-white transition-colors"
               >
-                Annuler
+                {t('cancel')}
               </button>
               <button
                 onClick={addContact}
@@ -1169,7 +1171,7 @@ const getContactsToDelete = (
                 ) : (
                   <>
                     <Check size={18} />
-                    Ajouter
+                    {t('add')}
                   </>
                 )}
               </button>

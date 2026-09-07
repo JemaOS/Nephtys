@@ -1,4 +1,5 @@
 import React from 'react'
+import { useI18n } from '@/i18n';
 import { Message } from '@/lib/supabase'
 import { cleanLinkPreviewContent } from '@/lib/utils'
 import { MessageReply } from '@/components/MessageReply'
@@ -94,14 +95,15 @@ export const ReplyQuote: React.FC<{
   otherUserDisplayName?: string
   onScrollToMessage: (messageId: string) => void
 }> = ({ replyToId, messages, userId, otherUserDisplayName, onScrollToMessage }) => {
+  const { t } = useI18n()
   if (!replyToId) return null
   
   const replyMessage = messages.find(m => m.id === replyToId)
   if (!replyMessage) return null
   
   const replySenderName = replyMessage.sender_id === userId
-    ? 'Vous'
-    : otherUserDisplayName ?? 'Utilisateur'
+    ? t('you')
+    : otherUserDisplayName ?? t('userFallback')
   
   // Stratégie miniature pour la citation de réponse :
   // 1. Si media_thumbnail (data URL base64) existe → on l'utilise directement
@@ -156,6 +158,7 @@ export const MessageQuickActions: React.FC<{
   onReply: (message: Message) => void
   onForward: (message: Message) => void
 }> = ({ position, isOwn, isHovered, isSelectionMode, messageId, onReply, onForward }) => {
+  const { t } = useI18n()
   const showOnLeft = isOwn && position === 'left'
   const showOnRight = !isOwn && position === 'right'
   
@@ -174,27 +177,27 @@ export const MessageQuickActions: React.FC<{
       <button
         onClick={() => onReply({ id: messageId } as Message)}
         className="md:hidden w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] flex items-center justify-center transition-colors shadow-md"
-        title="Répondre"
+        title={t('reply')}
       >
         <Reply size={16} className="text-[#8696a0]" />
       </button>
       <button
         onClick={() => onForward({ id: messageId } as Message)}
         className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
-        title="Transférer"
+        title={t('forward')}
       >
         <Forward size={16} className="text-[#8696a0]" />
       </button>
       <button
         className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
-        title="Réagir"
+        title={t('react')}
       >
         <Smile size={16} className="text-[#8696a0]" />
       </button>
       <button
         onClick={() => onReply({ id: messageId } as Message)}
         className="hidden md:flex w-8 h-8 rounded-full bg-[#3b4a54] hover:bg-[#4a5c68] items-center justify-center transition-colors shadow-md"
-        title="Répondre"
+        title={t('reply')}
       >
         <Reply size={16} className="text-[#8696a0]" />
       </button>
@@ -210,6 +213,7 @@ export const MessageSelectionCheckbox: React.FC<{
   messageId: string
   onSelectMessage: (messageId: string) => void
 }> = ({ isOwn, isSelected, isSelectionMode, messageId, onSelectMessage }) => {
+  const { t } = useI18n()
   if (!isSelectionMode) {
     return null
   }
@@ -228,7 +232,7 @@ export const MessageSelectionCheckbox: React.FC<{
           : 'bg-bg-surface hover:bg-bg-hover text-text-tertiary border border-bg-hover'
       }`}
       type="button"
-      aria-label={isSelected ? 'Désélectionner le message' : 'Sélectionner le message'}
+      aria-label={t('deselectMessage')}
     >
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <polyline points="20 6 9 17 4 12"></polyline>

@@ -2,6 +2,7 @@
 // Distributed under the license specified in the root directory of this project.
 
 import { createContext, useContext, useEffect, useState, useRef, useMemo, ReactNode } from 'react'
+import { tStatic } from '@/i18n';
 import { supabase } from '@/lib/supabase'
 import { resolveMediaUrl } from '@/lib/mediaUrl'
 import { webrtcManager, CallConfig } from '@/lib/webrtc'
@@ -508,12 +509,12 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
         } catch (permError: any) {
           console.error('Permission denied:', permError.name, permError.message)
           
-          let errorMsg = '❌ Permissions requises\n\nPour appeler, vous devez autoriser :\n'
+          let errorMsg = tStatic('callPermsRequired')
           
           if (permError.name === 'NotAllowedError') {
-            errorMsg += '• Caméra et Microphone\n\nSur Chrome Mobile :\n1. Appuyez sur 🔒 à côté de l\'URL\n2. Activez "Caméra" et "Microphone"'
+            errorMsg += tStatic('callPermsChromeMobile')
           } else {
-            errorMsg += '• Caméra et/ou Microphone\n\nAutorisez l\'accès dans les paramètres de votre navigateur.'
+            errorMsg += tStatic('callPermsGeneric')
           }
           
           alert(errorMsg)
@@ -864,7 +865,7 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
       }
     } catch (error) {
       console.error('Error adding participant:', error)
-      alert('Impossible d\'ajouter le participant')
+      alert(tStatic('cannotAddParticipant'))
     }
   }
 
@@ -947,12 +948,12 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
     } catch (permError: any) {
       console.error('Permission denied:', permError.name, permError.message)
       
-      let errorMsg = '❌ Permissions requises\n\nPour appeler, vous devez autoriser :\n'
+      let errorMsg = tStatic('callPermsRequired')
       
       if (permError.name === 'NotAllowedError') {
-        errorMsg += '• Caméra et Microphone\n\nSur Chrome Mobile :\n1. Appuyez sur 🔒 à côté de l\'URL\n2. Activez "Caméra" et "Microphone"'
+        errorMsg += tStatic('callPermsChromeMobile')
       } else {
-        errorMsg += '• Caméra et/ou Microphone\n\nAutorisez l\'accès dans les paramètres de votre navigateur.'
+        errorMsg += tStatic('callPermsGeneric')
       }
       
       alert(errorMsg)

@@ -14,6 +14,7 @@ import { useDecryptedMedia } from '@/hooks/useDecryptedMedia';
 import { PDFPreview } from './DocumentPreview/PDFPreview';
 import { downloadMedia } from '@/lib/downloadMedia';
 import { X, Download } from 'lucide-react';
+import { useI18n } from '@/i18n';
 
 interface MediaMessageProps {
   url: string;
@@ -92,6 +93,7 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
   isEncrypted = false,
   currentUserId,
 }) => {
+  const { t } = useI18n();
   // Résolution de l'URL : si chiffré, on déchiffre à la volée pour obtenir
   // un blob URL local. Sinon, useMediaUrl renvoie une URL signée du bucket privé.
   const { url: resolvedUrl, loading: urlLoading, error: urlError } = useDecryptedMedia({
@@ -417,7 +419,7 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
           className="fixed inset-0 bg-black/90 z-[100] flex flex-col"
           role="dialog"
           aria-modal="true"
-          aria-label="Visionneur PDF"
+          aria-label={t('pdfViewer')}
         >
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 bg-[#1f2c34] flex-shrink-0">
@@ -436,14 +438,14 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
               <button
                 onClick={handleDownload}
                 className="p-2 rounded-full hover:bg-white/10 transition-colors text-white/70 hover:text-white"
-                aria-label="Télécharger"
+                aria-label={t('download')}
               >
                 <Download size={20} />
               </button>
               <button
                 onClick={() => setShowPdfViewer(false)}
                 className="p-2 rounded-full hover:bg-white/10 transition-colors text-white"
-                aria-label="Fermer"
+                aria-label={t('close')}
               >
                 <X size={22} />
               </button>

@@ -3,6 +3,7 @@
 
 import React from 'react'
 import { Message, Profile } from '@/lib/supabase'
+import { useI18n, tStatic } from '@/i18n'
 import { MessageReactions } from '@/components/MessageReactions'
 import { MessageHoverActions } from '@/components/MessageHoverActions'
 import { MediaMessage } from '@/components/MediaMessage'
@@ -60,7 +61,7 @@ const getSenderInfoForMessage = (
 ): { name: string; avatar?: string } => {
   if (senderId === userId) {
     return {
-      name: profile?.display_name || profile?.username || 'Vous',
+      name: profile?.display_name || profile?.username || tStatic('you'),
       avatar: profile?.avatar_url
     }
   }
@@ -69,7 +70,7 @@ const getSenderInfoForMessage = (
     const memberProfile = groupMemberProfiles.get(senderId)
     if (memberProfile) {
       return {
-        name: memberProfile.display_name || memberProfile.username || 'Utilisateur',
+        name: memberProfile.display_name || memberProfile.username || tStatic('userFallback'),
         avatar: memberProfile.avatar_url
       }
     }
@@ -77,12 +78,12 @@ const getSenderInfoForMessage = (
   
   if (otherUser) {
     return {
-      name: otherUser.display_name || otherUser.username || 'Utilisateur',
+      name: otherUser.display_name || otherUser.username || tStatic('userFallback'),
       avatar: otherUser.avatar_url
     }
   }
   
-  return { name: 'Utilisateur', avatar: undefined }
+  return { name: tStatic('userFallback'), avatar: undefined }
 }
 
 // Helper function to get emoji size class based on count
@@ -264,7 +265,7 @@ const GifStickerMessageDisplay = ({
           type="button"
           className={`overflow-hidden cursor-pointer ${isGif ? 'max-w-[240px] sm:max-w-[280px]' : 'max-w-[160px] sm:max-w-[200px]'} rounded-xl border-[3px] border-[#787add] p-0 bg-transparent`}
           onClick={(e) => e.stopPropagation()}
-          aria-label={isGif ? 'Voir le GIF' : 'Voir le sticker'}
+          aria-label={isGif ? tStatic('viewGif') : tStatic('viewSticker')}
         >
           <img
             src={url}

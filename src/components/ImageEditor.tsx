@@ -12,6 +12,7 @@ import {
   Tool,
   Shape
 } from './ImageEditorComponents';
+import { useI18n } from '@/i18n';
 
 interface ImageEditorProps {
   imageUrl: string;
@@ -196,6 +197,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
   onCancel,
   onSend,
 }) => {
+  const { t } = useI18n();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -678,7 +680,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
               touchAction: 'none',
               userSelect: 'none',
             }}
-            aria-label="Éditeur d'image"
+            aria-label={t('imageEditorAria')}
           />
           <canvas
             ref={overlayCanvasRef}
@@ -691,19 +693,19 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
       {/* Quality settings popup */}
       {showQualitySettings && (
         <div className="absolute top-20 right-4 bg-bg-surface rounded-2xl shadow-2xl p-4 z-50 min-w-[200px] border border-bg-hover">
-          <h4 className="text-sm font-medium text-text-primary mb-3">Qualité d'image</h4>
+          <h4 className="text-sm font-medium text-text-primary mb-3">{t('imageQuality')}</h4>
           <div className="space-y-2">
             <button
               onClick={() => { setHdQuality(true); setShowQualitySettings(false); }}
               className={`w-full px-3 py-2 rounded-lg text-left text-sm transition-colors ${hdQuality ? 'bg-accent text-white' : 'hover:bg-bg-hover text-text-primary'}`}
             >
-              HD (Haute qualité)
+              {t('hdQuality')}
             </button>
             <button
               onClick={() => { setHdQuality(false); setShowQualitySettings(false); }}
               className={`w-full px-3 py-2 rounded-lg text-left text-sm transition-colors ${hdQuality ? 'hover:bg-bg-hover text-text-primary' : 'bg-accent text-white'}`}
             >
-              Standard (Fichier plus petit)
+              {t('standardQuality')}
             </button>
           </div>
         </div>
@@ -713,14 +715,14 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
       {editingText && (
         <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-bg-surface rounded-2xl p-4 w-[90%] max-w-md">
-            <h4 className="text-lg font-medium text-text-primary mb-3">Modifier le texte</h4>
+            <h4 className="text-lg font-medium text-text-primary mb-3">{t('editText')}</h4>
             <input
               type="text"
               value={newTextInput}
               onChange={(e) => setNewTextInput(e.target.value)}
               className="w-full px-4 py-3 rounded-xl bg-bg-hover text-text-primary outline-none mb-4"
               autoFocus
-              aria-label="Texte à modifier"
+              aria-label={t('textToEdit')}
             />
             <div className="flex gap-2">
               <button
@@ -730,7 +732,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
                 }}
                 className="flex-1 py-2 rounded-lg bg-bg-hover text-text-primary"
               >
-                Supprimer
+                {t('delete')}
               </button>
               <button
                 onClick={() => {

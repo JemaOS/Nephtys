@@ -2,6 +2,7 @@
 // Distributed under the license specified in the root directory of this project.
 
 import { useEffect, useState, useCallback } from 'react'
+import { useI18n } from '@/i18n';
 import { supabase } from '@/lib/supabase'
 import { RealtimeChannel } from '@supabase/supabase-js'
 
@@ -193,6 +194,7 @@ export function usePresence(userId?: string) {
   }
 
   // Format last seen time like WhatsApp
+  const { t } = useI18n();
   const formatLastSeen = useCallback((lastSeen: string | null): string => {
     if (!lastSeen) return ''
     
@@ -204,16 +206,16 @@ export function usePresence(userId?: string) {
     const diffDays = Math.floor(diffMs / 86400000)
 
     if (diffMins < 1) {
-      return 'à l\'instant'
+      return t('justNow')
     } else if (diffMins < 60) {
-      return `il y a ${diffMins} min`
+      return t('minutesAgo', { count: diffMins })
     } else if (diffHours < 24) {
-      return `il y a ${diffHours}h`
+      return t('hoursAgo', { count: diffHours })
     } else if (diffDays === 1) {
-      return `hier à ${lastSeenDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`
+      return t('yesterdayAt', { time: lastSeenDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) })
     } else if (diffDays < 7) {
       const dayName = lastSeenDate.toLocaleDateString('fr-FR', { weekday: 'long' })
-      return `${dayName} à ${lastSeenDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`
+      return t('dayAt', { day: dayName, time: lastSeenDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) })
     } else {
       return lastSeenDate.toLocaleDateString('fr-FR', { 
         day: 'numeric', 
@@ -222,17 +224,17 @@ export function usePresence(userId?: string) {
         minute: '2-digit'
       })
     }
-  }, [])
+  }, [t])
 
   // Get status text like WhatsApp
   const getStatusText = useCallback((): string => {
     if (userStatus.isOnline) {
-      return 'en ligne'
+      return t('online')
     } else if (userStatus.lastSeen) {
-      return `vu ${formatLastSeen(userStatus.lastSeen)}`
+      return t('lastSeenAt', { time: formatLastSeen(userStatus.lastSeen) })
     }
     return ''
-  }, [userStatus, formatLastSeen])
+  }, [userStatus, formatLastSeen, t])
 
   return {
     presenceState,

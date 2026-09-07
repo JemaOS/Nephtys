@@ -4,16 +4,18 @@
 import { useNavigate, useLocation } from 'react-router-dom'
 import { MessageCircle, Users, Settings, Phone } from 'lucide-react'
 import { prefetchRoute } from '@/lib/routePrefetch'
+import { useI18n } from '@/i18n'
 
 export function MobileBottomNav() {
   const navigate = useNavigate()
   const location = useLocation()
+  const { t } = useI18n()
 
   const navItems = [
-    { path: '/chats', icon: MessageCircle, label: 'Discussions', badge: 0 },
-    { path: '/calls', icon: Phone, label: 'Appels', badge: 0 },
-    { path: '/contacts', icon: Users, label: 'Contacts', badge: 0 },
-    { path: '/settings', icon: Settings, label: 'Paramètres', badge: 0 },
+    { path: '/chats', icon: MessageCircle, label: t('navChats'), badge: 0 },
+    { path: '/calls', icon: Phone, label: t('navCalls'), badge: 0 },
+    { path: '/contacts', icon: Users, label: t('navContacts'), badge: 0 },
+    { path: '/settings', icon: Settings, label: t('navSettings'), badge: 0 },
   ]
 
   const isActive = (path: string) => location.pathname.startsWith(path)

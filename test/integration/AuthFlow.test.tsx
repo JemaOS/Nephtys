@@ -1,6 +1,7 @@
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { AuthPage } from '../../src/pages/AuthPage';
 import { AuthProvider } from '../../src/context/AuthContext';
+import { I18nProvider } from '../../src/i18n';
 import { BrowserRouter } from 'react-router-dom';
 
 // Mock Supabase
@@ -51,6 +52,13 @@ vi.mock('../../src/hooks/usePresence', () => ({
 describe('AuthFlow', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+
+    // The app follows navigator.language; force French so the FR assertions below hold.
+    Object.defineProperty(window.navigator, 'language', {
+      value: 'fr-FR',
+      configurable: true,
+      writable: false,
+    });
     
     // Default mocks
     mockGetSession.mockResolvedValue({ data: { session: null }, error: null });
@@ -59,11 +67,13 @@ describe('AuthFlow', () => {
 
   const renderAuthPage = () => {
     return render(
-      <BrowserRouter>
-        <AuthProvider>
-          <AuthPage />
-        </AuthProvider>
-      </BrowserRouter>
+      <I18nProvider>
+        <BrowserRouter>
+          <AuthProvider>
+            <AuthPage />
+          </AuthProvider>
+        </BrowserRouter>
+      </I18nProvider>
     );
   };
 

@@ -12,6 +12,7 @@ import { useKeepAlive } from './hooks/useKeepAlive'
 import { useEffect, useState, useCallback, lazy, Suspense } from 'react'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { SubscriptionGuard } from './SubscriptionGuard'
+import { useI18n } from './i18n'
 
 
 // Create a QueryClient with optimized caching for instant user profile display
@@ -36,7 +37,8 @@ const ArchivedPage = lazy(() => import('./pages/ArchivedPage').then(module => ({
 const SettingsPage = lazy(() => import('./pages/SettingsPage').then(module => ({ default: module.SettingsPage })))
 
 // Optimized loading component that shows quickly and doesn't block
-function LoadingScreen({ message = 'Chargement...' }: { readonly message?: string }) {
+function LoadingScreen({ message }: { readonly message?: string }) {
+  const { t } = useI18n();
   const [showSlowWarning, setShowSlowWarning] = useState(false);
   
   useEffect(() => {
@@ -51,10 +53,10 @@ function LoadingScreen({ message = 'Chargement...' }: { readonly message?: strin
   return (
     <div className="h-screen flex flex-col items-center justify-center bg-background-primary">
       <div className="w-16 h-16 rounded-full border-4 border-primary-500 border-t-transparent animate-spin mb-4" />
-      <p className="text-text-secondary text-sm">{message}</p>
+      <p className="text-text-secondary text-sm">{message ?? t('loading')}</p>
       {showSlowWarning && (
         <p className="text-text-tertiary text-xs mt-2 text-center px-4">
-          La connexion est lente. Vérifiez votre réseau.
+          {t('loadingSlowWarning')}
         </p>
       )}
     </div>
@@ -63,10 +65,11 @@ function LoadingScreen({ message = 'Chargement...' }: { readonly message?: strin
 
 function PrivateRoute({ children }: { readonly children: React.ReactNode }) {
   const { user, loading, isOffline } = useAuth()
+  const { t } = useI18n()
   
   // Show loading only briefly - if we have cached user, show content immediately
   if (loading && !user) {
-    return <LoadingScreen message="Connexion en cours..." />;
+    return <LoadingScreen message={t('connectingInProgress')} />;
   }
   
   // If offline and no user, show offline message instead of redirect
@@ -74,15 +77,15 @@ function PrivateRoute({ children }: { readonly children: React.ReactNode }) {
     return (
       <div className="h-screen flex flex-col items-center justify-center bg-background-primary p-4">
         <div className="text-4xl mb-4">📡</div>
-        <h2 className="text-xl font-semibold text-text-primary mb-2">Mode hors ligne</h2>
+        <h2 className="text-xl font-semibold text-text-primary mb-2">{t('offlineMode')}</h2>
         <p className="text-text-secondary text-center mb-4">
-          Connectez-vous à Internet pour accéder à l'application.
+          {t('offlineModeDesc')}
         </p>
         <button
           onClick={() => globalThis.location.reload()}
           className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors"
         >
-          Réessayer
+          {t('retry')}
         </button>
       </div>
     );
@@ -144,6 +147,7 @@ function getValidatedReturnTo(): string | null {
 
 function PublicRoute({ children }: { readonly children: React.ReactNode }) {
   const { user, loading } = useAuth()
+  const { t } = useI18n()
   
   // Show loading only briefly
   if (loading && !user) {
@@ -157,7 +161,7 @@ function PublicRoute({ children }: { readonly children: React.ReactNode }) {
     const returnTo = getValidatedReturnTo()
     if (returnTo) {
       globalThis.location.replace(returnTo)
-      return <LoadingScreen message="Redirection vers votre application…" />
+      return <LoadingScreen message={t('redirectingToApp')} />
     }
     return <Navigate to="/chats" />
   }

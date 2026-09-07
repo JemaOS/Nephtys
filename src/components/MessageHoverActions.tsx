@@ -2,6 +2,7 @@
 // Distributed under the license specified in the root directory of this project.
 
 import React from 'react';
+import { useI18n } from '@/i18n';
 import { ChevronDown } from 'lucide-react';
 
 interface MessageHoverActionsProps {
@@ -15,6 +16,7 @@ export const MessageHoverActions: React.FC<MessageHoverActionsProps> = ({
   isOwn,
   onOpenMenu,
 }) => {
+  const { t } = useI18n();
   // Show button when isVisible is true (controlled by hover state from parent)
   // The button is always rendered but only visible when isVisible is true
   return (
@@ -32,7 +34,7 @@ export const MessageHoverActions: React.FC<MessageHoverActionsProps> = ({
           : 'bg-bg-surface/80 hover:bg-bg-surface text-text-tertiary hover:text-text-secondary'
       }`}
       type="button"
-      aria-label="Options du message"
+      aria-label={t('messageOptions')}
     >
       <ChevronDown size={16} />
     </button>

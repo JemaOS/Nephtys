@@ -2,6 +2,7 @@
 // Distributed under the license specified in the root directory of this project.
 
 import { Phone, Video, PhoneIncoming, PhoneOutgoing, PhoneMissed, Users } from 'lucide-react'
+import { useI18n } from '@/i18n';
 
 interface CallMessageProps {
   readonly type: 'audio' | 'video'
@@ -26,6 +27,7 @@ export function CallMessage({
   isOwn,
   onClick
 }: CallMessageProps) {
+  const { t } = useI18n()
   const isMissed = status === 'missed' || status === 'rejected'
   const isAnswered = status === 'answered' || status === 'ended'
   
@@ -48,13 +50,13 @@ export function CallMessage({
   
   // Get call label
   const getCallLabel = () => {
-    const callType = type === 'video' ? 'Appel vidéo' : 'Appel vocal'
+    const callType = type === 'video' ? t('videoCall') : t('voiceCall')
     
     if (isGroupCall) {
       if (isMissed) {
-        return isOutgoing ? `${callType} de groupe` : `${callType} de groupe manqué`
+        return isOutgoing ? t('groupCallLabel') : t('missedGroupCall')
       }
-      return `${callType} de groupe`
+      return t('groupCallLabel')
     }
     
     if (isMissed) {
@@ -73,19 +75,19 @@ export function CallMessage({
     if (isAnswered && duration) {
       // Call was answered and has duration
       if (participantCount && participantCount > 0) {
-        return `Rejoint par ${participantCount} personne${participantCount > 1 ? 's' : ''}`
+        return t('joinedByCount', { count: participantCount ?? 0 })
       }
       // If no participant count, just show that the call happened
-      return 'Appel terminé'
+      return t('statusEndedCall')
     }
     
     if (isMissed) {
       // For group calls, show appropriate message
-      return isOutgoing ? 'Aucune réponse' : 'Vous avez manqué cet appel'
+      return isOutgoing ? t('noAnswer') : t('youMissedCall')
     }
     
     // Call initiated but not answered yet
-    return 'En attente'
+    return t('pendingCall')
   }
   
   // Get icon based on call state
@@ -132,10 +134,10 @@ export function CallMessage({
     }
     
     if (isMissed) {
-      return <span className="text-red-400">{isOutgoing ? 'Non abouti' : 'Appel manqué'}</span>;
+      return <span className="text-red-400">{isOutgoing ? t('unsuccessful') : t('missedCall')}</span>;
     }
     
-    return <span>{isOutgoing ? 'Non abouti' : 'Appel manqué'}</span>;
+    return <span>{isOutgoing ? t('unsuccessful') : t('missedCall')}</span>;
   };
 
   // Helper to get callback button icon

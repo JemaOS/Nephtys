@@ -3,7 +3,8 @@
 
 import React, { useState } from 'react';
 import { Play } from 'lucide-react';
-import type { Message } from '@/lib/supabase';
+import type { Message } from '@/lib/supabase'
+import { useI18n } from '@/i18n';
 import { MediaViewer } from './MediaViewer';
 import { useDecryptedMedia } from '@/hooks/useDecryptedMedia';
 import { MessageHoverActions } from './MessageHoverActions';
@@ -33,13 +34,14 @@ const AlbumItem: React.FC<AlbumItemProps> = ({
   // height:100% est défini via style inline pour ne pas dépendre du parsing
   // Tailwind (qui peut ignorer h-full si le parent n'a pas de hauteur résolue
   // lors du premier paint).
+  const { t } = useI18n();
   return (
     <button
       type="button"
       onClick={onClick}
       className={`relative overflow-hidden bg-[#1a1a1a] cursor-pointer block p-0 m-0 border-0 ${className || ''}`}
       style={{ width: '100%', height: '100%' }}
-      aria-label="Afficher le média"
+      aria-label={t('viewMedia')}
     >
       {/* Fond sombre toujours visible — évite le fond blanc natif du browser */}
       <div className="absolute inset-0 bg-[#1a1a1a]" />

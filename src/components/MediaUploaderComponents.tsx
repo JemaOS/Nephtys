@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { Music, Play, Pause, Search, Loader2 } from 'lucide-react';
+import { useI18n } from '@/i18n';
 
 // Helper function to format file size
 export const formatFileSizeDisplay = (bytes: number): string => {
@@ -159,6 +160,7 @@ interface EmojiPickerProps {
 }
 
 export const EmojiPicker: React.FC<EmojiPickerProps> = ({ onEmojiSelect, onCancel }) => {
+  const { t } = useI18n();
   const emojiCategories = {
     recent: ['👍', '❤️', '😂', '😮', '😢', '🙏'],
     smileys: ['😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😂', '🙂', '😊', '😇', '🥰', '😍', '🤩', '😘', '😗', '😚', '😋', '😛', '😜', '🤪', '😝', '🤑', '🤗', '🤭', '🤫', '🤔', '🤐', '🤨', '😐'],
@@ -171,13 +173,13 @@ export const EmojiPicker: React.FC<EmojiPickerProps> = ({ onEmojiSelect, onCance
 
   const getEmojiCategoryLabel = (category: string): string => {
     const labels: Record<string, string> = {
-      recent: 'Récents',
-      smileys: 'Smileys',
-      gestures: 'Gestes',
-      hearts: 'Cœurs',
-      objects: 'Objets',
-      nature: 'Nature',
-      food: 'Nourriture',
+      recent: t('catRecent'),
+      smileys: t('catSmileys'),
+      gestures: t('catGestures'),
+      hearts: t('catHearts'),
+      objects: t('catObjects'),
+      nature: t('catNature'),
+      food: t('catFood'),
     };
     return labels[category] || category;
   };
@@ -232,18 +234,19 @@ export const StickerPicker: React.FC<StickerPickerProps> = ({
   stickers,
   handleStickerSelect,
 }) => {
+  const { t } = useI18n();
   const getStickerCategoryLabel = (category: string): string => {
     const labels: Record<string, string> = {
-      love: '❤️ Amour',
-      happy: '😊 Joyeux',
-      sad: '😢 Triste',
-      angry: '😠 Fâché',
-      cute: '🥰 Mignon',
-      funny: '😂 Drôle',
-      hello: '👋 Salut',
-      bye: '👋 Au revoir',
-      thanks: '🙏 Merci',
-      sorry: '😔 Désolé',
+      love: t('stickerLove'),
+      happy: t('stickerHappy'),
+      sad: t('stickerSad'),
+      angry: t('stickerAngry'),
+      cute: t('stickerCute'),
+      funny: t('stickerFunny'),
+      hello: t('stickerHello'),
+      bye: t('stickerBye'),
+      thanks: t('stickerThanks'),
+      sorry: t('stickerSorry'),
     };
     return labels[category] || category;
   };
@@ -257,7 +260,7 @@ export const StickerPicker: React.FC<StickerPickerProps> = ({
           type="text"
           value={stickerSearchQuery}
           onChange={(e) => setStickerSearchQuery(e.target.value)}
-          placeholder="Rechercher des stickers..."
+          placeholder={t('searchStickers')}
           className="w-full pl-10 pr-4 py-2 rounded-xl bg-bg-surface text-text-primary placeholder:text-text-secondary outline-none focus:ring-2 focus:ring-accent"
         />
       </div>
@@ -317,8 +320,8 @@ export const StickerPicker: React.FC<StickerPickerProps> = ({
         }
         return (
           <div className="text-center py-8 text-text-secondary">
-            <p>Aucun sticker trouvé</p>
-            <p className="text-xs mt-1">Essayez une autre recherche</p>
+            <p>{t('noStickersFound')}</p>
+            <p className="text-xs mt-1">{t('tryAnotherSearch')}</p>
           </div>
         );
       })()}

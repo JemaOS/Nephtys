@@ -2,6 +2,7 @@
 // Distributed under the license specified in the root directory of this project.
 
 import { resolveMediaUrl, extractStoragePath } from '@/lib/mediaUrl'
+import { tStatic } from '@/i18n';
 import { fetchAndDecryptMedia } from '@/lib/encryptedMediaService'
 
 /**
@@ -190,7 +191,7 @@ export async function downloadMedia(opts: DownloadMediaOptions): Promise<boolean
   const { mediaUrl, fileName, mediaType, messageId, userId, isEncrypted } = opts
 
   if (!mediaUrl) {
-    alert('❌ Aucun média à télécharger')
+    alert(tStatic('noMediaToDownload'))
     return false
   }
 
@@ -235,7 +236,7 @@ export async function downloadMedia(opts: DownloadMediaOptions): Promise<boolean
   } catch (err) {
     console.error('[downloadMedia] Failed to fetch media:', err)
     const message = err instanceof Error ? err.message : String(err)
-    alert(`❌ Échec du téléchargement\n${message}`)
+    alert(tStatic('downloadFailed', { message }))
     return false
   }
 
@@ -257,7 +258,7 @@ export async function downloadMedia(opts: DownloadMediaOptions): Promise<boolean
     return true
   } catch (err) {
     console.error('[downloadMedia] Failed to trigger save:', err)
-    alert('❌ Le navigateur a refusé de télécharger le fichier')
+    alert(tStatic('downloadBlocked'))
     return false
   }
 }

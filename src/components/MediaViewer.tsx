@@ -2,6 +2,7 @@
 // Distributed under the license specified in the root directory of this project.
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useI18n } from '@/i18n';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { MediaViewerHeader, ImageViewer, VideoPlayer, AudioPlayer } from './MediaViewerComponents';
 import { downloadMedia } from '@/lib/downloadMedia';
@@ -174,6 +175,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   currentIndex = 0,
   onNavigate,
 }) => {
+  const { t } = useI18n();
   // Derive what we display from allMedia[currentIndex] when available, falling
   // back to the raw props. This makes navigation actually swap the displayed
   // image / sender / timestamp even when the parent only updates currentIndex
@@ -1140,7 +1142,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
         background: 'black',
       }}
       aria-modal="true"
-      aria-label="Visionneuse de médias"
+      aria-label={t('mediaViewer')}
     >
       {/* Container for dialog content - handles mouse move for controls - made focusable for accessibility */}
       <div
@@ -1202,7 +1204,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
                     ? 'opacity-30 cursor-not-allowed'
                     : 'opacity-100 hover:scale-110'
               }`}
-              aria-label="Média précédent"
+              aria-label={t('previousMedia')}
             >
               <ChevronLeft size={28} className="text-white" />
             </button>
@@ -1219,7 +1221,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
                     ? 'opacity-30 cursor-not-allowed'
                     : 'opacity-100 hover:scale-110'
               }`}
-              aria-label="Média suivant"
+              aria-label={t('nextMedia')}
             >
               <ChevronRight size={28} className="text-white" />
             </button>
@@ -1228,7 +1230,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
       })()}
 
       <section
-        aria-label="Visualisation du média"
+        aria-label={t('mediaView')}
         aria-roledescription="Zone de visualisation"
         className={`flex-1 flex items-center justify-center overflow-hidden media-content-container ${
           isLandscape && isMobile ? 'p-0' : 'p-4 md:p-8'

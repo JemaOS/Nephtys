@@ -2,6 +2,7 @@
 // Distributed under the license specified in the root directory of this project.
 
 import React, { useState } from 'react';
+import { useI18n } from '@/i18n';
 import { X, Play } from 'lucide-react';
 import { LinkPreviewData } from '@/lib/linkPreview';
 import { YouTubePlayer, isYouTubeUrl, extractYouTubeVideoId } from './YouTubePlayer';
@@ -25,6 +26,7 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({
   isInMessage = false,
   isOwn = false,
 }) => {
+  const { t } = useI18n();
   const { url, title, description, image, siteName, domain } = preview;
   const [showYouTubePlayer, setShowYouTubePlayer] = useState(false);
 
@@ -83,7 +85,7 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({
             onDismiss();
           }}
           className="absolute top-2 right-2 z-10 w-6 h-6 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center transition-colors"
-          aria-label="Dismiss preview"
+          aria-label={t('dismissPreview')}
         >
           <X size={14} className="text-white" />
         </button>

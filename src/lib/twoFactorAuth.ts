@@ -2,6 +2,7 @@
 // Distributed under the license specified in the root directory of this project.
 
 import { supabase } from './supabase'
+import { tStatic } from '@/i18n';
 
 export interface TOTPFactor {
   id: string
@@ -96,7 +97,7 @@ export async function enroll2FA(friendlyName: string = 'Nephtys App'): Promise<{
         })
         
         if (retryError) {
-          return { success: false, error: 'Impossible de configurer la 2FA. Veuillez réessayer.' }
+          return { success: false, error: tStatic('twoFaSetupFailed') }
         }
         
         return {
@@ -147,7 +148,7 @@ export async function verify2FAEnrollment(
     if (error) {
       console.error('[2FA] Verification error:', error)
       if (error.message.includes('Invalid')) {
-        return { success: false, error: 'Code invalide. Vérifiez votre application d\'authentification.' }
+        return { success: false, error: tStatic('twoFaInvalidCodeDesc') }
       }
       return { success: false, error: error.message }
     }
@@ -155,7 +156,7 @@ export async function verify2FAEnrollment(
     return { success: true }
   } catch (err: any) {
     console.error('[2FA] Verification error:', err)
-    return { success: false, error: err.message || 'Erreur de vérification' }
+    return { success: false, error: err.message || tStatic('twoFaVerifyError') }
   }
 }
 
@@ -177,7 +178,7 @@ export async function unenroll2FA(factorId: string): Promise<{
     return { success: true }
   } catch (err: any) {
     console.error('[2FA] Unenroll error:', err)
-    return { success: false, error: err.message || 'Erreur lors de la désactivation' }
+    return { success: false, error: err.message || tStatic('twoFaDisableError') }
   }
 }
 
@@ -255,7 +256,7 @@ export async function verifyMFAChallenge(
     return { success: true }
   } catch (err: any) {
     console.error('[2FA] MFA verify error:', err)
-    return { success: false, error: err.message || 'Erreur de vérification' }
+    return { success: false, error: err.message || tStatic('twoFaVerifyError') }
   }
 }
 

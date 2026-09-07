@@ -2,6 +2,7 @@
 // Distributed under the license specified in the root directory of this project.
 
 import React, { useState, useEffect } from 'react';
+import { useI18n } from '@/i18n';
 import { Shield, Check, Copy } from 'lucide-react';
 import { generateSafetyNumber } from '@/lib/crypto';
 
@@ -19,6 +20,7 @@ export const SecurityCode: React.FC<SecurityCodeProps> = ({
   onClose,
 }) => {
   const [safetyNumber, setSafetyNumber] = useState<string>('');
+  const { t } = useI18n();
   const [isVerified, setIsVerified] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -43,7 +45,7 @@ export const SecurityCode: React.FC<SecurityCodeProps> = ({
 
   const handleVerify = () => {
     setIsVerified(true);
-    alert('Code de sécurité vérifié! Votre conversation est sécurisée.');
+    alert(t('securityCodeVerified'));
   };
 
   return (
@@ -54,16 +56,16 @@ export const SecurityCode: React.FC<SecurityCodeProps> = ({
           <div className="w-16 h-16 mx-auto rounded-full bg-green-500/20 flex items-center justify-center mb-4">
             <Shield size={32} className="text-green-500" />
           </div>
-          <h2 className="text-2xl font-bold mb-2">Code de sécurité</h2>
+          <h2 className="text-2xl font-bold mb-2">{t('securityCodeTitle')}</h2>
           <p className="text-sm text-text-tertiary">
-            Vérifiez ce code avec {otherUsername} pour confirmer que votre conversation est chiffrée de bout en bout
+            {t('securityCodeDesc', { name: otherUsername })}
           </p>
         </div>
 
         {/* Safety Number */}
         <div className="mb-6 p-4 rounded-xl bg-glass-surface-medium border border-glass-border">
           <div className="text-center font-mono text-lg leading-relaxed select-all">
-            {safetyNumber || 'Génération...'}
+            {safetyNumber || t('generating')}
           </div>
         </div>
 
@@ -92,7 +94,7 @@ export const SecurityCode: React.FC<SecurityCodeProps> = ({
             ) : (
               <>
                 <Copy size={20} />
-                Copier le code
+                {t('copyCode')}
               </>
             )}
           </button>
@@ -109,12 +111,12 @@ export const SecurityCode: React.FC<SecurityCodeProps> = ({
             {isVerified ? (
               <>
                 <Check size={20} />
-                Vérifié
+                {t('verified')}
               </>
             ) : (
               <>
                 <Shield size={20} />
-                Marquer comme vérifié
+                {t('markAsVerified')}
               </>
             )}
           </button>
@@ -123,7 +125,7 @@ export const SecurityCode: React.FC<SecurityCodeProps> = ({
             onClick={onClose}
             className="w-full py-3 rounded-xl bg-glass-surface-medium hover:bg-white/10 transition-colors"
           >
-            Fermer
+            {t('close')}
           </button>
         </div>
 
@@ -131,7 +133,7 @@ export const SecurityCode: React.FC<SecurityCodeProps> = ({
         {isVerified && (
           <div className="mt-4 p-3 rounded-lg bg-green-500/10 border border-green-500/30 text-center">
             <p className="text-xs text-green-500">
-              ✓ Conversation vérifiée et sécurisée
+              ✓ {t('verifiedConversation')}
             </p>
           </div>
         )}

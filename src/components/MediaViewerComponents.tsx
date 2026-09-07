@@ -1,6 +1,7 @@
 import React from 'react';
 import { X, Forward, Star, Pin, Smile, Download, Play, Pause, Volume2, VolumeX, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
 import { MediaImg } from './MediaImg';
+import { useI18n, tStatic } from '@/i18n';
 
 // Format timestamp helper
 export const formatTimestamp = (ts: string): string => {
@@ -9,7 +10,7 @@ export const formatTimestamp = (ts: string): string => {
   const isToday = date.toDateString() === today.toDateString();
   
   if (isToday) {
-    return `Aujourd'hui à ${date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`;
+    return `${tStatic('todayAt')} ${date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`;
   }
   return date.toLocaleDateString('fr-FR', { 
     day: 'numeric', 
@@ -71,16 +72,19 @@ export const HeaderActions: React.FC<HeaderActionsProps> = ({
   handleZoomOut,
   handleResetZoom,
   quickEmojis,
-}) => (
+}) => {
+  const { t } = useI18n();
+  return (
   <div className="flex items-center gap-3 md:gap-4 flex-shrink-0">
     {/* Zoom controls - only for images, hidden on mobile (use pinch-to-zoom) */}
     {(mediaType === 'image' || mediaType === 'gif' || mediaType === 'sticker') && !isMobile && (
       <>
         <button
-          onClick={(e) => { e.stopPropagation(); handleZoomOut(); }}
+          onClick={(e) => { 
+            e.stopPropagation(); handleZoomOut(); }}
           className="w-10 h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
-          title="Zoom arrière"
-          aria-label="Zoom arrière"
+          title={t('zoomOut')}
+          aria-label={t('zoomOut')}
           disabled={zoom <= MIN_ZOOM}
         >
           <ZoomOut size={20} className="text-white" />
@@ -88,8 +92,8 @@ export const HeaderActions: React.FC<HeaderActionsProps> = ({
         <button
           onClick={(e) => { e.stopPropagation(); handleZoomIn(); }}
           className="w-10 h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
-          title="Zoom avant"
-          aria-label="Zoom avant"
+          title={t('zoomIn')}
+          aria-label={t('zoomIn')}
           disabled={zoom >= MAX_ZOOM}
         >
           <ZoomIn size={20} className="text-white" />
@@ -98,8 +102,8 @@ export const HeaderActions: React.FC<HeaderActionsProps> = ({
           <button
             onClick={(e) => { e.stopPropagation(); handleResetZoom(); }}
             className="px-2 h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors text-white text-sm"
-            title="Réinitialiser le zoom"
-            aria-label="Réinitialiser le zoom"
+            title={t('resetZoom')}
+            aria-label={t('resetZoom')}
           >
             {Math.round(zoom * 100)}%
           </button>
@@ -112,8 +116,8 @@ export const HeaderActions: React.FC<HeaderActionsProps> = ({
       <button
         onClick={(e) => { e.stopPropagation(); onForward(); }}
         className="hidden md:flex w-10 h-10 rounded-full hover:bg-white/10 items-center justify-center transition-colors"
-        title="Transférer"
-        aria-label="Transférer"
+        title={t('forward')}
+        aria-label={t('forward')}
       >
         <Forward size={20} className="text-white" />
       </button>
@@ -122,8 +126,8 @@ export const HeaderActions: React.FC<HeaderActionsProps> = ({
       <button
         onClick={(e) => { e.stopPropagation(); onStar(); }}
         className="hidden md:flex w-10 h-10 rounded-full hover:bg-white/10 items-center justify-center transition-colors"
-        title={isStarred ? "Retirer des favoris" : "Ajouter aux favoris"}
-        aria-label={isStarred ? "Retirer des favoris" : "Ajouter aux favoris"}
+        title={isStarred ? t('removeFromFavorites') : t('addToFavorites')}
+        aria-label={isStarred ? t('removeFromFavorites') : t('addToFavorites')}
       >
         <Star
           size={20}
@@ -135,8 +139,8 @@ export const HeaderActions: React.FC<HeaderActionsProps> = ({
       <button
         onClick={(e) => { e.stopPropagation(); onPin(); }}
         className="hidden md:flex w-10 h-10 rounded-full hover:bg-white/10 items-center justify-center transition-colors"
-        title="Épingler"
-        aria-label="Épingler"
+        title={t('pin')}
+        aria-label={t('pin')}
       >
         <Pin size={20} className="text-white" />
       </button>
@@ -146,8 +150,8 @@ export const HeaderActions: React.FC<HeaderActionsProps> = ({
           <button
             onClick={(e) => { e.stopPropagation(); setShowEmojiPicker(!showEmojiPicker); }}
             className="w-10 h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
-            title="Réagir"
-            aria-label="Réagir"
+            title={t('react')}
+            aria-label={t('react')}
           >
           <Smile size={20} className="text-white" />
         </button>
@@ -175,8 +179,8 @@ export const HeaderActions: React.FC<HeaderActionsProps> = ({
       <button
         onClick={(e) => { e.stopPropagation(); onToggleFullscreen(); }}
         className="w-9 h-9 md:w-10 md:h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
-        title={isFullscreen ? "Quitter le plein écran" : "Plein écran"}
-        aria-label={isFullscreen ? "Quitter le plein écran" : "Plein écran"}
+        title={isFullscreen ? t('exitFullscreen') : t('fullscreen')}
+        aria-label={isFullscreen ? t('exitFullscreen') : t('fullscreen')}
       >
         <Maximize2 size={18} className={`text-white ${isFullscreen ? 'rotate-45' : ''}`} />
       </button>
@@ -185,8 +189,8 @@ export const HeaderActions: React.FC<HeaderActionsProps> = ({
     <button
       onClick={(e) => { e.stopPropagation(); onDownload(); }}
       className="w-9 h-9 md:w-10 md:h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
-      title="Télécharger"
-      aria-label="Télécharger"
+      title={t('download')}
+      aria-label={t('download')}
     >
       <Download size={18} className="md:hidden text-white" />
       <Download size={20} className="hidden md:block text-white" />
@@ -195,14 +199,15 @@ export const HeaderActions: React.FC<HeaderActionsProps> = ({
     <button
       onClick={(e) => { e.stopPropagation(); onClose(); }}
       className="w-9 h-9 md:w-10 md:h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
-      title="Fermer"
-      aria-label="Fermer"
+      title={t('close')}
+      aria-label={t('close')}
     >
       <X size={22} className="md:hidden text-white" />
       <X size={24} className="hidden md:block text-white" />
     </button>
   </div>
-);
+  );
+};
 
 interface MediaViewerHeaderProps {
   showControls: boolean;
@@ -220,7 +225,9 @@ export const MediaViewerHeader: React.FC<MediaViewerHeaderProps> = ({
   senderAvatar,
   timestamp,
   headerActionsProps,
-}) => (
+}) => {
+  const { t } = useI18n();
+  return (
   <header
     className={`absolute top-0 left-0 right-0 z-10 transition-opacity duration-300 ${
       showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
@@ -252,7 +259,8 @@ export const MediaViewerHeader: React.FC<MediaViewerHeaderProps> = ({
       <HeaderActions {...headerActionsProps} />
     </div>
   </header>
-);
+  );
+};
 
 interface ImageViewerProps {
   mediaUrl: string;
@@ -292,7 +300,9 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
   allMedia,
   isMobile,
   showControls,
-}) => (
+}) => {
+  const { t } = useI18n();
+  return (
   <button
     type="button"
     ref={imageContainerRef}
@@ -305,7 +315,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
     onTouchStart={handleTouchStart}
     onTouchMove={handleTouchMove}
     onTouchEnd={handleTouchEnd}
-    aria-label="Visionneuse d'image - Double-cliquez pour réinitialiser le zoom"
+    aria-label={t('imageViewerAriaLabel')}
     style={{
       transform: zoom <= 1 ? `translateX(${swipeOffset}px)` : 'none',
       transition: isSwipeActive ? 'none' : 'transform 0.15s ease-out',
@@ -327,7 +337,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
           handleResetZoom();
         }
       }}
-      aria-label="Image, double-cliquez pour réinitialiser le zoom"
+      aria-label={t('imageDoubleClickReset')}
     >
       <img
         src={mediaUrl}
@@ -359,7 +369,8 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
       </div>
     )}
   </button>
-);
+  );
+};
 
 interface VideoPlayerProps {
   mediaUrl: string;
@@ -424,6 +435,7 @@ const VideoControls: React.FC<VideoControlsProps> = ({
   setCurrentTime,
   videoRef,
 }) => {
+  const { t } = useI18n();
   const progressPercentage = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
@@ -442,7 +454,7 @@ const VideoControls: React.FC<VideoControlsProps> = ({
           className={`w-16 h-16 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center transition-colors ${
             showControls || !isPlaying ? 'pointer-events-auto' : 'pointer-events-none'
           }`}
-          aria-label={isPlaying ? "Pause" : "Lecture"}
+          aria-label={isPlaying ? t('pause') : t('play')}
         >
           {isPlaying ? (
             <Pause size={32} className="text-white" />
@@ -481,7 +493,7 @@ const VideoControls: React.FC<VideoControlsProps> = ({
         // tabIndex is appropriate here because this is a toolbar with keyboard handlers
         tabIndex={0}
         role="toolbar"
-        aria-label="Contrôles vidéo"
+        aria-label={t('videoControls')}
         onKeyDown={(e) => {
           if (e.key === 'Escape') {
             // Let parent handle escape
@@ -526,7 +538,7 @@ const VideoControls: React.FC<VideoControlsProps> = ({
               cyclePlaybackRate();
             }}
             className="text-white text-sm font-medium min-w-[45px] hover:bg-white/10 px-2 py-1 rounded transition-colors"
-            aria-label="Vitesse de lecture"
+            aria-label={t('playbackSpeed')}
           >
             x {playbackRate.toFixed(1).replaceAll('.0', ',0')}
           </button>
@@ -538,8 +550,8 @@ const VideoControls: React.FC<VideoControlsProps> = ({
               toggleFullscreen();
             }}
             className="text-white hover:bg-white/10 p-1.5 rounded transition-colors ml-1"
-            title={isFullscreen ? "Quitter le plein écran" : "Plein écran"}
-            aria-label={isFullscreen ? "Quitter le plein écran" : "Plein écran"}
+            title={isFullscreen ? t('exitFullscreen') : t('fullscreen')}
+            aria-label={isFullscreen ? t('exitFullscreen') : t('fullscreen')}
           >
             <Maximize2 size={20} className={isFullscreen ? 'rotate-45' : ''} />
           </button>
@@ -578,7 +590,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   setCurrentTime,
   lastClickTimeRef,
 }) => {
-  return (
+
+  const { t } = useI18n();  return (
     <button
       type="button"
       className={`relative flex flex-col w-full h-full border-none bg-transparent p-0 ${isFullscreen ? 'bg-black' : ''}`}
@@ -593,7 +606,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           lastClickTimeRef.current = now;
         }
       }}
-      aria-label="Lecteur vidéo"
+      aria-label={t('videoPlayer')}
     >
       <div className="flex-1 flex items-center justify-center relative w-full h-full">
         <video
@@ -663,7 +676,9 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
   audioRef,
   togglePlayPause,
   setIsPlaying,
-}) => (
+}) => {
+  const { t } = useI18n();
+  return (
   <div className="w-full max-w-md bg-bg-surface rounded-2xl p-6">
     <audio
       ref={audioRef}
@@ -701,7 +716,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
           togglePlayPause();
         }}
         className="w-16 h-16 rounded-full bg-accent hover:bg-[#5a5ec9] flex items-center justify-center transition-colors"
-        aria-label={isPlaying ? "Pause" : "Lecture"}
+        aria-label={isPlaying ? t('pause') : t('play')}
       >
         {isPlaying ? (
           <Pause size={28} className="text-white" />
@@ -710,7 +725,8 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
         )}
       </button>
 
-      <p className="text-text-secondary text-sm">Message vocal</p>
+      <p className="text-text-secondary text-sm">{t('voiceMessageLabel')}</p>
     </div>
   </div>
-);
+  );
+};

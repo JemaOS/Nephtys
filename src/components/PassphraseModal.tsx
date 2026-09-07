@@ -2,6 +2,7 @@
 // Distributed under the license specified in the root directory of this project.
 
 import React, { useState } from 'react';
+import { useI18n } from '@/i18n';
 import { Lock, Eye, EyeOff, Loader2, AlertTriangle, ShieldCheck } from 'lucide-react';
 import { checkPassphraseStrength } from '@/lib/passphraseKeyStore';
 
@@ -21,6 +22,7 @@ export interface PassphraseModalProps {
 }
 
 export const PassphraseModal: React.FC<PassphraseModalProps> = ({ mode, onSubmit, onReset }) => {
+    const { t } = useI18n();
     const [passphrase, setPassphrase] = useState('');
     const [confirm, setConfirm] = useState('');
     const [show, setShow] = useState(false);
@@ -46,8 +48,8 @@ export const PassphraseModal: React.FC<PassphraseModalProps> = ({ mode, onSubmit
         } catch (err) {
             setError(
                 mode === 'unlock'
-                    ? 'Passphrase incorrecte. Veuillez réessayer.'
-                    : 'Erreur lors de la sauvegarde. Réessayez dans quelques secondes.',
+                    ? t('passphraseIncorrect')
+                    : t('passphraseSaveError'),
             );
         } finally {
             setSubmitting(false);
@@ -60,7 +62,7 @@ export const PassphraseModal: React.FC<PassphraseModalProps> = ({ mode, onSubmit
         try {
             await onReset();
         } catch {
-            setError('Échec de la réinitialisation. Réessayez.');
+            setError(t('resetFailed'));
         } finally {
             setSubmitting(false);
         }
@@ -71,7 +73,7 @@ export const PassphraseModal: React.FC<PassphraseModalProps> = ({ mode, onSubmit
             className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center p-4 z-[200]"
             role="dialog"
             aria-modal="true"
-            aria-label="Passphrase de récupération"
+            aria-label={t('recoveryPassphrase')}
         >
             <div className="w-full max-w-md bg-bg-surface rounded-3xl p-6 shadow-2xl">
                 {/* Header */}
@@ -81,12 +83,12 @@ export const PassphraseModal: React.FC<PassphraseModalProps> = ({ mode, onSubmit
                     </div>
                     <div>
                         <h2 className="text-lg font-semibold text-text-primary">
-                            {mode === 'setup' ? 'Sécuriser vos clés' : 'Déverrouiller votre compte'}
+                            {mode === 'setup' ? t('secureYourKeys') : t('unlockAccount')}
                         </h2>
                         <p className="text-xs text-text-secondary">
                             {mode === 'setup'
-                                ? 'Définissez une passphrase de récupération'
-                                : 'Saisissez votre passphrase pour ce nouvel appareil'}
+                                ? t('setRecoveryPassphrase')
+                                : t('enterPassphraseNewDevice')}
                         </p>
                     </div>
                 </div>
@@ -95,16 +97,11 @@ export const PassphraseModal: React.FC<PassphraseModalProps> = ({ mode, onSubmit
                 <div className="bg-bg-hover rounded-xl p-3 mb-4 text-xs text-text-secondary leading-relaxed">
                     {mode === 'setup' ? (
                         <>
-                            Cette passphrase chiffre votre clé privée afin que vous puissiez vous
-                            connecter sur d'autres appareils sans perdre vos médias. <strong>Personne
-                            d'autre que vous</strong> ne peut la connaître — pas même nous. Si vous
-                            l'oubliez, vous perdrez l'accès à vos anciens médias chiffrés.
+                            {t('passphraseSetupExplain')}
                         </>
                     ) : (
                         <>
-                            Vous vous connectez depuis un nouvel appareil. Votre passphrase déchiffre
-                            localement votre clé privée pour que vous puissiez à nouveau lire vos
-                            médias.
+                            {t('passphraseUnlockExplain')}
                         </>
                     )}
                 </div>
@@ -114,11 +111,9 @@ export const PassphraseModal: React.FC<PassphraseModalProps> = ({ mode, onSubmit
                         <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-3 flex gap-2">
                             <AlertTriangle size={18} className="text-red-400 flex-shrink-0 mt-0.5" />
                             <div className="text-xs text-text-primary">
-                                <p className="font-medium text-red-400 mb-1">Réinitialisation des clés</p>
+                                <p className="font-medium text-red-400 mb-1">{t('keysResetTitle')}</p>
                                 <p>
-                                    Vos médias chiffrés précédents <strong>deviendront illisibles</strong>{' '}
-                                    sur tous vos appareils. Votre compte, vos contacts et vos messages
-                                    texte ne seront pas affectés.
+                                    {t('keysResetExplain')}
                                 </p>
                             </div>
                         </div>
@@ -129,7 +124,7 @@ export const PassphraseModal: React.FC<PassphraseModalProps> = ({ mode, onSubmit
                                 disabled={submitting}
                                 className="flex-1 py-2.5 rounded-xl bg-bg-hover hover:bg-bg-primary text-text-primary font-medium disabled:opacity-50"
                             >
-                                Annuler
+                                {t('cancel')}
                             </button>
                             <button
                                 type="button"
@@ -138,7 +133,7 @@ export const PassphraseModal: React.FC<PassphraseModalProps> = ({ mode, onSubmit
                                 className="flex-1 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white font-medium disabled:opacity-50 flex items-center justify-center gap-2"
                             >
                                 {submitting && <Loader2 size={16} className="animate-spin" />}
-                                Confirmer
+                                {t('confirm')}
                             </button>
                         </div>
                     </div>
@@ -149,17 +144,17 @@ export const PassphraseModal: React.FC<PassphraseModalProps> = ({ mode, onSubmit
                                 type={show ? 'text' : 'password'}
                                 value={passphrase}
                                 onChange={(e) => setPassphrase(e.target.value)}
-                                placeholder="Passphrase"
+                                placeholder={t('passwordPlaceholder')}
                                 autoFocus
                                 autoComplete={mode === 'setup' ? 'new-password' : 'current-password'}
                                 className="w-full px-4 py-3 pr-11 rounded-xl bg-bg-hover text-text-primary placeholder-text-tertiary outline-none focus:ring-2 focus:ring-accent"
-                                aria-label="Passphrase"
+                                aria-label={t('passwordPlaceholder')}
                             />
                             <button
                                 type="button"
                                 onClick={() => setShow((v) => !v)}
                                 className="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text-primary"
-                                aria-label={show ? 'Masquer' : 'Afficher'}
+                                aria-label={show ? t('hide') : t('show')}
                             >
                                 {show ? <EyeOff size={18} /> : <Eye size={18} />}
                             </button>
@@ -171,10 +166,10 @@ export const PassphraseModal: React.FC<PassphraseModalProps> = ({ mode, onSubmit
                                     type={show ? 'text' : 'password'}
                                     value={confirm}
                                     onChange={(e) => setConfirm(e.target.value)}
-                                    placeholder="Confirmer la passphrase"
+                                    placeholder={t('confirmPassphrasePlaceholder')}
                                     autoComplete="new-password"
                                     className="w-full px-4 py-3 rounded-xl bg-bg-hover text-text-primary placeholder-text-tertiary outline-none focus:ring-2 focus:ring-accent"
-                                    aria-label="Confirmer la passphrase"
+                                    aria-label={t('confirmPassphrasePlaceholder')}
                                 />
                                 <div className="flex items-center gap-2 text-xs">
                                     <div className="flex-1 h-1 bg-bg-hover rounded-full overflow-hidden">
@@ -192,11 +187,11 @@ export const PassphraseModal: React.FC<PassphraseModalProps> = ({ mode, onSubmit
                                         />
                                     </div>
                                     <span className="text-text-secondary w-20 text-right">
-                                        {strength.label}
+                                        {t(`passphraseStrength${strength.score}`)}
                                     </span>
                                 </div>
                                 {confirm.length > 0 && !passphrasesMatch && (
-                                    <p className="text-xs text-red-400">Les passphrases ne correspondent pas.</p>
+                                    <p className="text-xs text-red-400">{t('passphrasesNoMatch')}</p>
                                 )}
                             </>
                         )}
@@ -217,7 +212,7 @@ export const PassphraseModal: React.FC<PassphraseModalProps> = ({ mode, onSubmit
                             ) : (
                                 <ShieldCheck size={18} />
                             )}
-                            {mode === 'setup' ? 'Sécuriser et continuer' : 'Déverrouiller'}
+                            {mode === 'setup' ? t('secureAndContinue') : t('unlockAction')}
                         </button>
 
                         {mode === 'unlock' && onReset && (
@@ -226,7 +221,7 @@ export const PassphraseModal: React.FC<PassphraseModalProps> = ({ mode, onSubmit
                                 onClick={() => setShowResetConfirm(true)}
                                 className="w-full py-2 text-xs text-text-tertiary hover:text-red-400 underline-offset-2 hover:underline"
                             >
-                                J'ai oublié ma passphrase — réinitialiser mes clés
+                                {t('forgotPassphraseReset')}
                             </button>
                         )}
                     </form>

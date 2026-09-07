@@ -5,7 +5,8 @@ import {
 } from 'lucide-react';
 import { Profile, Message } from '@/lib/supabase';
 import { formatFileSize, formatDate, getEphemeralLabel } from './ConversationInfo';
-import { useDecryptedMedia } from '@/hooks/useDecryptedMedia';
+import { useDecryptedMedia } from '@/hooks/useDecryptedMedia'
+import { useI18n } from '@/i18n';
 import { useAuth } from '@/context/AuthContext';
 import { MediaImg } from './MediaImg';
 
@@ -53,13 +54,15 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   handleToggleMute,
   handleArchive,
   handleDelete,
-}) => (
+}) => {
+  const { t } = useI18n()
+  return (
   <div className="p-4 space-y-2">
     {/* Description */}
     <div className="bg-bg-surface rounded-xl p-4">
       <div className="flex items-center justify-between">
         <div className="flex-1">
-          <h4 className="text-sm font-medium text-text-primary mb-1">Description</h4>
+          <h4 className="text-sm font-medium text-text-primary mb-1">{t('description')}</h4>
           {isEditingDescription ? (
             <div className="space-y-3 mt-2">
               <textarea
@@ -67,18 +70,18 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                 onChange={(e) => setNewDescription(e.target.value)}
                 className="w-full px-3 py-2 bg-bg-hover text-text-primary rounded-lg outline-none resize-none text-sm"
                 rows={3}
-                placeholder="Ajouter une description..."
+                placeholder={t('addDescriptionPlaceholder')}
               />
               <button
                 onClick={handleUpdateDescription}
                 className="w-full py-2 bg-accent hover:bg-[#5a5ec9] text-white rounded-lg text-sm font-medium transition-colors"
               >
-                Enregistrer
+                {t('save')}
               </button>
             </div>
           ) : (
             <p className="text-sm text-text-secondary">
-              {currentDescription || 'Aucune description'}
+              {currentDescription || t('noDescription')}
             </p>
           )}
         </div>
@@ -100,8 +103,8 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           <Lock size={20} className="text-accent" />
         </div>
         <div className="flex-1">
-          <h4 className="text-sm font-medium text-text-primary">Chiffrement</h4>
-          <p className="text-xs text-text-secondary">Messages chiffrés de bout en bout</p>
+          <h4 className="text-sm font-medium text-text-primary">{t('encryptionTitle')}</h4>
+          <p className="text-xs text-text-secondary">{t('messagesEncrypted')}</p>
         </div>
         <Check size={18} className="text-accent" />
       </div>
@@ -117,7 +120,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           <Timer size={20} className={ephemeralDuration ? 'text-accent' : 'text-text-secondary'} />
         </div>
         <div className="flex-1">
-          <h4 className="text-sm font-medium text-text-primary">Messages éphémères</h4>
+          <h4 className="text-sm font-medium text-text-primary">{t('ephemeralMessages')}</h4>
           <p className={`text-xs ${ephemeralDuration ? 'text-accent' : 'text-text-secondary'}`}>
             {getEphemeralLabel(ephemeralDuration)}
           </p>
@@ -136,7 +139,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           {isMuted ? <BellOff size={20} className="text-text-secondary" /> : <Bell size={20} className="text-text-secondary" />}
         </div>
         <span className="text-sm text-text-primary flex-1">
-          {isMuted ? 'Activer les notifications' : 'Désactiver les notifications'}
+          {isMuted ? t('enableNotifications') : t('disableNotifications')}
         </span>
       </div>
     </button>
@@ -150,7 +153,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
         <div className="w-10 h-10 rounded-full bg-bg-hover flex items-center justify-center">
           <Archive size={20} className="text-text-secondary" />
         </div>
-        <span className="text-sm text-text-primary">Archiver la conversation</span>
+        <span className="text-sm text-text-primary">{t('archiveChat')}</span>
       </div>
     </button>
 
@@ -163,11 +166,12 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
         <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center">
           <Trash2 size={20} className="text-red-500" />
         </div>
-        <span className="text-sm text-red-500">Supprimer la conversation</span>
+        <span className="text-sm text-red-500">{t('deleteConversation')}</span>
       </div>
     </button>
   </div>
-);
+  )
+};
 
 interface MembersTabProps {
   conversationType: 'direct' | 'group';
@@ -185,7 +189,9 @@ export const MembersTab: React.FC<MembersTabProps> = ({
   members,
   currentUserId,
   directParticipants,
-}) => (
+}) => {
+  const { t } = useI18n()
+  return (
   <div className="p-4 space-y-2">
     {conversationType === 'group' && (
       <>
@@ -197,7 +203,7 @@ export const MembersTab: React.FC<MembersTabProps> = ({
             <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center">
               <UserPlus size={20} className="text-accent" />
             </div>
-            <span className="text-sm text-text-primary">Ajouter des membres</span>
+            <span className="text-sm text-text-primary">{t('addMembers')}</span>
           </button>
         )}
         
@@ -219,12 +225,12 @@ export const MembersTab: React.FC<MembersTabProps> = ({
             <div className="flex-1">
               <div className="font-medium text-text-primary">
                 {member.display_name || member.username}
-                {member.user_id === currentUserId && ' (Vous)'}
+                {member.user_id === currentUserId && ` (${t('you')})`}
               </div>
               {member.role === 'admin' && (
                 <div className="flex items-center gap-1 text-xs text-accent">
                   <Crown size={12} />
-                  <span>Administrateur</span>
+                  <span>{t('adminLabel')}</span>
                 </div>
               )}
             </div>
@@ -235,7 +241,7 @@ export const MembersTab: React.FC<MembersTabProps> = ({
 
     {conversationType === 'direct' && (
       <>
-        <p className="text-xs text-text-secondary mb-3 px-1">2 participants</p>
+        <p className="text-xs text-text-secondary mb-3 px-1">{t('participantsCount', { count: 2 })}</p>
         {directParticipants.map((participant) => (
           <div
             key={participant.user.id}
@@ -254,7 +260,7 @@ export const MembersTab: React.FC<MembersTabProps> = ({
             <div className="flex-1">
               <div className="font-medium text-text-primary">
                 {participant.user.display_name || participant.user.username}
-                {participant.isCurrentUser && ' (Vous)'}
+                {participant.isCurrentUser && ` (${t('you')})`}
               </div>
               <p className="text-xs text-text-secondary">@{participant.user.username}</p>
             </div>
@@ -263,7 +269,8 @@ export const MembersTab: React.FC<MembersTabProps> = ({
       </>
     )}
   </div>
-);
+  )
+};
 
 interface MediaTabProps {
   loadingMedia: boolean;
@@ -278,11 +285,12 @@ export const MediaTab: React.FC<MediaTabProps> = ({
   setSelectedMedia,
   setIsMediaViewerOpen,
 }) => {
+  const { t } = useI18n()
   if (loadingMedia) {
     return (
       <div className="text-center py-12">
         <Loader2 size={32} className="mx-auto mb-2 animate-spin text-accent" />
-        <p className="text-sm text-text-secondary">Chargement des médias...</p>
+        <p className="text-sm text-text-secondary">{t('loadingMedia')}</p>
       </div>
     );
   }
@@ -291,7 +299,7 @@ export const MediaTab: React.FC<MediaTabProps> = ({
     return (
       <div className="text-center py-12 text-text-secondary">
         <Image size={48} className="mx-auto mb-2 opacity-50" />
-        <p className="text-sm">Aucun média partagé</p>
+        <p className="text-sm">{t('noSharedMedia')}</p>
       </div>
     );
   }
@@ -315,6 +323,7 @@ export const MediaTab: React.FC<MediaTabProps> = ({
 // Thumbnail unitaire qui résout l'URL signée ou déchiffre E2EE à la volée.
 const MediaThumb: React.FC<{ media: Message; onClick: () => void }> = ({ media, onClick }) => {
   const { user } = useAuth();
+  const { t } = useI18n();
   const isVideo = media.type === 'video' || media.media_type === 'video';
   const src = media.media_url || media.file_url || '';
   const { url, loading } = useDecryptedMedia({
@@ -348,7 +357,7 @@ const MediaThumb: React.FC<{ media: Message; onClick: () => void }> = ({ media, 
       ) : (
         <img
           src={url}
-          alt="Media"
+          alt={t('mediaAlt')}
           className="w-full h-full object-cover"
         />
       )}
@@ -365,11 +374,12 @@ export const FilesTab: React.FC<FilesTabProps> = ({
   loadingFiles,
   fileMessages,
 }) => {
+  const { t } = useI18n()
   if (loadingFiles) {
     return (
       <div className="text-center py-12">
         <Loader2 size={32} className="mx-auto mb-2 animate-spin text-accent" />
-        <p className="text-sm text-text-secondary">Chargement des fichiers...</p>
+        <p className="text-sm text-text-secondary">{t('loadingFiles')}</p>
       </div>
     );
   }
@@ -378,7 +388,7 @@ export const FilesTab: React.FC<FilesTabProps> = ({
     return (
       <div className="text-center py-12 text-text-secondary">
         <FileText size={48} className="mx-auto mb-2 opacity-50" />
-        <p className="text-sm">Aucun fichier partagé</p>
+        <p className="text-sm">{t('noSharedFiles')}</p>
       </div>
     );
   }
@@ -395,7 +405,7 @@ export const FilesTab: React.FC<FilesTabProps> = ({
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-text-primary truncate">
-              {file.file_name || 'Fichier'}
+              {file.file_name || t('fileFallback')}
             </p>
             <p className="text-xs text-text-secondary">
               {formatFileSize(file.file_size)} • {formatDate(file.created_at)}
@@ -424,11 +434,12 @@ export const LinksTab: React.FC<LinksTabProps> = ({
   loadingLinks,
   linkMessages,
 }) => {
+  const { t } = useI18n()
   if (loadingLinks) {
     return (
       <div className="text-center py-12">
         <Loader2 size={32} className="mx-auto mb-2 animate-spin text-accent" />
-        <p className="text-sm text-text-secondary">Chargement des liens...</p>
+        <p className="text-sm text-text-secondary">{t('loadingLinks')}</p>
       </div>
     );
   }
@@ -437,7 +448,7 @@ export const LinksTab: React.FC<LinksTabProps> = ({
     return (
       <div className="text-center py-12 text-text-secondary">
         <LinkIcon size={48} className="mx-auto mb-2 opacity-50" />
-        <p className="text-sm">Aucun lien partagé</p>
+        <p className="text-sm">{t('noSharedLinks')}</p>
       </div>
     );
   }

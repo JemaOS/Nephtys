@@ -2,6 +2,7 @@
 // Distributed under the license specified in the root directory of this project.
 
 import { createContext, useContext, useEffect, useState, useMemo, ReactNode } from 'react'
+import { tStatic } from '@/i18n';
 import { User } from '@supabase/supabase-js'
 import { supabase, Profile } from '@/lib/supabase'
 import { initializePresence, cleanupPresence } from '@/hooks/usePresence'
@@ -320,18 +321,18 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
       const fnError = await extractFunctionError(error, data)
       if (fnError) {
         if (fnError.code === 'RATE_LIMITED') {
-          throw new Error(`❌ Trop de tentatives\n\n${fnError.message}`)
+          throw new Error(`${tStatic('tooManyAttempts')}\n\n${fnError.message}`)
         }
         if (fnError.code === 'VALIDATION_ERROR') {
-          throw new Error(`❌ Saisie invalide\n\n${fnError.message}`)
+          throw new Error(`${tStatic('invalidInput')}\n\n${fnError.message}`)
         }
         const errorMsg = fnError.message || ''
         if (errorMsg.includes('Invalid login') || errorMsg.includes('Invalid credentials')) {
-          throw new Error('❌ Identifiants incorrects\n\nLe pseudo ou le mot de passe est incorrect.')
+          throw new Error(tStatic('invalidCredentials'))
         } else if (errorMsg.includes('User not found')) {
-          throw new Error('❌ Compte introuvable\n\nCe pseudo n\'existe pas. Créez un compte d\'abord.')
+          throw new Error(tStatic('accountNotFound'))
         } else {
-          throw new Error('❌ Erreur de connexion\n\nVeuillez réessayer dans quelques instants.')
+          throw new Error(tStatic('authConnectionError'))
         }
       }
 
@@ -351,7 +352,7 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
           initKeyPairOnSignin(userId, password)
         }
       } else {
-        throw new Error('❌ Erreur de connexion\n\nAucune session reçue.')
+        throw new Error(tStatic('authNoSession'))
       }
     } catch (err: any) {
       // Si c'est déjà notre erreur formatée, la relancer
@@ -360,7 +361,7 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
       }
       // Sinon, formater l'erreur
       console.error('Unexpected signin error:', err)
-      throw new Error('❌ Erreur de connexion\n\nVérifiez votre connexion internet et réessayez.')
+      throw new Error(tStatic('authCheckConnection'))
     }
   }
 
@@ -377,13 +378,13 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
           throw new Error(`❌ Trop d'inscriptions\n\n${fnError.message}`)
         }
         if (fnError.code === 'VALIDATION_ERROR') {
-          throw new Error(`❌ Saisie invalide\n\n${fnError.message}`)
+          throw new Error(`${tStatic('invalidInput')}\n\n${fnError.message}`)
         }
         const errorMsg = fnError.message || ''
         if (errorMsg.includes('already exists') || errorMsg.includes('duplicate')) {
-          throw new Error('❌ Pseudo déjà utilisé\n\nCe pseudo existe déjà. Choisissez-en un autre.')
+          throw new Error(tStatic('usernameTaken'))
         } else if (errorMsg.includes('password')) {
-          throw new Error('❌ Mot de passe invalide\n\nLe mot de passe doit contenir au moins 8 caractères.')
+          throw new Error(tStatic('invalidPasswordSignup'))
         } else {
           throw new Error('❌ Erreur d\'inscription\n\nVeuillez réessayer.')
         }
@@ -397,7 +398,7 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
         })
         if (sessionError) {
           console.error('Session error:', sessionError)
-          throw new Error('❌ Erreur de session\n\nCompte créé mais impossible de vous connecter.')
+          throw new Error(tStatic('sessionErrorSignup'))
         }
         // Générer + chiffrer + publier la paire E2EE avec le password
         const userId = data.data.session.user?.id
@@ -461,10 +462,10 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
           throw new Error(`❌ Trop de créations\n\n${fnError.message}`)
         }
         if (fnError.code === 'VALIDATION_ERROR') {
-          throw new Error(`❌ Saisie invalide\n\n${fnError.message}`)
+          throw new Error(`${tStatic('invalidInput')}\n\n${fnError.message}`)
         }
         console.error('Guest signup error:', fnError)
-        throw new Error('❌ Mode éphémère indisponible\n\nVeuillez réessayer ou créer un compte permanent.')
+        throw new Error(tStatic('guestModeUnavailable'))
       }
 
       // Définir la session
@@ -475,10 +476,10 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
         })
         if (sessionError) {
           console.error('Session error:', sessionError)
-          throw new Error('❌ Erreur de session\n\nImpossible de démarrer la session éphémère.')
+          throw new Error(tStatic('guestSessionError'))
         }
       } else {
-        throw new Error('❌ Erreur de création\n\nAucune session reçue.')
+        throw new Error(tStatic('creationErrorNoSession'))
       }
 
       // Stocker en local que c'est un mode éphémère
@@ -493,7 +494,7 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
       }
       // Sinon, formater l'erreur
       console.error('Unexpected guest error:', err)
-      throw new Error('❌ Mode éphémère indisponible\n\nVérifiez votre connexion internet.')
+      throw new Error(tStatic('guestModeCheckConnection'))
     }
   }
 

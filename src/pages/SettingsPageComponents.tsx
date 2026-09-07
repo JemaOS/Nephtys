@@ -2,6 +2,7 @@
 // Distributed under the license specified in the root directory of this project.
 
 import { Loader2, Calendar, Database, Lock, Cloud, Shield } from 'lucide-react'
+import { useI18n } from '@/i18n'
 
 // Helper component for password dialog - defined outside main component
 export const BackupPasswordDialogComponent = ({
@@ -16,22 +17,24 @@ export const BackupPasswordDialogComponent = ({
   setBackupPassword: (v: string) => void,
   setShowPasswordInput: (v: boolean) => void,
   handleBackup: (isLight: boolean) => void
-}) => (
+}) => {
+  const { t } = useI18n()
+  return (
   <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
     <div className="bg-bg-surface rounded-2xl p-6 w-full max-w-sm space-y-4">
       <h3 className="text-lg font-semibold text-text-primary">
-        {passwordAction === 'backup' ? 'Mot de passe de sauvegarde' : 'Mot de passe de restauration'}
+        {passwordAction === 'backup' ? t('backupPasswordTitle') : t('restorePasswordTitle')}
       </h3>
       <p className="text-sm text-text-secondary">
         {passwordAction === 'backup' 
-          ? 'Créez un mot de passe pour chiffrer votre sauvegarde. Vous en aurez besoin pour la restaurer.'
-          : 'Entrez le mot de passe utilisé lors de la création de cette sauvegarde.'}
+          ? t('backupPasswordDesc')
+          : t('restorePasswordDesc')}
       </p>
       <input 
         type="password" 
         value={backupPassword} 
         onChange={(e) => setBackupPassword(e.target.value)} 
-        placeholder="Mot de passe" 
+        placeholder={t('passwordPlaceholder')} 
         className="w-full px-4 py-3 bg-bg-primary rounded-xl text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-accent" 
         autoFocus 
       />
@@ -40,7 +43,7 @@ export const BackupPasswordDialogComponent = ({
           onClick={() => { setShowPasswordInput(false); setBackupPassword(''); }} 
           className="flex-1 py-3 rounded-xl bg-bg-hover text-text-primary font-medium"
         >
-          Annuler
+          {t('cancel')}
         </button>
         <button 
           onClick={() => {
@@ -49,18 +52,19 @@ export const BackupPasswordDialogComponent = ({
               if (passwordAction === 'backup') handleBackup(false);
               else if (passwordAction === 'light-backup') handleBackup(true);
             } else {
-              alert('Le mot de passe doit contenir au moins 4 caractères');
+              alert(t('passwordTooShort'));
             }
           }} 
           disabled={backupPassword.length < 4} 
           className="flex-1 py-3 rounded-xl bg-accent text-white font-medium disabled:opacity-50"
         >
-          Confirmer
+          {t('confirm')}
         </button>
       </div>
     </div>
   </div>
-)
+  )
+}
 
 // Helper component for backup progress - defined outside main component
 export const BackupProgressDisplayComponent = ({
@@ -73,12 +77,14 @@ export const BackupProgressDisplayComponent = ({
   isRestoring: boolean,
   backupStatus: string,
   backupProgress: number
-}) => (
+}) => {
+  const { t } = useI18n()
+  return (
   <div className="px-6 py-4 bg-accent/10 mx-4 rounded-2xl mb-4">
     <div className="flex items-center gap-3 mb-2">
       <Loader2 size={20} className="animate-spin text-accent" />
       <span className="text-text-primary font-medium">
-        {isBackingUp ? 'Sauvegarde en cours...' : 'Restauration en cours...'}
+        {isBackingUp ? t('backupInProgress') : t('restoreInProgress')}
       </span>
     </div>
     <div className="text-sm text-text-secondary mb-2">{backupStatus}</div>
@@ -87,7 +93,8 @@ export const BackupProgressDisplayComponent = ({
     </div>
     <div className="text-xs text-text-secondary mt-1 text-right">{backupProgress}%</div>
   </div>
-)
+  )
+}
 
 // Helper function to format bytes
 const formatBytes = (bytes: number): string => {
@@ -99,8 +106,8 @@ const formatBytes = (bytes: number): string => {
 }
 
 // Helper function to format backup date
-const formatBackupDate = (date: Date | null): string => {
-  if (!date) return 'Jamais'
+const formatBackupDate = (date: Date | null, neverLabel: string): string => {
+  if (!date) return neverLabel
   return date.toLocaleDateString('fr-FR', {
     day: 'numeric',
     month: 'long',
@@ -114,31 +121,36 @@ export const BackupInfoDisplayComponent = ({ lastBackupDate, lastBackupSize, est
   lastBackupDate: Date | null,
   lastBackupSize: number,
   estimatedSize: number
-}) => (
+}) => {
+  const { t } = useI18n()
+  return (
   <div className="px-6 py-4 bg-bg-surface mx-4 rounded-2xl mb-4">
     <div className="space-y-2">
       <div className="flex items-center gap-2 text-text-secondary text-sm">
-        <Calendar size={16} /><span>Dernière sauvegarde : {formatBackupDate(lastBackupDate)}</span>
+        <Calendar size={16} /><span>{t('lastBackupLabel')} : {formatBackupDate(lastBackupDate, t('never'))}</span>
       </div>
       {lastBackupSize > 0 && (
         <div className="flex items-center gap-2 text-text-secondary text-sm">
-          <Database size={16} /><span>Taille : {formatBytes(lastBackupSize)}</span>
+          <Database size={16} /><span>{t('sizeLabel')} : {formatBytes(lastBackupSize)}</span>
         </div>
       )}
       {estimatedSize > 0 && (
         <div className="flex items-center gap-2 text-text-secondary text-sm">
-          <Database size={16} /><span>Taille estimée : {formatBytes(estimatedSize)}</span>
+          <Database size={16} /><span>{t('estimatedSizeLabel')} : {formatBytes(estimatedSize)}</span>
         </div>
       )}
       <div className="flex items-center gap-2 text-accent text-sm">
-        <Lock size={16} /><span>Chiffrée de bout en bout</span>
+        <Lock size={16} /><span>{t('e2eEncrypted')}</span>
       </div>
     </div>
   </div>
-)
+  )
+}
 
 // Helper for Proton Drive recommendation - defined outside main component
-export const ProtonDriveRecommendationComponent = () => (
+export const ProtonDriveRecommendationComponent = () => {
+  const { t } = useI18n()
+  return (
   <div className="px-6 py-4 border-t border-bg-hover mt-4">
     <div className="bg-[#6d4aff]/10 rounded-2xl p-4">
       <div className="flex items-start gap-3">
@@ -146,15 +158,16 @@ export const ProtonDriveRecommendationComponent = () => (
           <Cloud size={20} className="text-white" />
         </div>
         <div className="flex-1">
-          <div className="text-text-primary font-medium mb-1">Stockage recommandé : Proton Drive</div>
+          <div className="text-text-primary font-medium mb-1">{t('protonDriveTitle')}</div>
           <p className="text-text-secondary text-sm mb-2">
-            Après avoir créé votre sauvegarde, uploadez le fichier .neph sur Proton Drive pour le stocker en toute sécurité.
+            {t('protonDriveDesc')}
           </p>
         </div>
       </div>
     </div>
   </div>
-)
+  )
+}
 
 // Helper component for backup setting toggle - defined outside main component
 export const BackupSettingToggleComponent = ({
@@ -185,18 +198,21 @@ export const BackupSettingToggleComponent = ({
 )
 
 // Helper component for security info - defined outside main component
-export const BackupSecurityInfoComponent = () => (
+export const BackupSecurityInfoComponent = () => {
+  const { t } = useI18n()
+  return (
   <div className="px-6 py-4">
     <div className="bg-bg-surface rounded-2xl p-4">
       <div className="flex items-start gap-3">
         <Shield size={24} className="text-accent flex-shrink-0 mt-0.5" />
         <div>
-          <div className="text-text-primary font-medium mb-1">Sauvegarde chiffrée</div>
+          <div className="text-text-primary font-medium mb-1">{t('encryptedBackup')}</div>
           <p className="text-text-secondary text-sm">
-            Vos sauvegardes sont chiffrées de bout en bout avec votre mot de passe personnel.
+            {t('encryptedBackupDesc')}
           </p>
         </div>
       </div>
     </div>
   </div>
-)
+  )
+}

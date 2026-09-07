@@ -8,9 +8,11 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { signFieldsBatch } from '@/lib/mediaUrl'
 import { MediaImg } from '@/components/MediaImg'
+import { useI18n } from '@/i18n'
 import { ArrowLeft, Users, X, Check, Camera } from 'lucide-react'
 
 export function GroupsPage() {
+  const { t } = useI18n()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { user } = useAuth()
@@ -199,7 +201,7 @@ export function GroupsPage() {
           <button onClick={() => navigate(-1)} className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1]">
             <ArrowLeft size={20} />
           </button>
-          <h1 className="text-xl font-semibold text-text-primary">Nouveau groupe</h1>
+          <h1 className="text-xl font-semibold text-text-primary">{t('newGroupTitle')}</h1>
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
@@ -210,7 +212,7 @@ export function GroupsPage() {
               <label className="relative cursor-pointer group">
                 <div className="w-24 h-24 rounded-full overflow-hidden bg-bg-hover flex items-center justify-center">
                   {groupAvatarPreview ? (
-                    <img src={groupAvatarPreview} alt="Avatar groupe" className="w-full h-full object-cover" />
+                    <img src={groupAvatarPreview} alt={t('groupAvatarAlt')} className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-3xl">
                       {groupName ? groupName[0].toUpperCase() : <Users size={32} />}
@@ -225,13 +227,13 @@ export function GroupsPage() {
             </div>
 
             <div className="space-y-2">
-              <label htmlFor="group-name" className="text-sm text-accent">Nom du groupe</label>
+              <label htmlFor="group-name" className="text-sm text-accent">{t('groupNameLabel')}</label>
               <div className="relative">
                 <Users size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" />
                 <input
                   id="group-name"
                   type="text"
-                  placeholder="Ex: Famille, Amis, Projet..."
+                  placeholder={t('groupNamePlaceholder')}
                   value={groupName}
                   onChange={(e) => setGroupName(e.target.value)}
                   className="w-full h-11 pl-10 pr-3 bg-bg-hover text-text-primary text-sm rounded-xl border-none outline-none placeholder:text-text-secondary"
@@ -240,12 +242,12 @@ export function GroupsPage() {
             </div>
             
             <div className="space-y-2">
-              <label htmlFor="group-description" className="text-sm text-accent">Description (optionnel)</label>
+              <label htmlFor="group-description" className="text-sm text-accent">{t('descriptionOptional')}</label>
               <textarea
                 id="group-description"
                 value={groupDescription}
                 onChange={(e) => setGroupDescription(e.target.value)}
-                placeholder="Décrivez le groupe..."
+                placeholder={t('groupDescriptionPlaceholder')}
                 className="w-full px-4 py-3 bg-bg-hover text-text-primary text-sm rounded-2xl border-none outline-none placeholder:text-text-secondary resize-none"
                 rows={3}
               />
@@ -257,7 +259,7 @@ export function GroupsPage() {
           {selectedContacts.length > 0 && (
             <div className="space-y-2">
               <p className="text-sm text-text-secondary">
-                {selectedContacts.length} membre{selectedContacts.length > 1 ? 's' : ''} sélectionné{selectedContacts.length > 1 ? 's' : ''}
+                {t('membersSelected', { count: selectedContacts.length })}
               </p>
               <div className="flex flex-wrap gap-2">
                 {selectedContacts.map(contactId => {
@@ -281,7 +283,7 @@ export function GroupsPage() {
             className="w-full py-3 rounded-lg bg-bg-surface hover:bg-bg-hover text-text-primary font-medium transition-colors flex items-center justify-center gap-2"
           >
             <Users size={20} />
-            Ajouter des membres ({selectedContacts.length})
+            {t('addMembersCount', { count: selectedContacts.length })}
           </button>
 
           {/* Create Button */}
@@ -295,7 +297,7 @@ export function GroupsPage() {
             ) : (
               <>
                 <Check size={20} />
-                Créer le groupe
+                {t('createGroup')}
               </>
             )}
           </button>
@@ -308,7 +310,7 @@ export function GroupsPage() {
           <div className="w-full max-w-md bg-bg-surface rounded-lg flex flex-col max-h-[80vh]">
             {/* Modal Header */}
             <div className="px-6 py-4 border-b border-bg-hover flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-text-primary">Ajouter des membres</h2>
+              <h2 className="text-xl font-semibold text-text-primary">{t('addMembers')}</h2>
               <button
                 onClick={() => setShowContactsModal(false)}
                 className="w-8 h-8 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-text-secondary"
@@ -321,7 +323,7 @@ export function GroupsPage() {
             {selectedContacts.length > 0 && (
               <div className="px-6 py-2 bg-bg-secondary border-b border-bg-hover">
                 <p className="text-sm text-accent">
-                  {selectedContacts.length} membre{selectedContacts.length > 1 ? 's' : ''} sélectionné{selectedContacts.length > 1 ? 's' : ''}
+                  {t('membersSelected', { count: selectedContacts.length })}
                 </p>
               </div>
             )}
@@ -331,7 +333,7 @@ export function GroupsPage() {
               {contacts.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 px-6 text-center">
                   <Users size={48} className="text-[#3b4a54] mb-3" />
-                  <p className="text-text-secondary mb-4">Aucun contact disponible</p>
+                  <p className="text-text-secondary mb-4">{t('noContactsAvailable')}</p>
                   <button
                     onClick={() => {
                       setShowContactsModal(false)
@@ -339,7 +341,7 @@ export function GroupsPage() {
                     }}
                     className="px-6 py-2 rounded-lg bg-accent hover:bg-[#5a5ec9] text-white font-medium transition-colors"
                   >
-                    Ajouter des contacts
+                    {t('addContacts')}
                   </button>
                 </div>
               ) : (
@@ -393,7 +395,7 @@ export function GroupsPage() {
                 onClick={() => setShowContactsModal(false)}
                 className="w-full py-2 rounded-2xl bg-accent hover:bg-[#5a5ec9] text-white font-medium transition-colors"
               >
-                Valider ({selectedContacts.length})
+                {t('validateCount', { count: selectedContacts.length })}
               </button>
             </div>
           </div>

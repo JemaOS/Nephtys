@@ -3,6 +3,7 @@
 
 import React, { useState } from 'react';
 import { X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useI18n } from '@/i18n';
 
 interface MediaItem {
   id: string;
@@ -21,6 +22,7 @@ export const MediaMessageGroup: React.FC<MediaMessageGroupProps> = ({
   items,
   isOwn,
 }) => {
+  const { t } = useI18n();
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
 
@@ -62,7 +64,7 @@ export const MediaMessageGroup: React.FC<MediaMessageGroupProps> = ({
               openFullscreen(0);
             }
           }}
-          aria-label="Afficher l'image en plein écran"
+          aria-label={t('viewImageFullscreen')}
         >
           {item.type === 'image' ? (
             <img
@@ -231,7 +233,7 @@ export const MediaMessageGroup: React.FC<MediaMessageGroupProps> = ({
             closeFullscreen();
           }
         }}
-        aria-label="Fermer le plein écran"
+        aria-label={t('exitFullscreen')}
       >
         {/* Header */}
         <div className="flex items-center justify-between p-4 safe-area-top">

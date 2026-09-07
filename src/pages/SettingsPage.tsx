@@ -9,6 +9,8 @@ import { useTheme } from '@/context/ThemeContext'
 import { supabase } from '@/lib/supabase'
 import { MediaImg } from '@/components/MediaImg'
 import { invalidateMediaUrl } from '@/lib/mediaUrl'
+import { LanguageSelector } from '@/components/LanguageSelector'
+import { useI18n } from '@/i18n'
 import {
   check2FAStatus,
   enroll2FA,
@@ -51,7 +53,7 @@ import {
 
 type SettingsView = 'main' | 'profile' | 'account' | 'privacy' | 'security' | '2fa' | 'delete' |
                      'discussions' | 'wallpaper' | 'notifications' | 'message-notif' | 'call-notif' |
-                     'storage' | 'network' | 'help' | 'faq' | 'contact' | 'terms' | 'backup'
+                     'storage' | 'network' | 'help' | 'faq' | 'contact' | 'terms' | 'backup' | 'language'
 
 // ============ HELPER FUNCTIONS ============
 
@@ -63,22 +65,14 @@ const formatBytes = (bytes: number): string => {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
 }
 
-const formatBackupDate = (date: Date | null): string => {
-  if (!date) return 'Jamais'
+const formatBackupDate = (date: Date | null, neverLabel: string): string => {
+  if (!date) return neverLabel
   return date.toLocaleDateString('fr-FR', {
     day: 'numeric',
     month: 'long',
     hour: '2-digit',
     minute: '2-digit'
   })
-}
-
-const getStorageTypeLabel = (type: StorageType): string => {
-  if (type === 'all') return 'toutes les données'
-  if (type === 'photos') return 'les photos'
-  if (type === 'videos') return 'les vidéos'
-  if (type === 'files') return 'les fichiers'
-  return 'les messages vocaux'
 }
 
 const getMediaTypeFilter = (type: StorageType): string | null => {
@@ -89,27 +83,28 @@ const getMediaTypeFilter = (type: StorageType): string | null => {
   return 'file'
 }
 
-const getViewTitle = (view: SettingsView): string => {
+const getViewTitle = (view: SettingsView, t: (key: string) => string): string => {
   const titles: Record<SettingsView, string> = {
-    'main': 'Paramètres',
-    'profile': 'Profil',
-    'account': 'Compte',
-    'privacy': 'Confidentialité',
-    'security': 'Sécurité',
-    '2fa': 'Authentification 2FA',
-    'delete': 'Supprimer le compte',
-    'discussions': 'Discussions',
-    'wallpaper': 'Fond d\'écran',
-    'notifications': 'Notifications',
-    'message-notif': 'Notifications de messages',
-    'call-notif': 'Notifications d\'appels',
-    'storage': 'Stockage et données',
-    'network': 'Utilisation des données',
-    'backup': 'Sauvegarde des discussions',
-    'faq': 'FAQ',
-    'contact': 'Nous contacter',
-    'terms': 'Politique de confidentialité',
-    'help': 'Aide'
+    'main': t('settings'),
+    'profile': t('settingsProfile'),
+    'account': t('settingsAccount'),
+    'privacy': t('settingsPrivacy'),
+    'security': t('settingsSecurity'),
+    '2fa': t('settings2fa'),
+    'delete': t('settingsDeleteAccount'),
+    'discussions': t('settingsDiscussions'),
+    'wallpaper': t('settingsWallpaper'),
+    'notifications': t('settingsNotifications'),
+    'message-notif': t('settingsMessageNotif'),
+    'call-notif': t('settingsCallNotif'),
+    'storage': t('settingsStorage'),
+    'network': t('settingsNetwork'),
+    'backup': t('settingsBackup'),
+    'faq': t('settingsFaq'),
+    'contact': t('settingsContact'),
+    'terms': t('settingsTerms'),
+    'help': t('settingsHelp'),
+    'language': t('settingsLanguage')
   }
   return titles[view]
 }
@@ -131,6 +126,7 @@ const getParentView = (view: SettingsView): SettingsView => {
 export function SettingsPage() {
   const { profile, signOut, user, updateLocalProfile } = useAuth()
   const { theme, wallpaper, setTheme, setWallpaper } = useTheme()
+  const { t } = useI18n()
   const navigate = useNavigate()
   const [currentView, setCurrentView] = useState<SettingsView>('main')
   const [notificationsEnabled, setNotificationsEnabled] = useState(true)
@@ -225,11 +221,11 @@ export function SettingsPage() {
         setTwoFactorEnrollment(result.data)
         setTwoFactorStep('verifying')
       } else {
-        setTwoFactorError(result.error || 'Erreur lors de l\'inscription')
+        setTwoFactorError(result.error || t('twoFaEnrollError'))
         setTwoFactorStep('idle')
       }
     } catch (err: any) {
-      setTwoFactorError(err.message || 'Erreur inattendue')
+      setTwoFactorError(err.message || t('unexpectedError'))
       setTwoFactorStep('idle')
     } finally {
       setTwoFactorLoading(false)
@@ -251,12 +247,12 @@ export function SettingsPage() {
         setTwoFactorCode('')
         setTwoFactorStep('idle')
         await load2FAStatus()
-        alert('✅ Authentification à deux facteurs activée !\n\nVotre compte est maintenant protégé.')
+        alert(t('twoFaEnabledAlert'))
       } else {
-        setTwoFactorError(result.error || 'Code invalide')
+        setTwoFactorError(result.error || t('twoFaInvalidCode'))
       }
     } catch (err: any) {
-      setTwoFactorError(err.message || 'Erreur de vérification')
+      setTwoFactorError(err.message || t('twoFaVerifyError'))
     } finally {
       setTwoFactorLoading(false)
     }
@@ -265,10 +261,7 @@ export function SettingsPage() {
   const handleDisable2FA = async () => {
     if (twoFactorFactors.length === 0) return
     
-    const confirmed = confirm(
-      '⚠️ Désactiver l\'authentification à deux facteurs ?\n\n' +
-      'Votre compte sera moins sécurisé sans cette protection supplémentaire.'
-    )
+    const confirmed = confirm(t('twoFaDisableConfirm'))
     
     if (!confirmed) return
     
@@ -287,9 +280,9 @@ export function SettingsPage() {
       setTwoFactorEnabled(false)
       setTwoFactorFactors([])
       setTwoFactorStep('idle')
-      alert('✅ Authentification à deux facteurs désactivée')
+      alert(t('twoFaDisabledAlert'))
     } catch (err: any) {
-      setTwoFactorError(err.message || 'Erreur lors de la désactivation')
+      setTwoFactorError(err.message || t('twoFaDisableError'))
     } finally {
       setTwoFactorLoading(false)
       setTwoFactorStep('idle')
@@ -306,7 +299,7 @@ export function SettingsPage() {
   const copyToClipboard = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text)
-      alert('✅ Copié dans le presse-papiers')
+      alert(t('copied'))
     } catch (e) {
       console.error('Copy failed:', e)
     }
@@ -390,8 +383,14 @@ export function SettingsPage() {
   const handleClearStorage = async (type: 'all' | 'photos' | 'videos' | 'files' | 'audio') => {
     if (!user) return
     
-    const typeLabel = getStorageTypeLabel(type)
-    if (!confirm(`Voulez-vous vraiment supprimer ${typeLabel} en cache ?\n\nCette action est irréversible.`)) return
+    const typeLabels: Record<string, string> = {
+      all: t('storageTypeAll'),
+      photos: t('storageTypePhotos'),
+      videos: t('storageTypeVideos'),
+      files: t('storageTypeFiles'),
+      audio: t('storageTypeVoice'),
+    }
+    if (!confirm(t('clearCacheConfirm', { type: typeLabels[type] }))) return
     
     setClearingStorage(true)
     try {
@@ -416,18 +415,18 @@ export function SettingsPage() {
       
       await query
       
-      alert('✅ Cache vidé avec succès !')
+      alert(t('cacheCleared'))
       loadStorageStats()
     } catch (e) {
       console.error('Error clearing storage:', e)
-      alert('❌ Erreur lors du vidage du cache')
+      alert(t('cacheClearError'))
     } finally {
       setClearingStorage(false)
     }
   }
 
   const handleSignOut = async () => {
-    if (confirm('Êtes-vous sûr de vouloir vous déconnecter ?')) {
+    if (confirm(t('signOutConfirm'))) {
       await signOut()
       navigate('/auth')
     }
@@ -458,12 +457,12 @@ export function SettingsPage() {
     if (!file || !user) return
     
     if (file.size > 5 * 1024 * 1024) {
-      alert('❌ Fichier trop volumineux\n\nLa photo doit faire moins de 5 MB.')
+      alert(t('fileTooLargeAlert'))
       return
     }
     
     if (!file.type.startsWith('image/')) {
-      alert('❌ Format invalide\n\nVeuillez sélectionner une image (JPG, PNG, etc.).')
+      alert(t('invalidImageFormatAlert'))
       return
     }
     
@@ -481,7 +480,7 @@ export function SettingsPage() {
       
       if (uploadError) {
         console.error('Upload error:', uploadError)
-        throw new Error('Erreur lors de l\'upload')
+        throw new Error(t('uploadError'))
       }
       
       // On stocke le path nu en base (pas l'URL signée qui expire).
@@ -493,16 +492,16 @@ export function SettingsPage() {
       
       if (updateError) {
         console.error('Profile update error:', updateError)
-        throw new Error('Erreur lors de la mise à jour du profil')
+        throw new Error(t('profileUpdateError'))
       }
       
       // Invalider le cache pour qu'au reload la nouvelle photo apparaisse
       try { invalidateMediaUrl(fileName) } catch { /* ignore */ }
-      alert('✅ Photo de profil mise à jour !')
+      alert(t('profilePhotoUpdated'))
       globalThis.location.reload()
     } catch (err: any) {
       console.error('Photo upload error:', err)
-      alert(err.message || '❌ Erreur lors de l\'upload de la photo\n\nVeuillez réessayer.')
+      alert(err.message || t('photoUploadErrorAlert'))
     } finally {
       setUploadingPhoto(false)
     }
@@ -510,8 +509,8 @@ export function SettingsPage() {
 
   const handleDeleteAccount = async () => {
     if (!user) return
-    const confirmation = prompt('Pour supprimer votre compte, tapez "SUPPRIMER" :')
-    if (confirmation !== 'SUPPRIMER') return
+    const confirmation = prompt(t('deleteAccountPrompt', { word: t('deleteConfirmWord') }))
+    if (confirmation !== t('deleteConfirmWord')) return
     try {
       await supabase.from('messages').delete().eq('sender_id', user.id)
       await supabase.from('conversation_members').delete().eq('user_id', user.id)
@@ -520,7 +519,7 @@ export function SettingsPage() {
       await signOut()
       navigate('/auth')
     } catch {
-      alert('Erreur lors de la suppression du compte')
+      alert(t('deleteAccountError'))
     }
   }
 
@@ -531,7 +530,7 @@ export function SettingsPage() {
     <div className="flex-1 overflow-y-auto p-6 flex items-center justify-center">
       <div className="text-center">
         <Loader2 size={32} className="animate-spin text-accent mx-auto mb-4" />
-        <p className="text-text-secondary">Chargement...</p>
+        <p className="text-text-secondary">{t('loading')}</p>
       </div>
     </div>
   )
@@ -547,10 +546,10 @@ export function SettingsPage() {
             <Smartphone size={32} className="text-accent" />
           </div>
           <h3 className="text-lg font-semibold text-text-primary mb-2">
-            Configurer l'authentification
+            {t('twoFaSetupTitle')}
           </h3>
           <p className="text-sm text-text-secondary">
-            Scannez ce QR code avec votre application d'authentification
+            {t('twoFaScanQr')}
           </p>
         </div>
 
@@ -559,7 +558,7 @@ export function SettingsPage() {
         </div>
 
         <div className="bg-bg-surface rounded-2xl p-4 space-y-3">
-          <p className="text-sm text-text-secondary text-center">Ou entrez ce code manuellement :</p>
+          <p className="text-sm text-text-secondary text-center">{t('twoFaOrEnterCode')}</p>
           <div className="flex items-center gap-2">
             <div className="flex-1 bg-bg-primary rounded-xl p-3 font-mono text-sm text-text-primary break-all">
               {showSecret ? twoFactorEnrollment.totp.secret : '••••••••••••••••'}
@@ -574,7 +573,7 @@ export function SettingsPage() {
         </div>
 
         <div className="space-y-3">
-          <label className="text-sm text-text-secondary" htmlFor="2fa-code">Entrez le code à 6 chiffres de votre application :</label>
+          <label className="text-sm text-text-secondary" htmlFor="2fa-code">{t('twoFaEnterCode')}</label>
           <input
             id="2fa-code"
             type="text" inputMode="numeric" pattern="[0-9]*" maxLength={6}
@@ -589,22 +588,22 @@ export function SettingsPage() {
 
         <div className="flex gap-3">
           <button onClick={handleCancel2FAEnrollment} disabled={twoFactorLoading} className="flex-1 py-3 rounded-2xl bg-bg-surface text-text-primary font-medium hover:bg-bg-hover transition-colors">
-            Annuler
+            {t('cancel')}
           </button>
           <button onClick={handleVerify2FACode} disabled={twoFactorLoading || twoFactorCode.length !== 6} className="flex-1 py-3 rounded-2xl bg-accent text-white font-medium hover:bg-[#5a5ec9] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
-            {twoFactorLoading ? <><Loader2 size={18} className="animate-spin" />Vérification...</> : 'Vérifier'}
+            {twoFactorLoading ? <><Loader2 size={18} className="animate-spin" />{t('verifying')}</> : t('verify')}
           </button>
         </div>
 
         <div className="bg-bg-surface rounded-2xl p-4">
-          <p className="text-sm text-text-secondary mb-2">Applications recommandées (open source) :</p>
+          <p className="text-sm text-text-secondary mb-2">{t('twoFaRecommendedApps')}</p>
           <ul className="text-sm text-text-primary space-y-1">
-            <li>• <strong>Aegis Authenticator</strong> (Android) - Open source</li>
-            <li>• <strong>FreeOTP+</strong> (Android) - Open source, Red Hat</li>
-            <li>• <strong>KeePassXC</strong> (Windows, Mac, Linux) - Open source, européen</li>
-            <li>• <strong>Bitwarden</strong> (Android, PC) - Open source</li>
+            <li>• <strong>Aegis Authenticator</strong> {t('twoFaAegisDesc')}</li>
+            <li>• <strong>FreeOTP+</strong> {t('twoFaFreeOtpDesc')}</li>
+            <li>• <strong>KeePassXC</strong> {t('twoFaKeepassxcDesc')}</li>
+            <li>• <strong>Bitwarden</strong> {t('twoFaBitwardenDesc')}</li>
           </ul>
-          <p className="text-xs text-text-secondary mt-3">💡 Ces applications respectent votre vie privée et fonctionnent hors ligne.</p>
+          <p className="text-xs text-text-secondary mt-3">{t('twoFaAppsPrivacy')}</p>
         </div>
       </div>
     )
@@ -620,9 +619,9 @@ export function SettingsPage() {
               <Shield size={24} className={twoFactorEnabled ? 'text-green-500' : 'text-text-secondary'} />
             </div>
             <div>
-              <div className="text-text-primary font-medium">Authentification à deux facteurs</div>
+              <div className="text-text-primary font-medium">{t('twoFaTitle')}</div>
               <div className={`text-sm ${twoFactorEnabled ? 'text-green-500' : 'text-text-secondary'}`}>
-                {twoFactorEnabled ? '✓ Activée' : 'Désactivée'}
+                {twoFactorEnabled ? t('twoFaEnabledCheck') : t('twoFaDisabledLabel')}
               </div>
             </div>
           </div>
@@ -630,17 +629,17 @@ export function SettingsPage() {
 
         <p className="text-sm text-text-secondary">
           {twoFactorEnabled
-            ? 'Votre compte est protégé par une authentification à deux facteurs. Un code de vérification sera demandé à chaque connexion.'
-            : 'Ajoutez une couche de sécurité supplémentaire à votre compte en activant l\'authentification à deux facteurs.'}
+            ? t('twoFaEnabledDesc')
+            : t('twoFaDisabledDesc')}
         </p>
 
         {twoFactorEnabled ? (
           <button onClick={handleDisable2FA} disabled={twoFactorLoading} className="w-full py-3 rounded-2xl bg-red-500/10 text-red-500 font-medium hover:bg-red-500/20 transition-colors flex items-center justify-center gap-2">
-            {twoFactorLoading && twoFactorStep === 'disabling' ? <><Loader2 size={18} className="animate-spin" />Désactivation...</> : <><X size={18} />Désactiver l'authentification 2FA</>}
+            {twoFactorLoading && twoFactorStep === 'disabling' ? <><Loader2 size={18} className="animate-spin" />{t('twoFaDisabling')}</> : <><X size={18} />{t('twoFaDisableButton')}</>}
           </button>
         ) : (
           <button onClick={handleStart2FAEnrollment} disabled={twoFactorLoading} className="w-full py-3 px-4 rounded-2xl bg-accent text-white font-medium hover:bg-[#5a5ec9] transition-colors flex items-center justify-center gap-2">
-            {twoFactorLoading && twoFactorStep === 'enrolling' ? <><Loader2 size={18} className="animate-spin flex-shrink-0" /><span>Configuration...</span></> : <><Smartphone size={18} className="flex-shrink-0" /><span>Configurer l'application d'authentification</span></>}
+            {twoFactorLoading && twoFactorStep === 'enrolling' ? <><Loader2 size={18} className="animate-spin flex-shrink-0" /><span>{t('twoFaSetupInProgress')}</span></> : <><Smartphone size={18} className="flex-shrink-0" /><span>{t('twoFaSetupButton')}</span></>}
           </button>
         )}
 
@@ -648,19 +647,19 @@ export function SettingsPage() {
       </div>
 
       <div className="bg-bg-surface rounded-2xl p-6 space-y-4">
-        <h4 className="text-text-primary font-medium">Comment ça fonctionne ?</h4>
+        <h4 className="text-text-primary font-medium">{t('twoFaHowItWorks')}</h4>
         <div className="space-y-3">
           <div className="flex items-start gap-3">
             <div className="w-6 h-6 rounded-full bg-accent/20 flex items-center justify-center flex-shrink-0 mt-0.5"><span className="text-accent text-sm font-medium">1</span></div>
-            <p className="text-sm text-text-secondary">Téléchargez une application d'authentification open source (Aegis, FreeOTP+, Tofu, etc.)</p>
+            <p className="text-sm text-text-secondary">{t('twoFaStep1')}</p>
           </div>
           <div className="flex items-start gap-3">
             <div className="w-6 h-6 rounded-full bg-accent/20 flex items-center justify-center flex-shrink-0 mt-0.5"><span className="text-accent text-sm font-medium">2</span></div>
-            <p className="text-sm text-text-secondary">Scannez le QR code avec l'application pour lier votre compte</p>
+            <p className="text-sm text-text-secondary">{t('twoFaStep2')}</p>
           </div>
           <div className="flex items-start gap-3">
             <div className="w-6 h-6 rounded-full bg-accent/20 flex items-center justify-center flex-shrink-0 mt-0.5"><span className="text-accent text-sm font-medium">3</span></div>
-            <p className="text-sm text-text-secondary">À chaque connexion, entrez le code à 6 chiffres généré par l'application</p>
+            <p className="text-sm text-text-secondary">{t('twoFaStep3')}</p>
           </div>
         </div>
       </div>
@@ -669,8 +668,8 @@ export function SettingsPage() {
         <div className="flex items-start gap-3">
           <Lock size={20} className="text-accent flex-shrink-0 mt-0.5" />
           <div>
-            <p className="text-sm text-text-primary font-medium mb-1">Sécurité renforcée</p>
-            <p className="text-xs text-text-secondary">L'authentification à deux facteurs protège votre compte même si votre mot de passe est compromis.</p>
+            <p className="text-sm text-text-primary font-medium mb-1">{t('twoFaSecurityTitle')}</p>
+            <p className="text-xs text-text-secondary">{t('twoFaSecurityDesc')}</p>
           </div>
         </div>
       </div>
@@ -685,13 +684,14 @@ export function SettingsPage() {
   }
 
   const mainSettings = [
-    { icon: User, label: 'Profil', subtitle: profile?.display_name || profile?.username, view: 'profile' as SettingsView },
-    { icon: Key, label: 'Compte', subtitle: 'Confidentialité, sécurité', view: 'account' as SettingsView },
-    { icon: MessageSquare, label: 'Discussions', subtitle: 'Thème, fonds d\'écran', view: 'discussions' as SettingsView },
-    { icon: Bell, label: 'Notifications', subtitle: 'Sons, vibrations', view: 'notifications' as SettingsView },
-    { icon: Database, label: 'Stockage et données', subtitle: 'Utilisation réseau', view: 'storage' as SettingsView },
-    { icon: Cloud, label: 'Sauvegarde', subtitle: 'Proton Drive', view: 'backup' as SettingsView },
-    { icon: HelpCircle, label: 'Aide', subtitle: 'FAQ, nous contacter', view: 'help' as SettingsView },
+    { icon: User, label: t('settingsProfile'), subtitle: profile?.display_name || profile?.username, view: 'profile' as SettingsView },
+    { icon: Key, label: t('settingsAccount'), subtitle: t('mainSubtitleAccount'), view: 'account' as SettingsView },
+    { icon: MessageSquare, label: t('settingsDiscussions'), subtitle: t('mainSubtitleDiscussions'), view: 'discussions' as SettingsView },
+    { icon: Bell, label: t('settingsNotifications'), subtitle: t('mainSubtitleNotifications'), view: 'notifications' as SettingsView },
+    { icon: Database, label: t('settingsStorage'), subtitle: t('mainSubtitleStorage'), view: 'storage' as SettingsView },
+    { icon: Cloud, label: t('mainBackupShort'), subtitle: t('mainSubtitleBackup'), view: 'backup' as SettingsView },
+    { icon: Globe, label: t('settingsLanguage'), subtitle: t('languageLabel'), view: 'language' as SettingsView },
+    { icon: HelpCircle, label: t('settingsHelp'), subtitle: t('mainSubtitleHelp'), view: 'help' as SettingsView },
   ]
 
   const renderMainView = () => (
@@ -715,7 +715,7 @@ export function SettingsPage() {
             />
             <label className="absolute bottom-0 right-0 w-6 h-6 rounded-full bg-accent flex items-center justify-center cursor-pointer hover:bg-[#5a5ec9]">
               <Camera size={14} className="text-white" />
-              <input type="file" accept="image/*" onChange={handleUploadPhoto} className="hidden" disabled={uploadingPhoto} aria-label="Changer la photo de profil" />
+              <input type="file" accept="image/*" onChange={handleUploadPhoto} className="hidden" disabled={uploadingPhoto} aria-label={t('changeProfilePhoto')} />
             </label>
           </div>
           <div className="flex-1">
@@ -739,12 +739,12 @@ export function SettingsPage() {
         ))}
       </div>
       <div className="px-6 py-8 text-center space-y-2">
-        <p className="text-sm text-text-secondary">Nephtys optimisé pour JemaOS</p>
-        <p className="text-xs text-text-secondary">Version 1.1.0</p>
+        <p className="text-sm text-text-secondary">{t('optimizedForJemaos')}</p>
+        <p className="text-xs text-text-secondary">{t('versionLabel', { version: '1.1.0' })}</p>
       </div>
       <div className="px-6 pb-8">
         <button onClick={handleSignOut} className="w-full py-3 rounded-2xl bg-bg-surface hover:bg-bg-hover text-[#ea4335] font-medium transition-colors flex items-center justify-center gap-2">
-          <LogOut size={20} />Se déconnecter
+          <LogOut size={20} />{t('signOut')}
         </button>
       </div>
     </div>
@@ -767,30 +767,30 @@ export function SettingsPage() {
             />
             <label className="absolute bottom-2 right-2 w-10 h-10 rounded-full bg-accent flex items-center justify-center hover:bg-[#5a5ec9] transition-colors cursor-pointer">
               <Camera size={20} className="text-white" />
-              <input type="file" accept="image/*" onChange={handleUploadPhoto} className="hidden" disabled={uploadingPhoto} aria-label="Changer la photo de profil" />
+              <input type="file" accept="image/*" onChange={handleUploadPhoto} className="hidden" disabled={uploadingPhoto} aria-label={t('changeProfilePhoto')} />
             </label>
           </div>
-          <p className="text-sm text-text-secondary">Modifier la photo de profil</p>
+          <p className="text-sm text-text-secondary">{t('editProfilePhoto')}</p>
         </div>
         <div className="space-y-2">
-          <label className="text-sm text-accent" htmlFor="profile-name">Nom</label>
+          <label className="text-sm text-accent" htmlFor="profile-name">{t('name')}</label>
           <div className="flex items-center gap-3 p-4 bg-bg-surface rounded-2xl">
-            <input id="profile-name" type="text" value={editingName ? newDisplayName : (profile?.display_name || profile?.username)} onChange={(e) => setNewDisplayName(e.target.value)} onFocus={() => setEditingName(true)} className="flex-1 bg-transparent text-text-primary outline-none" aria-label="Nom" />
+            <input id="profile-name" type="text" value={editingName ? newDisplayName : (profile?.display_name || profile?.username)} onChange={(e) => setNewDisplayName(e.target.value)} onFocus={() => setEditingName(true)} className="flex-1 bg-transparent text-text-primary outline-none" aria-label={t('name')} />
             {editingName ? <button onClick={handleUpdateDisplayName} className="text-accent"><Check size={18} /></button> : <Edit2 size={18} className="text-text-secondary" />}
           </div>
         </div>
         <div className="space-y-2">
-          <p className="text-sm text-accent">Nom d'utilisateur</p>
+          <p className="text-sm text-accent">{t('usernameLabel')}</p>
           <div className="p-4 bg-bg-surface rounded-2xl"><p className="text-text-primary">@{profile?.username}</p></div>
-          <p className="text-xs text-text-secondary">Le nom d'utilisateur ne peut pas être modifié</p>
+          <p className="text-xs text-text-secondary">{t('usernameNotEditable')}</p>
         </div>
         <div className="space-y-2">
-          <label className="text-sm text-accent" htmlFor="profile-bio">Info</label>
+          <label className="text-sm text-accent" htmlFor="profile-bio">{t('infoLabel')}</label>
           <div className="flex items-center gap-3 p-4 bg-bg-surface rounded-2xl">
-            <input id="profile-bio" type="text" placeholder="Ajouter une info..." value={editingBio ? newBio : (profile?.bio || '')} onChange={(e) => setNewBio(e.target.value)} onFocus={() => { setEditingBio(true); setNewBio(profile?.bio || ''); }} className="flex-1 bg-transparent text-text-primary outline-none placeholder:text-text-secondary" aria-label="Info" />
+            <input id="profile-bio" type="text" placeholder={t('addInfoPlaceholder')} value={editingBio ? newBio : (profile?.bio || '')} onChange={(e) => setNewBio(e.target.value)} onFocus={() => { setEditingBio(true); setNewBio(profile?.bio || ''); }} className="flex-1 bg-transparent text-text-primary outline-none placeholder:text-text-secondary" aria-label={t('infoLabel')} />
             {editingBio ? <button onClick={handleUpdateBio} className="text-accent"><Check size={18} /></button> : <Edit2 size={18} className="text-text-secondary" />}
           </div>
-          {profile?.bio && !editingBio && <p className="text-xs text-text-secondary px-1">Votre info actuelle : "{profile.bio}"</p>}
+          {profile?.bio && !editingBio && <p className="text-xs text-text-secondary px-1">{t('currentInfo', { info: profile.bio })}</p>}
         </div>
       </div>
     </div>
@@ -802,32 +802,32 @@ export function SettingsPage() {
         <button onClick={() => setCurrentView('privacy')} className="w-full px-6 py-4 flex items-center gap-4 hover:bg-bg-surface transition-colors">
           <Shield size={24} className="text-text-secondary" />
           <div className="flex-1 text-left">
-            <div className="text-text-primary">Confidentialité</div>
-            <div className="text-sm text-text-secondary">Dernière connexion, photo de profil</div>
+            <div className="text-text-primary">{t('settingsPrivacy')}</div>
+            <div className="text-sm text-text-secondary">{t('accountPrivacyDesc')}</div>
           </div>
           <ChevronRight size={20} className="text-text-secondary" />
         </button>
         <button onClick={() => setCurrentView('security')} className="w-full px-6 py-4 flex items-center gap-4 hover:bg-bg-surface transition-colors">
           <Lock size={24} className="text-text-secondary" />
           <div className="flex-1 text-left">
-            <div className="text-text-primary">Sécurité</div>
-            <div className="text-sm text-text-secondary">Chiffrement de bout en bout</div>
+            <div className="text-text-primary">{t('settingsSecurity')}</div>
+            <div className="text-sm text-text-secondary">{t('accountSecurityDesc')}</div>
           </div>
-          <div className="flex items-center gap-2"><Check size={16} className="text-accent" /><span className="text-sm text-accent">Activé</span></div>
+          <div className="flex items-center gap-2"><Check size={16} className="text-accent" /><span className="text-sm text-accent">{t('enabled')}</span></div>
         </button>
         <button onClick={() => setCurrentView('2fa')} className="w-full px-6 py-4 flex items-center gap-4 hover:bg-bg-surface transition-colors">
           <Key size={24} className="text-text-secondary" />
           <div className="flex-1 text-left">
-            <div className="text-text-primary">Authentification à deux facteurs</div>
-            <div className="text-sm text-text-secondary">{twoFactorEnabled ? 'Activée' : 'Désactivée'}</div>
+            <div className="text-text-primary">{t('twoFaTitle')}</div>
+            <div className="text-sm text-text-secondary">{twoFactorEnabled ? t('enabled') : t('disabled')}</div>
           </div>
           <ChevronRight size={20} className="text-text-secondary" />
         </button>
         <button onClick={() => setCurrentView('delete')} className="w-full px-6 py-4 flex items-center gap-4 hover:bg-bg-surface transition-colors">
           <Trash2 size={24} className="text-[#ea4335]" />
           <div className="flex-1 text-left">
-            <div className="text-[#ea4335]">Supprimer le compte</div>
-            <div className="text-sm text-text-secondary">Suppression définitive de toutes vos données</div>
+            <div className="text-[#ea4335]">{t('settingsDeleteAccount')}</div>
+            <div className="text-sm text-text-secondary">{t('accountDeleteDesc')}</div>
           </div>
           <ChevronRight size={20} className="text-text-secondary" />
         </button>
@@ -840,8 +840,8 @@ export function SettingsPage() {
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-text-primary">Dernière connexion</div>
-            <div className="text-sm text-text-secondary">Qui peut voir quand vous êtes en ligne</div>
+            <div className="text-text-primary">{t('lastSeenLabel')}</div>
+            <div className="text-sm text-text-secondary">{t('lastSeenDesc')}</div>
           </div>
           <button onClick={() => setShowLastSeen(!showLastSeen)} className={`w-12 h-6 rounded-full relative transition-colors ${showLastSeen ? 'bg-accent' : 'bg-[#8696a0]'}`}>
             <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${showLastSeen ? 'right-1' : 'left-1'}`}></div>
@@ -849,8 +849,8 @@ export function SettingsPage() {
         </div>
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-text-primary">Photo de profil</div>
-            <div className="text-sm text-text-secondary">Qui peut voir votre photo</div>
+            <div className="text-text-primary">{t('profilePhotoLabel')}</div>
+            <div className="text-sm text-text-secondary">{t('profilePhotoDesc')}</div>
           </div>
           <button onClick={() => setShowProfilePhoto(!showProfilePhoto)} className={`w-12 h-6 rounded-full relative transition-colors ${showProfilePhoto ? 'bg-accent' : 'bg-[#8696a0]'}`}>
             <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${showProfilePhoto ? 'right-1' : 'left-1'}`}></div>
@@ -867,11 +867,11 @@ export function SettingsPage() {
           <Lock size={40} className="text-accent" />
         </div>
         <div>
-          <h3 className="text-lg font-semibold text-text-primary mb-2">Chiffrement activé</h3>
-          <p className="text-sm text-text-secondary">Tous vos messages et appels sont chiffrés de bout en bout. Personne, pas même Nephtys, ne peut y accéder.</p>
+          <h3 className="text-lg font-semibold text-text-primary mb-2">{t('encryptionEnabled')}</h3>
+          <p className="text-sm text-text-secondary">{t('encryptionDesc')}</p>
         </div>
         <div className="pt-4 border-t border-bg-hover">
-          <p className="text-xs text-text-secondary">Protocole : Signal Protocol (E2EE)</p>
+          <p className="text-xs text-text-secondary">{t('protocolLabel')}</p>
         </div>
       </div>
     </div>
@@ -884,17 +884,17 @@ export function SettingsPage() {
           <div className="w-20 h-20 mx-auto rounded-full bg-[#ea4335]/20 flex items-center justify-center mb-4">
             <Trash2 size={40} className="text-[#ea4335]" />
           </div>
-          <h3 className="text-lg font-semibold text-text-primary mb-2">Supprimer le compte</h3>
-          <p className="text-sm text-text-secondary">Cette action est irréversible. Toutes vos données seront définitivement supprimées.</p>
+          <h3 className="text-lg font-semibold text-text-primary mb-2">{t('settingsDeleteAccount')}</h3>
+          <p className="text-sm text-text-secondary">{t('deleteAccountIrreversible')}</p>
         </div>
         <div className="space-y-3 text-sm text-text-secondary">
-          <p>• Tous vos messages seront supprimés</p>
-          <p>• Toutes vos conversations seront fermées</p>
-          <p>• Tous vos contacts seront perdus</p>
-          <p>• Votre profil sera définitivement effacé</p>
+          <p>• {t('deleteAllMessages')}</p>
+          <p>• {t('deleteAllConversations')}</p>
+          <p>• {t('deleteAllContacts')}</p>
+          <p>• {t('deleteProfileErased')}</p>
         </div>
         <button onClick={handleDeleteAccount} className="w-full py-3 rounded-xl bg-[#ea4335] hover:bg-[#d33b2f] text-white font-medium">
-          Supprimer définitivement mon compte
+          {t('deleteAccountButton')}
         </button>
       </div>
     </div>
@@ -904,14 +904,14 @@ export function SettingsPage() {
     <div className="flex-1 overflow-y-auto">
       <div className="py-2">
         <div className="px-6 py-4">
-          <h3 className="text-sm text-accent mb-4">Affichage</h3>
+          <h3 className="text-sm text-accent mb-4">{t('displaySection')}</h3>
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <span className="text-text-primary">Thème</span>
+              <span className="text-text-primary">{t('themeLabel')}</span>
               <div className="flex gap-2">
                 {[
-                  { value: 'light', icon: Sun, label: 'Clair' },
-                  { value: 'dark', icon: Moon, label: 'Sombre' }
+                  { value: 'light', icon: Sun, label: t('themeLight') },
+                  { value: 'dark', icon: Moon, label: t('themeDark') }
                 ].map((t) => (
                   <button key={t.value} onClick={() => setTheme(t.value as any)} className={`p-2 rounded-xl transition-colors ${theme === t.value ? 'bg-accent text-white' : 'bg-bg-surface text-text-secondary'}`}>
                     <t.icon size={20} />
@@ -924,17 +924,17 @@ export function SettingsPage() {
         <button onClick={() => setCurrentView('wallpaper')} className="w-full px-6 py-4 flex items-center gap-4 hover:bg-bg-surface transition-colors">
           <Palette size={24} className="text-text-secondary" />
           <div className="flex-1 text-left">
-            <div className="text-text-primary">Fond d'écran</div>
-            <div className="text-sm text-text-secondary">Par défaut</div>
+            <div className="text-text-primary">{t('settingsWallpaper')}</div>
+            <div className="text-sm text-text-secondary">{t('wallpaperDefault')}</div>
           </div>
           <ChevronRight size={20} className="text-text-secondary" />
         </button>
         <div className="px-6 py-4">
-          <h3 className="text-sm text-accent mb-4">Options de discussion</h3>
+          <h3 className="text-sm text-accent mb-4">{t('chatOptions')}</h3>
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-text-primary">Touche Entrée pour envoyer</div>
-              <div className="text-sm text-text-secondary">Envoyer avec Entrée</div>
+              <div className="text-text-primary">{t('enterToSendLabel')}</div>
+              <div className="text-sm text-text-secondary">{t('enterToSendDesc')}</div>
             </div>
             <button onClick={() => setEnterToSend(!enterToSend)} className={`w-12 h-6 rounded-full relative transition-colors ${enterToSend ? 'bg-accent' : 'bg-[#8696a0]'}`}>
               <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${enterToSend ? 'right-1' : 'left-1'}`}></div>
@@ -947,10 +947,10 @@ export function SettingsPage() {
 
   const renderWallpaperView = () => {
     const wallpaperOptions = [
-      { value: 'default' as const, label: 'Par défaut', style: {} },
-      { value: 'dark' as const, label: 'Sombre', style: { backgroundColor: '#000000' } },
-      { value: 'light' as const, label: 'Clair', style: { backgroundColor: '#e5ddd5' } },
-      { value: 'gradient' as const, label: 'Dégradé', style: { background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' } },
+      { value: 'default' as const, label: t('wallpaperDefault'), style: {} },
+      { value: 'dark' as const, label: t('themeDark'), style: { backgroundColor: '#000000' } },
+      { value: 'light' as const, label: t('themeLight'), style: { backgroundColor: '#e5ddd5' } },
+      { value: 'gradient' as const, label: t('wallpaperGradient'), style: { background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' } },
     ]
     
     return (
@@ -986,8 +986,8 @@ export function SettingsPage() {
         <div className="px-6 py-4 space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-text-primary">Notifications</div>
-              <div className="text-sm text-text-secondary">Activer les notifications</div>
+              <div className="text-text-primary">{t('settingsNotifications')}</div>
+              <div className="text-sm text-text-secondary">{t('notifEnableDesc')}</div>
             </div>
             <button onClick={() => setNotificationsEnabled(!notificationsEnabled)} className={`w-12 h-6 rounded-full relative transition-colors ${notificationsEnabled ? 'bg-accent' : 'bg-[#8696a0]'}`}>
               <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${notificationsEnabled ? 'right-1' : 'left-1'}`}></div>
@@ -995,8 +995,8 @@ export function SettingsPage() {
           </div>
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-text-primary">Sons</div>
-              <div className="text-sm text-text-secondary">Sons de notification</div>
+              <div className="text-text-primary">{t('soundsLabel')}</div>
+              <div className="text-sm text-text-secondary">{t('soundsDesc')}</div>
             </div>
             <button onClick={() => setSoundEnabled(!soundEnabled)} className={`w-12 h-6 rounded-full relative transition-colors ${soundEnabled ? 'bg-accent' : 'bg-[#8696a0]'}`}>
               <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${soundEnabled ? 'right-1' : 'left-1'}`}></div>
@@ -1006,16 +1006,16 @@ export function SettingsPage() {
         <button onClick={() => setCurrentView('message-notif')} className="w-full px-6 py-4 flex items-center gap-4 hover:bg-bg-surface transition-colors">
           <MessageSquare size={24} className="text-text-secondary" />
           <div className="flex-1 text-left">
-            <div className="text-text-primary">Notifications de messages</div>
-            <div className="text-sm text-text-secondary">Son, vibration</div>
+            <div className="text-text-primary">{t('settingsMessageNotif')}</div>
+            <div className="text-sm text-text-secondary">{t('messageNotifSubtitle')}</div>
           </div>
           <ChevronRight size={20} className="text-text-secondary" />
         </button>
         <button onClick={() => setCurrentView('call-notif')} className="w-full px-6 py-4 flex items-center gap-4 hover:bg-bg-surface transition-colors">
           <Video size={24} className="text-text-secondary" />
           <div className="flex-1 text-left">
-            <div className="text-text-primary">Notifications d'appels</div>
-            <div className="text-sm text-text-secondary">Sonnerie, vibration</div>
+            <div className="text-text-primary">{t('settingsCallNotif')}</div>
+            <div className="text-sm text-text-secondary">{t('callNotifSubtitle')}</div>
           </div>
           <ChevronRight size={20} className="text-text-secondary" />
         </button>
@@ -1028,19 +1028,19 @@ export function SettingsPage() {
       <div className="py-2">
         <div className="px-6 py-4 space-y-4">
           <div className="flex items-center justify-between">
-            <div><div className="text-text-primary">Notifications de messages</div><div className="text-sm text-text-secondary">Afficher les notifications pour les nouveaux messages</div></div>
+            <div><div className="text-text-primary">{t('settingsMessageNotif')}</div><div className="text-sm text-text-secondary">{t('msgNotifDesc')}</div></div>
             <button onClick={() => setNotificationsEnabled(!notificationsEnabled)} className={`w-12 h-6 rounded-full relative transition-colors ${notificationsEnabled ? 'bg-accent' : 'bg-[#8696a0]'}`}><div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${notificationsEnabled ? 'right-1' : 'left-1'}`}></div></button>
           </div>
           <div className="flex items-center justify-between">
-            <div><div className="text-text-primary">Son de notification</div><div className="text-sm text-text-secondary">Jouer un son pour les nouveaux messages</div></div>
+            <div><div className="text-text-primary">{t('notifSoundLabel')}</div><div className="text-sm text-text-secondary">{t('notifSoundDesc')}</div></div>
             <button onClick={() => setSoundEnabled(!soundEnabled)} className={`w-12 h-6 rounded-full relative transition-colors ${soundEnabled ? 'bg-accent' : 'bg-[#8696a0]'}`}><div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${soundEnabled ? 'right-1' : 'left-1'}`}></div></button>
           </div>
           <div className="flex items-center justify-between">
-            <div><div className="text-text-primary">Vibration</div><div className="text-sm text-text-secondary">Vibrer pour les nouveaux messages</div></div>
+            <div><div className="text-text-primary">{t('vibrationLabel')}</div><div className="text-sm text-text-secondary">{t('msgVibrationDesc')}</div></div>
             <button onClick={() => setVibrationEnabled(!vibrationEnabled)} className={`w-12 h-6 rounded-full relative transition-colors ${vibrationEnabled ? 'bg-accent' : 'bg-[#8696a0]'}`}><div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${vibrationEnabled ? 'right-1' : 'left-1'}`}></div></button>
           </div>
           <div className="flex items-center justify-between">
-            <div><div className="text-text-primary">Aperçu du message</div><div className="text-sm text-text-secondary">Afficher le contenu dans la notification</div></div>
+            <div><div className="text-text-primary">{t('messagePreviewLabel')}</div><div className="text-sm text-text-secondary">{t('messagePreviewDesc')}</div></div>
             <button onClick={() => setMessagePreviewEnabled(!messagePreviewEnabled)} className={`w-12 h-6 rounded-full relative transition-colors ${messagePreviewEnabled ? 'bg-accent' : 'bg-[#8696a0]'}`}><div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${messagePreviewEnabled ? 'right-1' : 'left-1'}`}></div></button>
           </div>
         </div>
@@ -1053,19 +1053,19 @@ export function SettingsPage() {
       <div className="py-2">
         <div className="px-6 py-4 space-y-4">
           <div className="flex items-center justify-between">
-            <div><div className="text-text-primary">Notifications d'appels</div><div className="text-sm text-text-secondary">Afficher les notifications pour les appels entrants</div></div>
+            <div><div className="text-text-primary">{t('settingsCallNotif')}</div><div className="text-sm text-text-secondary">{t('callNotifDesc')}</div></div>
             <button onClick={() => setCallNotificationsEnabled(!callNotificationsEnabled)} className={`w-12 h-6 rounded-full relative transition-colors ${callNotificationsEnabled ? 'bg-accent' : 'bg-[#8696a0]'}`}><div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${callNotificationsEnabled ? 'right-1' : 'left-1'}`}></div></button>
           </div>
           <div className="flex items-center justify-between">
-            <div><div className="text-text-primary">Sonnerie</div><div className="text-sm text-text-secondary">Jouer une sonnerie pour les appels entrants</div></div>
+            <div><div className="text-text-primary">{t('ringtoneLabel')}</div><div className="text-sm text-text-secondary">{t('ringtoneDesc')}</div></div>
             <button onClick={() => setRingtoneEnabled(!ringtoneEnabled)} className={`w-12 h-6 rounded-full relative transition-colors ${ringtoneEnabled ? 'bg-accent' : 'bg-[#8696a0]'}`}><div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${ringtoneEnabled ? 'right-1' : 'left-1'}`}></div></button>
           </div>
           <div className="flex items-center justify-between">
-            <div><div className="text-text-primary">Vibration</div><div className="text-sm text-text-secondary">Vibrer pour les appels entrants</div></div>
+            <div><div className="text-text-primary">{t('vibrationLabel')}</div><div className="text-sm text-text-secondary">{t('callVibrationDesc')}</div></div>
             <button onClick={() => setCallVibrationEnabled(!callVibrationEnabled)} className={`w-12 h-6 rounded-full relative transition-colors ${callVibrationEnabled ? 'bg-accent' : 'bg-[#8696a0]'}`}><div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${callVibrationEnabled ? 'right-1' : 'left-1'}`}></div></button>
           </div>
           <div className="flex items-center justify-between">
-            <div><div className="text-text-primary">Afficher le nom de l'appelant</div><div className="text-sm text-text-secondary">Afficher qui appelle dans la notification</div></div>
+            <div><div className="text-text-primary">{t('showCallerNameLabel')}</div><div className="text-sm text-text-secondary">{t('showCallerNameDesc')}</div></div>
             <button onClick={() => setShowCallerName(!showCallerName)} className={`w-12 h-6 rounded-full relative transition-colors ${showCallerName ? 'bg-accent' : 'bg-[#8696a0]'}`}><div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${showCallerName ? 'right-1' : 'left-1'}`}></div></button>
           </div>
         </div>
@@ -1084,7 +1084,7 @@ export function SettingsPage() {
             ) : (
               <>
                 <div className="text-3xl font-bold text-text-primary">{formatBytes(storageStats.total)}</div>
-                <div className="text-sm text-text-secondary">Espace utilisé</div>
+                <div className="text-sm text-text-secondary">{t('spaceUsed')}</div>
               </>
             )}
           </div>
@@ -1093,36 +1093,36 @@ export function SettingsPage() {
         {!storageStats.loading && storageStats.total > 0 && (
           <div className="px-4 mb-4">
             <div className="bg-bg-surface rounded-2xl p-4 space-y-3">
-              <h3 className="text-sm text-accent font-medium mb-3">Répartition</h3>
+              <h3 className="text-sm text-accent font-medium mb-3">{t('breakdown')}</h3>
               
               {storageStats.photos > 0 && (
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3"><Image size={20} className="text-blue-400" /><span className="text-text-primary">Photos</span></div>
-                  <div className="flex items-center gap-3"><span className="text-text-secondary">{formatBytes(storageStats.photos)}</span><button onClick={() => handleClearStorage('photos')} disabled={clearingStorage} className="text-xs text-accent hover:underline">Vider</button></div>
+                  <div className="flex items-center gap-3"><Image size={20} className="text-blue-400" /><span className="text-text-primary">{t('photosLabel')}</span></div>
+                  <div className="flex items-center gap-3"><span className="text-text-secondary">{formatBytes(storageStats.photos)}</span><button onClick={() => handleClearStorage('photos')} disabled={clearingStorage} className="text-xs text-accent hover:underline">{t('clear')}</button></div>
                 </div>
               )}
               {storageStats.videos > 0 && (
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3"><Video size={20} className="text-purple-400" /><span className="text-text-primary">Vidéos</span></div>
-                  <div className="flex items-center gap-3"><span className="text-text-secondary">{formatBytes(storageStats.videos)}</span><button onClick={() => handleClearStorage('videos')} disabled={clearingStorage} className="text-xs text-accent hover:underline">Vider</button></div>
+                  <div className="flex items-center gap-3"><Video size={20} className="text-purple-400" /><span className="text-text-primary">{t('videosLabel')}</span></div>
+                  <div className="flex items-center gap-3"><span className="text-text-secondary">{formatBytes(storageStats.videos)}</span><button onClick={() => handleClearStorage('videos')} disabled={clearingStorage} className="text-xs text-accent hover:underline">{t('clear')}</button></div>
                 </div>
               )}
               {storageStats.audio > 0 && (
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3"><Mic size={20} className="text-green-400" /><span className="text-text-primary">Messages vocaux</span></div>
-                  <div className="flex items-center gap-3"><span className="text-text-secondary">{formatBytes(storageStats.audio)}</span><button onClick={() => handleClearStorage('audio')} disabled={clearingStorage} className="text-xs text-accent hover:underline">Vider</button></div>
+                  <div className="flex items-center gap-3"><Mic size={20} className="text-green-400" /><span className="text-text-primary">{t('voiceMessagesLabel')}</span></div>
+                  <div className="flex items-center gap-3"><span className="text-text-secondary">{formatBytes(storageStats.audio)}</span><button onClick={() => handleClearStorage('audio')} disabled={clearingStorage} className="text-xs text-accent hover:underline">{t('clear')}</button></div>
                 </div>
               )}
               {storageStats.files > 0 && (
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3"><FileText size={20} className="text-orange-400" /><span className="text-text-primary">Fichiers</span></div>
-                  <div className="flex items-center gap-3"><span className="text-text-secondary">{formatBytes(storageStats.files)}</span><button onClick={() => handleClearStorage('files')} disabled={clearingStorage} className="text-xs text-accent hover:underline">Vider</button></div>
+                  <div className="flex items-center gap-3"><FileText size={20} className="text-orange-400" /><span className="text-text-primary">{t('filesLabel')}</span></div>
+                  <div className="flex items-center gap-3"><span className="text-text-secondary">{formatBytes(storageStats.files)}</span><button onClick={() => handleClearStorage('files')} disabled={clearingStorage} className="text-xs text-accent hover:underline">{t('clear')}</button></div>
                 </div>
               )}
               
               <div className="pt-3 border-t border-bg-hover">
                 <button onClick={() => handleClearStorage('all')} disabled={clearingStorage} className="w-full py-2 rounded-xl bg-red-500/10 text-red-500 text-sm font-medium hover:bg-red-500/20 transition-colors flex items-center justify-center gap-2">
-                  {clearingStorage ? <><Loader2 size={16} className="animate-spin" />Suppression...</> : <><Trash2 size={16} />Vider tout le cache</>}
+                  {clearingStorage ? <><Loader2 size={16} className="animate-spin" />{t('deleting')}</> : <><Trash2 size={16} />{t('clearAllCache')}</>}
                 </button>
               </div>
             </div>
@@ -1132,8 +1132,8 @@ export function SettingsPage() {
         <button onClick={() => setCurrentView('network')} className="w-full px-6 py-4 flex items-center gap-4 hover:bg-bg-surface transition-colors">
           <Globe size={24} className="text-text-secondary" />
           <div className="flex-1 text-left">
-            <div className="text-text-primary">Utilisation des données</div>
-            <div className="text-sm text-text-secondary">Téléchargement automatique</div>
+            <div className="text-text-primary">{t('settingsNetwork')}</div>
+            <div className="text-sm text-text-secondary">{t('autoDownloadSubtitle')}</div>
           </div>
           <ChevronRight size={20} className="text-text-secondary" />
         </button>
@@ -1145,46 +1145,46 @@ export function SettingsPage() {
     <div className="flex-1 overflow-y-auto pb-4">
       <div className="py-2">
         <div className="px-6 py-4">
-          <h3 className="text-sm text-accent mb-4 flex items-center gap-2"><Wifi size={16} />Connexion Wi-Fi</h3>
+          <h3 className="text-sm text-accent mb-4 flex items-center gap-2"><Wifi size={16} />{t('wifiConnection')}</h3>
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <div><div className="text-text-primary">Téléchargement automatique</div><div className="text-sm text-text-secondary">Télécharger les médias en Wi-Fi</div></div>
+              <div><div className="text-text-primary">{t('autoDownloadLabel')}</div><div className="text-sm text-text-secondary">{t('autoDownloadWifiDesc')}</div></div>
               <button onClick={() => setAutoDownloadWifi(!autoDownloadWifi)} className={`w-12 h-6 rounded-full relative transition-colors ${autoDownloadWifi ? 'bg-accent' : 'bg-[#8696a0]'}`}><div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${autoDownloadWifi ? 'right-1' : 'left-1'}`}></div></button>
             </div>
           </div>
         </div>
         <div className="px-6 py-4 border-t border-bg-hover">
-          <h3 className="text-sm text-accent mb-4 flex items-center gap-2"><WifiOff size={16} />Données mobiles</h3>
+          <h3 className="text-sm text-accent mb-4 flex items-center gap-2"><WifiOff size={16} />{t('mobileData')}</h3>
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <div><div className="text-text-primary">Téléchargement automatique</div><div className="text-sm text-text-secondary">Télécharger avec données mobiles</div></div>
+              <div><div className="text-text-primary">{t('autoDownloadLabel')}</div><div className="text-sm text-text-secondary">{t('autoDownloadMobileDesc')}</div></div>
               <button onClick={() => setAutoDownloadMobile(!autoDownloadMobile)} className={`w-12 h-6 rounded-full relative transition-colors ${autoDownloadMobile ? 'bg-accent' : 'bg-[#8696a0]'}`}><div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${autoDownloadMobile ? 'right-1' : 'left-1'}`}></div></button>
             </div>
           </div>
         </div>
         <div className="px-6 py-4 border-t border-bg-hover">
-          <h3 className="text-sm text-accent mb-4">Types de médias</h3>
+          <h3 className="text-sm text-accent mb-4">{t('mediaTypes')}</h3>
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3"><Image size={20} className="text-blue-400" /><span className="text-text-primary">Photos</span></div>
+              <div className="flex items-center gap-3"><Image size={20} className="text-blue-400" /><span className="text-text-primary">{t('photosLabel')}</span></div>
               <button onClick={() => setAutoDownloadPhotos(!autoDownloadPhotos)} className={`w-12 h-6 rounded-full relative transition-colors ${autoDownloadPhotos ? 'bg-accent' : 'bg-[#8696a0]'}`}><div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${autoDownloadPhotos ? 'right-1' : 'left-1'}`}></div></button>
             </div>
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3"><Video size={20} className="text-purple-400" /><span className="text-text-primary">Vidéos</span></div>
+              <div className="flex items-center gap-3"><Video size={20} className="text-purple-400" /><span className="text-text-primary">{t('videosLabel')}</span></div>
               <button onClick={() => setAutoDownloadVideos(!autoDownloadVideos)} className={`w-12 h-6 rounded-full relative transition-colors ${autoDownloadVideos ? 'bg-accent' : 'bg-[#8696a0]'}`}><div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${autoDownloadVideos ? 'right-1' : 'left-1'}`}></div></button>
             </div>
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3"><Mic size={20} className="text-green-400" /><span className="text-text-primary">Messages vocaux</span></div>
+              <div className="flex items-center gap-3"><Mic size={20} className="text-green-400" /><span className="text-text-primary">{t('voiceMessagesLabel')}</span></div>
               <button onClick={() => setAutoDownloadAudio(!autoDownloadAudio)} className={`w-12 h-6 rounded-full relative transition-colors ${autoDownloadAudio ? 'bg-accent' : 'bg-[#8696a0]'}`}><div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${autoDownloadAudio ? 'right-1' : 'left-1'}`}></div></button>
             </div>
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3"><FileText size={20} className="text-orange-400" /><span className="text-text-primary">Fichiers</span></div>
+              <div className="flex items-center gap-3"><FileText size={20} className="text-orange-400" /><span className="text-text-primary">{t('filesLabel')}</span></div>
               <button onClick={() => setAutoDownloadFiles(!autoDownloadFiles)} className={`w-12 h-6 rounded-full relative transition-colors ${autoDownloadFiles ? 'bg-accent' : 'bg-[#8696a0]'}`}><div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${autoDownloadFiles ? 'right-1' : 'left-1'}`}></div></button>
             </div>
           </div>
         </div>
         <div className="px-6 py-4">
-          <p className="text-xs text-text-secondary">Les paramètres de téléchargement automatique déterminent quand les médias sont téléchargés automatiquement.</p>
+          <p className="text-xs text-text-secondary">{t('autoDownloadNote')}</p>
         </div>
       </div>
     </div>
@@ -1195,23 +1195,23 @@ export function SettingsPage() {
       <div className="py-2">
         <button onClick={() => setCurrentView('faq')} className="w-full px-6 py-4 flex items-center gap-4 hover:bg-bg-surface transition-colors">
           <HelpCircle size={24} className="text-text-secondary" />
-          <div className="flex-1 text-left"><div className="text-text-primary">FAQ</div><div className="text-sm text-text-secondary">Questions fréquentes</div></div>
+          <div className="flex-1 text-left"><div className="text-text-primary">{t('settingsFaq')}</div><div className="text-sm text-text-secondary">{t('faqSubtitle')}</div></div>
           <ChevronRight size={20} className="text-text-secondary" />
         </button>
         <button onClick={() => setCurrentView('contact')} className="w-full px-6 py-4 flex items-center gap-4 hover:bg-bg-surface transition-colors">
           <Mail size={24} className="text-text-secondary" />
-          <div className="flex-1 text-left"><div className="text-text-primary">Nous contacter</div><div className="text-sm text-text-secondary">Support technique</div></div>
+          <div className="flex-1 text-left"><div className="text-text-primary">{t('settingsContact')}</div><div className="text-sm text-text-secondary">{t('supportDesc')}</div></div>
           <ChevronRight size={20} className="text-text-secondary" />
         </button>
         <button onClick={() => setCurrentView('terms')} className="w-full px-6 py-4 flex items-center gap-4 hover:bg-bg-surface transition-colors">
           <Info size={24} className="text-text-secondary" />
-          <div className="flex-1 text-left"><div className="text-text-primary">Conditions et politique de confidentialité</div></div>
+          <div className="flex-1 text-left"><div className="text-text-primary">{t('termsLabel')}</div></div>
           <ChevronRight size={20} className="text-text-secondary" />
         </button>
         <div className="px-6 py-8 text-center space-y-2">
-          <p className="text-sm text-text-secondary">Nephtys optimisé pour JemaOS</p>
-          <p className="text-xs text-text-secondary">Version 1.1.0</p>
-          <p className="text-xs text-text-secondary mt-4">© 2025 Nephtys. Tous droits réservés.</p>
+          <p className="text-sm text-text-secondary">{t('optimizedForJemaos')}</p>
+          <p className="text-xs text-text-secondary">{t('versionLabel', { version: '1.1.0' })}</p>
+          <p className="text-xs text-text-secondary mt-4">{t('copyright')}</p>
         </div>
       </div>
     </div>
@@ -1220,10 +1220,10 @@ export function SettingsPage() {
   const renderFAQView = () => (
     <div className="flex-1 overflow-y-auto p-6 space-y-4">
       {[
-        { q: 'Comment fonctionne le chiffrement ?', a: 'Nephtys utilise le protocole Signal pour chiffrer vos messages de bout en bout.' },
-        { q: 'Mes données sont-elles sauvegardées ?', a: 'En mode normal oui, en mode éphémère non. Tout est supprimé à la déconnexion.' },
-        { q: 'Puis-je utiliser Nephtys sur plusieurs appareils ?', a: 'Oui, jusqu\'à 4 appareils simultanément.' },
-      ].map((faq, index) => (
+        { q: t('faqQ1'), a: t('faqA1') },
+        { q: t('faqQ2'), a: t('faqA2') },
+        { q: t('faqQ3'), a: t('faqA3') },
+      ].map((faq) => (
         <div key={faq.q} className="bg-bg-surface rounded-2xl p-4">
           <h4 className="text-text-primary font-medium mb-2">{faq.q}</h4>
           <p className="text-sm text-text-secondary">{faq.a}</p>
@@ -1237,8 +1237,8 @@ export function SettingsPage() {
       <div className="bg-bg-surface rounded-2xl p-6 text-center space-y-4">
         <Mail size={48} className="mx-auto text-accent" />
         <div>
-          <h3 className="text-lg font-semibold text-text-primary mb-2">Contactez-nous</h3>
-          <p className="text-sm text-text-secondary mb-4">Notre équipe est là pour vous aider</p>
+          <h3 className="text-lg font-semibold text-text-primary mb-2">{t('contactUsTitle')}</h3>
+          <p className="text-sm text-text-secondary mb-4">{t('contactUsDesc')}</p>
         </div>
         <div className="space-y-3">
           <a href="mailto:contact@jematechnology.fr" className="block py-3 rounded-xl bg-accent hover:bg-[#5a5ec9] text-white font-medium">contact@jematechnology.fr</a>
@@ -1250,12 +1250,12 @@ export function SettingsPage() {
   const renderTermsView = () => (
     <div className="flex-1 overflow-y-auto p-6 space-y-4">
       <div className="bg-bg-surface rounded-2xl p-6 space-y-4 text-sm text-text-secondary">
-        <h3 className="text-lg font-semibold text-text-primary">Politique de confidentialité</h3>
-        <p>Nephtys respecte votre vie privée. Nous ne collectons aucune donnée personnelle.</p>
-        <p>• Aucun tracking</p>
-        <p>• Aucune publicité</p>
-        <p>• Aucun log des conversations</p>
-        <p>• Chiffrement de bout en bout par défaut</p>
+        <h3 className="text-lg font-semibold text-text-primary">{t('settingsTerms')}</h3>
+        <p>{t('termsIntro')}</p>
+        <p>• {t('noTracking')}</p>
+        <p>• {t('noAds')}</p>
+        <p>• {t('noLogs')}</p>
+        <p>• {t('e2eeDefault')}</p>
       </div>
     </div>
   )
@@ -1271,14 +1271,14 @@ export function SettingsPage() {
     
     setIsBackingUp(true)
     setBackupProgress(0)
-    setBackupStatus('Démarrage de la sauvegarde...')
+    setBackupStatus(t('backupStarting'))
     
     try {
       const { data: backupData, size } = isLightBackup
         ? await createLightBackup(user.id, (progress, status) => { setBackupProgress(progress); setBackupStatus(status); })
         : await createBackup(user.id, backupSettings, (progress, status) => { setBackupProgress(progress); setBackupStatus(status); })
       
-      setBackupStatus('Chiffrement et téléchargement...')
+      setBackupStatus(t('backupEncrypting'))
       await exportBackupAsFile(backupData, backupPassword)
       
       const now = new Date()
@@ -1289,10 +1289,10 @@ export function SettingsPage() {
       
       setBackupPassword('')
       setShowPasswordInput(false)
-      alert('✅ Sauvegarde terminée avec succès !\n\nLe fichier a été téléchargé. Vous pouvez maintenant l\'uploader sur Proton Drive.')
+      alert(t('backupSuccessAlert'))
     } catch (err: any) {
       console.error('Backup error:', err)
-      alert('❌ Erreur lors de la sauvegarde\n\n' + (err.message || 'Veuillez réessayer.'))
+      alert(t('backupErrorAlert', { message: err.message || t('pleaseTryAgain') }))
     } finally {
       setIsBackingUp(false)
       setBackupProgress(0)
@@ -1311,15 +1311,19 @@ export function SettingsPage() {
     
     setIsRestoring(true)
     setBackupProgress(0)
-    setBackupStatus('Lecture du fichier...')
+    setBackupStatus(t('restoreReading'))
     
     try {
       const backupData = await importBackupFromFile(file, backupPassword)
       
-      if (!backupData) throw new Error('Impossible de lire le fichier de sauvegarde')
+      if (!backupData) throw new Error(t('restoreReadError'))
       
       const confirmRestore = confirm(
-        `Voulez-vous restaurer cette sauvegarde ?\n\nDate de création : ${new Date(backupData.createdAt).toLocaleDateString('fr-FR')}\nMessages : ${backupData.messages.length}\nConversations : ${backupData.conversations.length}\n\n⚠️ Cette action peut écraser certaines données existantes.`
+        t('restoreConfirm', {
+          date: new Date(backupData.createdAt).toLocaleDateString('fr-FR'),
+          messages: backupData.messages.length,
+          conversations: backupData.conversations.length,
+        })
       )
       
       if (!confirmRestore) { setIsRestoring(false); return }
@@ -1329,14 +1333,14 @@ export function SettingsPage() {
       if (result.success) {
         setBackupPassword('')
         setShowPasswordInput(false)
-        alert(`✅ Restauration terminée avec succès !\n\nL'application va se recharger.`)
+        alert(t('restoreSuccessAlert'))
         globalThis.location.reload()
       } else {
-        throw new Error(result.error || 'Erreur lors de la restauration')
+        throw new Error(result.error || t('restoreError'))
       }
     } catch (err: any) {
       console.error('Restore error:', err)
-      alert('❌ Erreur lors de la restauration\n\n' + (err.message || 'Veuillez réessayer.'))
+      alert(t('restoreErrorAlert', { message: err.message || t('pleaseTryAgain') }))
     } finally {
       setIsRestoring(false)
       setBackupProgress(0)
@@ -1347,7 +1351,7 @@ export function SettingsPage() {
   const handleRestoreFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
-      if (!file.name.endsWith('.neph')) { alert('❌ Format de fichier invalide\n\nVeuillez sélectionner un fichier .neph'); return }
+      if (!file.name.endsWith('.neph')) { alert(t('invalidBackupFileAlert')); return }
       handleRestore(file)
     }
   }
@@ -1379,10 +1383,9 @@ export function SettingsPage() {
 
         <div className="px-6 py-4">
           <div className="text-text-secondary text-sm mb-4">
-            <h3 className="text-accent font-medium mb-2">Paramètres de la sauvegarde</h3>
+            <h3 className="text-accent font-medium mb-2">{t('backupSettingsTitle')}</h3>
             <p>
-              Sauvegardez vos discussions et vos médias dans un fichier chiffré. 
-              Vous pourrez ensuite l'uploader sur Proton Drive et le restaurer sur un nouvel appareil.
+              {t('backupSettingsDesc')}
             </p>
           </div>
         </div>
@@ -1399,17 +1402,17 @@ export function SettingsPage() {
             disabled={isBackingUp || isRestoring}
             className={`w-full py-3 rounded-2xl font-medium transition-colors flex items-center justify-center gap-2 ${isBackingUp || isRestoring ? 'bg-accent/50 text-white/70 cursor-not-allowed' : 'bg-accent hover:bg-[#5a5ec9] text-white'}`}
           >
-            <CloudUpload size={20} />Créer une sauvegarde complète
+            <CloudUpload size={20} />{t('createFullBackup')}
           </button>
           <button
             onClick={() => { setPasswordAction('light-backup'); setShowPasswordInput(true); }}
             disabled={isBackingUp || isRestoring}
             className={`w-full py-3 rounded-2xl font-medium transition-colors flex items-center justify-center gap-2 ${isBackingUp || isRestoring ? 'bg-bg-surface/50 text-text-secondary cursor-not-allowed' : 'bg-bg-surface hover:bg-bg-hover text-text-primary'}`}
           >
-            <FileText size={20} />Sauvegarde légère (texte uniquement)
+            <FileText size={20} />{t('lightBackup')}
           </button>
           <p className="text-xs text-text-secondary text-center">
-            La sauvegarde légère n'inclut pas les médias
+            {t('lightBackupNote')}
           </p>
         </div>
 
@@ -1420,14 +1423,14 @@ export function SettingsPage() {
             onChange={handleRestoreFileSelect} 
             className="hidden" 
             ref={restoreFileRef}
-            aria-label="Sélectionner un fichier de sauvegarde"
+            aria-label={t('selectBackupFile')}
           />
           <button 
             onClick={() => restoreFileRef.current?.click()} 
             disabled={isBackingUp || isRestoring} 
             className={`w-full py-3 rounded-2xl font-medium transition-colors flex items-center justify-center gap-2 ${isBackingUp || isRestoring ? 'bg-bg-surface/50 text-text-secondary cursor-not-allowed' : 'bg-bg-surface hover:bg-bg-hover text-text-primary'}`}
           >
-            <DownloadCloud size={20} />Restaurer une sauvegarde
+            <DownloadCloud size={20} />{t('restoreBackupAction')}
           </button>
         </div>
 
@@ -1436,12 +1439,12 @@ export function SettingsPage() {
         <div className="px-6 py-4 border-t border-bg-hover">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <div className="text-text-primary">Fréquence de rappel</div>
+              <div className="text-text-primary">{t('reminderFrequency')}</div>
               <div className="text-text-secondary text-sm">
                 {(() => {
-                  if (backupSettings.frequency === 'daily') return 'Tous les jours'
-                  if (backupSettings.frequency === 'weekly') return 'Toutes les semaines'
-                  return 'Tous les mois'
+                  if (backupSettings.frequency === 'daily') return t('freqDaily')
+                  if (backupSettings.frequency === 'weekly') return t('freqWeekly')
+                  return t('freqMonthly')
                 })()}
               </div>
             </div>
@@ -1449,44 +1452,58 @@ export function SettingsPage() {
               value={backupSettings.frequency} 
               onChange={(e) => updateBackupSettings({ frequency: e.target.value as 'daily' | 'weekly' | 'monthly' })} 
               className="bg-bg-surface text-text-primary px-3 py-2 rounded-xl border border-bg-hover focus:outline-none focus:border-accent"
-              aria-label="Fréquence de rappel"
+              aria-label={t('reminderFrequency')}
             >
-              <option value="daily">Tous les jours</option>
-              <option value="weekly">Toutes les semaines</option>
-              <option value="monthly">Tous les mois</option>
+              <option value="daily">{t('freqDaily')}</option>
+              <option value="weekly">{t('freqWeekly')}</option>
+              <option value="monthly">{t('freqMonthly')}</option>
             </select>
           </div>
         </div>
 
         <BackupSettingToggleComponent
-          label="Inclure les images"
-          description="Photos et images partagées"
+          label={t('includeImages')}
+          description={t('includeImagesDesc')}
           value={backupSettings.includeImages}
           onChange={(v) => updateBackupSettings({ includeImages: v })}
         />
 
         <BackupSettingToggleComponent
-          label="Inclure les vidéos"
-          description="Les vidéos peuvent augmenter la taille de la sauvegarde"
+          label={t('includeVideos')}
+          description={t('includeVideosDesc')}
           value={backupSettings.includeVideos}
           onChange={(v) => updateBackupSettings({ includeVideos: v })}
         />
 
         <BackupSettingToggleComponent
-          label="Inclure les messages vocaux"
-          description="Messages vocaux et fichiers audio"
+          label={t('includeVoice')}
+          description={t('includeVoiceDesc')}
           value={backupSettings.includeAudio}
           onChange={(v) => updateBackupSettings({ includeAudio: v })}
         />
 
         <BackupSettingToggleComponent
-          label="Inclure les fichiers"
-          description="Documents, PDF et autres fichiers"
+          label={t('includeFilesBackup')}
+          description={t('includeFilesBackupDesc')}
           value={backupSettings.includeFiles}
           onChange={(v) => updateBackupSettings({ includeFiles: v })}
         />
 
         <BackupSecurityInfoComponent />
+      </div>
+    </div>
+  )
+
+  const renderLanguageView = () => (
+    <div className="flex-1 overflow-y-auto pb-4">
+      <div className="py-2">
+        <div className="px-6 py-4 space-y-4">
+          <div>
+            <div className="text-text-primary">{t('languageLabel')}</div>
+            <div className="text-sm text-text-secondary">{t('languageDescription')}</div>
+          </div>
+          <LanguageSelector />
+        </div>
       </div>
     </div>
   )
@@ -1511,6 +1528,7 @@ export function SettingsPage() {
     contact: renderContactView,
     terms: renderTermsView,
     backup: renderBackupView,
+    language: renderLanguageView,
   }
 
   const handleBack = () => {
@@ -1526,7 +1544,7 @@ export function SettingsPage() {
               <ArrowLeft size={20} />
             </button>
           )}
-          <h1 className="text-xl font-medium text-text-primary">{getViewTitle(currentView)}</h1>
+          <h1 className="text-xl font-medium text-text-primary">{getViewTitle(currentView, t)}</h1>
         </div>
         {views[currentView]()}
       </div>

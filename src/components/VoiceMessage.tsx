@@ -2,6 +2,7 @@
 // Distributed under the license specified in the root directory of this project.
 
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { useI18n } from '@/i18n';
 import { Play, Pause, Download, Loader2 } from 'lucide-react';
 import { useDecryptedMedia } from '@/hooks/useDecryptedMedia';
 import { downloadMedia } from '@/lib/downloadMedia';
@@ -56,6 +57,7 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
   messageId,
   currentUserId,
 }) => {
+  const { t } = useI18n();
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [audioDuration, setAudioDuration] = useState(duration);
@@ -356,7 +358,7 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
       return true;
     } catch (blobError) {
       console.error('All playback methods failed:', blobError);
-      alert('Impossible de lire ce message vocal. Le format audio n\'est pas supporté par votre navigateur.');
+      alert(t('voicePlaybackError'));
       return false;
     }
   };
@@ -487,7 +489,7 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
           type="button"
           onClick={handleSeek}
           className="h-7 flex items-center cursor-pointer w-full border-none p-0 bg-transparent"
-          aria-label="Seek"
+          aria-label={t('seek')}
         >
           {/* Visual waveform with consistent heights */}
           <div className="flex items-center gap-[2px] h-full w-full">
@@ -525,7 +527,7 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
             ? 'bg-white/15'
             : 'bg-[#8286ef]/15'
         }`}
-        aria-label="Télécharger"
+        aria-label={t('download')}
       >
         <Download size={16} className={isOwn ? 'text-white/80' : 'text-[#8286ef]'} />
       </button>

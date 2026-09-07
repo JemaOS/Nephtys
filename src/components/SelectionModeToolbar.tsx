@@ -2,6 +2,7 @@
 // Distributed under the license specified in the root directory of this project.
 
 import React from 'react';
+import { useI18n } from '@/i18n';
 import { X, Copy, Star, Trash2, Forward, Download } from 'lucide-react';
 
 interface SelectionModeToolbarProps {
@@ -23,14 +24,15 @@ export const SelectionModeToolbar: React.FC<SelectionModeToolbarProps> = ({
   onDownload,
   onClose,
 }) => {
+  const { t } = useI18n();
   const hasSelection = selectedCount > 0;
 
   const actions = [
-    { icon: Copy, label: 'Copier', onClick: onCopy },
-    { icon: Star, label: 'Favoris', onClick: onStar },
-    { icon: Trash2, label: 'Supprimer', onClick: onDelete, danger: true },
-    { icon: Forward, label: 'Transférer', onClick: onForward },
-    { icon: Download, label: 'Télécharger', onClick: onDownload },
+    { icon: Copy, label: t('copy'), onClick: onCopy },
+    { icon: Star, label: t('favorites'), onClick: onStar },
+    { icon: Trash2, label: t('delete'), onClick: onDelete, danger: true },
+    { icon: Forward, label: t('forward'), onClick: onForward },
+    { icon: Download, label: t('download'), onClick: onDownload },
   ];
 
   return (
@@ -40,12 +42,12 @@ export const SelectionModeToolbar: React.FC<SelectionModeToolbarProps> = ({
           onClick={onClose}
           className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors"
           type="button"
-          aria-label="Fermer le mode sélection"
+          aria-label={t('exitSelectionMode')}
         >
           <X size={20} className="text-[#8696a0]" />
         </button>
         <span className="text-sm text-[#e9edef]">
-          {selectedCount} sélectionné{selectedCount > 1 ? 's' : ''}
+          {t('selectedCount', { count: selectedCount })}
         </span>
       </div>
 

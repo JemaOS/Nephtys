@@ -2,6 +2,7 @@
 // Distributed under the license specified in the root directory of this project.
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useI18n } from '@/i18n';
 import { Send, Trash2, Pause, Play } from 'lucide-react';
 
 interface VoiceRecorderProps {
@@ -13,6 +14,7 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
   onRecordingComplete,
   onCancel,
 }) => {
+  const { t } = useI18n();
   const [isRecording, setIsRecording] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
@@ -150,7 +152,7 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
       animationFrameRef.current = requestAnimationFrame(updateWaveform);
     } catch (error) {
       console.error('Error starting recording:', error);
-      alert('Impossible d\'accéder au microphone');
+      alert(t('microphoneAccessError'));
     }
   };
 
@@ -314,7 +316,7 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
         <button
           onClick={handleDelete}
           className="w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200 active:scale-90 hover:bg-bg-hover"
-          aria-label="Supprimer"
+          aria-label={t('delete')}
         >
           <Trash2 size={24} className="text-text-secondary" strokeWidth={1.5} />
         </button>
@@ -347,7 +349,7 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
           style={{
             backgroundColor: '#8286ef',
           }}
-          aria-label="Envoyer"
+          aria-label={t('send')}
         >
           <Send size={22} className="text-white" strokeWidth={2} />
         </button>

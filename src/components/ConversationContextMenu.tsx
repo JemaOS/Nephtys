@@ -2,6 +2,7 @@
 // Distributed under the license specified in the root directory of this project.
 
 import { useEffect, useRef, useState } from 'react'
+import { useI18n } from '@/i18n';
 import { Pin, Archive, Trash2, X, Volume2, VolumeX, Edit, ArrowLeft, MoreVertical, CheckSquare } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'
 
@@ -25,6 +26,7 @@ export function ConversationContextMenu({
   x, y, onClose, onMarkAsUnread, onPin, onArchive, onMute, onClearMessages, onDelete, onOpenInNewWindow, onSelect,
   isPinned = false, isMuted = false
 }: ConversationContextMenuProps) {
+  const { t } = useI18n()
   const menuRef = useRef<HTMLDivElement>(null)
   const isMobile = useIsMobile()
 
@@ -48,15 +50,15 @@ export function ConversationContextMenu({
   }, [onClose])
 
   const menuItems = [
-    { icon: Edit, label: 'Marquer comme non lu', onClick: onMarkAsUnread },
-    { icon: Pin, label: isPinned ? 'Désépingler' : 'Épingler en haut', onClick: onPin },
-    { icon: Archive, label: 'Archiver', onClick: onArchive },
-    { icon: isMuted ? Volume2 : VolumeX, label: isMuted ? 'Réactiver le son' : 'Désactiver les notifications', onClick: onMute },
-    { icon: Trash2, label: 'Effacer les messages', onClick: onClearMessages, danger: true },
-    { icon: X, label: 'Supprimer', onClick: onDelete, danger: true },
-    { icon: Edit, label: 'Ouvrir dans une nouvelle fenêtre', onClick: onOpenInNewWindow },
-    { icon: X, label: 'Fermer la discussion', onClick: onClose },
-    ...(onSelect ? [{ icon: CheckSquare, label: 'Sélectionner', onClick: onSelect }] : []),
+    { icon: Edit, label: t('markAsUnread'), onClick: onMarkAsUnread },
+    { icon: Pin, label: isPinned ? t('unpin') : t('pinToTop'), onClick: onPin },
+    { icon: Archive, label: t('archive'), onClick: onArchive },
+    { icon: isMuted ? Volume2 : VolumeX, label: isMuted ? t('unmute') : t('mute'), onClick: onMute },
+    { icon: Trash2, label: t('clearMessages'), onClick: onClearMessages, danger: true },
+    { icon: X, label: t('delete'), onClick: onDelete, danger: true },
+    { icon: Edit, label: t('openInNewWindow'), onClick: onOpenInNewWindow },
+    { icon: X, label: t('closeChat'), onClick: onClose },
+    ...(onSelect ? [{ icon: CheckSquare, label: t('select'), onClick: onSelect }] : []),
   ]
 
   // Desktop: Traditional context menu
@@ -121,7 +123,7 @@ export function ConversationContextMenu({
               <button
                 onClick={() => { onPin(); onClose() }}
                 className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-bg-hover transition-colors"
-                title={isPinned ? 'Désépingler' : 'Épingler'}
+                title={isPinned ? t('unpin') : t('pin')}
               >
                 <Pin size={20} className={isPinned ? 'text-accent' : 'text-text-primary'} />
               </button>
@@ -139,7 +141,7 @@ export function ConversationContextMenu({
               <button
                 onClick={() => { onMute(); onClose() }}
                 className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-bg-hover transition-colors"
-                title={isMuted ? 'Réactiver le son' : 'Désactiver les notifications'}
+                title={isMuted ? t('unmute') : t('mute')}
               >
                 {isMuted ? (
                   <Volume2 size={20} className="text-text-primary" />
@@ -217,6 +219,7 @@ function MoreOptionsMenu({
   readonly onClearMessages: () => void
   readonly onOpenInNewWindow: () => void
 }) {
+  const { t } = useI18n()
   const [isOpen, setIsOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
@@ -234,10 +237,10 @@ function MoreOptionsMenu({
   }, [isOpen])
 
   const moreItems = [
-    { icon: Edit, label: 'Marquer comme non lu', onClick: onMarkAsUnread },
-    { icon: Archive, label: 'Archiver', onClick: onArchive },
-    { icon: Trash2, label: 'Effacer les messages', onClick: onClearMessages, danger: true },
-    { icon: Edit, label: 'Ouvrir dans une nouvelle fenêtre', onClick: onOpenInNewWindow },
+    { icon: Edit, label: t('markAsUnread'), onClick: onMarkAsUnread },
+    { icon: Archive, label: t('archive'), onClick: onArchive },
+    { icon: Trash2, label: t('clearMessages'), onClick: onClearMessages, danger: true },
+    { icon: Edit, label: t('openInNewWindow'), onClick: onOpenInNewWindow },
   ]
 
   return (
@@ -245,7 +248,7 @@ function MoreOptionsMenu({
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-bg-hover transition-colors"
-        title="Plus d'options"
+        title={t('moreOptions')}
       >
         <MoreVertical size={20} className="text-text-primary" />
       </button>

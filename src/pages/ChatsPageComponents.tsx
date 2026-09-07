@@ -4,6 +4,7 @@ import { ArrowLeft, Pin, Volume2, VolumeX, Archive, Trash2, Plus, UserPlus, User
 import { Conversation, Profile, Message } from '@/lib/supabase'
 import { prefetchChatView } from '@/lib/routePrefetch'
 import { MediaImg } from '@/components/MediaImg'
+import { useI18n, tStatic } from '@/i18n'
 
 export interface ConversationWithDetails extends Omit<Conversation, 'is_pinned'> {
   otherUserProfile?: Profile
@@ -44,7 +45,7 @@ const processUrlDisplay = (url: string): string => {
     if (platformDisplay) return platformDisplay
     return `🔗 ${hostname}`
   } catch {
-    return '🔗 Lien'
+    return `🔗 ${tStatic('linkFallback')}`
   }
 }
 
@@ -83,7 +84,7 @@ const getTextPreview = (msg: Message): string => {
 }
 
 export const getLastMessagePreview = (lastMessage: Message | undefined): string => {
-  if (!lastMessage) return 'Aucun message'
+  if (!lastMessage) return tStatic('noMessages')
 
   const { type, content } = lastMessage
 
@@ -91,12 +92,12 @@ export const getLastMessagePreview = (lastMessage: Message | undefined): string 
     return getTextPreview(lastMessage)
   }
 
-  if (type === 'image') return '📷 Photo'
-  if (type === 'video') return '🎬 Vidéo'
-  if (type === 'audio') return '🎤 Message vocal'
-  if (type === 'file') return `📎 ${lastMessage.file_name || 'Document'}`
+  if (type === 'image') return tStatic('photoPreview')
+  if (type === 'video') return tStatic('videoPreview')
+  if (type === 'audio') return tStatic('voiceMessagePreview')
+  if (type === 'file') return `📎 ${lastMessage.file_name || tStatic('documentFallback')}`
 
-  return content || '📎 Fichier'
+  return content || tStatic('filePreview')
 }
 
 // Helper to determine row background color
@@ -124,7 +125,9 @@ export const ChatsSelectionHeader = ({
   handleBulkDelete: () => void;
   anySelectedPinned: boolean;
   anySelectedMuted: boolean;
-}) => (
+}) => {
+  const { t } = useI18n()
+  return (
   <div
     className="fixed top-0 left-0 right-0 z-50 bg-bg-surface border-b border-bg-hover shadow-lg"
     style={{ willChange: 'transform' }}
@@ -151,7 +154,7 @@ export const ChatsSelectionHeader = ({
           }}
           className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-bg-hover active:bg-bg-hover transition-colors touch-manipulation select-none"
           type="button"
-          aria-label="Quitter le mode sélection"
+          aria-label={t('exitSelectionMode')}
         >
           <ArrowLeft size={24} className="text-text-primary" />
         </button>
@@ -164,7 +167,7 @@ export const ChatsSelectionHeader = ({
         <button
           onClick={handleBulkPin}
           className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-bg-hover transition-colors"
-          title={anySelectedPinned ? 'Désépingler' : 'Épingler'}
+          title={anySelectedPinned ? t('unpin') : t('pin')}
         >
           <Pin size={20} className={anySelectedPinned ? 'text-accent' : 'text-text-primary'} />
         </button>
@@ -172,7 +175,7 @@ export const ChatsSelectionHeader = ({
         <button
           onClick={handleBulkMute}
           className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-bg-hover transition-colors"
-          title={anySelectedMuted ? 'Réactiver le son' : 'Désactiver les notifications'}
+          title={anySelectedMuted ? t('unmute') : t('mute')}
         >
           {anySelectedMuted ? (
             <Volume2 size={20} className="text-text-primary" />
@@ -184,7 +187,7 @@ export const ChatsSelectionHeader = ({
         <button
           onClick={handleBulkArchive}
           className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-bg-hover transition-colors"
-          title="Archiver"
+          title={t('archive')}
         >
           <Archive size={20} className="text-text-primary" />
         </button>
@@ -192,14 +195,15 @@ export const ChatsSelectionHeader = ({
         <button
           onClick={handleBulkDelete}
           className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-bg-hover transition-colors"
-          title="Supprimer"
+          title={t('delete')}
         >
           <Trash2 size={20} className="text-red-500" />
         </button>
       </div>
     </div>
   </div>
-)
+  )
+}
 
 export const ChatsHeader = ({
   searchQuery,
@@ -221,16 +225,18 @@ export const ChatsHeader = ({
   activeFilter: 'all' | 'unread' | 'groups';
   setActiveFilter: (filter: 'all' | 'unread' | 'groups') => void;
   navigate: (path: string) => void;
-}) => (
+}) => {
+  const { t } = useI18n()
+  return (
   <div className="bg-bg-surface p-4">
     <div className="flex items-center justify-between mb-4">
-      <h1 className="text-xl font-semibold text-text-primary">Discussions</h1>
+      <h1 className="text-xl font-semibold text-text-primary">{t('navChats')}</h1>
       <div className="flex gap-2">
         <div className="relative">
           <button
             onClick={() => setShowNewMenu(!showNewMenu)}
             className="w-10 h-10 rounded-full bg-accent hover:bg-[#5a5ec9] flex items-center justify-center transition-colors"
-            title="Nouveau"
+            title={t('newLabel')}
           >
             <Plus size={20} className="text-white" />
           </button>
@@ -240,7 +246,7 @@ export const ChatsHeader = ({
               <button
                 className="fixed inset-0 z-40 bg-transparent border-none cursor-default"
                 onClick={() => setShowNewMenu(false)}
-                aria-label="Fermer le menu"
+                aria-label={t('closeMenu')}
               />
               <div className="absolute right-0 top-12 z-50 min-w-[220px] bg-bg-surface rounded-2xl shadow-2xl py-2 border border-bg-hover">
                 <button
@@ -248,14 +254,14 @@ export const ChatsHeader = ({
                   className="w-full px-4 py-3 text-left hover:bg-bg-hover transition-colors text-text-primary text-sm flex items-center gap-3"
                 >
                   <UserPlus size={18} />
-                  <span>Nouveau contact</span>
+                  <span>{t('newContact')}</span>
                 </button>
                 <button
                   onClick={() => { navigate('/groups/new'); setShowNewMenu(false) }}
                   className="w-full px-4 py-3 text-left hover:bg-bg-hover transition-colors text-text-primary text-sm flex items-center gap-3"
                 >
                   <Users size={18} />
-                  <span>Nouveau groupe</span>
+                  <span>{t('newGroup')}</span>
                 </button>
               </div>
             </>
@@ -265,7 +271,7 @@ export const ChatsHeader = ({
           <button
             onClick={() => setShowFilterMenu(!showFilterMenu)}
             className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors text-[#aebac1]"
-            title="Filtres"
+            title={t('filters')}
           >
             <MoreVertical size={20} />
           </button>
@@ -275,7 +281,7 @@ export const ChatsHeader = ({
               <button
                 className="fixed inset-0 z-40 bg-transparent border-none cursor-default"
                 onClick={() => setShowFilterMenu(false)}
-                aria-label="Fermer le menu"
+                aria-label={t('closeMenu')}
               />
               <div className="absolute right-0 top-12 z-50 min-w-[200px] bg-bg-surface rounded-2xl shadow-2xl py-2 border border-bg-hover">
                 <button
@@ -283,21 +289,21 @@ export const ChatsHeader = ({
                   className="w-full px-4 py-2 text-left hover:bg-bg-hover transition-colors text-text-primary text-sm flex items-center gap-3"
                 >
                   {activeFilter === 'all' && <Check size={16} className="text-[#787add]" />}
-                  <span className={activeFilter === 'all' ? 'ml-0' : 'ml-7'}>Toutes les discussions</span>
+                  <span className={activeFilter === 'all' ? 'ml-0' : 'ml-7'}>{t('allChats')}</span>
                 </button>
                 <button
                   onClick={() => { setActiveFilter('unread'); setShowFilterMenu(false) }}
                   className="w-full px-4 py-2 text-left hover:bg-bg-hover transition-colors text-text-primary text-sm flex items-center gap-3"
                 >
                   {activeFilter === 'unread' && <Check size={16} className="text-[#787add]" />}
-                  <span className={activeFilter === 'unread' ? 'ml-0' : 'ml-7'}>Non lues</span>
+                  <span className={activeFilter === 'unread' ? 'ml-0' : 'ml-7'}>{t('unreadChats')}</span>
                 </button>
                 <button
                   onClick={() => { setActiveFilter('groups'); setShowFilterMenu(false) }}
                   className="w-full px-4 py-2 text-left hover:bg-bg-hover transition-colors text-text-primary text-sm flex items-center gap-3"
                 >
                   {activeFilter === 'groups' && <Check size={16} className="text-[#787add]" />}
-                  <span className={activeFilter === 'groups' ? 'ml-0' : 'ml-7'}>Groupes</span>
+                  <span className={activeFilter === 'groups' ? 'ml-0' : 'ml-7'}>{t('groupsLabel')}</span>
                 </button>
               </div>
             </>
@@ -310,7 +316,7 @@ export const ChatsHeader = ({
       <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" />
       <input
         type="text"
-        placeholder="Rechercher ou démarrer une discussion"
+        placeholder={t('searchOrStartChat')}
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}
         className="w-full h-9 pl-10 pr-3 bg-bg-surface text-text-primary text-sm rounded-xl border-none outline-none placeholder:text-text-secondary focus:bg-bg-hover"
@@ -324,7 +330,7 @@ export const ChatsHeader = ({
           activeFilter === 'all' ? 'bg-[#787add] text-white' : 'hover:bg-bg-hover text-text-secondary'
         }`}
       >
-        Tous
+        {t('allTab')}
       </button>
       <button
         onClick={() => setActiveFilter('unread')}
@@ -332,7 +338,7 @@ export const ChatsHeader = ({
           activeFilter === 'unread' ? 'bg-[#787add] text-white' : 'hover:bg-bg-hover text-text-secondary'
         }`}
       >
-        Non lus
+        {t('unreadTab')}
       </button>
       <button
         onClick={() => setActiveFilter('groups')}
@@ -340,11 +346,12 @@ export const ChatsHeader = ({
           activeFilter === 'groups' ? 'bg-[#787add] text-white' : 'hover:bg-bg-hover text-text-secondary'
         }`}
       >
-        Groupes
+        {t('groupsTab')}
       </button>
     </div>
   </div>
-)
+  )
+}
 
 // Skeleton loader component for conversation items
 export const ConversationSkeleton = () => (
@@ -364,15 +371,15 @@ export const ConversationSkeleton = () => (
 // Helper to get display name
 const getDisplayName = (conversation: ConversationWithDetails): string => {
   if (conversation.type === 'group') {
-    return conversation.name || 'Groupe'
+    return conversation.name || tStatic('groupFallback')
   }
   
   const isSavedMessagesConv = conversation.name === 'Messages enregistrés'
   if (isSavedMessagesConv) {
-    return 'Moi'
+    return tStatic('me')
   }
   
-  return conversation.otherUserProfile?.display_name || conversation.otherUserProfile?.username || 'Utilisateur'
+  return conversation.otherUserProfile?.display_name || conversation.otherUserProfile?.username || tStatic('userFallback')
 }
 
 // Helper to render a single conversation item
@@ -545,6 +552,7 @@ export const ChatsList = ({
   isMobile: boolean;
   formatDate: (date: string) => string;
 }) => {
+  const { t } = useI18n()
   if (isLoading) {
     return (
       <div className="flex-1 overflow-y-auto pb-4">
@@ -557,8 +565,8 @@ export const ChatsList = ({
       <div className="flex-1 overflow-y-auto pb-4">
         <div className="flex flex-col items-center justify-center h-full text-center px-8">
           <MessageCircle size={64} className="text-[#3b4a54] mb-4" />
-          <h3 className="text-lg font-medium text-text-secondary mb-2">Aucune conversation</h3>
-          <p className="text-sm text-text-secondary">Commencez une nouvelle discussion</p>
+          <h3 className="text-lg font-medium text-text-secondary mb-2">{t('noConversations')}</h3>
+          <p className="text-sm text-text-secondary">{t('startNewChat')}</p>
         </div>
       </div>
     )

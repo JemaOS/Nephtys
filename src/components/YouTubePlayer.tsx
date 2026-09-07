@@ -2,6 +2,7 @@
 // Distributed under the license specified in the root directory of this project.
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useI18n } from '@/i18n';
 import { X, Maximize2, Minimize2, Move } from 'lucide-react';
 
 interface YouTubePlayerProps {
@@ -79,6 +80,7 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
   title,
   onClose,
 }) => {
+  const { t } = useI18n();
   const [isFullscreen, setIsFullscreen] = useState(true);
   const [isPiP, setIsPiP] = useState(false);
   const [pipPosition, setPipPosition] = useState<Position>({ x: 0, y: 0 });
@@ -215,7 +217,7 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
           className="absolute top-0 left-0 right-0 z-20 bg-gradient-to-b from-black/80 to-transparent p-2 flex items-center justify-between cursor-grab active:cursor-grabbing text-left"
           onMouseDown={handleDragStart}
           onTouchStart={handleDragStart}
-          aria-label="Déplacer le lecteur"
+          aria-label={t('movePlayer')}
         >
           {/* Drag indicator */}
           <div className="flex items-center gap-1.5 flex-1 mr-2">
@@ -230,7 +232,7 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
                 toggleFullscreen();
               }}
               className="w-7 h-7 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center transition-colors"
-              aria-label="Plein écran"
+              aria-label={t('fullscreen')}
             >
               <Maximize2 size={14} className="text-white" />
             </button>
@@ -241,7 +243,7 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
                 onClose();
               }}
               className="w-7 h-7 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center transition-colors"
-              aria-label="Fermer"
+              aria-label={t('close')}
             >
               <X size={14} className="text-white" />
             </button>
@@ -275,7 +277,7 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
           onClick={togglePiP}
           className="w-10 h-10 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center transition-colors"
           title="Picture-in-Picture"
-          aria-label="Mode Picture-in-Picture"
+          aria-label={t('pipMode')}
         >
           <Minimize2 size={20} className="text-white" />
         </button>
@@ -284,7 +286,7 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
           type="button"
           onClick={onClose}
           className="w-10 h-10 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center transition-colors"
-          aria-label="Fermer"
+          aria-label={t('close')}
         >
           <X size={20} className="text-white" />
         </button>

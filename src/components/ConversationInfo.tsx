@@ -2,6 +2,7 @@
 // Distributed under the license specified in the root directory of this project.
 
 import React, { useState, useEffect } from 'react';
+import { useI18n, tStatic } from '@/i18n';
 import {
   X, Camera, Video, Phone,
 } from 'lucide-react';
@@ -36,20 +37,20 @@ export const formatDate = (dateString: string): string => {
 
 // Get ephemeral label helper
 export const getEphemeralLabel = (duration: number | null): string => {
-  if (!duration) return 'Désactivés';
-  if (duration === 3600) return '1 heure';
-  if (duration === 86400) return '24 heures';
-  if (duration === 604800) return '7 jours';
-  if (duration === 7776000) return '90 jours';
-  return `${Math.floor(duration / 86400)} jours`;
+  if (!duration) return tStatic('ephemeralDisabled');
+  if (duration === 3600) return tStatic('ephemeral1h');
+  if (duration === 86400) return tStatic('ephemeral24h');
+  if (duration === 604800) return tStatic('ephemeral7d');
+  if (duration === 7776000) return tStatic('ephemeral90d');
+  return tStatic('ephemeralDays', { days: Math.floor(duration / 86400) });
 };
 
 // Build ephemeral system message helper
 const buildEphemeralSystemMessage = (duration: number | null): string | null => {
   if (duration) {
-    return `[SYSTEM]Vous avez mis à jour le délai avant disparition. Les nouveaux messages disparaîtront de cette discussion ${getEphemeralLabel(duration)} après avoir été envoyés, sauf s'ils sont gardés.`;
+    return `[SYSTEM]${tStatic('ephemeralUpdatedMsg', { duration: getEphemeralLabel(duration) })}`;
   }
-  return '[SYSTEM]Vous avez désactivé les messages éphémères.';
+  return `[SYSTEM]${tStatic('ephemeralOffMsg')}`;
 };
 
 interface ConversationInfoProps {
@@ -98,6 +99,7 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
   onSystemMessage,
 }) => {
   // Initialize state
+  const { t } = useI18n();
   const [activeTab, setActiveTab] = useState<'overview' | 'members' | 'media' | 'files' | 'links'>(initialTab);
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [isEditingDescription, setIsEditingDescription] = useState(false);
@@ -398,17 +400,17 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
     if (!file) return;
     
     if (conversationType === 'group' && !isAdmin) {
-      alert('Seuls les administrateurs peuvent changer la photo du groupe');
+      alert(t('onlyAdminsCanChangePhoto'));
       return;
     }
     
     if (file.size > 5 * 1024 * 1024) {
-      alert('❌ Fichier trop volumineux\n\nLa photo doit faire moins de 5 MB.');
+      alert(t('fileTooLargeAlert'));
       return;
     }
     
     if (!file.type.startsWith('image/')) {
-      alert('❌ Format invalide\n\nVeuillez sélectionner une image.');
+      alert(t('invalidImageFormatAlertShort'));
       return;
     }
     
@@ -437,9 +439,7 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
       
       if (updateError) throw updateError;
       if (!updatedRows || updatedRows.length === 0) {
-        throw new Error(
-          'Mise à jour refusée : tu n\'as peut-être pas les droits sur ce groupe (RLS).'
-        );
+        throw new Error(t('updateRefusedRls'));
       }
       
       // Affichage immédiat via blob URL local (pas d'attente de signed URL)
@@ -470,8 +470,8 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
       const message = err instanceof Error ? err.message : '';
       alert(
         message
-          ? `❌ Erreur lors de l'upload de la photo\n\n${message}`
-          : '❌ Erreur lors de l\'upload de la photo'
+          ? t('photoUploadErrorWithReason', { message })
+          : t('photoUploadErrorShort')
       );
     } finally {
       setUploadingPhoto(false);
@@ -480,7 +480,7 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
 
   const handleUpdateDescription = async () => {
     if (!isAdmin && conversationType === 'group') {
-      alert('Seuls les administrateurs peuvent modifier la description');
+      alert(t('onlyAdminsCanEditDescription'));
       return;
     }
 
@@ -501,7 +501,7 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
 
       if (error) throw error;
       if (!updatedRows || updatedRows.length === 0) {
-        throw new Error('Mise à jour refusée (RLS) — vérifie tes droits sur ce groupe.');
+        throw new Error(t('updateRefusedRlsShort'));
       }
     } catch (err) {
       console.error('Error updating description:', err);
@@ -509,7 +509,7 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
       setCurrentDescription(previousDescription);
       setNewDescription(previousDescription);
       const message = err instanceof Error ? err.message : '';
-      alert(message ? `❌ Erreur : ${message}` : '❌ Erreur lors de la mise à jour');
+      alert(message ? t('updateErrorWithReason', { message }) : t('updateErrorShort'));
     }
   };
 
@@ -538,13 +538,13 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
       .eq('user_id', currentUserId);
 
     if (!error) {
-      alert('✅ Conversation archivée');
+      alert(t('conversationArchived'));
       onClose();
     }
   };
 
   const handleDelete = async () => {
-    if (!confirm('Voulez-vous vraiment supprimer cette conversation ?')) return;
+    if (!confirm(t('deleteConversationConfirmShort'))) return;
 
     const { error } = await supabase
       .from('conversation_members')
@@ -553,7 +553,7 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
       .eq('user_id', currentUserId);
 
     if (!error) {
-      alert('✅ Conversation supprimée');
+      alert(t('conversationDeleted'));
       onClose();
       globalThis.location.href = '/chats';
     }
@@ -629,10 +629,10 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
     
     if (participant) {
       return 'display_name' in participant 
-        ? (participant.display_name || participant.username || 'Utilisateur')
-        : (participant.user.display_name || participant.user.username || 'Utilisateur')
+        ? (participant.display_name || participant.username || t('userFallback'))
+        : (participant.user.display_name || participant.user.username || t('userFallback'))
     }
-    return 'Utilisateur'
+    return t('userFallback')
   };
 
   // Helper to get sender avatar from message
@@ -652,7 +652,7 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
   // Helper to get participant count text
   const getParticipantCountText = (): string => {
     if (conversationType === 'group') {
-      return `Groupe • ${members.length} membres`;
+      return t('groupMembersCount', { count: members.length });
     }
     return '';
   };
@@ -738,7 +738,7 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
         <div className="md:w-80 bg-bg-surface border-b md:border-b-0 md:border-r border-bg-hover flex-shrink-0 flex flex-col max-h-[90vh] md:max-h-none overflow-hidden">
           {/* Header - Mobile only */}
           <div className="md:hidden bg-bg-surface px-4 py-3 flex items-center justify-between border-b border-bg-hover flex-shrink-0">
-            <h2 className="text-lg font-medium text-text-primary">Informations</h2>
+            <h2 className="text-lg font-medium text-text-primary">{t('infoHeader')}</h2>
             <button
               onClick={onClose}
               className="w-10 h-10 rounded-full hover:bg-bg-hover flex items-center justify-center transition-colors"
@@ -794,7 +794,7 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
                 <div className="w-12 h-12 rounded-full bg-accent flex items-center justify-center">
                   <Video size={20} className="text-white" />
                 </div>
-                <span className="text-xs text-text-secondary">Vidéo</span>
+                <span className="text-xs text-text-secondary">{t('videoShort')}</span>
               </button>
               <button
                 onClick={onStartAudioCall}
@@ -803,7 +803,7 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
                 <div className="w-12 h-12 rounded-full bg-accent flex items-center justify-center">
                   <Phone size={20} className="text-white" />
                 </div>
-                <span className="text-xs text-text-secondary">Vocal</span>
+                <span className="text-xs text-text-secondary">{t('voiceShort')}</span>
               </button>
             </div>
 
@@ -821,11 +821,11 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
                 >
                   {(() => {
                     switch (tab) {
-                      case 'overview': return 'Vue d\'ensemble';
-                      case 'members': return 'Membres';
-                      case 'media': return 'Médias';
-                      case 'files': return 'Fichiers';
-                      case 'links': return 'Liens';
+                      case 'overview': return t('tabOverview');
+                      case 'members': return t('tabMembers');
+                      case 'media': return t('tabMedia');
+                      case 'files': return t('tabFiles');
+                      case 'links': return t('tabLinks');
                       default: return '';
                     }
                   })()}
@@ -847,11 +847,11 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
             <h2 className="text-lg font-medium text-text-primary">
               {(() => {
                 switch (activeTab) {
-                  case 'overview': return 'Vue d\'ensemble';
-                  case 'members': return 'Membres';
-                  case 'media': return 'Médias';
-                  case 'files': return 'Fichiers';
-                  case 'links': return 'Liens';
+                  case 'overview': return t('tabOverview');
+                  case 'members': return t('tabMembers');
+                  case 'media': return t('tabMedia');
+                  case 'files': return t('tabFiles');
+                  case 'links': return t('tabLinks');
                   default: return '';
                 }
               })()}
