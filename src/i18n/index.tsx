@@ -9,12 +9,9 @@ import { translations, type Lang } from './translations';
 export { LANGUAGES } from './translations';
 export type { Lang } from './translations';
 
-// Detect the system language (JemaOS sets navigator.language).
-export function getSystemLang(): Lang {
-  const browserLang = navigator.language || (navigator as any).userLanguage || 'fr';
-  const short = browserLang.split('-')[0].toLowerCase();
-  return short === 'fr' ? 'fr' : 'en';
-}
+// French by default for JemaOS PWAs; the LanguageSelector is a
+// session-only override (never persisted).
+let currentLang: Lang = 'fr';
 
 function translate(lang: Lang, key: string, params?: Record<string, string | number>): string {
   let text = translations[lang][key] ?? translations.en[key] ?? key;
@@ -27,9 +24,9 @@ function translate(lang: Lang, key: string, params?: Record<string, string | num
 }
 
 // Static translation helper for non-hook contexts (class components).
-// Reads the current system language at call time.
+// Reads the current app language at call time.
 export function tStatic(key: string, params?: Record<string, string | number>): string {
-  return translate(getSystemLang(), key, params);
+  return translate(currentLang, key, params);
 }
 
 interface I18nContextValue {
@@ -45,20 +42,11 @@ interface I18nProviderProps {
 }
 
 export function I18nProvider({ children }: I18nProviderProps) {
-  const [lang, setLangState] = useState<Lang>(getSystemLang);
+  const [lang, setLangState] = useState<Lang>('fr');
 
-  // The system language always wins: follow the OS language on load and on
-  // every `languagechange` event. The selector is a runtime override only.
+  // Keep the document language attribute and the static helper in sync.
   useEffect(() => {
-    const handleLanguageChange = () => {
-      setLangState(getSystemLang());
-    };
-    window.addEventListener('languagechange', handleLanguageChange);
-    return () => window.removeEventListener('languagechange', handleLanguageChange);
-  }, []);
-
-  // Keep the document language attribute in sync.
-  useEffect(() => {
+    currentLang = lang;
     document.documentElement.lang = lang;
   }, [lang]);
 
