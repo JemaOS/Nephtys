@@ -62,7 +62,10 @@ export async function tryEncryptWithRatchet(
   // déchiffrement cross-user fonctionne et ne lève plus « OperationError ».
   // On garde l'envoi ratchet DÉSACTIVÉ tant que l'affichage du clair côté
   // destinataire n'est pas validé (sinon ciphertext brut à l'écran).
-  const RATCHET_SEND_ENABLED = true;
+  // DÉSACTIVÉ (fiabilité prod) : le ratchet échoue en prod (OperationError sur
+  // aeadDecrypt → clé de session divergente) et pollue/casse le déchiffrement.
+  // On envoie en X25519 (robuste, incl. l'expéditeur) → TOUT le monde déchiffre.
+  const RATCHET_SEND_ENABLED = false;
   if (!RATCHET_SEND_ENABLED) return null;
 
   try {
@@ -97,8 +100,9 @@ export async function tryDecryptWithRatchet(
     const text = await decryptFromPeer(deps, userId, sessionId, metadata, content);
     if (text !== null) await setCachedPlaintext(userId, content, text);
     return text;
-  } catch (e) {
-    console.warn('[ratchet] déchiffrement échoué:', e);
+  } catch {
+    // Repli silencieux : message ratchet indéchiffrable (clé/session divergente)
+    // → on retombe sur X25519. Pas de log (évite de spammer la console en boucle).
     return null;
   }
 }
