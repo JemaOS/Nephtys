@@ -9,6 +9,7 @@ import { useTheme } from '@/context/ThemeContext'
 import { supabase } from '@/lib/supabase'
 import { createDeviceLink, redeemDeviceLink } from '@/lib/deviceLink'
 import { resetRatchetKeys } from '@/lib/ratchet/keyStore'
+import QRCode from 'react-qr-code'
 import { MediaImg } from '@/components/MediaImg'
 import { invalidateMediaUrl } from '@/lib/mediaUrl'
 import { deleteMyMessages } from '@/lib/conversationService'
@@ -919,19 +920,27 @@ export function SettingsPage() {
               Générer un lien d'appareil
             </button>
             {deviceLink && (
-              <div className="flex items-center gap-2">
-                <input
-                  readOnly
-                  value={deviceLink}
-                  className="flex-1 min-w-0 px-2 py-1 rounded-lg bg-bg-primary text-[11px] font-mono text-text-secondary"
-                />
-                <button
-                  type="button"
-                  onClick={() => navigator.clipboard?.writeText(deviceLink)}
-                  className="px-2 py-1 rounded-lg bg-bg-hover text-xs text-text-primary"
-                >
-                  Copier
-                </button>
+              <div className="flex flex-col items-center gap-2">
+                <div className="bg-white p-3 rounded-xl">
+                  <QRCode value={deviceLink} size={168} />
+                </div>
+                <div className="w-full flex items-center gap-2">
+                  <input
+                    readOnly
+                    value={deviceLink}
+                    className="flex-1 min-w-0 px-2 py-1 rounded-lg bg-bg-primary text-[11px] font-mono text-text-secondary"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => navigator.clipboard?.writeText(deviceLink)}
+                    className="px-2 py-1 rounded-lg bg-bg-hover text-xs text-text-primary"
+                  >
+                    Copier
+                  </button>
+                </div>
+                <p className="text-[11px] text-text-tertiary text-center">
+                  Scanne ce QR code depuis l'autre appareil (ou colle le lien ci-dessous).
+                </p>
               </div>
             )}
             <div className="flex items-center gap-2">
