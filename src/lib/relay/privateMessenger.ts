@@ -302,57 +302,87 @@ export class PrivateMessenger {
     await this.send(conversationId, encodeFileMessage(descriptor));
   }
 
+  /** Charge les connexions stockées et les (ré)enregistre dans le transport. */
+  async refreshConnections(): Promise<void> {
+    const records = await this.store.list();
+    for (const r of records) this.relay.registerConnection(r.conversationId, r.relay);
+  }
+
+  private async ensureRegistered(conversationId: string): Promise<void> {
+    const record = await this.store.load(conversationId);
+    if (record) this.relay.registerConnection(conversationId, record.relay);
+  }
+
   /** Écoute les messages privés entrants et livre le clair. */
   subscribe(conversationId: string, onPlaintext: (text: string) => void): () => void {
-    return this.relay.subscribe(conversationId, async incoming => {
+    let stopped = false;
+    let relayUnsub: (() => void) | null = null;
+
+    void (async () => {
+      // Après un rechargement, la connexion n'est plus en mémoire : on la
+      // ré-enregistre depuis le stockage local AVANT de s'abonner (sinon le
+      // transport lève « aucune connexion pour cette conversation »).
+      await this.ensureRegistered(conversationId);
+      if (stopped) return;
       try {
-        const wire = unpack(incoming.content);
-        const record = await this.store.load(conversationId);
-        if (!record) return;
+        relayUnsub = this.relay.subscribe(conversationId, async incoming => {
+          try {
+            const wire = unpack(incoming.content);
+            const record = await this.store.load(conversationId);
+            if (!record) return;
 
-        let session: SessionState | null = record.session;
-        if (!session) {
-          if (!wire.init) return; // pas de session et pas d'init → indéchiffrable
-          const opkPublic = wire.init.usedOneTimePreKey;
-          const opkPrivate = opkPublic ? record.localKeys.oneTimePreKeys[opkPublic] : null;
-          const response = await x3dhRespond(
-            record.localKeys.identityKeyPair,
-            record.localKeys.signedPreKey,
-            opkPublic && opkPrivate ? { privateKey: opkPrivate, publicKey: opkPublic } : null,
-            wire.init.identityKey,
-            wire.init.ephemeralPublicKey,
-          );
-          session = initReceiverSession(response.rootKey, record.localKeys.signedPreKey, response.associatedData);
-        }
+            let session: SessionState | null = record.session;
+            if (!session) {
+              if (!wire.init) return; // pas de session et pas d'init → indéchiffrable
+              const opkPublic = wire.init.usedOneTimePreKey;
+              const opkPrivate = opkPublic ? record.localKeys.oneTimePreKeys[opkPublic] : null;
+              const response = await x3dhRespond(
+                record.localKeys.identityKeyPair,
+                record.localKeys.signedPreKey,
+                opkPublic && opkPrivate ? { privateKey: opkPrivate, publicKey: opkPublic } : null,
+                wire.init.identityKey,
+                wire.init.ephemeralPublicKey,
+              );
+              session = initReceiverSession(response.rootKey, record.localKeys.signedPreKey, response.associatedData);
+            }
 
-        const text = await ratchetDecrypt(session, {
-          header: wire.header,
-          ivB64: wire.iv,
-          ctB64: wire.ct,
+            const text = await ratchetDecrypt(session, {
+              header: wire.header,
+              ivB64: wire.iv,
+              ctB64: wire.ct,
+            });
+            record.session = session;
+            await this.store.save(record);
+
+            // Messages de contrôle (rotation de file) : traités, jamais affichés.
+            if (text.startsWith(CONTROL_PREFIX)) {
+              await this.handleControl(conversationId, text.slice(CONTROL_PREFIX.length));
+              return;
+            }
+            // Ignore le trafic de couverture ; persiste le reste localement.
+            if (text === COVER_MARKER) return;
+            if (this.historyStore) {
+              await this.historyStore.append({
+                conversationId,
+                id: `in-${incoming.id}`,
+                text,
+                mine: false,
+                ts: Date.now(),
+              });
+            }
+            onPlaintext(text);
+          } catch (e) {
+            console.warn('[private] déchiffrement échoué:', e);
+          }
         });
-        record.session = session;
-        await this.store.save(record);
-
-        // Messages de contrôle (rotation de file) : traités, jamais affichés.
-        if (text.startsWith(CONTROL_PREFIX)) {
-          await this.handleControl(conversationId, text.slice(CONTROL_PREFIX.length));
-          return;
-        }
-        // Ignore le trafic de couverture ; persiste le reste localement.
-        if (text === COVER_MARKER) return;
-        if (this.historyStore) {
-          await this.historyStore.append({
-            conversationId,
-            id: `in-${incoming.id}`,
-            text,
-            mine: false,
-            ts: Date.now(),
-          });
-        }
-        onPlaintext(text);
       } catch (e) {
-        console.warn('[private] déchiffrement échoué:', e);
+        console.warn('[private] subscribe indisponible:', e);
       }
-    });
+    })();
+
+    return () => {
+      stopped = true;
+      relayUnsub?.();
+    };
   }
 }

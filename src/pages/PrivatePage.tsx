@@ -142,7 +142,9 @@ export function PrivatePage() {
 
   useEffect(() => {
     refresh()
-  }, [refresh])
+    // Ré-enregistre les connexions stockées dans le transport (après reload).
+    void messenger.refreshConnections()
+  }, [refresh, messenger])
 
   const refreshStatuses = useCallback(async () => {
     try {

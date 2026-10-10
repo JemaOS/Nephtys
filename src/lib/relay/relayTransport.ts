@@ -178,7 +178,12 @@ export class RelayTransport implements MessagingTransport {
 
   subscribe(conversationId: string, onMessage: (msg: IncomingMessage) => void): Unsubscribe {
     const state = this.connections.get(conversationId);
-    if (!state) throw new Error('Relay: aucune connexion pour cette conversation');
+    if (!state) {
+      // Ne jamais faire planter l'UI : on ignore silencieusement si la
+      // connexion n'est pas (encore) enregistrée.
+      console.warn('Relay: aucune connexion pour cette conversation (abonnement ignoré)');
+      return () => {};
+    }
 
     let stopped = false;
     let inFlight = false;
