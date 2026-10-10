@@ -12,6 +12,7 @@ import { WebSocketWire, type RelayWire } from './wire';
 import { SupabaseRelayWire } from './supabaseRelayWire';
 import { AgentRelayWire } from './agentRelayWire';
 import { SmpRelayWire } from './smpRelayWire';
+import { FailoverRelayWire } from './failoverRelayWire';
 import { PrivateMessenger } from './privateMessenger';
 import { IdbConnectionStore } from './connectionStore';
 import { IdbHistoryStore } from './historyStore';
@@ -137,9 +138,13 @@ export function getPrivateMessenger(): PrivateMessenger {
     } else if (hasCustomRelay()) {
       wire = new WebSocketWire(getRelayUrl());
     } else {
-      // DÉFAUT (fonctionnel) : relais aveugle hébergé sur Supabase — aucune
-      // config requise, un relais LOCAL (127.0.0.1) traînant est ignored.
-      wire = new SupabaseRelayWire();
+      // DÉFAUT : SMP (SimpleX browser-profile) PRIORITAIRE, repli automatique sur
+      // le relais aveugle Supabase si le premier est injoignable → le mode privé
+      // fonctionne toujours. (Un relais local 127.0.0.1 traînant est ignoré.)
+      wire = new FailoverRelayWire(
+        new SmpRelayWire({ url: smpUrl, keyHash: smpKeyHash }),
+        new SupabaseRelayWire(),
+      );
     }
     instance = new PrivateMessenger(
       wire,
