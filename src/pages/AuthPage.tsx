@@ -111,7 +111,7 @@ export function AuthPage() {
   }
 
   return (
-    <div className="h-screen bg-bg-primary flex items-center justify-center p-4 overflow-hidden">
+    <div className="min-h-screen bg-bg-primary flex items-start sm:items-center justify-center p-4 py-6 overflow-y-auto">
       {/* Injecte les styles CSS pour l'autofill */}
       <style>{autofillStyles}</style>
       
