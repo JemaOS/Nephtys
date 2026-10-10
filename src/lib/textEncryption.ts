@@ -397,20 +397,23 @@ export async function decryptMessageContent(
   await resolveSealedSenders([message], userId);
   if (!message.is_text_encrypted) return message.content;
 
-  // Chemin forward-secret (Double Ratchet) prioritaire.
-  if (isRatchetEnvelope(message.encryption_metadata)) {
-    // Ses propres messages ne peuvent pas être re-déchiffrés (pas de session
-    // « destinataire de soi ») → on laisse le cache/optimiste local gérer.
-    if (message.sender_id && message.sender_id === userId) return null;
-    const raw = await tryDecryptWithRatchet(
-      message.encryption_metadata,
-      message.content,
-      userId,
-      // Session indexée par CONVERSATION (insensible au sealed sender).
-      message.conversation_id ?? message.sender_id ?? '',
-    );
-    if (raw !== null) return parseTextPayload(raw).text;
-    return UNDECRYPTABLE_PLACEHOLDER;
+  // Chemin forward-secret (Double Ratchet) prioritaire, puis repli X25519.
+  const meta = message.encryption_metadata as any;
+  const ratchetEnv = meta?.ratchet ?? (isRatchetEnvelope(meta) ? meta : null);
+  if (ratchetEnv) {
+    const isMine = message.sender_id && message.sender_id === userId;
+    if (!isMine) {
+      const ratchetContent = meta?.ratchetContent ?? message.content;
+      const raw = await tryDecryptWithRatchet(
+        ratchetEnv,
+        ratchetContent,
+        userId,
+        // Session indexée par CONVERSATION (insensible au sealed sender).
+        message.conversation_id ?? message.sender_id ?? '',
+      );
+      if (raw !== null) return parseTextPayload(raw).text;
+    }
+    // échec ratchet (ou message à soi) → repli X25519 ci-dessous.
   }
 
   const envelope = parseEnvelope(message.encryption_metadata);
@@ -467,10 +470,9 @@ export async function decryptMessageRows<T extends {
   // ciphertext brut (régression détectée en test 2-appareils avec serveur aveugle).
   const encrypted = rows.filter(r => r.is_text_encrypted);
   if (encrypted.length === 0) return rows;
-  // On n'interroge les clés enveloppées QUE pour les messages non-ratchet.
-  const wrappedIds = encrypted
-    .filter(r => !isRatchetEnvelope(r.encryption_metadata))
-    .map(r => r.id);
+  // Double chiffrement : des clés X25519 (repli garanti) existent AUSSI pour les
+  // messages ratchet → on récupère les clés pour TOUS les messages chiffrés.
+  const wrappedIds = encrypted.map(r => r.id);
 
   const keyByMessage = new Map<string, any>();
   if (wrappedIds.length > 0) {
@@ -492,41 +494,38 @@ export async function decryptMessageRows<T extends {
 
   await Promise.all(
     encrypted.map(async row => {
-      // Chemin forward-secret (Double Ratchet).
-      if (isRatchetEnvelope(row.encryption_metadata)) {
-        // Ses propres messages : pas de re-déchiffrement possible (pas de session
-        // « destinataire de soi »). On utilise le clair mémorisé à l'envoi.
+      const meta = row.encryption_metadata as any;
+      // Enveloppe ratchet : soit imbriquée (double chiffrement), soit directe.
+      const ratchetEnv = meta?.ratchet ?? (isRatchetEnvelope(meta) ? meta : null);
+      const ratchetContent = meta?.ratchetContent ?? row.content;
+
+      // 1) Forward secrecy (Double Ratchet) — messages REÇUS.
+      if (ratchetEnv) {
         if ((row as any).sender_id && (row as any).sender_id === userId) {
           const mine = decryptedTextCache.get(row.id);
-          if (mine !== undefined) {
-            row.content = mine;
-            (row as any).is_text_encrypted = false;
-          } else {
-            row.content = UNDECRYPTABLE_PLACEHOLDER;
-          }
-          return;
-        }
-        const raw = await tryDecryptWithRatchet(
-          row.encryption_metadata,
-          row.content,
-          userId,
-          (row as any).conversation_id ?? (row as any).sender_id ?? '',
-        );
-        if (raw !== null) {
-          const payload = parseTextPayload(raw);
-          row.content = payload.text;
-          // Marque comme CLAIR : sans ça, un autre chemin (realtime/cache)
-          // re-tente de déchiffrer un message déjà en clair → échec → le
-          // ciphertext réapparaît à l'écran.
-          (row as any).is_text_encrypted = false;
-          cacheDecryptedText(row.id, payload.text);
-          if (payload.linkPreview) (row as any).link_preview = JSON.stringify(payload.linkPreview);
+          if (mine !== undefined) { row.content = mine; (row as any).is_text_encrypted = false; return; }
+          // ses propres messages : pas de re-déchiffrement ratchet → on tente X25519 ci-dessous
         } else {
-          row.content = UNDECRYPTABLE_PLACEHOLDER;
+          const raw = await tryDecryptWithRatchet(
+            ratchetEnv,
+            ratchetContent,
+            userId,
+            (row as any).conversation_id ?? (row as any).sender_id ?? '',
+          );
+          if (raw !== null) {
+            const payload = parseTextPayload(raw);
+            row.content = payload.text;
+            (row as any).is_text_encrypted = false;
+            cacheDecryptedText(row.id, payload.text);
+            if (payload.linkPreview) (row as any).link_preview = JSON.stringify(payload.linkPreview);
+            return;
+          }
+          // échec ratchet → on tente le repli X25519 (ci-dessous).
         }
-        return;
       }
 
+      // 2) Repli X25519 (TOUJOURS présent en double chiffrement) — garantit
+      // que TOUT destinataire peut déchiffrer, même sans clés ratchet.
       const envelope = parseEnvelope(row.encryption_metadata);
       const keyRow = keyByMessage.get(row.id);
       if (!envelope || !keyRow) {

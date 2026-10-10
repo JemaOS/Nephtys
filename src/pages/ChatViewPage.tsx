@@ -1872,21 +1872,28 @@ await decryptMessageRows(validData as any[], user.id)
       // Repli en clair si le chiffrement est impossible → jamais de base64 affiché.
       let encryptedText: EncryptedTextPayload | null = null
       try {
-        // Forward secrecy prioritaire (conversations directes) : X3DH + Double
-        // Ratchet. Renvoie null si non applicable → repli sur la clé statique.
-        const ratchet = ENABLE_RATCHET_ON_SEND && conversationId
-          ? await tryEncryptWithRatchet(user.id, conversationId, serializeTextPayload(plaintext, linkPreviewPayload))
-          : null
-        if (ratchet) {
-          messageData.content = ratchet.content
-          messageData.is_text_encrypted = true
-          messageData.encryption_metadata = ratchet.encryptionMetadata
-        } else {
-          encryptedText = await encryptText(plaintext, linkPreviewPayload)
-          messageData.content = encryptedText.ciphertextB64
-          messageData.is_text_encrypted = true
-          messageData.encryption_metadata = { v: 1, iv: encryptedText.ivB64 }
+        // 1) X25519 TOUJOURS (clé AES enveloppée par destinataire) → repli
+        // garanti : TOUT destinataire peut déchiffrer, même sans clés ratchet.
+        encryptedText = await encryptText(plaintext, linkPreviewPayload)
+        messageData.content = encryptedText.ciphertextB64
+        messageData.is_text_encrypted = true
+        const meta: Record<string, unknown> = { v: 1, iv: encryptedText.ivB64 }
+
+        // 2) Double Ratchet en SURCOUCHE (forward secrecy) quand disponible.
+        // Les clés X25519 restent enregistrées (repli) même si le ratchet marche.
+        try {
+          const ratchet = ENABLE_RATCHET_ON_SEND && conversationId
+            ? await tryEncryptWithRatchet(user.id, conversationId, serializeTextPayload(plaintext, linkPreviewPayload))
+            : null
+          if (ratchet) {
+            meta.ratchet = ratchet.encryptionMetadata
+            meta.ratchetContent = ratchet.content
+          }
+        } catch (rErr) {
+          console.warn('[E2EE] ratchet indisponible, X25519 seul:', rErr)
         }
+
+        messageData.encryption_metadata = meta
       } catch (encErr) {
         console.warn('[E2EE] chiffrement du texte impossible, envoi en clair:', encErr)
         encryptedText = null

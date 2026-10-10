@@ -224,8 +224,16 @@ export async function decryptFromPeer(
 }
 
 /** Indique si une enveloppe décrit un message de ratchet géré ici. */
+function isRatchetObj(m: unknown): boolean {
+  if (!m || typeof m !== 'object') return false;
+  const o = m as Record<string, unknown>;
+  return (o.type === 'ratchet' || o.type === 'ratchet-init') && !!o.header && typeof o.iv === 'string';
+}
+
 export function isRatchetEnvelope(metadata: unknown): metadata is RatchetEnvelope {
   if (!metadata || typeof metadata !== 'object') return false;
   const m = metadata as Record<string, unknown>;
-  return (m.type === 'ratchet' || m.type === 'ratchet-init') && !!m.header && typeof m.iv === 'string';
+  // Format direct (legacy) OU format imbriqué dans `encryption_metadata.ratchet`
+  // (double chiffrement : X25519 primaire + ratchet en surcouche).
+  return isRatchetObj(m) || isRatchetObj(m.ratchet);
 }
