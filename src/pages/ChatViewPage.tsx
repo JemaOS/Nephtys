@@ -17,6 +17,7 @@ import {
   decryptMessageRows,
   serializeTextPayload,
   buildSenderSealed,
+  UNDECRYPTABLE_PLACEHOLDER,
   type EncryptedTextPayload,
 } from '@/lib/textEncryption'
 import { tryEncryptWithRatchet } from '@/lib/ratchet/chatIntegration'
@@ -506,7 +507,14 @@ export function ChatViewPage() {
   // Get real-time presence status for the other user
   const { statusText: otherUserStatusText, isOnline: otherUserIsOnline } = useUserPresence(otherUser?.id)
   
-  const displayedMessages = filteredMessages.length > 0 ? filteredMessages : messages
+  // Garde-fou : un message ENCORE marqué chiffré (is_text_encrypted=true) ne doit
+// JAMAIS afficher son contenu brut (ciphertext base64). Après déchiffrement,
+// `decryptMessageRows` passe is_text_encrypted à false → le clair s'affiche ;
+// sinon → placeholder 🔒 (jamais de base64 à l'écran, quel que soit le chemin).
+  const displayedMessages = useMemo(() => {
+    const base = filteredMessages.length > 0 ? filteredMessages : messages
+    return base.map(m => (m as any).is_text_encrypted ? { ...m, content: UNDECRYPTABLE_PLACEHOLDER } : m)
+  }, [filteredMessages, messages])
 
   // Helper function to get sender info for a message (works for both direct and group conversations)
   const getSenderInfo = useCallback((senderId: string): { name: string; avatar?: string } => {

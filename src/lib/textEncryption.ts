@@ -467,6 +467,10 @@ export async function decryptMessageRows<T extends {
         if (raw !== null) {
           const payload = parseTextPayload(raw);
           row.content = payload.text;
+          // Marque comme CLAIR : sans ça, un autre chemin (realtime/cache)
+          // re-tente de déchiffrer un message déjà en clair → échec → le
+          // ciphertext réapparaît à l'écran.
+          (row as any).is_text_encrypted = false;
           if (payload.linkPreview) (row as any).link_preview = JSON.stringify(payload.linkPreview);
         } else {
           row.content = UNDECRYPTABLE_PLACEHOLDER;
@@ -484,6 +488,7 @@ export async function decryptMessageRows<T extends {
         const rawKey = await unwrapKeyRowForUser(keyRow, userId, caches);
         const payload = await decryptTextPayload(row.content, envelope.iv, rawKey);
         row.content = payload.text;
+        (row as any).is_text_encrypted = false;
         if (payload.linkPreview) {
           (row as any).link_preview = JSON.stringify(payload.linkPreview);
         }
