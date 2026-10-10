@@ -65,7 +65,7 @@ function resourceStats(): { jsKB: number; jsRequests: number; slowest: Array<{ n
     for (const r of res) {
       const isJs = r.initiatorType === 'script' || /\.m?js(\?|$)/.test(r.name);
       if (isJs) {
-        jsBytes += r.transferSize || r.encodedBodySize || 0;
+        jsBytes += r.transferSize || r.encodedBodySize || r.decodedBodySize || 0;
         jsRequests++;
       }
     }
