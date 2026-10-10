@@ -20,6 +20,8 @@ import QRCode from 'react-qr-code'
 import { ArrowLeft, Copy, Link2, Lock, Paperclip, Plus, Send, ShieldCheck, Trash2 } from 'lucide-react'
 import { MainLayout } from '@/components/MainLayout'
 import { getPrivateMessenger, getRelayUrl, getRelayLabel, setRelayUrl } from '@/lib/relay/relayClient'
+import { getGroupMessenger } from '@/lib/relay/groupClient'
+import type { GroupRecord } from '@/lib/relay/groupMessenger'
 import { parseFileMessage } from '@/lib/relay/privateMessenger'
 import { encryptAndUploadFile, downloadAndDecryptFile, type FileDescriptor } from '@/lib/relay/fileTransfer'
 import type { PrivateConnectionRecord } from '@/lib/relay/connectionStore'
@@ -57,6 +59,18 @@ export function PrivatePage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [uploading, setUploading] = useState(false)
 
+  // Groupes privés
+  const groupMessenger = useMemo(() => getGroupMessenger(), [])
+  const [groups, setGroups] = useState<GroupRecord[]>([])
+  const [groupInvite, setGroupInvite] = useState<string | null>(null)
+  const [groupJoinLink, setGroupJoinLink] = useState('')
+  const [activeGroupId, setActiveGroupId] = useState<string | null>(null)
+  const [groupMessages, setGroupMessages] = useState<ChatItem[]>([])
+  const [groupDraft, setGroupDraft] = useState('')
+  const [groupBusy, setGroupBusy] = useState(false)
+  const [groupError, setGroupError] = useState<string | null>(null)
+  const groupUnsubRef = useRef<(() => void) | null>(null)
+
   const refresh = useCallback(async () => {
     try {
       setConnections(await messenger.listConnections())
@@ -74,6 +88,8 @@ export function PrivatePage() {
       rotationStopRef.current = null
       coverStopRef.current?.()
       coverStopRef.current = null
+      groupUnsubRef.current?.()
+      groupUnsubRef.current = null
     }
   }, [refresh])
 
@@ -192,6 +208,87 @@ export function PrivatePage() {
       setError(`Téléchargement impossible — ${(e as Error).message}`)
     }
   }, [])
+
+  // ─── Groupes privés ─────────────────────────────────────────────────
+  const refreshGroups = useCallback(async () => {
+    try {
+      setGroups(await groupMessenger.listGroups())
+    } catch (e) {
+      console.error('[group] list failed', e)
+    }
+  }, [groupMessenger])
+
+  useEffect(() => { refreshGroups() }, [refreshGroups])
+
+  const openGroup = useCallback(
+    (groupId: string) => {
+      groupUnsubRef.current?.()
+      groupUnsubRef.current = null
+      setActiveGroupId(groupId)
+      setGroupMessages([])
+      setGroupError(null)
+      groupUnsubRef.current = groupMessenger.subscribe(groupId, text => {
+        setGroupMessages(prev => [...prev, { id: `gin-${Date.now()}-${prev.length}`, text, mine: false }])
+      })
+    },
+    [groupMessenger],
+  )
+
+  const handleCreateGroup = useCallback(async () => {
+    setGroupBusy(true)
+    setGroupError(null)
+    try {
+      const { record, invite } = await groupMessenger.create('Groupe privé')
+      setGroupInvite(invite)
+      await refreshGroups()
+      openGroup(record.groupId)
+    } catch (e) {
+      setGroupError(`Création du groupe impossible — ${(e as Error).message}`)
+    } finally {
+      setGroupBusy(false)
+    }
+  }, [groupMessenger, refreshGroups, openGroup])
+
+  const handleJoinGroup = useCallback(async () => {
+    if (!groupJoinLink.trim()) return
+    setGroupBusy(true)
+    setGroupError(null)
+    try {
+      const rec = await groupMessenger.join(groupJoinLink.trim(), 'moi')
+      setGroupJoinLink('')
+      await refreshGroups()
+      openGroup(rec.groupId)
+    } catch (e) {
+      setGroupError(`Impossible de rejoindre — ${(e as Error).message}`)
+    } finally {
+      setGroupBusy(false)
+    }
+  }, [groupMessenger, refreshGroups, openGroup, groupJoinLink])
+
+  const handleSendGroup = useCallback(async () => {
+    const text = groupDraft.trim()
+    if (!text || !activeGroupId) return
+    setGroupDraft('')
+    try {
+      await groupMessenger.send(activeGroupId, text)
+      setGroupMessages(prev => [...prev, { id: `gout-${Date.now()}-${prev.length}`, text, mine: true }])
+    } catch (e) {
+      setGroupError(`Envoi impossible — ${(e as Error).message}`)
+    }
+  }, [groupDraft, activeGroupId, groupMessenger])
+
+  const handleForgetGroup = useCallback(
+    async (groupId: string) => {
+      await groupMessenger.forgetGroup(groupId)
+      if (activeGroupId === groupId) {
+        groupUnsubRef.current?.()
+        groupUnsubRef.current = null
+        setActiveGroupId(null)
+      }
+      await refreshGroups()
+    },
+    [groupMessenger, activeGroupId, refreshGroups],
+  )
 
   const handleForget = useCallback(
     async (conversationId: string) => {
@@ -369,6 +466,69 @@ export function PrivatePage() {
                 </button>
               </div>
             ))}
+          </div>
+
+          {/* Groupes privés */}
+          <div className="space-y-2">
+            <h2 className="text-sm font-semibold text-text-primary">Groupes privés</h2>
+            <p className="text-[11px] text-text-tertiary">
+              Groupe chiffré : clé de groupe distribuée via les files du relais, rotation à
+              l'ajout/retrait de membres.
+            </p>
+            <button
+              type="button"
+              onClick={handleCreateGroup}
+              disabled={groupBusy}
+              className="flex items-center gap-2 px-3 py-2 rounded-xl bg-[#7578db] text-white text-sm font-medium disabled:opacity-50"
+            >
+              <Plus size={16} /> Créer un groupe privé
+            </button>
+
+            {groupInvite && (
+              <div className="rounded-2xl bg-bg-surface p-4 flex flex-col items-center gap-3">
+                <div className="bg-white p-3 rounded-xl"><QRCode value={groupInvite} size={160} /></div>
+                <div className="w-full flex items-center gap-2">
+                  <input readOnly value={groupInvite} className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-bg-primary text-[11px] font-mono text-text-secondary truncate" />
+                  <button type="button" onClick={() => navigator.clipboard?.writeText(groupInvite)} className="px-3 py-2 rounded-lg bg-bg-hover text-xs text-text-primary">Copier</button>
+                </div>
+              </div>
+            )}
+
+            <div className="rounded-2xl bg-bg-surface p-4 space-y-2">
+              <div className="flex items-center gap-2 text-sm text-text-primary font-medium"><Link2 size={16} /> Rejoindre un groupe</div>
+              <textarea value={groupJoinLink} onChange={e => setGroupJoinLink(e.target.value)} placeholder="Collez le lien d'invitation au groupe" rows={2} className="w-full px-3 py-2 rounded-lg bg-bg-primary text-xs text-text-primary font-mono resize-none" />
+              <button type="button" onClick={handleJoinGroup} disabled={groupBusy || !groupJoinLink.trim()} className="px-3 py-2 rounded-xl bg-[#7578db] text-white text-sm font-medium disabled:opacity-50">Rejoindre</button>
+            </div>
+
+            {groupError && <div className="rounded-xl bg-red-500/10 border border-red-500/20 p-3 text-xs text-red-400">{groupError}</div>}
+
+            {groups.length === 0 && <p className="text-xs text-text-tertiary">Aucun groupe pour l'instant.</p>}
+            {groups.map(g => (
+              <div key={g.groupId} className="flex items-center justify-between gap-2 rounded-xl bg-bg-surface px-3 py-2">
+                <button type="button" onClick={() => openGroup(g.groupId)} className="flex items-center gap-2 text-sm text-text-primary min-w-0">
+                  <Lock size={15} className="text-[#7578db] shrink-0" />
+                  <span className="truncate">{g.name}</span>
+                  <span className="text-[10px] text-text-tertiary shrink-0">{g.members.length + 1} membres</span>
+                </button>
+                <button type="button" onClick={() => handleForgetGroup(g.groupId)} className="p-2 rounded-lg hover:bg-bg-hover text-text-tertiary" aria-label="Oublier"><Trash2 size={15} /></button>
+              </div>
+            ))}
+
+            {activeGroupId && (
+              <div className="border border-bg-hover rounded-2xl bg-bg-secondary overflow-hidden">
+                <div className="px-4 py-2 text-xs text-text-secondary flex items-center gap-2"><Lock size={13} className="text-[#7578db]" /> groupe {activeGroupId}</div>
+                <div className="h-48 overflow-auto px-4 py-2 space-y-2">
+                  {groupMessages.length === 0 && <p className="text-xs text-text-tertiary">Aucun message.</p>}
+                  {groupMessages.map(m => (
+                    <div key={m.id} className={`max-w-[75%] px-3 py-2 rounded-2xl text-sm ${m.mine ? 'ml-auto bg-[#7578db] text-white' : 'mr-auto bg-bg-surface text-text-primary'}`}>{m.text}</div>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2 px-4 py-3 border-t border-bg-hover">
+                  <input value={groupDraft} onChange={e => setGroupDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendGroup() } }} placeholder="Message de groupe chiffré…" className="flex-1 px-3 py-2 rounded-xl bg-bg-primary text-sm text-text-primary" />
+                  <button type="button" onClick={handleSendGroup} disabled={!groupDraft.trim()} className="p-2 rounded-xl bg-[#7578db] text-white disabled:opacity-50" aria-label="Envoyer"><Send size={18} /></button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

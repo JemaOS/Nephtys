@@ -153,6 +153,16 @@ export class GroupMessenger {
     return JSON.stringify(msg);
   }
 
+  /** Liste les groupes stockés localement. */
+  async listGroups(): Promise<GroupRecord[]> {
+    return this.store.list();
+  }
+
+  /** Oublie un groupe (supprime le mapping local). */
+  async forgetGroup(groupId: string): Promise<void> {
+    await this.store.remove(groupId);
+  }
+
   /** Crée un groupe ; renvoie son id + le lien d'invitation à partager. */
   async create(name: string): Promise<{ record: GroupRecord; invite: string }> {
     const groupId = newGroupId();
