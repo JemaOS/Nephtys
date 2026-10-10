@@ -366,14 +366,22 @@ export async function decryptMessageContent(
   const envelope = parseEnvelope(message.encryption_metadata);
   if (!envelope) return UNDECRYPTABLE_PLACEHOLDER;
 
-  const { data: keyRow, error } = await supabase
-    .from('message_text_keys')
-    .select('encrypted_key, iv, sender_public_key')
-    .eq('message_id', message.id)
-    .eq('recipient_id', userId)
-    .maybeSingle();
+  let keyRow: { encrypted_key: string; iv: string; sender_public_key: string } | null = null;
+  try {
+    const { data, error } = await supabase
+      .from('message_text_keys')
+      .select('encrypted_key, iv, sender_public_key')
+      .eq('message_id', message.id)
+      .eq('recipient_id', userId)
+      .maybeSingle();
+    if (error) return UNDECRYPTABLE_PLACEHOLDER;
+    keyRow = data;
+  } catch (e) {
+    console.warn('[textEncryption] key fetch failed for message', message.id, e);
+    return UNDECRYPTABLE_PLACEHOLDER;
+  }
 
-  if (error || !keyRow) return UNDECRYPTABLE_PLACEHOLDER;
+  if (!keyRow) return UNDECRYPTABLE_PLACEHOLDER;
 
   try {
     const rawKey = await unwrapKeyRowForUser(keyRow, userId, {});
@@ -413,12 +421,18 @@ export async function decryptMessageRows<T extends {
 
   const keyByMessage = new Map<string, any>();
   if (wrappedIds.length > 0) {
-    const { data: keyRows } = await supabase
-      .from('message_text_keys')
-      .select('message_id, encrypted_key, iv, sender_public_key')
-      .eq('recipient_id', userId)
-      .in('message_id', wrappedIds);
-    keyRows?.forEach(k => keyByMessage.set(k.message_id as string, k));
+    try {
+      const { data: keyRows } = await supabase
+        .from('message_text_keys')
+        .select('message_id, encrypted_key, iv, sender_public_key')
+        .eq('recipient_id', userId)
+        .in('message_id', wrappedIds);
+      keyRows?.forEach(k => keyByMessage.set(k.message_id as string, k));
+    } catch (e) {
+      // Une erreur réseau/DB ne doit JAMAIS faire échouer le déchiffrement
+      // en bloc : on continue, les messages concernés afficheront le cadenas.
+      console.warn('[textEncryption] fetch keys failed:', e);
+    }
   }
 
   const caches: UnwrapCaches = {};

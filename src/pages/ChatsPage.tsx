@@ -364,8 +364,12 @@ export function ChatsPage() {
         // Déchiffrement E2EE : le dernier message de la liste ne doit jamais
         // afficher le ciphertext stocké côté serveur.
         if (user && newMessage.is_text_encrypted) {
-          const plaintext = await decryptMessageContent(newMessage, user.id)
-          if (plaintext !== null) newMessage.content = plaintext
+          try {
+            const plaintext = await decryptMessageContent(newMessage, user.id)
+            if (plaintext !== null) newMessage.content = plaintext
+          } catch (e) {
+            console.warn('[E2EE] decrypt liste échoué, message conservé:', e)
+          }
         }
 
         // Mark message as delivered if it's not from the current user
@@ -770,7 +774,9 @@ export function ChatsPage() {
           { event: 'UPDATE', schema: 'public', table: 'profiles' },
           () => debouncedReload()
         )
-        .subscribe()
+        .subscribe((status) => {
+          console.log('[realtime][chats-list] statut:', status)
+        })
 
       // Handle visibility change - refresh data when app comes back to foreground
       // This is critical for PWA on mobile where the app may be suspended

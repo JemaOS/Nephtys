@@ -766,8 +766,15 @@ export function ChatViewPage() {
     // ciphertext. On restaure le clair AVANT la déduplication par contenu,
     // sinon le message optimiste (clair) et la ligne DB (ciphertext) ne
     // matcheraient jamais et créeraient un doublon.
+    // ⚠️ Ne JAMAIS laisser un échec de déchiffrement bloquer l'injection
+    // du message temps réel (sinon le message n'apparaît jamais → « pas de
+    // temps réel »). On encapsule donc strictement.
     if ((newMsg as any).is_text_encrypted && user) {
-      await decryptMessageRow(newMsg as any, user.id)
+      try {
+        await decryptMessageRow(newMsg as any, user.id)
+      } catch (e) {
+        console.warn('[E2EE] decrypt realtime échoué, message conservé:', e)
+      }
     }
 
     // Signer les paths storage (bucket privé) avant injection dans le state.
@@ -955,7 +962,9 @@ export function ChatViewPage() {
           handleNewMessage({ new: payload.message })
         }
       })
-      .subscribe()
+      .subscribe((status) => {
+        console.log(`[realtime][chat:${conversationId}] statut:`, status)
+      })
 
     // Handle visibility change - WHATSAPP STYLE: NO reload on visibility change
     // The realtime channel handles updates, no need to poll
@@ -1000,12 +1009,12 @@ export function ChatViewPage() {
     globalThis.addEventListener('call-log-created', handleCallLogCreated as EventListener)
 
     // Filet de sécurité anti-F5 : rafraîchit la conversation ouverte si le
-    // Realtime ne délivre pas (onglet visible).
+    // Realtime ne délivre pas (onglet visible). 4 s = ressenti quasi temps réel.
     const fallbackPoll = setInterval(() => {
       if (document.visibilityState === 'visible') {
         debouncedLoadData()
       }
-    }, 8000)
+    }, 4000)
 
     return () => {
       clearTimeout(loadingTimeout)
