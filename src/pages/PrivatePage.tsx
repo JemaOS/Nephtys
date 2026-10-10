@@ -25,7 +25,7 @@ import type { GroupRecord } from '@/lib/relay/groupMessenger'
 import { parseFileMessage } from '@/lib/relay/privateMessenger'
 import { parseStatus, encodeStatus, toRecord, type StatusPayload, type StatusRecord } from '@/lib/relay/statusStore'
 import { PrivateCall, type CallState, type PeerLike } from '@/lib/relay/privateCall'
-import { isCallSignal } from '@/lib/relay/callSignaling'
+import { isCallSignal, parseCallSignal } from '@/lib/relay/callSignaling'
 import { IdbStatusStore } from '@/lib/relay/statusIdbStore'
 import { encryptAndUploadFile, downloadAndDecryptFile, type FileDescriptor } from '@/lib/relay/fileTransfer'
 import type { PrivateConnectionRecord } from '@/lib/relay/connectionStore'
@@ -84,13 +84,38 @@ export function PrivatePage() {
   // Appel privé (signalisation WebRTC via le canal chiffré)
   const [callState, setCallState] = useState<CallState>('idle')
   const [callConv, setCallConv] = useState<string | null>(null)
+  const [mediaError, setMediaError] = useState<string | null>(null)
+  const localMediaRef = useRef<MediaStream | null>(null)
+  const remoteVideoRef = useRef<HTMLVideoElement | null>(null)
+  const localVideoRef = useRef<HTMLVideoElement | null>(null)
+
+  const acquireMedia = useCallback(async (): Promise<MediaStream | null> => {
+    if (localMediaRef.current) return localMediaRef.current
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true })
+      localMediaRef.current = stream
+      if (localVideoRef.current) localVideoRef.current.srcObject = stream
+      return stream
+    } catch (e) {
+      setMediaError(`Micro/caméra indisponible — ${(e as Error).message}`)
+      return null
+    }
+  }, [])
+
   const privateCall = useMemo(
     () =>
       new PrivateCall({
-        createPeer: () =>
-          typeof RTCPeerConnection !== 'undefined'
-            ? (new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }) as unknown as PeerLike)
-            : null,
+        createPeer: () => {
+          if (typeof RTCPeerConnection === 'undefined') return null
+          const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] })
+          const stream = localMediaRef.current
+          if (stream) for (const track of stream.getTracks()) pc.addTrack(track, stream)
+          pc.ontrack = (ev: RTCTrackEvent) => {
+            const [remote] = ev.streams
+            if (remote && remoteVideoRef.current) remoteVideoRef.current.srcObject = remote
+          }
+          return pc as unknown as PeerLike
+        },
         send: (convId, text) => messenger.send(convId, text),
         onState: (convId, state) => {
           setCallConv(convId)
@@ -99,6 +124,13 @@ export function PrivatePage() {
       }),
     [messenger],
   )
+
+  const startCall = useCallback(async () => {
+    if (!active) return
+    setMediaError(null)
+    await acquireMedia()
+    await privateCall.start(active)
+  }, [active, acquireMedia, privateCall])
 
   const refresh = useCallback(async () => {
     try {
@@ -171,7 +203,15 @@ export function PrivatePage() {
       const convId = c.conversationId
       const unsubMsg = messenger.subscribe(convId, text => {
         if (isCallSignal(text)) {
-          void privateCall.handleSignal(convId, text)
+          const sig = parseCallSignal(text)
+          if (sig?.kind === 'offer' && !localMediaRef.current) {
+            void (async () => {
+              await acquireMedia()
+              await privateCall.handleSignal(convId, text)
+            })()
+          } else {
+            void privateCall.handleSignal(convId, text)
+          }
           return
         }
         const status = parseStatus(text)
@@ -191,7 +231,7 @@ export function PrivatePage() {
     for (const [id, stop] of monitors) {
       if (!ids.has(id)) { stop(); monitors.delete(id) }
     }
-  }, [connections, messenger, handleIncomingStatus, privateCall])
+  }, [connections, messenger, handleIncomingStatus, privateCall, acquireMedia])
 
   useEffect(() => {
     refreshStatuses()
@@ -423,15 +463,22 @@ export function PrivatePage() {
 
         <div className="flex-1 overflow-auto p-4 space-y-4">
           {callState !== 'idle' && callState !== 'ended' && (
-            <div className="rounded-xl bg-[#7578db]/20 border border-[#7578db]/40 px-4 py-2 flex items-center justify-between text-sm text-text-primary">
-              <span>Appel — {callState}{callConv ? ` (${callConv})` : ''}</span>
-              <button
-                type="button"
-                onClick={() => callConv && privateCall.end(callConv)}
-                className="px-2 py-1 rounded-lg bg-red-500/20 text-red-300 text-xs"
-              >
-                Raccrocher
-              </button>
+            <div className="rounded-xl bg-[#7578db]/20 border border-[#7578db]/40 p-3 space-y-2">
+              <div className="flex items-center justify-between text-sm text-text-primary">
+                <span>Appel — {callState}{callConv ? ` (${callConv})` : ''}</span>
+                <button
+                  type="button"
+                  onClick={() => callConv && privateCall.end(callConv)}
+                  className="px-2 py-1 rounded-lg bg-red-500/20 text-red-300 text-xs"
+                >
+                  Raccrocher
+                </button>
+              </div>
+              <div className="relative rounded-lg overflow-hidden bg-black aspect-video">
+                <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
+                <video ref={localVideoRef} autoPlay playsInline muted className="absolute bottom-2 right-2 w-24 h-16 object-cover rounded-md border border-white/20" />
+              </div>
+              {mediaError && <p className="text-xs text-red-400">{mediaError}</p>}
             </div>
           )}
           <div className="flex items-start gap-2 rounded-xl bg-blue-500/10 border border-blue-500/20 p-3 text-xs text-text-secondary">
@@ -668,7 +715,7 @@ export function PrivatePage() {
               <span className="flex items-center gap-2"><Lock size={13} className="text-[#7578db]" /> {active}</span>
               <button
                 type="button"
-                onClick={() => active && privateCall.start(active)}
+                onClick={() => active && startCall()}
                 className="px-2 py-1 rounded-lg bg-bg-hover text-text-primary text-xs"
                 aria-label="Appeler"
               >

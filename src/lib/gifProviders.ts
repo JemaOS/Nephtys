@@ -71,6 +71,38 @@ function normGiphy(r: any): GifItem {
   };
 }
 
+/** Openverse (openverse.org) — API PUBLIQUE SANS CLÉ, avec CORS. */
+function normOpenverse(r: any): GifItem {
+  const full = r?.url;
+  const thumb = r?.thumbnail || full;
+  return {
+    id: String(r?.id ?? ''),
+    content_description: r?.title,
+    media_formats: {
+      gif: { url: full },
+      mediumgif: { url: full },
+      tinygif: { url: thumb },
+      nanogif: { url: thumb },
+      webp: { url: thumb },
+      tinywebp: { url: thumb },
+    },
+  };
+}
+
+const OPENVERSE_DEFAULT_QUERIES = ['funny', 'cat', 'dance', 'wow', 'hello', 'love'];
+
+async function tryOpenverse(kind: GifKind, query: string): Promise<GifItem[]> {
+  const q = isTrending(query)
+    ? OPENVERSE_DEFAULT_QUERIES[Math.floor(Math.random() * OPENVERSE_DEFAULT_QUERIES.length)]
+    : query;
+  const url = `https://api.openverse.org/v1/images/?q=${encodeURIComponent(q)}&extension=gif&mature=false&page_size=20`;
+  const data = await tryJson(url);
+  if (!data?.results?.length) return [];
+  return data.results
+    .filter((r: any) => r?.url)
+    .map(normOpenverse);
+}
+
 async function tryJson(url: string): Promise<any | null> {
   try {
     const res = await fetch(url);
@@ -99,7 +131,13 @@ export async function fetchGifItems(kind: GifKind, query: string): Promise<GifIt
     if (data?.results?.length) return data.results.map(normTenorV2);
   }
 
-  // 2) Tenor v1 (clés publiques)
+  // 2) Openverse (API PUBLIQUE SANS CLÉ + CORS) — source fiable par défaut.
+  {
+    const items = await tryOpenverse(kind, query);
+    if (items.length) return items;
+  }
+
+  // 3) Tenor v1 (clés publiques)
   for (const key of TENOR_V1_KEYS) {
     const base = trending
       ? `https://g.tenor.com/v1/trending?key=${key}&limit=20${sticker ? '&searchfilter=sticker' : ''}`
