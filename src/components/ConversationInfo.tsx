@@ -643,8 +643,8 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
     
     if (participant) {
       return 'avatar_url' in participant 
-        ? participant.avatar_url 
-        : participant.user.avatar_url
+        ? participant.avatar_url ?? undefined
+        : participant.user.avatar_url ?? undefined
     }
     return undefined
   };

@@ -2,7 +2,7 @@
 // Distributed under the license specified in the root directory of this project.
 
 import React from 'react';
-import { X, Image as ImageIcon, FileVideo, Sticker, FileText } from 'lucide-react';
+import { X, Image as ImageIcon, FileVideo, Sticker, FileText, type LucideIcon } from 'lucide-react';
 import { useI18n, tStatic } from '@/i18n';
 import { useDecryptedMedia } from '@/hooks/useDecryptedMedia';
 import { useMediaUrl } from '@/hooks/useMediaUrl';
@@ -138,7 +138,7 @@ export const MessageReply: React.FC<MessageReplyProps> = ({
   let displayContent = replyToMessage.content;
   let mediaUrl = replyToMessage.mediaUrl;
   let mediaType = replyToMessage.mediaType;
-  let Icon = null;
+  let Icon: LucideIcon | null = null;
   let typeLabel = '';
 
   // Check for GIF/Sticker in content (Markdown format)
@@ -146,8 +146,8 @@ export const MessageReply: React.FC<MessageReplyProps> = ({
   const gifSuffixRegex = /\[GIF\]\((https?:\/\/[^)]+)\)$/;
   const stickerSuffixRegex = /\[STICKER\]\((https?:\/\/[^)]+)\)$/;
   
-  let gifMatch = null;
-  let stickerMatch = null;
+  let gifMatch: string[] | null = null;
+  let stickerMatch: string[] | null = null;
 
   if (replyToMessage.content) {
     const gifSuffixMatch = replyToMessage.content.match(gifSuffixRegex);

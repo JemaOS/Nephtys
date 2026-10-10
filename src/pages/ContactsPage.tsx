@@ -398,7 +398,7 @@ export function ContactsPage() {
       const contactsData = contactsResult.data
       
       // Deduplicate contacts by contact_user_id, keeping the most recent entry (first due to DESC order)
-      const uniqueContactsMap = new Map<string, typeof contactsData extends (infer T)[] ? T : never>()
+      const uniqueContactsMap = new Map<string, any>()
       for (const contact of (contactsData || [])) {
         if (!uniqueContactsMap.has(contact.contact_user_id)) {
           uniqueContactsMap.set(contact.contact_user_id, contact)

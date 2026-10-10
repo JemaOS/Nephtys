@@ -100,7 +100,7 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({
         {image && (
           <div className="w-20 h-20 flex-shrink-0 bg-bg-surface">
             <img
-              src={image}
+        src={image ?? undefined}
               alt={title || 'Link preview'}
               className="w-full h-full object-cover"
               onError={(e) => {
@@ -143,7 +143,7 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({
   const renderYouTubeThumbnail = () => (
     <div className="relative">
       <img
-        src={image}
+        src={image ?? undefined}
         alt={title || 'YouTube video'}
         className="w-full h-auto max-h-[140px] object-cover"
         onError={(e) => {

@@ -9,7 +9,8 @@
  * IndexedDB dédiés pour cohabiter sans casser l'existant :
  *   • clé publique  → profiles.x25519_public_key  (taguée `x25519:`)
  *   • clé privée    → IndexedDB local, ET copie chiffrée par mot de passe
- *                     dans profiles.x25519_private_key / _salt / _iv.
+ *                     dans user_key_material.x25519_private_key / _salt / _iv
+ *                     (table propriétaire, RLS `user_id = auth.uid()`).
  *
  * Objectif : permettre au chiffrement du texte d'utiliser X25519 quand les
  * deux parties l'ont, avec **repli automatique** sur P-256 sinon. Aucune
@@ -21,6 +22,7 @@ import {
   decryptPrivateKeyWithPassphrase,
   encryptPrivateKeyWithPassphrase,
 } from './passphraseKeyStore';
+import { fetchKeyMaterial, upsertKeyMaterial } from './keyMaterial';
 import {
   deriveX25519PublicKey,
   generateX25519KeyPair,
@@ -129,16 +131,12 @@ export async function fetchX25519PublicKeys(userIds: string[]): Promise<Map<stri
  * publie le matériel. Idempotent : préserve une paire déjà publiée.
  */
 export async function setupX25519KeyPair(userId: string, password: string): Promise<X25519KeyPair> {
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('x25519_public_key, x25519_private_key, x25519_salt, x25519_iv')
-    .eq('id', userId)
-    .maybeSingle();
+  const keyMat = await fetchKeyMaterial(userId);
 
   const remoteHasKey = !!(
-    profile?.x25519_private_key &&
-    profile?.x25519_salt &&
-    profile?.x25519_iv
+    keyMat?.x25519_private_key &&
+    keyMat?.x25519_salt &&
+    keyMat?.x25519_iv
   );
   if (remoteHasKey) {
     return await unlockX25519KeyPair(userId, password);
@@ -155,9 +153,6 @@ export async function setupX25519KeyPair(userId: string, password: string): Prom
     .from('profiles')
     .update({
       x25519_public_key: keyPair.publicKey,
-      x25519_private_key: enc.encryptedPrivateKey,
-      x25519_salt: enc.salt,
-      x25519_iv: enc.iv,
       x25519_public_key_updated_at: new Date().toISOString(),
     })
     .eq('id', userId);
@@ -167,6 +162,11 @@ export async function setupX25519KeyPair(userId: string, password: string): Prom
     }
     throw error;
   }
+  await upsertKeyMaterial(userId, {
+    x25519_private_key: enc.encryptedPrivateKey,
+    x25519_salt: enc.salt,
+    x25519_iv: enc.iv,
+  });
 
   await idbSet(idbKeyFor(userId), keyPair);
   return keyPair;
@@ -177,26 +177,25 @@ export async function setupX25519KeyPair(userId: string, password: string): Prom
  * la déchiffre avec le mot de passe, la stocke en IndexedDB local.
  */
 export async function unlockX25519KeyPair(userId: string, password: string): Promise<X25519KeyPair> {
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('x25519_public_key, x25519_private_key, x25519_salt, x25519_iv')
-    .eq('id', userId)
-    .maybeSingle();
+  const [{ data: profile }, keyMat] = await Promise.all([
+    supabase.from('profiles').select('x25519_public_key').eq('id', userId).maybeSingle(),
+    fetchKeyMaterial(userId),
+  ]);
 
-  if (!profile?.x25519_private_key || !profile?.x25519_salt || !profile?.x25519_iv) {
+  if (!keyMat?.x25519_private_key || !keyMat?.x25519_salt || !keyMat?.x25519_iv) {
     throw new Error('Aucune clé X25519 chiffrée en DB pour cet utilisateur.');
   }
 
   const privateKey = await decryptPrivateKeyWithPassphrase(
     {
-      encryptedPrivateKey: profile.x25519_private_key,
-      salt: profile.x25519_salt,
-      iv: profile.x25519_iv,
+      encryptedPrivateKey: keyMat.x25519_private_key,
+      salt: keyMat.x25519_salt,
+      iv: keyMat.x25519_iv,
     },
     password,
   );
 
-  const publicKey = profile.x25519_public_key && isX25519PublicKey(profile.x25519_public_key)
+  const publicKey = profile?.x25519_public_key && isX25519PublicKey(profile.x25519_public_key)
     ? profile.x25519_public_key
     : deriveX25519PublicKey(privateKey);
 
@@ -208,10 +207,11 @@ export async function unlockX25519KeyPair(userId: string, password: string): Pro
 /** Réinitialise la paire (les anciens messages X25519 deviennent illisibles). */
 export async function resetX25519KeyPair(userId: string, newPassword: string): Promise<X25519KeyPair> {
   await idbDelete(idbKeyFor(userId));
-  await supabase
-    .from('profiles')
-    .update({ x25519_private_key: null, x25519_salt: null, x25519_iv: null })
-    .eq('id', userId);
+  await upsertKeyMaterial(userId, {
+    x25519_private_key: null,
+    x25519_salt: null,
+    x25519_iv: null,
+  });
   return await setupX25519KeyPair(userId, newPassword);
 }
 
@@ -229,16 +229,12 @@ export async function initX25519OnSignup(userId: string, password: string): Prom
 /** À la connexion : restaure la paire X25519 avec le mot de passe (silencieux). */
 export async function initX25519OnSignin(userId: string, password: string): Promise<void> {
   try {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('x25519_public_key, x25519_private_key, x25519_salt, x25519_iv')
-      .eq('id', userId)
-      .maybeSingle();
+    const keyMat = await fetchKeyMaterial(userId);
 
     const remoteHasKey = !!(
-      profile?.x25519_private_key &&
-      profile?.x25519_salt &&
-      profile?.x25519_iv
+      keyMat?.x25519_private_key &&
+      keyMat?.x25519_salt &&
+      keyMat?.x25519_iv
     );
 
     if (remoteHasKey) {

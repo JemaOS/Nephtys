@@ -24,6 +24,7 @@
  */
 
 import { supabase } from './supabase';
+import { fetchKeyMaterial, upsertKeyMaterial } from './keyMaterial';
 import {
   decryptPrivateKeyWithPassphrase,
   encryptPrivateKeyWithPassphrase,
@@ -146,16 +147,15 @@ export async function getUserKeyPair(userId: string): Promise<KeyPair> {
 
   // Lecture du profil pour comparer public_key et savoir si la DB a une
   // clé chiffrée disponible pour récupération.
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('public_key, encrypted_private_key, private_key_salt, private_key_iv')
-    .eq('id', userId)
-    .maybeSingle();
+  const [{ data: profile }, keyMat] = await Promise.all([
+    supabase.from('profiles').select('public_key').eq('id', userId).maybeSingle(),
+    fetchKeyMaterial(userId),
+  ]);
 
   const remoteHasEncryptedKey = !!(
-    profile?.encrypted_private_key &&
-    profile.private_key_salt &&
-    profile.private_key_iv
+    keyMat?.encrypted_private_key &&
+    keyMat.private_key_salt &&
+    keyMat.private_key_iv
   );
 
   if (cached) {
@@ -265,21 +265,18 @@ export async function setupUserKeyPairWithPassphrase(
     .from('profiles')
     .update({
       public_key: publicKeyBase64,
-      encrypted_private_key: enc.encryptedPrivateKey,
-      private_key_salt: enc.salt,
-      private_key_iv: enc.iv,
       public_key_updated_at: new Date().toISOString(),
     })
     .eq('id', userId);
   if (pubError) {
     console.error('[E2EE] Setup failed publishing key material:', pubError);
-    if (pubError.message?.includes('encrypted_private_key')) {
-      throw new Error(
-        'Migration manquante : applique 20260513_passphrase_recovery.sql',
-      );
-    }
     throw pubError;
   }
+  await upsertKeyMaterial(userId, {
+    encrypted_private_key: enc.encryptedPrivateKey,
+    private_key_salt: enc.salt,
+    private_key_iv: enc.iv,
+  });
 
   console.log('[E2EE] Paire chiffrée par passphrase publiée pour user', userId);
   return { publicKey, privateKey, publicKeyBase64 };
@@ -343,14 +340,11 @@ export async function resetUserKeyPairWithPassphrase(
   }
 
   // Force le setup en effaçant la version chiffrée DB d'abord
-  await supabase
-    .from('profiles')
-    .update({
-      encrypted_private_key: null,
-      private_key_salt: null,
-      private_key_iv: null,
-    })
-    .eq('id', userId);
+  await upsertKeyMaterial(userId, {
+    encrypted_private_key: null,
+    private_key_salt: null,
+    private_key_iv: null,
+  });
 
   return await setupUserKeyPairWithPassphrase(userId, newPassphrase);
 }

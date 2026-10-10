@@ -15,8 +15,10 @@ import {
   createTextKeysForMessage,
   decryptMessageRow,
   decryptMessageRows,
+  serializeTextPayload,
   type EncryptedTextPayload,
 } from '@/lib/textEncryption'
+import { tryEncryptWithRatchet } from '@/lib/ratchet/chatIntegration'
 import { downloadMedia } from '@/lib/downloadMedia'
 import { offlineStorage } from '@/lib/offlineStorage'
 import { useUserPresence } from '@/hooks/usePresence'
@@ -37,6 +39,11 @@ import { PinnedMessageBanner } from '@/components/PinnedMessageBanner'
 import { DeleteMessageDialog } from '@/components/DeleteMessageDialog'
 import { QuickReactionBar } from '@/components/QuickReactionBar'
 import { ChatHeader, CallLog, TimelineItem, MessageList } from './ChatViewPageComponents'
+
+// Kill-switch : Double Ratchet (forward secrecy) à l'envoi des conversations
+// directes. Repli automatique sur la pile X25519/P-256 si indisponible.
+// Mettre à false pour revenir au comportement précédent (clé statique).
+const ENABLE_RATCHET_ON_SEND = true
 
 // Lazy-load des modals lourds. Ils ne sont jamais rendus au premier paint
 // (ouverts uniquement sur action utilisateur), donc ils n'ont pas besoin
@@ -454,7 +461,7 @@ export function ChatViewPage() {
     if (senderId === user?.id) {
       return {
         name: profile?.display_name || profile?.username || t('you'),
-        avatar: profile?.avatar_url
+        avatar: profile?.avatar_url ?? undefined
       }
     }
     
@@ -464,7 +471,7 @@ export function ChatViewPage() {
       if (memberProfile) {
         return {
           name: memberProfile.display_name || memberProfile.username || t('userFallback'),
-          avatar: memberProfile.avatar_url
+          avatar: memberProfile.avatar_url ?? undefined
         }
       }
     }
@@ -473,7 +480,7 @@ export function ChatViewPage() {
     if (otherUser) {
       return {
         name: otherUser.display_name || otherUser.username || t('userFallback'),
-        avatar: otherUser.avatar_url
+        avatar: otherUser.avatar_url ?? undefined
       }
     }
     
@@ -545,7 +552,7 @@ export function ChatViewPage() {
           messageId: m.id,
           // Per-item download metadata so the viewer's download button can save
           // the file under its original name and decrypt E2EE entries.
-          fileName: m.file_name ?? null,
+          fileName: m.file_name ?? undefined,
           isEncrypted: !!(m as any).is_media_encrypted,
         }
       })
@@ -1796,10 +1803,21 @@ export function ChatViewPage() {
       // Repli en clair si le chiffrement est impossible → jamais de base64 affiché.
       let encryptedText: EncryptedTextPayload | null = null
       try {
-        encryptedText = await encryptText(plaintext, linkPreviewPayload)
-        messageData.content = encryptedText.ciphertextB64
-        messageData.is_text_encrypted = true
-        messageData.encryption_metadata = { v: 1, iv: encryptedText.ivB64 }
+        // Forward secrecy prioritaire (conversations directes) : X3DH + Double
+        // Ratchet. Renvoie null si non applicable → repli sur la clé statique.
+        const ratchet = ENABLE_RATCHET_ON_SEND && conversationId
+          ? await tryEncryptWithRatchet(user.id, conversationId, serializeTextPayload(plaintext, linkPreviewPayload))
+          : null
+        if (ratchet) {
+          messageData.content = ratchet.content
+          messageData.is_text_encrypted = true
+          messageData.encryption_metadata = ratchet.encryptionMetadata
+        } else {
+          encryptedText = await encryptText(plaintext, linkPreviewPayload)
+          messageData.content = encryptedText.ciphertextB64
+          messageData.is_text_encrypted = true
+          messageData.encryption_metadata = { v: 1, iv: encryptedText.ivB64 }
+        }
       } catch (encErr) {
         console.warn('[E2EE] chiffrement du texte impossible, envoi en clair:', encErr)
         encryptedText = null
@@ -2515,10 +2533,19 @@ export function ChatViewPage() {
       let encryptedText: EncryptedTextPayload | null = null
       if (messageData.type === 'text' && forwardPlaintext) {
         try {
-          encryptedText = await encryptText(forwardPlaintext, forwardLinkPreview)
-          messageData.content = encryptedText.ciphertextB64
-          messageData.is_text_encrypted = true
-          messageData.encryption_metadata = { v: 1, iv: encryptedText.ivB64 }
+          const ratchet = ENABLE_RATCHET_ON_SEND
+            ? await tryEncryptWithRatchet(userId, targetConversationId, serializeTextPayload(forwardPlaintext, forwardLinkPreview))
+            : null
+          if (ratchet) {
+            messageData.content = ratchet.content
+            messageData.is_text_encrypted = true
+            messageData.encryption_metadata = ratchet.encryptionMetadata
+          } else {
+            encryptedText = await encryptText(forwardPlaintext, forwardLinkPreview)
+            messageData.content = encryptedText.ciphertextB64
+            messageData.is_text_encrypted = true
+            messageData.encryption_metadata = { v: 1, iv: encryptedText.ivB64 }
+          }
           if (forwardLinkPreview) delete messageData.link_preview
         } catch (encErr) {
           console.warn('[forward][E2EE] chiffrement texte impossible:', encErr)

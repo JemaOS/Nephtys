@@ -286,7 +286,7 @@ export const fetchAllConversationData = async (userId: string) => {
     signFieldsBatch(recentMessages as any[] | null, ['media_url', 'file_url', 'media_thumbnail']),
   ])
 
-  const profileMap = new Map(profiles?.map(p => [p.id, p]) || [])
+  const profileMap = new Map<string, Profile>((profiles ?? []).map(p => [p.id, p] as [string, Profile]))
 
   const lastMessageMap = new Map<string, Message>()
   recentMessages?.forEach(msg => {

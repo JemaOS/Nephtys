@@ -1,13 +1,20 @@
 // Copyright (c) 2025 Jema Technology.
 // Distributed under the license specified in the root directory of this project.
 
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, lazy, Suspense } from 'react';
 import { Image, Video, File as FileIcon, X, Loader2, Camera, Sticker, FileImage, Search, Plus, Send, FileText, FileSpreadsheet, FileArchive, Music } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { ImageEditor } from './ImageEditor';
 import { processImageForUpload, ProcessedImage } from '@/lib/imageUtils';
-import { compressVideo } from '@/lib/videoCompression';
-import { DocumentPreviewModal, generatePDFThumbnail } from './DocumentPreview';
+// compressVideo (mediabunny, ~gros) est chargé à la demande — cf. appels
+// dynamiques dans les handlers de compression vidéo.
+// react-pdf / pdfjs (~460 KB) : chargé uniquement à l'ouverture réelle d'un
+// document ou à la génération d'une vignette PDF, pas au chargement de l'uploader.
+const DocumentPreviewModal = lazy(() =>
+  import('./DocumentPreview/DocumentPreviewModal').then(m => ({
+    default: m.DocumentPreviewModal,
+  })),
+);
 import { useI18n } from '@/i18n';
 import { AudioPreviewPlayer, EmojiPicker, StickerPicker } from './MediaUploaderComponents';
 import { uploadEncryptedMedia } from '@/lib/encryptedMediaService';
@@ -440,6 +447,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       const shouldCompress = await checkVideoNeedsCompression(preview);
       if (shouldCompress) {
         console.log(`Compressing video ${file.name}...`);
+        const { compressVideo } = await import('@/lib/videoCompression');
         const compressedBlob = await compressVideo(file);
         fileToUpload = compressedBlob;
       }
@@ -558,6 +566,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       const shouldCompress = await checkVideoNeedsCompression(fileItem.preview);
       if (shouldCompress) {
         console.log(`Compressing video ${file.name}...`);
+        const { compressVideo } = await import('@/lib/videoCompression');
         const compressedBlob = await compressVideo(file);
         fileToUpload = compressedBlob;
       }
@@ -718,6 +727,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
         try {
           setDocumentUploadPhase('compressing');
           setDocumentUploadProgress(5);
+          const { generatePDFThumbnail } = await import('./DocumentPreview/DocumentThumbnail');
           const thumbnailDataUrl = await generatePDFThumbnail(documentFile, 300);
           setDocumentUploadProgress(15);
 
@@ -1390,17 +1400,19 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
 
           {/* Document Preview */}
           {showDocumentPreview && documentFile && (
-            <DocumentPreviewModal
-              file={documentFile}
-              onSend={handleDocumentSend}
-              onClose={() => {
-                setShowDocumentPreview(false);
-                setDocumentFile(null);
-              }}
-              uploading={documentUploading}
-              uploadPhase={documentUploadPhase}
-              uploadProgress={documentUploadProgress}
-            />
+            <Suspense fallback={null}>
+              <DocumentPreviewModal
+                file={documentFile}
+                onSend={handleDocumentSend}
+                onClose={() => {
+                  setShowDocumentPreview(false);
+                  setDocumentFile(null);
+                }}
+                uploading={documentUploading}
+                uploadPhase={documentUploadPhase}
+                uploadProgress={documentUploadProgress}
+              />
+            </Suspense>
           )}
 
           {/* GIF/Sticker Preview */}

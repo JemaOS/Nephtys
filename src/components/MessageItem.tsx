@@ -62,7 +62,7 @@ const getSenderInfoForMessage = (
   if (senderId === userId) {
     return {
       name: profile?.display_name || profile?.username || tStatic('you'),
-      avatar: profile?.avatar_url
+      avatar: profile?.avatar_url ?? undefined
     }
   }
   
@@ -71,7 +71,7 @@ const getSenderInfoForMessage = (
     if (memberProfile) {
       return {
         name: memberProfile.display_name || memberProfile.username || tStatic('userFallback'),
-        avatar: memberProfile.avatar_url
+        avatar: memberProfile.avatar_url ?? undefined
       }
     }
   }
@@ -79,7 +79,7 @@ const getSenderInfoForMessage = (
   if (otherUser) {
     return {
       name: otherUser.display_name || otherUser.username || tStatic('userFallback'),
-      avatar: otherUser.avatar_url
+      avatar: otherUser.avatar_url ?? undefined
     }
   }
   
@@ -169,8 +169,8 @@ const getMessageType = (message: Message): MessageTypeProps => {
     emojiCount = emojiCheck.emojiCount
   }
   
-  const isMediaMessage = mediaUrl && (mediaType === 'image' || mediaType === 'video') && message.type !== 'audio'
-  const isDocumentMessage = mediaUrl && mediaType === 'file'
+  const isMediaMessage = !!mediaUrl && (mediaType === 'image' || mediaType === 'video') && message.type !== 'audio'
+  const isDocumentMessage = !!mediaUrl && mediaType === 'file'
   
   return {
     mediaUrl: mediaUrl || false,
@@ -472,8 +472,8 @@ export const MessageItem: React.FC<MessageItemProps> = React.memo(({
       <MediaMessage
         url={msgType.mediaUrl as string}
         type={msgType.mediaType as 'image' | 'video' | 'file'}
-        fileName={message.file_name}
-        fileSize={message.file_size}
+        fileName={message.file_name ?? undefined}
+        fileSize={message.file_size ?? undefined}
         caption={message.content}
         width={message.media_width ?? undefined}
         height={message.media_height ?? undefined}
@@ -506,8 +506,8 @@ export const MessageItem: React.FC<MessageItemProps> = React.memo(({
       <MediaMessage
         url={msgType.mediaUrl as string}
         type="file"
-        fileName={message.file_name}
-        fileSize={message.file_size}
+        fileName={message.file_name ?? undefined}
+        fileSize={message.file_size ?? undefined}
         caption={message.content}
         thumbnail={message.media_thumbnail ?? undefined}
         senderName={senderInfo.name}

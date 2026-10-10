@@ -73,10 +73,12 @@ export function PersistentCallScreen() {
   // Helper: Check if remote video should be displayed - extracted
   const checkHasRemoteVideo = useCallback((): boolean => {
     const isVideo = checkIsVideoCall();
-    return isVideo &&
+    return Boolean(
+      isVideo &&
       remoteStream &&
       remoteStream.getVideoTracks().length > 0 &&
-      remoteVideoEnabled;
+      remoteVideoEnabled,
+    );
   }, [checkIsVideoCall, remoteStream, remoteVideoEnabled]);
 
   // Helper: Handle drag move - extracted

@@ -1,7 +1,7 @@
 // Copyright (c) 2025 Jema Technology.
 // Distributed under the license specified in the root directory of this project.
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import { MediaViewer } from './MediaViewer';
 import {
   ImageRenderer,
@@ -11,10 +11,16 @@ import {
   formatVideoDuration
 } from './MediaMessageComponents';
 import { useDecryptedMedia } from '@/hooks/useDecryptedMedia';
-import { PDFPreview } from './DocumentPreview/PDFPreview';
 import { downloadMedia } from '@/lib/downloadMedia';
 import { X, Download } from 'lucide-react';
 import { useI18n } from '@/i18n';
+
+// react-pdf / pdfjs (~400 KB) n'est nécessaire qu'à l'ouverture du viewer PDF.
+// Un import statique embarquait tout pdfjs dans le chunk de ChatViewPage ;
+// en lazy, il n'est téléchargé que si l'utilisateur ouvre réellement un PDF.
+const PDFPreview = lazy(() =>
+  import('./DocumentPreview/PDFPreview').then(m => ({ default: m.PDFPreview }))
+);
 
 interface MediaMessageProps {
   url: string;
@@ -454,12 +460,20 @@ export const MediaMessage: React.FC<MediaMessageProps> = ({
 
           {/* PDF Content */}
           <div className="flex-1 overflow-hidden">
-            <PDFPreview
-              file={effectiveUrl}
-              showAllPages={false}
-              maxHeight={globalThis.innerHeight - 80}
-              className="h-full"
-            />
+            <Suspense
+              fallback={
+                <div className="h-full w-full flex items-center justify-center text-white/60">
+                  {t('generating')}
+                </div>
+              }
+            >
+              <PDFPreview
+                file={effectiveUrl}
+                showAllPages={false}
+                maxHeight={globalThis.innerHeight - 80}
+                className="h-full"
+              />
+            </Suspense>
           </div>
         </div>
       )}

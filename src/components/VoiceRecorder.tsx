@@ -54,7 +54,7 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
     // Sample the frequency data to create waveform bars
     const bars = 35;
     const step = Math.floor(dataArray.length / bars);
-    const newWaveform = [];
+    const newWaveform: number[] = [];
     
     for (let i = 0; i < bars; i++) {
       const value = dataArray[i * step] / 255;

@@ -1634,7 +1634,7 @@ export function SettingsPage() {
     </div>
   )
 
-  const views: Record<SettingsView, () => JSX.Element> = {
+  const views: Record<SettingsView, () => JSX.Element | null> = {
     main: renderMainView,
     profile: renderProfileView,
     account: renderAccountView,

@@ -167,31 +167,11 @@ export function usePresence(userId?: string) {
       if (status) {
         setUserStatus(status)
       } else {
-        // User not in presence state - fetch from database
-        fetchUserStatus(userId)
+        // Présence gérée 100% via le canal Realtime ; hors ligne par défaut.
+        setUserStatus({ isOnline: false, lastSeen: null })
       }
     }
   }, [userId, presenceState])
-
-  // Fetch user status from database if not in presence
-  const fetchUserStatus = async (uid: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('is_online, last_seen')
-        .eq('id', uid)
-        .maybeSingle()
-
-      if (!error && data) {
-        setUserStatus({
-          isOnline: data.is_online || false,
-          lastSeen: data.last_seen,
-        })
-      }
-    } catch (error) {
-      console.error('Error fetching user status:', error)
-    }
-  }
 
   // Format last seen time like WhatsApp
   const { t } = useI18n();

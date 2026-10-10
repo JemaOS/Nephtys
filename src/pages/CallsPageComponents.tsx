@@ -525,7 +525,7 @@ export const CallDetailsContent: React.FC<CallDetailsContentProps> = ({
       {/* Contact Section */}
       <div className="bg-bg-hover rounded-2xl p-6">
         <div className="flex flex-col items-center gap-4">
-          {renderCallAvatar(avatarUrl, isGroupCall, displayName)}
+          {renderCallAvatar(avatarUrl, !!isGroupCall, displayName)}
           <div className="text-center">
             <h3 className="text-lg font-medium text-text-primary mb-1 flex items-center justify-center gap-2">
               {isGroupCall && <Users size={18} className="text-text-secondary" />}

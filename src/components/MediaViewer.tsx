@@ -725,7 +725,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
       document.body.classList.add('media-viewer-open');
       
       // On mobile, try to enable fullscreen for better landscape experience
-      if (isMobile && document.documentElement.requestFullscreen) {
+      if (isMobile && typeof document.documentElement.requestFullscreen === 'function') {
         // Don't auto-fullscreen, let user control it
       }
     } else {
