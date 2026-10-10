@@ -9,8 +9,10 @@ import { connectBrowserSmpWebSocketTransport } from './lib/browser-smp-websocket
 function filled(length, value) { return new Uint8Array(length).fill(value); }
 
 const PORT = Number(process.env.PORT || 8791);
-startServer({ port: PORT, host: '127.0.0.1' });
-const url = `ws://127.0.0.1:${PORT}/`;
+if (!process.env.SMP_URL) {
+  startServer({ port: PORT, host: '127.0.0.1' });
+}
+const url = process.env.SMP_URL || `ws://127.0.0.1:${PORT}/`;
 
 async function makeClient(name) {
   const transport = await connectBrowserSmpWebSocketTransport({ url });
