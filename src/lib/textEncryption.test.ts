@@ -1,7 +1,16 @@
 import { describe, it, expect, vi } from 'vitest';
 
-// Évite d'instancier le client Supabase dans l'environnement de test.
-vi.mock('@/lib/supabase', () => ({ supabase: {} }));
+// Évite d'instancier le client Supabase : chaîne permissive renvoyant des
+// résultats vides (aucune clé enveloppée disponible).
+const emptyResult = { data: [], error: null };
+const chain: any = {
+  select: () => chain,
+  eq: () => chain,
+  in: () => chain,
+  maybeSingle: () => Promise.resolve({ data: null, error: null }),
+  then: (resolve: (v: unknown) => unknown) => resolve(emptyResult),
+};
+vi.mock('@/lib/supabase', () => ({ supabase: { from: () => chain } }));
 
 import {
   encryptText,
@@ -10,6 +19,7 @@ import {
   parseEnvelope,
   decryptMessageContent,
   decryptMessageRows,
+  UNDECRYPTABLE_PLACEHOLDER,
 } from './textEncryption';
 
 function b64ToBytes(b64: string): Uint8Array {
@@ -69,6 +79,18 @@ describe('textEncryption', () => {
     const rows = [{ id: '1', content: 'plain', is_text_encrypted: false }];
     await decryptMessageRows(rows, 'user');
     expect(rows[0].content).toBe('plain');
+  });
+
+  it('never shows raw ciphertext: placeholder when undecryptable', async () => {
+    const rows = [{
+      id: 'm1',
+      content: 'BASE64CIPHERTEXTBLOB',
+      is_text_encrypted: true,
+      encryption_metadata: { v: 1, iv: 'AAAA' },
+    }];
+    await decryptMessageRows(rows, 'user');
+    expect(rows[0].content).toBe(UNDECRYPTABLE_PLACEHOLDER);
+    expect(rows[0].content).not.toContain('BASE64CIPHERTEXTBLOB');
   });
 
   it('parses the envelope defensively', () => {

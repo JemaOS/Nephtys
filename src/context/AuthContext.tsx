@@ -45,8 +45,8 @@ async function extractFunctionError(
   error: any,
   data: any
 ): Promise<{ code: string; message: string } | null> {
-  if (data?.error?.code) {
-    return { code: data.error.code, message: data.error.message ?? '' }
+  if (data?.error && (data.error.code || data.error.message)) {
+    return { code: data.error.code ?? '', message: data.error.message ?? '' }
   }
   if (!error) return null
 
@@ -55,8 +55,8 @@ async function extractFunctionError(
   if (ctx && typeof ctx.json === 'function') {
     try {
       const parsed = await ctx.json()
-      if (parsed?.error?.code) {
-        return { code: parsed.error.code, message: parsed.error.message ?? '' }
+      if (parsed?.error && (parsed.error.code || parsed.error.message)) {
+        return { code: parsed.error.code ?? '', message: parsed.error.message ?? '' }
       }
     } catch {
       // body non JSON → fallback ci-dessous
@@ -487,6 +487,14 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
         if (sessionError) {
           console.error('Session error:', sessionError)
           throw new Error(tStatic('guestSessionError'))
+        }
+        // Compte éphémère : générer + publier les clés E2EE (sinon le compte
+        // ne peut ni déchiffrer les messages reçus ni être chiffré pour lui).
+        const guestUserId = data.data.session.user?.id
+        if (guestUserId) {
+          initKeyPairOnSignup(guestUserId, randomPassword)
+          initX25519OnSignup(guestUserId, randomPassword)
+          initRatchetOnSignup(guestUserId, randomPassword)
         }
       } else {
         throw new Error(tStatic('creationErrorNoSession'))

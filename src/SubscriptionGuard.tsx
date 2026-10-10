@@ -962,6 +962,12 @@ export const SubscriptionGuard: React.FC<SubscriptionGuardProps> = ({ appName, c
     return () => { cancelled = true; clearInterval(interval); };
   }, [onAuthPath]);
 
+  // Désactivation en test/QA uniquement (flag de build). En prod : inerte.
+  // Placé APRÈS les hooks pour respecter les règles React.
+  if ((import.meta.env.VITE_DISABLE_SUBSCRIPTION_GUARD as string | undefined) === '1') {
+    return <>{children}</>;
+  }
+
   if (onAuthPath) return <ReconnectScreen appName={appName} />;
   if (status === 'loading') return <LoadingScreen />;
   if (status === 'denied') {

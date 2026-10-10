@@ -15,10 +15,8 @@ import {
   createTextKeysForMessage,
   decryptMessageRow,
   decryptMessageRows,
-  serializeTextPayload,
   type EncryptedTextPayload,
 } from '@/lib/textEncryption'
-import { tryEncryptWithRatchet } from '@/lib/ratchet/chatIntegration'
 import { downloadMedia } from '@/lib/downloadMedia'
 import { offlineStorage } from '@/lib/offlineStorage'
 import { useUserPresence } from '@/hooks/usePresence'
@@ -1767,37 +1765,22 @@ export function ChatViewPage() {
         domain: linkPreview.domain,
       } : null
 
-      // Forward secrecy : conversation directe → X3DH + Double Ratchet.
-      let ratchetUsed = false
-      try {
-        const ratchetPayload = serializeTextPayload(plaintext, linkPreviewPayload)
-        const ratchet = await tryEncryptWithRatchet(user.id, conversationId!, ratchetPayload)
-        if (ratchet) {
-          messageData.content = ratchet.content
-          messageData.is_text_encrypted = true
-          messageData.encryption_metadata = ratchet.encryptionMetadata
-          ratchetUsed = true
-        }
-      } catch (ratchetErr) {
-        console.warn('[E2EE][ratchet] indisponible, repli X25519:', ratchetErr)
-      }
-
-      // Sinon, E2EE X25519/P-256 (clé AES enveloppée par destinataire).
+      // E2EE du texte : clé AES unique au message, enveloppée pour chaque
+      // destinataire (l'émetteur inclus, pour relire ses propres messages).
+      // Repli en clair si le chiffrement est impossible → jamais de base64 affiché.
       let encryptedText: EncryptedTextPayload | null = null
-      if (!ratchetUsed) {
-        try {
-          encryptedText = await encryptText(plaintext, linkPreviewPayload)
-          messageData.content = encryptedText.ciphertextB64
-          messageData.is_text_encrypted = true
-          messageData.encryption_metadata = { v: 1, iv: encryptedText.ivB64 }
-        } catch (encErr) {
-          console.warn('[E2EE] chiffrement du texte impossible, envoi en clair:', encErr)
-          encryptedText = null
-        }
+      try {
+        encryptedText = await encryptText(plaintext, linkPreviewPayload)
+        messageData.content = encryptedText.ciphertextB64
+        messageData.is_text_encrypted = true
+        messageData.encryption_metadata = { v: 1, iv: encryptedText.ivB64 }
+      } catch (encErr) {
+        console.warn('[E2EE] chiffrement du texte impossible, envoi en clair:', encErr)
+        encryptedText = null
       }
 
       // Repli en clair : l'aperçu reste alors stocké en clair.
-      if (!ratchetUsed && !encryptedText && linkPreviewPayload) {
+      if (!encryptedText && linkPreviewPayload) {
         messageData.link_preview = JSON.stringify(linkPreviewPayload)
       }
       

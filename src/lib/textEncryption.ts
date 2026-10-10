@@ -298,6 +298,10 @@ export function parseEnvelope(metadata: unknown): TextEnvelope | null {
   return { v: typeof m.v === 'number' ? m.v : ENVELOPE_VERSION, iv: m.iv };
 }
 
+/** Affiché si un message est chiffré mais indéchiffrable sur cet appareil
+ *  (clé absente, autre appareil, etc.) — évite d'afficher du base64 brut. */
+export const UNDECRYPTABLE_PLACEHOLDER = '🔒 Message chiffré — indéchiffrable sur cet appareil';
+
 /** Caches paresseux des paires de clés (une par courbe) pour un batch. */
 interface UnwrapCaches {
   p256?: UserKeyPair | null;
@@ -356,11 +360,11 @@ export async function decryptMessageContent(
       message.sender_id ?? '',
     );
     if (raw !== null) return parseTextPayload(raw).text;
-    return null;
+    return UNDECRYPTABLE_PLACEHOLDER;
   }
 
   const envelope = parseEnvelope(message.encryption_metadata);
-  if (!envelope) return null;
+  if (!envelope) return UNDECRYPTABLE_PLACEHOLDER;
 
   const { data: keyRow, error } = await supabase
     .from('message_text_keys')
@@ -369,14 +373,14 @@ export async function decryptMessageContent(
     .eq('recipient_id', userId)
     .maybeSingle();
 
-  if (error || !keyRow) return null;
+  if (error || !keyRow) return UNDECRYPTABLE_PLACEHOLDER;
 
   try {
     const rawKey = await unwrapKeyRowForUser(keyRow, userId, {});
     return await decryptText(message.content, envelope.iv, rawKey);
   } catch (e) {
     console.warn('[textEncryption] decrypt failed for message', message.id, e);
-    return null;
+    return UNDECRYPTABLE_PLACEHOLDER;
   }
 }
 
@@ -396,19 +400,26 @@ export async function decryptMessageRows<T extends {
 }>(rows: T[] | null | undefined, userId: string): Promise<T[]> {
   if (!rows || rows.length === 0) return rows ?? [];
 
-  const encrypted = rows.filter(r => r.is_text_encrypted && parseEnvelope(r.encryption_metadata));
+  const encrypted = rows.filter(
+    r => r.is_text_encrypted
+      && (isRatchetEnvelope(r.encryption_metadata) || parseEnvelope(r.encryption_metadata)),
+  );
   if (encrypted.length === 0) return rows;
 
-  const ids = encrypted.map(r => r.id);
-  const { data: keyRows, error } = await supabase
-    .from('message_text_keys')
-    .select('message_id, encrypted_key, iv, sender_public_key')
-    .eq('recipient_id', userId)
-    .in('message_id', ids);
+  // On n'interroge les clés enveloppées QUE pour les messages non-ratchet.
+  const wrappedIds = encrypted
+    .filter(r => !isRatchetEnvelope(r.encryption_metadata))
+    .map(r => r.id);
 
-  if (error || !keyRows || keyRows.length === 0) return rows;
-
-  const keyByMessage = new Map<string, any>(keyRows.map(k => [k.message_id as string, k]));
+  const keyByMessage = new Map<string, any>();
+  if (wrappedIds.length > 0) {
+    const { data: keyRows } = await supabase
+      .from('message_text_keys')
+      .select('message_id, encrypted_key, iv, sender_public_key')
+      .eq('recipient_id', userId)
+      .in('message_id', wrappedIds);
+    keyRows?.forEach(k => keyByMessage.set(k.message_id as string, k));
+  }
 
   const caches: UnwrapCaches = {};
 
@@ -426,13 +437,18 @@ export async function decryptMessageRows<T extends {
           const payload = parseTextPayload(raw);
           row.content = payload.text;
           if (payload.linkPreview) (row as any).link_preview = JSON.stringify(payload.linkPreview);
+        } else {
+          row.content = UNDECRYPTABLE_PLACEHOLDER;
         }
         return;
       }
 
       const envelope = parseEnvelope(row.encryption_metadata);
       const keyRow = keyByMessage.get(row.id);
-      if (!envelope || !keyRow) return;
+      if (!envelope || !keyRow) {
+        row.content = UNDECRYPTABLE_PLACEHOLDER;
+        return;
+      }
       try {
         const rawKey = await unwrapKeyRowForUser(keyRow, userId, caches);
         const payload = await decryptTextPayload(row.content, envelope.iv, rawKey);
@@ -442,6 +458,7 @@ export async function decryptMessageRows<T extends {
         }
       } catch (e) {
         console.warn('[textEncryption] batch decrypt failed for message', row.id, e);
+        row.content = UNDECRYPTABLE_PLACEHOLDER;
       }
     }),
   );
