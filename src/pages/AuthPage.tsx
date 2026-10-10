@@ -256,13 +256,20 @@ export function AuthPage() {
         </div>
 
         {/* Mode privé anonyme — accessible sans compte */}
-        <div className="text-center pt-1">
+        <div className="text-center pt-1 space-y-1">
           <button
             type="button"
             onClick={() => navigate('/private')}
-            className="text-[10px] lg:text-xs text-accent hover:underline"
+            className="text-[10px] lg:text-xs text-accent hover:underline block w-full"
           >
             Utiliser en mode privé (sans compte)
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate('/link-device')}
+            className="text-[10px] lg:text-xs text-text-secondary hover:underline block w-full"
+          >
+            Lier un appareil (QR code)
           </button>
         </div>
 

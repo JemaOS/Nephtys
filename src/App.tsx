@@ -36,6 +36,7 @@ const CallsPage = lazy(() => import('./pages/CallsPage').then(module => ({ defau
 const ArchivedPage = lazy(() => import('./pages/ArchivedPage').then(module => ({ default: module.ArchivedPage })))
 const SettingsPage = lazy(() => import('./pages/SettingsPage').then(module => ({ default: module.SettingsPage })))
 const PrivatePage = lazy(() => import('./pages/PrivatePage').then(module => ({ default: module.PrivatePage })))
+const LinkDevicePage = lazy(() => import('./pages/LinkDevicePage').then(module => ({ default: module.LinkDevicePage })))
 
 // Optimized loading component that shows quickly and doesn't block
 function LoadingScreen({ message }: { readonly message?: string }) {
@@ -224,6 +225,8 @@ function AppRoutes() {
         } />
 
         <Route path="/private" element={<PrivatePage />} />
+
+        <Route path="/link-device" element={<LinkDevicePage />} />
         
           <Route path="/" element={<Navigate to="/chats" />} />
         </Routes>
