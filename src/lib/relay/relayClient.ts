@@ -12,6 +12,7 @@ import { WebSocketWire, type RelayWire } from './wire';
 import { SupabaseRelayWire } from './supabaseRelayWire';
 import { AgentRelayWire } from './agentRelayWire';
 import { SmpRelayWire } from './smpRelayWire';
+import { createTorWebSocketImpl } from './torClient';
 import { FailoverRelayWire } from './failoverRelayWire';
 import { PrivateMessenger } from './privateMessenger';
 import { IdbConnectionStore } from './connectionStore';
@@ -250,17 +251,16 @@ export function getPrivateMessenger(): PrivateMessenger {
     const smpUrl =
       (import.meta.env.VITE_SMP_RELAY_URL as string | undefined) ?? 'wss://78-232-3-78.sslip.io/';
     const smpKeyHash = import.meta.env.VITE_SMP_RELAY_KEY_HASH as string | undefined;
-    const torUrl = getTorRelayUrl();
     let wire: RelayWire;
     if (isTorRelayEnabled()) {
-      // Mode Tor STRICT : uniquement l'adresse `.onion`. Fail-closed — si elle
-      // manque, on refuse au lieu de retomber en clair (aucune exposition d'IP).
-      if (!torUrl) {
-        throw new Error(
-          'Mode Tor strict : aucune adresse .onion configurée (Paramètres → Confidentialité).',
-        );
-      }
-      wire = new SmpRelayWire({ url: torUrl });
+      // Mode Tor WASM : client Tor DANS le navigateur (tor-js) ; la passerelle
+      // KPS du VPS ne relaie que des octets opaques. Fail-closed : aucun repli
+      // en clair (donc aucune exposition d'IP si Tor échoue).
+      wire = new SmpRelayWire({
+        url: 'wss://tor.gateway/',
+        keyHash: '',
+        webSocketImplFactory: createTorWebSocketImpl,
+      });
     } else if (mode === 'simplex-smp') {
       // Relais SimpleX SMP (browser-profile) — OPTION EXPLICITE.
       // ⚠️ WIP : l'adaptateur SmpRelayWire ne couvre pas encore le modèle de

@@ -54,6 +54,11 @@ export interface SmpRelayOptions {
   url: string;
   /** Hash d'identité du serveur (optionnel pour le profil navigateur). */
   keyHash?: string;
+  /**
+   * Fabrique d'un `WebSocketImpl` alternatif (ex. socket Tor WASM adossé à
+   * `tor-js`). Par défaut : le WebSocket natif du navigateur.
+   */
+  webSocketImplFactory?: () => Promise<unknown>;
 }
 
 export class SmpRelayWire implements RelayWire {
@@ -71,9 +76,13 @@ export class SmpRelayWire implements RelayWire {
     if (this.client) return;
     if (!this.connecting) {
       this.connecting = (async () => {
+        const WebSocketImpl = this.opts.webSocketImplFactory
+          ? await this.opts.webSocketImplFactory()
+          : undefined;
         const transport = await connectBrowserSmpWebSocketTransport({
           url: this.opts.url,
           keyHash: this.opts.keyHash ?? '',
+          WebSocketImpl,
         });
         this.client = createBrowserSimplexClient({ transport });
       })();

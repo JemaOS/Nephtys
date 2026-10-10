@@ -21,6 +21,8 @@
     "test:regression": "npm run test && npm run test:e2e"
   },
   "dependencies": {
+    "@kpstreams/core": "^0.2.1",
+    "@kpstreams/webrtc-client": "^0.2.1",
     "@noble/ciphers": "^2.0.1",
     "@noble/curves": "^2.0.1",
     "@noble/hashes": "^2.0.1",
@@ -68,6 +70,7 @@
     "sonner": "^1.7.2",
     "tailwind-merge": "^2.6.0",
     "tailwindcss-animate": "^1.0.7",
+    "tor-js": "^0.4.3",
     "zod": "^3.24.1"
   },
   "devDependencies": {
