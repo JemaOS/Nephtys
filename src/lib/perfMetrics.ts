@@ -28,6 +28,12 @@ export interface PerfSnapshot {
   longTasksMs: number;
   fps: number | null;
   memMB: number | null;
+  /** Poids JS transféré au chargement (Ko) */
+  jsKB: number;
+  /** Nombre de requêtes JS */
+  jsRequests: number;
+  /** Ressources les plus lentes (nom court + ms) */
+  slowest: Array<{ name: string; ms: number }>;
   at: number;
 }
 
@@ -51,10 +57,34 @@ function observe(type: string, cb: (entries: PerformanceEntryList) => void, opts
   }
 }
 
+function resourceStats(): { jsKB: number; jsRequests: number; slowest: Array<{ name: string; ms: number }> } {
+  try {
+    const res = performance.getEntriesByType('resource') as PerformanceResourceTiming[];
+    let jsBytes = 0;
+    let jsRequests = 0;
+    for (const r of res) {
+      const isJs = r.initiatorType === 'script' || /\.m?js(\?|$)/.test(r.name);
+      if (isJs) {
+        jsBytes += r.transferSize || r.encodedBodySize || 0;
+        jsRequests++;
+      }
+    }
+    const slowest = res
+      .map(r => ({ name: r.name.split('/').pop() || r.name, ms: Math.round(r.duration) }))
+      .sort((a, b) => b.ms - a.ms)
+      .slice(0, 3);
+    return { jsKB: Math.round(jsBytes / 1024), jsRequests, slowest };
+  } catch {
+    return { jsKB: 0, jsRequests: 0, slowest: [] };
+  }
+}
+
 export function getPerfSnapshot(): PerfSnapshot {
   const mem = (performance as unknown as { memory?: { usedJSHeapSize: number } }).memory;
+  const resources = resourceStats();
   return {
     ...state,
+    ...resources,
     memMB: mem ? Math.round(mem.usedJSHeapSize / 1_048_576) : null,
     at: Date.now(),
   };
