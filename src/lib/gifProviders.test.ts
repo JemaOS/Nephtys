@@ -19,7 +19,7 @@ describe('gifProviders (fallbacks)', () => {
     const items = await fetchGifItems('gif', 'cat');
     expect(items).toHaveLength(1);
     expect(items[0].media_formats.gif.url).toBe('https://x/a.gif');
-    expect(items[0].media_formats.tinygif.url).toBe('https://x/t.png');
+    expect(items[0].media_formats.tinygif.url).toBe('https://x/a.gif');
     expect(items[0].content_description).toBe('cat');
 
     vi.unstubAllGlobals();

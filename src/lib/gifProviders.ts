@@ -73,18 +73,19 @@ function normGiphy(r: any): GifItem {
 
 /** Openverse (openverse.org) — API PUBLIQUE SANS CLÉ, avec CORS. */
 function normOpenverse(r: any): GifItem {
+  // On utilise l'URL DIRECTE de l'image (l'endpoint `/thumb/` d'Openverse
+  // renvoie 424, pas une image). Toutes les tailles pointent donc sur `url`.
   const full = r?.url;
-  const thumb = r?.thumbnail || full;
   return {
     id: String(r?.id ?? ''),
     content_description: r?.title,
     media_formats: {
       gif: { url: full },
       mediumgif: { url: full },
-      tinygif: { url: thumb },
-      nanogif: { url: thumb },
-      webp: { url: thumb },
-      tinywebp: { url: thumb },
+      tinygif: { url: full },
+      nanogif: { url: full },
+      webp: { url: full },
+      tinywebp: { url: full },
     },
   };
 }
