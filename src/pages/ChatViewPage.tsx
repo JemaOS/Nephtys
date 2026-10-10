@@ -2058,7 +2058,7 @@ export function ChatViewPage() {
         }
 
         // Replace optimistic message with real one
-        setMessages(prev => prev.map(m => m.id === tempId ? data : m))
+        setMessages(prev => prev.map(m => m.id === tempId ? { ...data, sender_id: data.sender_id ?? user.id } : m))
         await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conversationId!)
         // Dispatch event to update ChatsPage conversation list in real-time
         globalThis.dispatchEvent(new CustomEvent('message-sent-in-chat', {
@@ -2174,7 +2174,7 @@ export function ChatViewPage() {
         const { data, error } = insertResult
         
         if (!error && data) {
-          setMessages(prev => prev.map(m => m.id === tempId ? data : m))
+          setMessages(prev => prev.map(m => m.id === tempId ? { ...data, sender_id: data.sender_id ?? user.id } : m))
           // Créer les clés enveloppées pour les médias chiffrés
           if (isEncrypted && encryptionKey && mediaIv) {
             try {
@@ -2282,7 +2282,7 @@ export function ChatViewPage() {
       
       if (!error && insertedMessage) {
         // Replace optimistic message with real one
-        setMessages(prev => prev.map(m => m.id === tempId ? insertedMessage : m))
+        setMessages(prev => prev.map(m => m.id === tempId ? { ...insertedMessage, sender_id: insertedMessage.sender_id ?? user.id } : m))
         await supabase.from('conversations').update({ last_message_at: now }).eq('id', conversationId!)
         // Dispatch event to update ChatsPage conversation list in real-time
         globalThis.dispatchEvent(new CustomEvent('message-sent-in-chat', {
@@ -3334,7 +3334,7 @@ export function ChatViewPage() {
               const { data, error } = await supabase.from('messages').insert(messageData).select().single()
               
               if (!error && data) {
-                setMessages(prev => prev.map(m => m.id === tempId ? data : m))
+                setMessages(prev => prev.map(m => m.id === tempId ? { ...data, sender_id: data.sender_id ?? user.id } : m))
                 await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conversationId!)
                 // Dispatch event to update ChatsPage conversation list in real-time
                 globalThis.dispatchEvent(new CustomEvent('message-sent-in-chat', {
