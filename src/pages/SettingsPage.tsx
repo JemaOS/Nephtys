@@ -8,6 +8,7 @@ import { useAuth } from '@/context/AuthContext'
 import { useTheme } from '@/context/ThemeContext'
 import { supabase } from '@/lib/supabase'
 import { createDeviceLink, redeemDeviceLink } from '@/lib/deviceLink'
+import { resetRatchetKeys } from '@/lib/ratchet/keyStore'
 import { MediaImg } from '@/components/MediaImg'
 import { invalidateMediaUrl } from '@/lib/mediaUrl'
 import { deleteMyMessages } from '@/lib/conversationService'
@@ -153,6 +154,9 @@ export function SettingsPage() {
   const [deviceLinkInput, setDeviceLinkInput] = useState('')
   const [deviceMsg, setDeviceMsg] = useState<string | null>(null)
   const [deviceBusy, setDeviceBusy] = useState(false)
+  const [resetPwd, setResetPwd] = useState('')
+  const [resetBusy, setResetBusy] = useState(false)
+  const [resetMsg, setResetMsg] = useState<string | null>(null)
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const [showLastSeen, setShowLastSeen] = useState(true)
   const [showProfilePhoto, setShowProfilePhoto] = useState(true)
@@ -505,6 +509,21 @@ export function SettingsPage() {
       setDeviceMsg((e as Error).message)
     } finally {
       setDeviceBusy(false)
+    }
+  }
+
+  const handleResetEncryption = async () => {
+    if (!user || !resetPwd.trim()) return
+    setResetBusy(true)
+    setResetMsg(null)
+    try {
+      await resetRatchetKeys(user.id, resetPwd)
+      setResetMsg('Chiffrement réinitialisé. Les nouveaux messages fonctionneront ; les anciens restent illisibles. Recharge l’app.')
+      setResetPwd('')
+    } catch (e) {
+      setResetMsg(`Échec : ${(e as Error).message}`)
+    } finally {
+      setResetBusy(false)
     }
   }
 
@@ -932,6 +951,33 @@ export function SettingsPage() {
               </button>
             </div>
             {deviceMsg && <p className="text-xs text-text-secondary">{deviceMsg}</p>}
+            <div className="border-t border-bg-hover pt-3 space-y-2">
+              <p className="text-xs text-red-400 font-medium">Réinitialiser le chiffrement</p>
+              <p className="text-[11px] text-text-tertiary">
+                À utiliser si tu ne vois plus tes messages en clair sur cet appareil (clés
+                incohérentes). Régénère tes clés E2EE : les NOUVEAUX messages fonctionneront, les
+                anciens resteront illisibles. Saisis ton mot de passe pour re-chiffrer tes clés (le
+                serveur ne le voit jamais).
+              </p>
+              <div className="flex items-center gap-2">
+                <input
+                  type="password"
+                  value={resetPwd}
+                  onChange={e => setResetPwd(e.target.value)}
+                  placeholder="Mot de passe"
+                  className="flex-1 min-w-0 px-2 py-1 rounded-lg bg-bg-primary text-[11px] text-text-secondary"
+                />
+                <button
+                  type="button"
+                  onClick={handleResetEncryption}
+                  disabled={resetBusy || !resetPwd.trim()}
+                  className="px-2 py-1 rounded-lg bg-red-500/20 text-red-300 text-xs disabled:opacity-50"
+                >
+                  Réinitialiser
+                </button>
+              </div>
+              {resetMsg && <p className="text-xs text-text-secondary">{resetMsg}</p>}
+            </div>
           </div>
         </div>
       </div>
