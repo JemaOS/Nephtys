@@ -58,15 +58,12 @@ export async function tryEncryptWithRatchet(
   conversationId: string,
   plaintext: string,
 ): Promise<{ content: string; encryptionMetadata: unknown } | null> {
-  // ─── KILL-SWITCH (2026-10-10) ─────────────────────────────────────────
-  // Le Double Ratchet à l'ENVOI est cassé de bout en bout : le destinataire
-  // n'arrive pas à déchiffrer (« aucune session pour ce message », « one-time
-  // prekey indisponible », OperationError) → tous les messages s'affichaient
-  // en « indéchiffrable » (🔒), y compris pour l'expéditeur et les comptes
-  // éphémères. On désactive donc l'envoi via ratchet et on retombe sur la pile
-  // X25519 (clé AES enveloppée par destinataire, incl. soi), qui FONCTIONNE.
-  // À réactiver uniquement après un test 2-utilisateurs bout-en-bout réussi.
-  const RATCHET_SEND_ENABLED = false;
+  // Réactivé (2026-10-10) : le sealed sender RÉSOUT l'expéditeur réel
+  // (`resolveSealedSenders`) AVANT le déchiffrement ratchet → les sessions sont
+  // retrouvées même avec sender_id NULL. Et l'init se fait désormais SANS
+  // one-time prekey (cf. service) → plus d'échec « one-time prekey
+  // indisponible ». Repli automatique sur X25519 si indisponible.
+  const RATCHET_SEND_ENABLED = true;
   if (!RATCHET_SEND_ENABLED) return null;
 
   try {
