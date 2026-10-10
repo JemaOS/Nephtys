@@ -14,12 +14,13 @@
  * 100 % additif : n'altère aucune autre page ni le modèle Supabase existant.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getIceServers } from '@/lib/iceServers'
 import QRCode from 'react-qr-code'
 import { ArrowLeft, Copy, Lock, Paperclip, Plus, Send, ShieldCheck, SlidersHorizontal, Trash2, X } from 'lucide-react'
 import { MainLayout } from '@/components/MainLayout'
+import { useAuth } from '@/context/AuthContext'
 import { getPrivateMessenger, getRelayUrl, getRelayLabel, setRelayUrl, isTorRelayEnabled } from '@/lib/relay/relayClient'
 import { getGroupMessenger } from '@/lib/relay/groupClient'
 import type { GroupRecord } from '@/lib/relay/groupMessenger'
@@ -42,8 +43,21 @@ function newConnectionId(): string {
   return `priv-${suffix}`
 }
 
+/**
+ * Shell du mode privé **anonyme** (sans compte) : plein écran, SANS la barre
+ * latérale ni la navigation de l'app connectée. L'utilisateur final qui n'a pas
+ * de compte ne voit jamais l'interface « connectée » — deux interfaces distinctes.
+ */
+function AnonymousShell({ children }: { readonly children: ReactNode }) {
+  return <div className="h-screen-safe flex flex-col bg-bg-primary overflow-hidden">{children}</div>
+}
+
 export function PrivatePage() {
   const navigate = useNavigate()
+  const { user, loading } = useAuth()
+  const isAnonymous = !user
+  // Interface distincte : shell anonyme (sans compte) vs shell de l'app connectée.
+  const Shell = isAnonymous ? AnonymousShell : MainLayout
   const messenger = useMemo(() => getPrivateMessenger(), [])
   const relayUrl = useMemo(() => getRelayUrl(), [])
 
@@ -452,28 +466,47 @@ export function PrivatePage() {
     }
   }, [invite])
 
+  if (loading) {
+    return (
+      <div className="h-screen-safe flex items-center justify-center bg-bg-primary">
+        <div className="text-sm text-text-secondary">Chargement…</div>
+      </div>
+    )
+  }
+
   return (
-    <MainLayout>
+    <Shell>
       <div className="flex-1 flex flex-col overflow-hidden bg-bg-primary">
         {/* Header */}
         <div className="flex items-center gap-3 px-4 py-3 border-b border-bg-hover">
-          <button
-            type="button"
-            onClick={() => navigate('/chats')}
-            className="p-2 rounded-lg hover:bg-bg-hover transition-colors"
-            aria-label="Retour"
-          >
-            <ArrowLeft size={20} />
-          </button>
-          <div className="flex items-center gap-2">
-            <Lock size={20} className="text-[#7578db]" />
-            <div>
+          {!isAnonymous && (
+            <button
+              type="button"
+              onClick={() => navigate('/chats')}
+              className="p-2 rounded-lg hover:bg-bg-hover transition-colors"
+              aria-label="Retour"
+            >
+              <ArrowLeft size={20} />
+            </button>
+          )}
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <Lock size={20} className="text-[#7578db] shrink-0" />
+            <div className="min-w-0">
               <h1 className="text-base font-semibold text-text-primary">Connexions privées</h1>
-              <p className="text-xs text-text-secondary">
+              <p className="text-xs text-text-secondary truncate">
                 Sans compte, sans métadonnées — via un relais indépendant
               </p>
             </div>
           </div>
+          {isAnonymous && (
+            <button
+              type="button"
+              onClick={() => navigate('/auth')}
+              className="shrink-0 px-3 py-1.5 rounded-lg border border-bg-hover text-xs text-text-primary hover:bg-bg-hover transition-colors"
+            >
+              Se connecter
+            </button>
+          )}
         </div>
 
         {/* Onglets */}
@@ -856,6 +889,6 @@ export function PrivatePage() {
           </div>
         )}
       </div>
-    </MainLayout>
+    </Shell>
   )
 }

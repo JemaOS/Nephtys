@@ -125,17 +125,27 @@ const TOR_ENABLED_KEY = 'nephtys_tor_enabled';
 const ONION_URL_KEY = 'nephtys_smp_onion_url';
 
 /**
- * Vrai si le routage Tor est activé (préférence locale, jamais envoyée au
- * serveur). Quand Tor est actif et qu'une adresse `.onion` est configurée, le
- * mode privé s'y connecte et **ne retombe pas** sur un relais clearnet : un
- * repli exposerait l'IP, ce qui annulerait l'intérêt de Tor.
+ * Vrai si le mode Tor strict est activé (préférence locale, jamais envoyée au
+ * serveur). Invariant : « Tor activé » implique une adresse `.onion`
+ * configurée. Si l'adresse a disparu, on **désactive proprement** (auto-
+ * réparation) au lieu de retomber en clair tout en affichant un état « Tor ».
  */
 export function isTorRelayEnabled(): boolean {
+  let enabled = false;
   try {
-    return localStorage.getItem(TOR_ENABLED_KEY) === '1';
+    enabled = localStorage.getItem(TOR_ENABLED_KEY) === '1';
   } catch {
     return false;
   }
+  if (enabled && !getOnionRelayUrl()) {
+    try {
+      localStorage.removeItem(TOR_ENABLED_KEY);
+    } catch {
+      // localStorage indisponible
+    }
+    return false;
+  }
+  return enabled;
 }
 
 /** Active/désactive le routage Tor. Prend effet à la prochaine connexion. */

@@ -38,8 +38,13 @@ describe('normalizeOnionWsUrl', () => {
 });
 
 describe('préférence Tor', () => {
-  it('active/désactive et persiste la préférence', () => {
+  it('active/désactive et persiste la préférence (Tor implique .onion)', () => {
     expect(isTorRelayEnabled()).toBe(false);
+    // Sans .onion, l'activation ne tient pas (auto-réparation) — pas de Tor sans onion.
+    setTorRelayEnabled(true);
+    expect(isTorRelayEnabled()).toBe(false);
+    // Avec un .onion, l'activation persiste.
+    setOnionRelayUrl(V3);
     setTorRelayEnabled(true);
     expect(isTorRelayEnabled()).toBe(true);
     setTorRelayEnabled(false);
