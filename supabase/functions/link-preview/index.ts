@@ -9,6 +9,11 @@
  *     (TTL 7 jours) pour éviter de re-fetch les liens populaires
  *   - Timeout côté upstream : 4s max, sinon on retourne un fallback
  *   - CORS restreint aux mêmes origines que le reste de l'app
+ *
+ * ⚠️ Audit sécurité (attacker review, 2026-10-10) : `redirect: 'follow'`
+ * permettait un SSRF par rebond (URL publique → redirection vers une IP
+ * privée / 169.254.169.254). Le suivi de redirection est désormais MANUEL et
+ * chaque saut est revalidé (isSafeHost), plafonné à MAX_REDIRECTS.
  * ----------------------------------------------------------------------
  */
 
@@ -26,6 +31,7 @@ const ALLOWED_ORIGINS = [
 const CACHE_TTL_DAYS = 7;
 const FETCH_TIMEOUT_MS = 4000;
 const MAX_HTML_BYTES = 512 * 1024; // 512 KB suffisent largement pour le <head>
+const MAX_REDIRECTS = 3;
 
 interface LinkPreviewData {
     url: string;
@@ -73,12 +79,15 @@ function isSafeHost(url: string): boolean {
     try {
         const host = new URL(url).hostname.toLowerCase();
         if (host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0') return false;
+        if (host === '[::1]' || host === '::1') return false;
         if (host.endsWith('.local') || host.endsWith('.internal')) return false;
-        // IPs privées simples (IPv4)
+        // IPv4 privées
         if (/^10\./.test(host)) return false;
         if (/^192\.168\./.test(host)) return false;
         if (/^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(host)) return false;
         if (/^169\.254\./.test(host)) return false;
+        // IPv6 locales (ULA / link-local)
+        if (/^fc00:|^fd[0-9a-f]{2}:|^fe80:/i.test(host)) return false;
         return true;
     } catch {
         return false;
@@ -90,7 +99,6 @@ function canonicalize(url: string): string {
     try {
         const u = new URL(url);
         u.hash = '';
-        // Retirer les paramètres de tracking courants
         const trackingParams = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'fbclid', 'gclid', 'ref'];
         for (const p of trackingParams) u.searchParams.delete(p);
         return u.toString();
@@ -114,7 +122,6 @@ function decodeEntities(s: string): string {
 
 /** Cherche le contenu d'une meta tag par name|property. */
 function findMeta(html: string, key: string): string | null {
-    // <meta property="og:title" content="..." />  (ordre property/content variable)
     const patterns = [
         new RegExp(`<meta[^>]+(?:property|name)=["']${key}["'][^>]+content=["']([^"']+)["']`, 'i'),
         new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']${key}["']`, 'i'),
@@ -138,6 +145,39 @@ function resolveImageUrl(image: string | null, baseUrl: string): string | null {
     } catch {
         return image;
     }
+}
+
+// ─── Fetch avec redirections validées (anti-SSRF) ─────────────────────
+
+async function fetchSafe(url: string, signal: AbortSignal): Promise<Response | null> {
+    let current = url;
+    for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+        if (!isHttpUrl(current) || !isSafeHost(current)) return null;
+        const res = await fetch(current, {
+            signal,
+            redirect: 'manual',
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (compatible; NephtysBot/1.0; +https://nephtys.app/bot)',
+                Accept: 'text/html,application/xhtml+xml',
+                'Accept-Language': 'en,fr;q=0.8',
+            },
+        });
+        if (res.status >= 300 && res.status < 400) {
+            const loc = res.headers.get('location');
+            if (!loc) return null;
+            let next: string;
+            try {
+                next = new URL(loc, current).toString();
+            } catch {
+                return null;
+            }
+            if (!isHttpUrl(next) || !isSafeHost(next)) return null; // revalidation du saut
+            current = next;
+            continue;
+        }
+        return res;
+    }
+    return null;
 }
 
 // ─── YouTube oEmbed (cas rapide) ──────────────────────────────────────
@@ -175,20 +215,8 @@ async function tryYouTubeOEmbed(url: string, signal: AbortSignal): Promise<LinkP
 
 async function fetchGenericPreview(url: string, signal: AbortSignal): Promise<LinkPreviewData | null> {
     try {
-        const res = await fetch(url, {
-            signal,
-            redirect: 'follow',
-            headers: {
-                // User-agent qui sert généralement les meta OG (sites comme Twitter
-                // n'envoient le head que pour des UA réputés)
-                'User-Agent':
-                    'Mozilla/5.0 (compatible; NephtysBot/1.0; +https://nephtys.app/bot)',
-                Accept: 'text/html,application/xhtml+xml',
-                'Accept-Language': 'en,fr;q=0.8',
-            },
-        });
-
-        if (!res.ok) return null;
+        const res = await fetchSafe(url, signal);
+        if (!res || !res.ok) return null;
         const contentType = res.headers.get('content-type') || '';
         if (!contentType.includes('html')) return null;
 
@@ -203,7 +231,6 @@ async function fetchGenericPreview(url: string, signal: AbortSignal): Promise<Li
             if (done) break;
             received += value.byteLength;
             html += decoder.decode(value, { stream: true });
-            // On peut s'arrêter dès qu'on a vu </head> ou qu'on a atteint la limite
             if (received >= MAX_HTML_BYTES || /<\/head>/i.test(html)) {
                 try {
                     await reader.cancel();
@@ -370,7 +397,6 @@ Deno.serve(async (req) => {
     }
 
     if (!preview) {
-        // Fallback minimal pour qu'au moins le domaine s'affiche tout de suite
         preview = {
             url,
             title: null,

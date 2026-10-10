@@ -6,7 +6,7 @@
  *
  *   • Matériel privé (identité DH, clé de signature, signed prekey,
  *     one-time prekeys) : stocké en IndexedDB local, ET copie chiffrée par
- *     mot de passe dans `profiles.ratchet_keys_*`.
+ *     mot de passe dans `user_key_material.ratchet_keys_*`.
  *   • Bundle public : publié dans `profiles.ratchet_*` + one-time prekeys
  *     dans la table `one_time_prekeys`.
  *
@@ -18,6 +18,7 @@ import {
   decryptPrivateKeyWithPassphrase,
   encryptPrivateKeyWithPassphrase,
 } from '../passphraseKeyStore';
+import { fetchKeyMaterial, upsertKeyMaterial } from '../keyMaterial';
 import {
   signPreKey,
 } from './x3dh';
@@ -132,25 +133,17 @@ async function publishKeys(userId: string, keys: LocalRatchetKeys): Promise<void
 
 async function persistEncrypted(userId: string, keys: LocalRatchetKeys, password: string): Promise<void> {
   const enc = await encryptPrivateKeyWithPassphrase(encodeKeys(keys), password);
-  const { error } = await supabase
-    .from('profiles')
-    .update({
-      ratchet_keys_encrypted: enc.encryptedPrivateKey,
-      ratchet_keys_salt: enc.salt,
-      ratchet_keys_iv: enc.iv,
-    })
-    .eq('id', userId);
-  if (error) throw error;
+  await upsertKeyMaterial(userId, {
+    ratchet_keys_encrypted: enc.encryptedPrivateKey,
+    ratchet_keys_salt: enc.salt,
+    ratchet_keys_iv: enc.iv,
+  });
 }
 
 async function fetchEncrypted(userId: string) {
-  const { data } = await supabase
-    .from('profiles')
-    .select('ratchet_keys_encrypted, ratchet_keys_salt, ratchet_keys_iv')
-    .eq('id', userId)
-    .maybeSingle();
-  if (!data?.ratchet_keys_encrypted || !data.ratchet_keys_salt || !data.ratchet_keys_iv) return null;
-  return { encryptedPrivateKey: data.ratchet_keys_encrypted, salt: data.ratchet_keys_salt, iv: data.ratchet_keys_iv };
+  const km = await fetchKeyMaterial(userId);
+  if (!km?.ratchet_keys_encrypted || !km.ratchet_keys_salt || !km.ratchet_keys_iv) return null;
+  return { encryptedPrivateKey: km.ratchet_keys_encrypted, salt: km.ratchet_keys_salt, iv: km.ratchet_keys_iv };
 }
 
 /**
@@ -184,10 +177,11 @@ export async function resetRatchetKeys(userId: string, password: string): Promis
     .from('one_time_prekeys')
     .delete()
     .eq('user_id', userId);
-  await supabase
-    .from('profiles')
-    .update({ ratchet_keys_encrypted: null, ratchet_keys_salt: null, ratchet_keys_iv: null })
-    .eq('id', userId);
+  await upsertKeyMaterial(userId, {
+    ratchet_keys_encrypted: null,
+    ratchet_keys_salt: null,
+    ratchet_keys_iv: null,
+  });
   return await setupRatchetKeys(userId, password);
 }
 
