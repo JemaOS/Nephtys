@@ -73,13 +73,11 @@ const GRACE_KEY = 'jemaos_sub_ok_until';
 const OFFLINE_GRACE_DAYS = 7;
 const GRACE_MS = OFFLINE_GRACE_DAYS * 24 * 60 * 60 * 1000;
 
-// ─── Déblocage de TEST (bouton « Débloquer ») ─────────────────────────
-// ⚠️ Sécurité business : ce bypass n'est actif QUE si l'env
-// `VITE_ALLOW_DEV_UNLOCK === 'true'` (build de test). En production
-// normale (flag absent), le bouton n'apparaît pas et le bypass est inerte
-// → aucun utilisateur ne peut débloquer Pro tout seul.
-const ALLOW_DEV_UNLOCK =
-  (import.meta.env.VITE_ALLOW_DEV_UNLOCK as string | undefined) === 'true';
+// ─── Déblocage TEMPORAIRE (test) ──────────────────────────────────────
+// ⚠️ TEMPORAIRE : bouton « Débloquer (test) » affiché partout, actif au clic
+// (accès sans abonnement). À RETIRER avant mise en production publique.
+// Pour tout désactiver d'un coup : repasser ALLOW_DEV_UNLOCK à false.
+const ALLOW_DEV_UNLOCK = true;
 const DEV_UNLOCK_KEY = 'jemaos_dev_unlock';
 
 function isDevUnlocked(): boolean {
