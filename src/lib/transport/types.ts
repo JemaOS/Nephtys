@@ -33,10 +33,21 @@ export interface OutgoingMessage {
   /** Champs média éventuels (chemin bucket / métadonnées). */
   mediaUrl?: string | null;
   mediaType?: string | null;
+  mediaThumbnail?: string | null;
+  mediaWidth?: number | null;
+  mediaHeight?: number | null;
+  fileUrl?: string | null;
   fileName?: string | null;
   fileSize?: number | null;
   isMediaEncrypted?: boolean;
   ephemeralDuration?: number | null;
+  /** Aperçu de lien (JSON) — déjà chiffré/opaque pour le transport. */
+  linkPreview?: unknown;
+  /**
+   * Phase 1 « cacher le graphe au serveur » : blobs sealed sender (opaque,
+   * un par destinataire). Le transport les véhicule sans les interpréter.
+   */
+  senderSealed?: string[] | null;
 }
 
 /** Message reçu (contenu encore chiffré — le déchiffrement est hors transport). */

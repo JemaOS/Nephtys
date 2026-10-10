@@ -48,9 +48,15 @@ export class SupabaseTransport implements MessagingTransport {
     }
     if (msg.mediaUrl !== undefined) payload.media_url = msg.mediaUrl;
     if (msg.mediaType !== undefined) payload.media_type = msg.mediaType;
+    if (msg.mediaThumbnail !== undefined) payload.media_thumbnail = msg.mediaThumbnail;
+    if (msg.mediaWidth !== undefined) payload.media_width = msg.mediaWidth;
+    if (msg.mediaHeight !== undefined) payload.media_height = msg.mediaHeight;
+    if (msg.fileUrl !== undefined) payload.file_url = msg.fileUrl;
     if (msg.fileName !== undefined) payload.file_name = msg.fileName;
     if (msg.fileSize !== undefined) payload.file_size = msg.fileSize;
     if (msg.isMediaEncrypted) payload.is_media_encrypted = true;
+    if (msg.linkPreview !== undefined) payload.link_preview = msg.linkPreview;
+    if (msg.senderSealed !== undefined) payload.sender_sealed = msg.senderSealed;
     if (msg.ephemeralDuration) {
       payload.is_ephemeral = true;
       payload.ephemeral_duration = msg.ephemeralDuration;
