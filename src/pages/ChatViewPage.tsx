@@ -10,6 +10,15 @@ import { MainLayout } from '@/components/MainLayout'
 import { supabase, Message, Conversation, Profile, sendBroadcastMessage } from '@/lib/supabase'
 import { signFieldsBatch, resolveMediaUrl, extractStoragePath } from '@/lib/mediaUrl'
 import { createMediaKeysForMessage, fetchMediaRawKey } from '@/lib/encryptedMediaService'
+import {
+  encryptText,
+  createTextKeysForMessage,
+  decryptMessageRow,
+  decryptMessageRows,
+  serializeTextPayload,
+  type EncryptedTextPayload,
+} from '@/lib/textEncryption'
+import { tryEncryptWithRatchet } from '@/lib/ratchet/chatIntegration'
 import { downloadMedia } from '@/lib/downloadMedia'
 import { offlineStorage } from '@/lib/offlineStorage'
 import { useUserPresence } from '@/hooks/usePresence'
@@ -753,6 +762,14 @@ export function ChatViewPage() {
     if ((newMsg as any).is_ephemeral && (newMsg as any).ephemeral_expires_at) {
       const expiresAt = new Date((newMsg as any).ephemeral_expires_at).getTime()
       if (expiresAt <= Date.now()) return
+    }
+
+    // Déchiffrement E2EE du texte : le serveur ne stocke/ne pousse que du
+    // ciphertext. On restaure le clair AVANT la déduplication par contenu,
+    // sinon le message optimiste (clair) et la ligne DB (ciphertext) ne
+    // matcheraient jamais et créeraient un doublon.
+    if ((newMsg as any).is_text_encrypted && user) {
+      await decryptMessageRow(newMsg as any, user.id)
     }
 
     // Signer les paths storage (bucket privé) avant injection dans le state.
@@ -1544,6 +1561,13 @@ export function ChatViewPage() {
       // re-rendront chaque image dès que sa signed URL est prête.
       // Avant, on bloquait jusqu'à 3s ici → écran vide pendant 3s sur 3G
       // si la conv a beaucoup de médias. Maintenant : 0ms d'attente.
+      // Déchiffrement E2EE : restaure le clair des messages chiffrés avant
+      // de les injecter dans le state (le cache local garde donc du clair,
+      // ce qui est acceptable car il ne quitte jamais l'appareil).
+      if (user) {
+        await decryptMessageRows(validData as any[], user.id)
+      }
+
       setMessages(validData)
       setCache(`msgs_${conversationId}`, validData)
 
@@ -1616,6 +1640,11 @@ export function ChatViewPage() {
           }
           return true;
         });
+
+        // Déchiffrement E2EE des messages paginés avant affichage.
+        if (user) {
+          await decryptMessageRows(validData as any[], user.id)
+        }
 
         // Prepend older messages to the list
         setMessages(prev => {
@@ -1721,21 +1750,55 @@ export function ChatViewPage() {
     setDismissedPreviewUrl(null)
     
     try {
+      const plaintext = newMessage.trim()
       const messageData: any = {
-        conversation_id: conversationId!, sender_id: user.id, content: newMessage.trim(),
+        conversation_id: conversationId!, sender_id: user.id, content: plaintext,
         type: 'text', status: 'sent', reply_to_id: replyToMessage?.id || null,
       }
-      
-      // Add link preview data if available
-      if (linkPreview) {
-        messageData.link_preview = JSON.stringify({
-          url: linkPreview.url,
-          title: linkPreview.title,
-          description: linkPreview.description,
-          image: linkPreview.image,
-          siteName: linkPreview.siteName,
-          domain: linkPreview.domain,
-        })
+
+      // Aperçu de lien : rangé DANS l'enveloppe chiffrée quand le message
+      // est chiffré (le serveur ne voit alors aucune métadonnée de lien).
+      const linkPreviewPayload = linkPreview ? {
+        url: linkPreview.url,
+        title: linkPreview.title,
+        description: linkPreview.description,
+        image: linkPreview.image,
+        siteName: linkPreview.siteName,
+        domain: linkPreview.domain,
+      } : null
+
+      // Forward secrecy : conversation directe → X3DH + Double Ratchet.
+      let ratchetUsed = false
+      try {
+        const ratchetPayload = serializeTextPayload(plaintext, linkPreviewPayload)
+        const ratchet = await tryEncryptWithRatchet(user.id, conversationId!, ratchetPayload)
+        if (ratchet) {
+          messageData.content = ratchet.content
+          messageData.is_text_encrypted = true
+          messageData.encryption_metadata = ratchet.encryptionMetadata
+          ratchetUsed = true
+        }
+      } catch (ratchetErr) {
+        console.warn('[E2EE][ratchet] indisponible, repli X25519:', ratchetErr)
+      }
+
+      // Sinon, E2EE X25519/P-256 (clé AES enveloppée par destinataire).
+      let encryptedText: EncryptedTextPayload | null = null
+      if (!ratchetUsed) {
+        try {
+          encryptedText = await encryptText(plaintext, linkPreviewPayload)
+          messageData.content = encryptedText.ciphertextB64
+          messageData.is_text_encrypted = true
+          messageData.encryption_metadata = { v: 1, iv: encryptedText.ivB64 }
+        } catch (encErr) {
+          console.warn('[E2EE] chiffrement du texte impossible, envoi en clair:', encErr)
+          encryptedText = null
+        }
+      }
+
+      // Repli en clair : l'aperçu reste alors stocké en clair.
+      if (!ratchetUsed && !encryptedText && linkPreviewPayload) {
+        messageData.link_preview = JSON.stringify(linkPreviewPayload)
       }
       
       if (ephemeralDuration) {
@@ -1747,15 +1810,53 @@ export function ChatViewPage() {
       }
       
       // Use optional chaining as required by SonarQube
-      const { data, error } = await supabase.from('messages').insert(messageData).select()
+      let insertResult = await supabase.from('messages').insert(messageData).select()
+
+      // Fallback : si la migration E2EE n'est pas appliquée (colonnes/tables
+      // absentes), on réessaie en clair pour ne pas casser l'envoi.
+      if (insertResult.error?.message && (
+        insertResult.error.message.includes('is_text_encrypted') ||
+        insertResult.error.message.includes('encryption_metadata') ||
+        insertResult.error.message.includes('message_text_keys')
+      )) {
+        console.warn('[E2EE] colonnes texte absentes, fallback en clair')
+        delete messageData.is_text_encrypted
+        delete messageData.encryption_metadata
+        messageData.content = plaintext
+        if (linkPreviewPayload) messageData.link_preview = JSON.stringify(linkPreviewPayload)
+        encryptedText = null
+        insertResult = await supabase.from('messages').insert(messageData).select()
+      }
+
+      const { data, error } = insertResult
       
       if (!error && data?.[0]) {
-        // Replace optimistic message with real one from DB
-        setMessages(prev => prev.map(m => m.id === tempId ? data[0] : m))
+        // Persiste les clés enveloppées (une par destinataire, incl. soi).
+        if (encryptedText) {
+          try {
+            await createTextKeysForMessage({
+              messageId: data[0].id,
+              senderId: user.id,
+              conversationId: conversationId!,
+              rawKey: encryptedText.rawKey,
+            })
+          } catch (keyErr) {
+            console.error('[E2EE] création des clés texte échouée:', keyErr)
+          }
+        }
+
+        // Replace optimistic message with real one from DB, en conservant
+        // le texte en clair côté client (jamais le ciphertext à l'écran).
+        const settled: any = { ...(data[0] as Message), content: plaintext }
+        // Conserve l'aperçu en clair côté client (le serveur n'a que le ciphertext).
+        if (!settled.link_preview && linkPreviewPayload) {
+          settled.link_preview = JSON.stringify(linkPreviewPayload)
+        }
+        setMessages(prev => prev.map(m => m.id === tempId ? settled : m))
         await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conversationId!)
         // Dispatch event to update ChatsPage conversation list in real-time
         globalThis.dispatchEvent(new CustomEvent('message-sent-in-chat', {
-          detail: { conversationId, message: data[0] }
+          detail: { conversationId, message: settled }
         }))
       } else if (error) {
         // Remove optimistic message on error
@@ -2394,10 +2495,48 @@ export function ChatViewPage() {
         delete messageData.is_media_encrypted
       }
 
-      const { data: insertedRows, error: insertError } = await supabase
+      // Chiffrer le texte des messages transférés (type 'text' uniquement).
+      const forwardPlaintext = typeof messageData.content === 'string' ? messageData.content : ''
+      let forwardLinkPreview: unknown | null = null
+      try {
+        forwardLinkPreview = messageData.link_preview ? JSON.parse(messageData.link_preview) : null
+      } catch {
+        forwardLinkPreview = null
+      }
+      let encryptedText: EncryptedTextPayload | null = null
+      if (messageData.type === 'text' && forwardPlaintext) {
+        try {
+          encryptedText = await encryptText(forwardPlaintext, forwardLinkPreview)
+          messageData.content = encryptedText.ciphertextB64
+          messageData.is_text_encrypted = true
+          messageData.encryption_metadata = { v: 1, iv: encryptedText.ivB64 }
+          if (forwardLinkPreview) delete messageData.link_preview
+        } catch (encErr) {
+          console.warn('[forward][E2EE] chiffrement texte impossible:', encErr)
+          encryptedText = null
+        }
+      }
+
+      let insertResult = await supabase
         .from('messages')
         .insert(messageData)
         .select('id')
+
+      // Fallback si la migration E2EE n'est pas appliquée.
+      if (encryptedText && insertResult.error?.message && (
+        insertResult.error.message.includes('is_text_encrypted') ||
+        insertResult.error.message.includes('encryption_metadata')
+      )) {
+        console.warn('[forward][E2EE] colonnes texte absentes, fallback en clair')
+        delete messageData.is_text_encrypted
+        delete messageData.encryption_metadata
+        messageData.content = forwardPlaintext
+        if (forwardLinkPreview) messageData.link_preview = JSON.stringify(forwardLinkPreview)
+        encryptedText = null
+        insertResult = await supabase.from('messages').insert(messageData).select('id')
+      }
+
+      const { data: insertedRows, error: insertError } = insertResult
 
       if (insertError) {
         console.error('Error inserting forwarded message:', insertError)
@@ -2405,6 +2544,20 @@ export function ChatViewPage() {
       } else {
         successCount++
         await updateConversationLastMessage(targetConversationId)
+
+        // Recréer les clés texte enveloppées pour la conversation cible.
+        if (encryptedText && insertedRows?.[0]?.id) {
+          try {
+            await createTextKeysForMessage({
+              messageId: insertedRows[0].id,
+              senderId: userId,
+              conversationId: targetConversationId,
+              rawKey: encryptedText.rawKey,
+            })
+          } catch (e) {
+            console.error('[forward][E2EE] création des clés texte échouée:', e)
+          }
+        }
 
         // Re-créer les clés de chiffrement pour le message transféré
         // afin que les membres de la conversation cible puissent déchiffrer le média.

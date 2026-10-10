@@ -19,8 +19,8 @@
  * @module crypto/signatures
  */
 
-import { ed25519 } from '@noble/curves/ed25519';
-import { randomBytes } from '@noble/hashes/utils';
+import { ed25519 } from '@noble/curves/ed25519.js';
+import { randomBytes } from '@noble/hashes/utils.js';
 
 /**
  * Ed25519 Key Pair interface
@@ -267,23 +267,8 @@ export function constantTimeEqual(a: Uint8Array, b: Uint8Array): boolean {
  * @returns X25519 public key (32 bytes)
  */
 export function ed25519PublicKeyToX25519(ed25519PublicKey: Uint8Array): Uint8Array {
-  // The @noble/curves library provides this conversion
-  // Ed25519 point to Montgomery (X25519) point conversion
-  const point = ed25519.ExtendedPoint.fromHex(ed25519PublicKey);
-  
-  // Convert to Montgomery form (X25519)
-  // u = (1 + y) / (1 - y) mod p
-  const { y } = point.toAffine();
-  const one = BigInt(1);
-  const p = BigInt('57896044618658097711785492504343953926634992332820282019728792003956564819949');
-  
-  // Calculate u = (1 + y) * inverse(1 - y) mod p
-  const numerator = mod(one + y, p);
-  const denominator = mod(one - y, p);
-  const u = mod(numerator * modInverse(denominator, p), p);
-  
-  // Convert to bytes (little-endian)
-  return bigIntToBytes(u, 32);
+  // @noble/curves v2 fournit la conversion Edwards → Montgomery directement.
+  return ed25519.utils.toMontgomery(ed25519PublicKey);
 }
 
 /**

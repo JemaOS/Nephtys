@@ -480,12 +480,30 @@ export function ContactsPage() {
     setError('')
 
     try {
-      // Rechercher l'utilisateur par pseudo
-      const { data: profileData, error: searchError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('username', usernameToAdd.trim())
-        .maybeSingle()
+      // Rechercher l'utilisateur par pseudo — uniquement s'il est découvrable
+      // (annuaire). Repli sans filtre si la colonne `discoverable` n'existe pas
+      // encore (migration non appliquée) : comportement inchangé.
+      let profileData: Profile | null = null
+      let searchError: { message?: string } | null = null
+      {
+        const result = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('username', usernameToAdd.trim())
+          .eq('discoverable', true)
+          .maybeSingle()
+        profileData = result.data
+        searchError = result.error
+        if (searchError?.message?.includes('discoverable')) {
+          const fallback = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('username', usernameToAdd.trim())
+            .maybeSingle()
+          profileData = fallback.data
+          searchError = fallback.error
+        }
+      }
 
       if (searchError || !profileData) {
         setError(t('userNotFound'))

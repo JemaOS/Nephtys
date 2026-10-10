@@ -1,0 +1,92 @@
+// Copyright (c) 2025 Jema Technology.
+// Distributed under the license specified in the root directory of this project.
+
+/**
+ * Implémentation `MessagingTransport` adossée à Supabase.
+ *
+ * C'est le backend « centralisé » actuel. Il reste la valeur par défaut
+ * tant que le transport SMP n'est pas prêt. Il ne fait aucune cryptographie :
+ * il transporte des enveloppes déjà chiffrées.
+ */
+
+import { supabase } from '@/lib/supabase';
+import type {
+  IncomingMessage,
+  MessagingTransport,
+  OutgoingMessage,
+  SendResult,
+  Unsubscribe,
+} from './types';
+
+function toIncoming(row: Record<string, unknown>): IncomingMessage {
+  return {
+    id: String(row.id),
+    conversationId: String(row.conversation_id),
+    senderId: String(row.sender_id),
+    content: String(row.content ?? ''),
+    type: String(row.type ?? 'text'),
+    createdAt: String(row.created_at ?? ''),
+    raw: row,
+  };
+}
+
+export class SupabaseTransport implements MessagingTransport {
+  readonly kind = 'supabase';
+
+  async sendMessage(msg: OutgoingMessage): Promise<SendResult> {
+    const payload: Record<string, unknown> = {
+      conversation_id: msg.conversationId,
+      sender_id: msg.senderId,
+      content: msg.content,
+      type: msg.type,
+      status: 'sent',
+      reply_to_id: msg.replyToId ?? null,
+    };
+    if (msg.isTextEncrypted) {
+      payload.is_text_encrypted = true;
+      payload.encryption_metadata = msg.encryptionMetadata ?? null;
+    }
+    if (msg.mediaUrl !== undefined) payload.media_url = msg.mediaUrl;
+    if (msg.mediaType !== undefined) payload.media_type = msg.mediaType;
+    if (msg.fileName !== undefined) payload.file_name = msg.fileName;
+    if (msg.fileSize !== undefined) payload.file_size = msg.fileSize;
+    if (msg.isMediaEncrypted) payload.is_media_encrypted = true;
+    if (msg.ephemeralDuration) {
+      payload.is_ephemeral = true;
+      payload.ephemeral_duration = msg.ephemeralDuration;
+    }
+
+    const { data, error } = await supabase.from('messages').insert(payload).select().single();
+    if (error || !data) {
+      throw new Error(`SupabaseTransport.sendMessage: ${error?.message ?? 'no data'}`);
+    }
+    return { id: data.id, raw: data as Record<string, unknown> };
+  }
+
+  subscribe(conversationId: string, onMessage: (msg: IncomingMessage) => void): Unsubscribe {
+    const channel = supabase
+      .channel(`transport:${conversationId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${conversationId}` },
+        payload => onMessage(toIncoming(payload.new as Record<string, unknown>)),
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }
+
+  async fetchHistory(conversationId: string, limit = 100): Promise<IncomingMessage[]> {
+    const { data, error } = await supabase
+      .from('messages')
+      .select('*')
+      .eq('conversation_id', conversationId)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: true })
+      .limit(limit);
+    if (error) throw new Error(`SupabaseTransport.fetchHistory: ${error.message}`);
+    return (data ?? []).map(row => toIncoming(row as Record<string, unknown>));
+  }
+}

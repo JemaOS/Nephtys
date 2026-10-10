@@ -22,10 +22,10 @@
  * @module crypto/groupEncryption
  */
 
-import { randomBytes } from '@noble/hashes/utils';
-import { gcm } from '@noble/ciphers/aes';
-import { sha256 } from '@noble/hashes/sha256';
-import { hmac } from '@noble/hashes/hmac';
+import { randomBytes } from '@noble/hashes/utils.js';
+import { gcm } from '@noble/ciphers/aes.js';
+import { sha256 } from '@noble/hashes/sha2.js';
+import { hmac } from '@noble/hashes/hmac.js';
 import { sign, verify, generateSigningKeyPair } from './signatures';
 import { hkdf } from './hkdf';
 import { E2EEMessagingService, getMessagingService } from './messagingService';

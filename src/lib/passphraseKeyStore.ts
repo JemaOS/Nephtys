@@ -176,5 +176,5 @@ export function checkPassphraseStrength(p: string): PassphraseStrength {
     score = Math.min(4, score) as 0 | 1 | 2 | 3 | 4;
 
     const labels = ['Très faible', 'Faible', 'Acceptable', 'Forte', 'Très forte'];
-    return { score, label: labels[score], ok: p.length >= 4 };
+    return { score: score as PassphraseStrength['score'], label: labels[score], ok: p.length >= 4 };
 }

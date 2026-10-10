@@ -2,6 +2,7 @@
 // Distributed under the license specified in the root directory of this project.
 
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { Lock, User, Shield, Zap, EyeOff } from 'lucide-react'
 import { useI18n } from '@/i18n'
@@ -52,6 +53,7 @@ const getAuthButtonText = (mode: AuthMode, t: (key: string) => string): string =
 
 export function AuthPage() {
   const { t } = useI18n()
+  const navigate = useNavigate()
   const [mode, setMode] = useState<AuthMode>('signin')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -251,6 +253,17 @@ export function AuthPage() {
             <span>{t('endToEndEncryption')}</span>
           </div>
           <p className="text-[10px] lg:text-xs text-text-secondary">{t('noEmailRequired')}</p>
+        </div>
+
+        {/* Mode privé anonyme — accessible sans compte */}
+        <div className="text-center pt-1">
+          <button
+            type="button"
+            onClick={() => navigate('/private')}
+            className="text-[10px] lg:text-xs text-accent hover:underline"
+          >
+            Utiliser en mode privé (sans compte)
+          </button>
         </div>
 
         {/* Footer */}

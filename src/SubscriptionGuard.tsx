@@ -73,6 +73,42 @@ const GRACE_KEY = 'jemaos_sub_ok_until';
 const OFFLINE_GRACE_DAYS = 7;
 const GRACE_MS = OFFLINE_GRACE_DAYS * 24 * 60 * 60 * 1000;
 
+// ─── Déblocage de TEST (bouton « Débloquer ») ─────────────────────────
+// ⚠️ Sécurité business : ce bypass n'est actif QUE si l'env
+// `VITE_ALLOW_DEV_UNLOCK === 'true'` (build de test). En production
+// normale (flag absent), le bouton n'apparaît pas et le bypass est inerte
+// → aucun utilisateur ne peut débloquer Pro tout seul.
+const ALLOW_DEV_UNLOCK =
+  (import.meta.env.VITE_ALLOW_DEV_UNLOCK as string | undefined) === 'true';
+const DEV_UNLOCK_KEY = 'jemaos_dev_unlock';
+
+function isDevUnlocked(): boolean {
+  if (!ALLOW_DEV_UNLOCK) return false;
+  try {
+    return localStorage.getItem(DEV_UNLOCK_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function enableDevUnlock() {
+  try {
+    localStorage.setItem(DEV_UNLOCK_KEY, '1');
+  } catch {
+    // localStorage indisponible : on recharge quand même
+  }
+  window.location.reload();
+}
+
+function disableDevUnlock() {
+  try {
+    localStorage.removeItem(DEV_UNLOCK_KEY);
+  } catch {
+    // localStorage indisponible : on recharge quand même
+  }
+  window.location.reload();
+}
+
 declare global {
   interface Window {
     getJemaOSToken?: () => Promise<string | null>;
@@ -436,6 +472,11 @@ async function tryRefreshToken(): Promise<boolean> {
 }
 
 async function verifySubscription(): Promise<VerifyOutcome> {
+  // Déblocage de test : court-circuite la vérification (flag only).
+  if (isDevUnlocked()) {
+    markSubscriptionOk();
+    return 'allowed';
+  }
   let token = await getAccessToken();
 
   if (token) {
@@ -695,6 +736,24 @@ function UpgradeScreen({ appName, onReconnect, reconnecting = false, reconnectEr
                 {reconnecting ? tStatic('reconnecting') : tStatic('reconnect')}
               </button>
             )}
+            {ALLOW_DEV_UNLOCK && (
+              <button
+                type="button"
+                onClick={enableDevUnlock}
+                style={{
+                  background: 'rgba(15, 23, 42, 0.06)',
+                  color: '#334155',
+                  padding: '0.5rem 1.25rem',
+                  borderRadius: '9999px',
+                  fontSize: '0.8rem',
+                  fontWeight: 600,
+                  border: '1px dashed rgba(51, 65, 85, 0.4)',
+                  cursor: 'pointer',
+                }}
+              >
+                Débloquer (test)
+              </button>
+            )}
             {reconnectError && !reconnecting && !IS_SSO_HOST && (
               <p style={{ color: '#dc2626', fontSize: '0.85rem', margin: 0 }}>
                 {tStatic('reconnectFailed')}
@@ -847,7 +906,7 @@ export const SubscriptionGuard: React.FC<SubscriptionGuardProps> = ({ appName, c
   // ('denied') affiche quand même le mur au premier tick ; l'expiration de la
   // grâce ramène vers /auth via 'reauth'.
   const [status, setStatus] = useState<'loading' | 'allowed' | 'denied'>(
-    () => inGracePeriod() ? 'allowed' : 'loading'
+    () => (isDevUnlocked() || inGracePeriod()) ? 'allowed' : 'loading'
   );
   const [reconnecting, setReconnecting] = useState(false);
   const [reconnectError, setReconnectError] = useState(false);
@@ -917,7 +976,32 @@ export const SubscriptionGuard: React.FC<SubscriptionGuardProps> = ({ appName, c
       />
     );
   }
-  return <>{children}</>;
+  return (
+    <>
+      {ALLOW_DEV_UNLOCK && isDevUnlocked() && (
+        <button
+          type="button"
+          onClick={disableDevUnlock}
+          style={{
+            position: 'fixed',
+            bottom: '8px',
+            right: '8px',
+            zIndex: 9999,
+            background: 'rgba(15, 23, 42, 0.75)',
+            color: '#fff',
+            padding: '4px 10px',
+            borderRadius: '9999px',
+            fontSize: '11px',
+            border: 'none',
+            cursor: 'pointer',
+          }}
+        >
+          Verrouiller (test)
+        </button>
+      )}
+      {children}
+    </>
+  );
 };
 
 export default SubscriptionGuard;

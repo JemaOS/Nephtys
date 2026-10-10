@@ -8,6 +8,8 @@ import { supabase, Profile } from '@/lib/supabase'
 import { initializePresence, cleanupPresence } from '@/hooks/usePresence'
 import { resolveMediaUrl } from '@/lib/mediaUrl'
 import { initKeyPairOnSignin, initKeyPairOnSignup } from '@/lib/mediaEncryption'
+import { initX25519OnSignin, initX25519OnSignup } from '@/lib/e2eeX25519'
+import { initRatchetOnSignin, initRatchetOnSignup } from '@/lib/ratchet/keyStore'
 
 // Timeout for auth operations (in milliseconds)
 const AUTH_TIMEOUT = 5000;
@@ -350,6 +352,10 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
         const userId = data.data.session.user?.id
         if (userId) {
           initKeyPairOnSignin(userId, password)
+          // Paire X25519 (utilisée en priorité par le chiffrement du texte)
+          initX25519OnSignin(userId, password)
+          // Matériel X3DH/Double Ratchet (forward secrecy, conversations directes)
+          initRatchetOnSignin(userId, password)
         }
       } else {
         throw new Error(tStatic('authNoSession'))
@@ -404,6 +410,10 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
         const userId = data.data.session.user?.id
         if (userId) {
           initKeyPairOnSignup(userId, password)
+          // Paire X25519 (utilisée en priorité par le chiffrement du texte)
+          initX25519OnSignup(userId, password)
+          // Matériel X3DH/Double Ratchet (forward secrecy, conversations directes)
+          initRatchetOnSignup(userId, password)
         }
       } else {
         throw new Error('❌ Erreur d\'inscription\n\nAucune session reçue.')

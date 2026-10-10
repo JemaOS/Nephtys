@@ -2,6 +2,7 @@
 // Distributed under the license specified in the root directory of this project.
 
 import React, { useState, useEffect, useRef } from 'react';
+import { Loader2, FileText } from 'lucide-react';
 import { pdfjs } from 'react-pdf';
 import { configurePDFWorker } from './pdfWorkerConfig';
 

@@ -19,9 +19,9 @@
  * @module crypto/doubleRatchet
  */
 
-import { x25519 } from '@noble/curves/ed25519';
-import { randomBytes } from '@noble/hashes/utils';
-import { gcm } from '@noble/ciphers/aes';
+import { x25519 } from '@noble/curves/ed25519.js';
+import { randomBytes } from '@noble/hashes/utils.js';
+import { gcm } from '@noble/ciphers/aes.js';
 import { kdfRK, kdfCK, deriveMessageKeys, deriveHeaderKeys } from './hkdf';
 import { generateX25519KeyPair, KeyPair } from './x3dh';
 

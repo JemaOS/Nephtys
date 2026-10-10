@@ -141,6 +141,7 @@ export function SettingsPage() {
   const [newDisplayName, setNewDisplayName] = useState(profile?.display_name || '')
   const [editingBio, setEditingBio] = useState(false)
   const [newBio, setNewBio] = useState(profile?.bio || '')
+  const [discoverable, setDiscoverable] = useState<boolean>((profile as any)?.discoverable ?? true)
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const [showLastSeen, setShowLastSeen] = useState(true)
   const [showProfilePhoto, setShowProfilePhoto] = useState(true)
@@ -451,6 +452,27 @@ export function SettingsPage() {
       updateLocalProfile({ bio: trimmed })
     }
   }
+
+  // Discrétion dans l'annuaire : couper/activer la recherche par pseudo.
+  const handleToggleDiscoverable = async () => {
+    if (!user) return
+    const next = !discoverable
+    setDiscoverable(next)
+    const { error } = await supabase
+      .from('profiles')
+      .update({ discoverable: next })
+      .eq('id', user.id)
+    if (error) {
+      setDiscoverable(!next)
+      console.error('[settings] toggle discoverable failed:', error)
+    } else {
+      updateLocalProfile({ discoverable: next } as any)
+    }
+  }
+
+  useEffect(() => {
+    setDiscoverable((profile as any)?.discoverable ?? true)
+  }, [profile])
 
   const handleUploadPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -791,6 +813,26 @@ export function SettingsPage() {
             {editingBio ? <button onClick={handleUpdateBio} className="text-accent"><Check size={18} /></button> : <Edit2 size={18} className="text-text-secondary" />}
           </div>
           {profile?.bio && !editingBio && <p className="text-xs text-text-secondary px-1">{t('currentInfo', { info: profile.bio })}</p>}
+        </div>
+        <div className="space-y-2">
+          <p className="text-sm text-accent">Annuaire</p>
+          <div className="flex items-center justify-between gap-3 p-4 bg-bg-surface rounded-2xl">
+            <div className="flex-1">
+              <p className="text-text-primary text-sm">Apparaître dans l'annuaire</p>
+              <p className="text-xs text-text-secondary">
+                Si désactivé, votre pseudo n'est plus trouvable par recherche. Vos contacts et
+                conversations existants ne sont pas affectés. Les autres peuvent encore vous
+                joindre via une connexion privée (lien/QR).
+              </p>
+            </div>
+            <input
+              type="checkbox"
+              checked={discoverable}
+              onChange={handleToggleDiscoverable}
+              className="w-5 h-5 accent-[#7578db] shrink-0"
+              aria-label="Apparaître dans l'annuaire"
+            />
+          </div>
         </div>
       </div>
     </div>

@@ -2,7 +2,7 @@
 // Distributed under the license specified in the root directory of this project.
 
 import { useNavigate, useLocation } from 'react-router-dom'
-import { MessageCircle, Users, Settings, Phone, Archive } from 'lucide-react'
+import { MessageCircle, Users, Settings, Phone, Archive, Lock } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { prefetchRoute } from '@/lib/routePrefetch'
 import { MediaImg } from './MediaImg'
@@ -24,6 +24,7 @@ export function Sidebar() {
     { path: '/calls', icon: Phone, label: t('navCalls') },
     { path: '/archived', icon: Archive, label: t('navArchived') },
     { path: '/contacts', icon: Users, label: t('navContacts') },
+    { path: '/private', icon: Lock, label: 'Privé' },
     { path: '/settings', icon: Settings, label: t('navSettings') },
   ]
 

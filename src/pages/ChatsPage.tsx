@@ -11,6 +11,7 @@ import { offlineStorage } from '@/lib/offlineStorage'
 import { useIsMobile } from '@/hooks/use-mobile'
 
 import { fetchAllConversationData } from '@/lib/conversationService'
+import { decryptMessageContent } from '@/lib/textEncryption'
 import { useI18n } from '@/i18n'
 import { ChatsSelectionHeader, ChatsHeader, ChatsList, ConversationWithDetails } from './ChatsPageComponents'
 
@@ -357,9 +358,16 @@ export function ChatsPage() {
   }, [loadConversationsFromServer])
   
     // Instant handler for new message in a conversation (for updating last_message_at instantly)
-    const handleNewMessageInConversation = useCallback((payload: any) => {
+    const handleNewMessageInConversation = useCallback(async (payload: any) => {
       const newMessage = payload?.new
       if (newMessage?.conversation_id) {
+        // Déchiffrement E2EE : le dernier message de la liste ne doit jamais
+        // afficher le ciphertext stocké côté serveur.
+        if (user && newMessage.is_text_encrypted) {
+          const plaintext = await decryptMessageContent(newMessage, user.id)
+          if (plaintext !== null) newMessage.content = plaintext
+        }
+
         // Mark message as delivered if it's not from the current user
         if (user && newMessage.sender_id !== user.id && newMessage.status === 'sent') {
           supabase.from('messages').update({ status: 'delivered' }).eq('id', newMessage.id).eq('status', 'sent').then();
@@ -392,7 +400,7 @@ export function ChatsPage() {
         }
       })
     }
-  }, [debouncedReload])
+  }, [debouncedReload, user])
   
   // Handle message sent from ChatViewPage (via custom event)
   const handleMessageSentFromChat = useCallback((event: CustomEvent) => {

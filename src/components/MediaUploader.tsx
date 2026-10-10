@@ -476,7 +476,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
 
     let uploadedFile: UploadedFileData;
     try {
-      const blobToEncrypt = fileToUpload instanceof Blob ? fileToUpload : new Blob([await fileToUpload.arrayBuffer()]);
+      const blobToEncrypt: Blob = fileToUpload;
       const result = await uploadEncryptedMedia(blobToEncrypt, pathPrefix);
       uploadedFile = {
         url: result.path,
@@ -594,7 +594,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
 
     let uploadedFile: UploadedFileData;
     try {
-      const blobToEncrypt = fileToUpload instanceof Blob ? fileToUpload : new Blob([await fileToUpload.arrayBuffer()]);
+      const blobToEncrypt: Blob = fileToUpload;
       const result = await uploadEncryptedMedia(blobToEncrypt, pathPrefix);
       uploadedFile = {
         url: result.path,
@@ -878,7 +878,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       // E2EE : chiffrement avant upload
       let encryptedResult;
       try {
-        const blobToEncrypt = fileToUpload instanceof Blob ? fileToUpload : new Blob([await fileToUpload.arrayBuffer()]);
+        const blobToEncrypt: Blob = fileToUpload;
         encryptedResult = await uploadEncryptedMedia(blobToEncrypt, uploadFileName);
       } catch (e: any) {
         clearInterval(progressInterval);

@@ -1,6 +1,7 @@
 import { supabase, Conversation, Profile, Message } from '@/lib/supabase'
 import { ConversationWithDetails } from '@/pages/ChatsPageComponents'
 import { signFieldsBatch } from '@/lib/mediaUrl'
+import { decryptMessageRows } from '@/lib/textEncryption'
 
 export const fetchConversationMembers = async (userId: string) => {
   let memberData: any[] | null = null
@@ -158,6 +159,10 @@ const fetchAllConversationDataViaRpc = async (
     const profiles = payload.profiles as Profile[]
     const recentMessages = payload.lastMessages as Message[]
 
+    // Déchiffrement E2EE : la liste des conversations ne doit jamais
+    // afficher le ciphertext du dernier message.
+    await decryptMessageRows(recentMessages as any[], userId)
+
     // Compter les "Saved Messages" (conversations à 1 seul membre = soi-même)
     const savedMessagesConvIds = new Set<string>()
     const memberCountByConv = new Map<string, number>()
@@ -250,6 +255,11 @@ export const fetchAllConversationData = async (userId: string) => {
   ])
 
   const allMembers = allMembersIncludingSelf?.filter(m => m.user_id !== userId) || []
+
+  // Déchiffrement E2EE du dernier message (colonne `content` = ciphertext).
+  if (recentMessages && recentMessages.length > 0) {
+    await decryptMessageRows(recentMessages as any[], userId)
+  }
 
   const savedMessagesConvIds = new Set<string>()
   const memberCountByConv = new Map<string, number>()

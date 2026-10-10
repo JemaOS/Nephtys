@@ -26,8 +26,8 @@
  * @module crypto/x3dh
  */
 
-import { x25519 } from '@noble/curves/ed25519';
-import { randomBytes } from '@noble/hashes/utils';
+import { x25519 } from '@noble/curves/ed25519.js';
+import { randomBytes } from '@noble/hashes/utils.js';
 import { hkdf } from './hkdf';
 import { sign, verify, generateSigningKeyPair, Ed25519KeyPair } from './signatures';
 
