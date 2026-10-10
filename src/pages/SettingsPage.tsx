@@ -7,6 +7,7 @@ import { MainLayout } from '@/components/MainLayout'
 import { useAuth } from '@/context/AuthContext'
 import { useTheme } from '@/context/ThemeContext'
 import { supabase } from '@/lib/supabase'
+import { createDeviceLink, redeemDeviceLink } from '@/lib/deviceLink'
 import { MediaImg } from '@/components/MediaImg'
 import { invalidateMediaUrl } from '@/lib/mediaUrl'
 import { LanguageSelector } from '@/components/LanguageSelector'
@@ -142,6 +143,10 @@ export function SettingsPage() {
   const [editingBio, setEditingBio] = useState(false)
   const [newBio, setNewBio] = useState(profile?.bio || '')
   const [discoverable, setDiscoverable] = useState<boolean>((profile as any)?.discoverable ?? true)
+  const [deviceLink, setDeviceLink] = useState<string | null>(null)
+  const [deviceLinkInput, setDeviceLinkInput] = useState('')
+  const [deviceMsg, setDeviceMsg] = useState<string | null>(null)
+  const [deviceBusy, setDeviceBusy] = useState(false)
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const [showLastSeen, setShowLastSeen] = useState(true)
   const [showProfilePhoto, setShowProfilePhoto] = useState(true)
@@ -473,6 +478,34 @@ export function SettingsPage() {
   useEffect(() => {
     setDiscoverable((profile as any)?.discoverable ?? true)
   }, [profile])
+
+  const handleCreateDeviceLink = async () => {
+    if (!user) return
+    setDeviceBusy(true)
+    setDeviceMsg(null)
+    try {
+      setDeviceLink(await createDeviceLink(user.id))
+    } catch (e) {
+      setDeviceMsg((e as Error).message)
+    } finally {
+      setDeviceBusy(false)
+    }
+  }
+
+  const handleRedeemDeviceLink = async () => {
+    if (!user || !deviceLinkInput.trim()) return
+    setDeviceBusy(true)
+    setDeviceMsg(null)
+    try {
+      const { installed } = await redeemDeviceLink(user.id, deviceLinkInput.trim())
+      setDeviceMsg(`Appareil lié (${installed.join(', ') || 'aucune clé'}). Recharge l’app.`)
+      setDeviceLinkInput('')
+    } catch (e) {
+      setDeviceMsg((e as Error).message)
+    } finally {
+      setDeviceBusy(false)
+    }
+  }
 
   const handleUploadPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -832,6 +865,57 @@ export function SettingsPage() {
               className="w-5 h-5 accent-[#7578db] shrink-0"
               aria-label="Apparaître dans l'annuaire"
             />
+          </div>
+        </div>
+        <div className="space-y-2">
+          <p className="text-sm text-accent">Appareils</p>
+          <div className="p-4 bg-bg-surface rounded-2xl space-y-3">
+            <p className="text-xs text-text-secondary">
+              Lier un 2e appareil : génère un lien à utiliser sur l'autre appareil (déjà connecté au
+              même compte). Tes clés E2EE y sont transférées, chiffrées par un secret local — le
+              serveur ne les voit jamais.
+            </p>
+            <button
+              type="button"
+              onClick={handleCreateDeviceLink}
+              disabled={deviceBusy}
+              className="px-3 py-2 rounded-xl bg-[#7578db] text-white text-sm font-medium disabled:opacity-50"
+            >
+              Générer un lien d'appareil
+            </button>
+            {deviceLink && (
+              <div className="flex items-center gap-2">
+                <input
+                  readOnly
+                  value={deviceLink}
+                  className="flex-1 min-w-0 px-2 py-1 rounded-lg bg-bg-primary text-[11px] font-mono text-text-secondary"
+                />
+                <button
+                  type="button"
+                  onClick={() => navigator.clipboard?.writeText(deviceLink)}
+                  className="px-2 py-1 rounded-lg bg-bg-hover text-xs text-text-primary"
+                >
+                  Copier
+                </button>
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <input
+                value={deviceLinkInput}
+                onChange={e => setDeviceLinkInput(e.target.value)}
+                placeholder="Coller un lien d'appareil…"
+                className="flex-1 min-w-0 px-2 py-1 rounded-lg bg-bg-primary text-[11px] font-mono text-text-secondary"
+              />
+              <button
+                type="button"
+                onClick={handleRedeemDeviceLink}
+                disabled={deviceBusy || !deviceLinkInput.trim()}
+                className="px-2 py-1 rounded-lg bg-bg-hover text-xs text-text-primary disabled:opacity-50"
+              >
+                Lier
+              </button>
+            </div>
+            {deviceMsg && <p className="text-xs text-text-secondary">{deviceMsg}</p>}
           </div>
         </div>
       </div>
