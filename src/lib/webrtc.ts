@@ -4,7 +4,7 @@
 // WebRTC Manager for Audio/Video Calls
 // Version simplifiÃ©e utilisant des serveurs STUN publics
 
-import { ICE_SERVERS } from './iceServers';
+import { getIceServers } from './iceServers';
 
 export interface CallConfig {
   audio: boolean;
@@ -84,7 +84,7 @@ export class WebRTCManager {
 
       // Créer la connexion peer
       this.peerConnection = new RTCPeerConnection({
-        iceServers: ICE_SERVERS,
+        iceServers: getIceServers(),
       });
 
       // Ajouter les tracks locaux

@@ -9,6 +9,7 @@ import './critical.css'
 import './index.css'
 import App from './App.tsx'
 import { initPerfMetrics } from './lib/perfMetrics'
+import { initIceServers } from './lib/iceServers'
 
 // Build identifier baked at compile time. If the SW served a stale HTML
 // referencing an old build, this constant won't match what the SW registers
@@ -85,6 +86,9 @@ selfHealStaleClient().then(() => registerServiceWorker());
 
 // Baseline performance (Web Vitals + long tasks + FPS) → window.__nephtysPerf
 initPerfMetrics();
+
+// Charge les identifiants TURN éphémères (appels) puis les rafraîchit.
+initIceServers();
 
 // Render the app immediately
 const rootElement = document.getElementById('root');

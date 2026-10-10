@@ -2,36 +2,61 @@
 // Distributed under the license specified in the root directory of this project.
 
 /**
- * Serveurs ICE partagés (STUN + **TURN**) pour WebRTC.
+ * Serveurs ICE partagés (STUN + **TURN éphémère**) pour WebRTC.
  *
- * TURN = **coturn** hébergé sur notre VPS : relaie le média audio/vidéo quand le
- * P2P direct échoue (NAT symétrique / pare-feu), ce qui **stabilise les appels**.
- * Sans TURN, de nombreux appels ne s'établissent jamais.
+ * Le TURN (coturn sur notre VPS) relaie le média quand le P2P échoue
+ * (NAT symétrique) → **stabilité des appels**. Les identifiants sont
+ * **éphémères** (TURN REST API) récupérés depuis notre endpoint `/turn` :
+ * le **secret n'est jamais dans le bundle web** (fini l'abus d'identifiants).
  *
- * `turns:` (5349, TLS) traverse les réseaux très restrictifs ; `turn:` 3478
- * (UDP + TCP) couvre le reste. Surchargeable via variables d'environnement.
- *
- * ⚠️ Les identifiants TURN sont embarqués (app web) → abuse possible. Pour de la
- * prod à grande échelle, servir ces identifiants via un endpoint à credentials
- * éphémères (TURN REST API). Acceptable pour un usage perso/interne.
+ * `getIceServers()` (synchrone) renvoie la config en cache ; `initIceServers()`
+ * la récupère et la rafraîchit. Repli STUN tant que l'endpoint n'a pas répondu.
  */
 
-const TURN_HOST = (import.meta.env.VITE_TURN_HOST as string | undefined) || '78-232-3-78.sslip.io';
-const TURN_USERNAME = (import.meta.env.VITE_TURN_USERNAME as string | undefined) || 'nephtys';
-const TURN_CREDENTIAL = (import.meta.env.VITE_TURN_CREDENTIAL as string | undefined) || 'BMFZPSQiakqiAgzcDH7M';
+const TURN_CREDS_URL =
+  (import.meta.env.VITE_TURN_CREDS_URL as string | undefined) || 'https://78-232-3-78.sslip.io/turn';
 
-export const ICE_SERVERS: RTCIceServer[] = [
+const STUN_FALLBACK: RTCIceServer[] = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
-  { urls: 'stun:stun2.l.google.com:19302' },
   { urls: 'stun:global.stun.twilio.com:3478' },
-  {
-    urls: [
-      `turn:${TURN_HOST}:3478?transport=udp`,
-      `turn:${TURN_HOST}:3478?transport=tcp`,
-      `turns:${TURN_HOST}:5349?transport=tcp`,
-    ],
-    username: TURN_USERNAME,
-    credential: TURN_CREDENTIAL,
-  },
 ];
+
+let cachedIceServers: RTCIceServer[] = STUN_FALLBACK;
+let expiresAt = 0;
+let refreshing: Promise<void> | null = null;
+
+/** Config ICE courante (cache). Synchrone, à utiliser à la création du PeerConnection. */
+export function getIceServers(): RTCIceServer[] {
+  return cachedIceServers;
+}
+
+/** Récupère/rafraîchit les identifiants TURN éphémères depuis l'endpoint. */
+export async function refreshIceServers(): Promise<void> {
+  if (refreshing) return refreshing;
+  refreshing = (async () => {
+    try {
+      const res = await fetch(TURN_CREDS_URL, { cache: 'no-store' });
+      if (!res.ok) return;
+      const data = (await res.json()) as { iceServers?: RTCIceServer[]; ttl?: number };
+      if (Array.isArray(data.iceServers) && data.iceServers.length > 0) {
+        cachedIceServers = data.iceServers;
+        const ttl = Number(data.ttl) || 3600;
+        expiresAt = Date.now() + Math.max(60, ttl - 300) * 1000;
+      }
+    } catch {
+      // garde le cache/repli
+    } finally {
+      refreshing = null;
+    }
+  })();
+  return refreshing;
+}
+
+/** À appeler au démarrage : charge les creds puis rafraîchit avant expiration. */
+export function initIceServers(): void {
+  void refreshIceServers();
+  setInterval(() => {
+    if (Date.now() >= expiresAt) void refreshIceServers();
+  }, 60 * 1000);
+}
