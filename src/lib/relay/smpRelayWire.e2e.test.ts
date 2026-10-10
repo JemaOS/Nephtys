@@ -12,9 +12,10 @@ import { SmpRelayWire } from './smpRelayWire';
 
 let broker: ChildProcess | null = null;
 const PORT = 20000 + Math.floor(Math.random() * 20000);
-const URL = `ws://127.0.0.1:${PORT}/`;
+const URL = process.env.SMP_URL || `ws://127.0.0.1:${PORT}/`;
 
 beforeAll(async () => {
+  if (process.env.SMP_URL) return; // cible externe fournie
   const script = path.resolve(process.cwd(), 'server', 'smp-broker', 'index.mjs');
   broker = spawn(process.execPath, [script], {
     env: { ...process.env, PORT: String(PORT) },

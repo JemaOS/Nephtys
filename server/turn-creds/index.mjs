@@ -11,6 +11,8 @@ const PORT = Number(process.env.PORT || 8788);
 const HOST = process.env.TURN_HOST || '78-232-3-78.sslip.io';
 const TTL = Number(process.env.TURN_TTL || 3600);
 const ID = process.env.TURN_ID || 'nephtys';
+const RATE_MAX = Number(process.env.RATE_MAX || 30); // requêtes / fenêtre / IP
+const RATE_WINDOW_MS = 60_000;
 const SECRET = process.env.TURN_AUTH_SECRET
   || (process.env.TURN_AUTH_SECRET_FILE ? fs.readFileSync(process.env.TURN_AUTH_SECRET_FILE, 'utf8').trim() : '');
 
@@ -18,6 +20,35 @@ if (!SECRET) {
   console.error('[turn-creds] aucun secret TURN (TURN_AUTH_SECRET / TURN_AUTH_SECRET_FILE)');
   process.exit(1);
 }
+
+// ─── Rate-limit par IP (mémoire) ────────────────────────────────────────
+/** @type {Map<string, number[]>} */
+const hits = new Map();
+function clientIp(req) {
+  const xff = req.headers['x-forwarded-for'];
+  if (typeof xff === 'string' && xff) return xff.split(',')[0].trim();
+  return req.socket?.remoteAddress || 'unknown';
+}
+function allow(ip) {
+  const now = Date.now();
+  const arr = (hits.get(ip) || []).filter(t => now - t < RATE_WINDOW_MS);
+  if (arr.length >= RATE_MAX) {
+    hits.set(ip, arr);
+    return false;
+  }
+  arr.push(now);
+  hits.set(ip, arr);
+  return true;
+}
+// Nettoyage périodique (borne la mémoire).
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, arr] of hits) {
+    const kept = arr.filter(t => now - t < RATE_WINDOW_MS);
+    if (kept.length) hits.set(ip, kept);
+    else hits.delete(ip);
+  }
+}, RATE_WINDOW_MS).unref?.();
 
 const server = http.createServer((req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -31,6 +62,12 @@ const server = http.createServer((req, res) => {
   if (!req.url || !req.url.startsWith('/turn')) {
     res.writeHead(404);
     res.end('not found');
+    return;
+  }
+
+  if (!allow(clientIp(req))) {
+    res.writeHead(429, { 'Content-Type': 'application/json', 'Retry-After': '60' });
+    res.end(JSON.stringify({ error: 'rate limited' }));
     return;
   }
 
