@@ -16,6 +16,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { ICE_SERVERS } from '@/lib/iceServers'
 import QRCode from 'react-qr-code'
 import { ArrowLeft, Copy, Link2, Lock, Paperclip, Plus, Send, ShieldCheck, Trash2 } from 'lucide-react'
 import { MainLayout } from '@/components/MainLayout'
@@ -107,7 +108,7 @@ export function PrivatePage() {
       new PrivateCall({
         createPeer: () => {
           if (typeof RTCPeerConnection === 'undefined') return null
-          const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] })
+          const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS })
           const stream = localMediaRef.current
           if (stream) for (const track of stream.getTracks()) pc.addTrack(track, stream)
           pc.ontrack = (ev: RTCTrackEvent) => {

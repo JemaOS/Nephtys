@@ -2,19 +2,9 @@
 // Distributed under the license specified in the root directory of this project.
 
 // WebRTC Manager for Audio/Video Calls
-// Version simplifiée utilisant des serveurs STUN publics
+// Version simplifiÃ©e utilisant des serveurs STUN publics
 
-const ICE_SERVERS = [
-  { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:stun1.l.google.com:19302' },
-  { urls: 'stun:stun2.l.google.com:19302' },
-  { urls: 'stun:stun3.l.google.com:19302' },
-  { urls: 'stun:stun4.l.google.com:19302' },
-  { urls: 'stun:global.stun.twilio.com:3478' },
-  { urls: 'stun:stun.stunprotocol.org:3478' },
-  { urls: 'stun:stun.framasoft.org:3478' },
-  { urls: 'stun:stun.voip.blackberry.com:3478' },
-];
+import { ICE_SERVERS } from './iceServers';
 
 export interface CallConfig {
   audio: boolean;
