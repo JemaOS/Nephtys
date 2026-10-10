@@ -1,0 +1,314 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// Durable browser store for queue/contact/client state.
+//
+// The store is deliberately boring: one JSON document per record in a
+// caller-provided Storage-like backend. Browser deployments can pass
+// `localStorage`; tests can pass an in-memory Map wrapper. Binary protocol
+// values are tagged as base64url strings so hand-edited storage cannot be
+// confused with ordinary text fields.
+
+import { decodeBase64Url, encodeBase64Url, toBytes } from './browser-smp-core.mjs';
+
+export const SIMPLEX_STORE_SCHEMA = 1;
+export const SIMPLEX_STORE_PREFIX = 'simplex-web-v1';
+export const SIMPLEX_STORE_MAX_RECORD_BYTES = 262144;
+export const SIMPLEX_STORE_MAX_LIST_ITEMS = 1000;
+
+export class BrowserSimplexStoreError extends Error {
+  constructor(code, message) {
+    super(message);
+    this.name = 'BrowserSimplexStoreError';
+    this.code = code;
+  }
+}
+
+function fail(code, message) {
+  throw new BrowserSimplexStoreError(code, message);
+}
+
+function safePart(value, label = 'key') {
+  var text = String(value == null ? '' : value).trim();
+  if (!text || text.length > 160 || /[^A-Za-z0-9_.:-]/.test(text)) {
+    fail('SIMPLEX_STORE_KEY', label + ' must be 1 to 160 safe ASCII characters');
+  }
+  return text;
+}
+
+function storageKey(namespace, type, id) {
+  return SIMPLEX_STORE_PREFIX + ':' + safePart(namespace, 'namespace') + ':' + safePart(type, 'record type') + ':' + safePart(id, 'record id');
+}
+
+function storageKeyPrefix(namespace, type) {
+  return SIMPLEX_STORE_PREFIX + ':' + safePart(namespace, 'namespace') + ':' + safePart(type, 'record type') + ':';
+}
+
+function listKey(namespace, type) {
+  return SIMPLEX_STORE_PREFIX + ':' + safePart(namespace, 'namespace') + ':list:' + safePart(type, 'record type');
+}
+
+function binary(value) {
+  return { $bytes: encodeBase64Url(toBytes(value || new Uint8Array(), 'stored bytes')) };
+}
+
+function isPlainObject(value) {
+  return !!value && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Uint8Array);
+}
+
+function encodeValue(value) {
+  if (value instanceof Uint8Array || value instanceof ArrayBuffer || ArrayBuffer.isView(value)) return binary(value);
+  if (Array.isArray(value)) return value.slice(0, SIMPLEX_STORE_MAX_LIST_ITEMS).map(encodeValue);
+  if (isPlainObject(value)) {
+    var out = {};
+    for (var [key, child] of Object.entries(value)) {
+      if (/^[A-Za-z0-9_$.-]{1,80}$/.test(key)) out[key] = encodeValue(child);
+    }
+    return out;
+  }
+  if (typeof value === 'bigint') return { $bigint: String(value) };
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  if (typeof value === 'boolean' || value == null) return value;
+  return String(value).slice(0, 8192);
+}
+
+function decodeValue(value) {
+  if (Array.isArray(value)) return value.map(decodeValue);
+  if (isPlainObject(value)) {
+    if (typeof value.$bytes === 'string') return decodeBase64Url(value.$bytes, 'stored bytes');
+    if (typeof value.$bigint === 'string') return BigInt(value.$bigint);
+    var out = {};
+    for (var [key, child] of Object.entries(value)) out[key] = decodeValue(child);
+    return out;
+  }
+  return value;
+}
+
+function serialize(record) {
+  var text = JSON.stringify({ schema: SIMPLEX_STORE_SCHEMA, record: encodeValue(record) });
+  if (text.length > SIMPLEX_STORE_MAX_RECORD_BYTES) fail('SIMPLEX_STORE_SIZE', 'stored record is too large');
+  return text;
+}
+
+function deserialize(text) {
+  if (!text) return null;
+  if (String(text).length > SIMPLEX_STORE_MAX_RECORD_BYTES) fail('SIMPLEX_STORE_SIZE', 'stored record is too large');
+  var parsed;
+  try {
+    parsed = JSON.parse(String(text));
+  } catch (_error) {
+    fail('SIMPLEX_STORE_JSON', 'stored record is not valid JSON');
+  }
+  if (!parsed || parsed.schema !== SIMPLEX_STORE_SCHEMA) fail('SIMPLEX_STORE_SCHEMA', 'stored record schema is unsupported');
+  return decodeValue(parsed.record);
+}
+
+function memoryStorage() {
+  var map = new Map();
+  return {
+    getItem(key) { return map.has(key) ? map.get(key) : null; },
+    setItem(key, value) { map.set(String(key), String(value)); },
+    removeItem(key) { map.delete(String(key)); },
+    key(index) { return Array.from(map.keys())[index] || null; },
+    get length() { return map.size; }
+  };
+}
+
+function readList(storage, namespace, type) {
+  var raw = storage.getItem(listKey(namespace, type));
+  if (!raw) return [];
+  var parsed;
+  try {
+    parsed = deserialize(raw);
+  } catch (_error) {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+  var ids = [];
+  for (var item of parsed) {
+    try {
+      ids.push(safePart(item, 'stored id'));
+    } catch (_error) {
+      // A poisoned list index should not block access to valid records.
+    }
+  }
+  return ids;
+}
+
+function writeList(storage, namespace, type, ids) {
+  var clean = [];
+  for (var i = ids.length - 1; i >= 0 && clean.length < SIMPLEX_STORE_MAX_LIST_ITEMS; i -= 1) {
+    var id = safePart(ids[i], 'stored id');
+    if (!clean.includes(id)) clean.unshift(id);
+  }
+  storage.setItem(listKey(namespace, type), serialize(clean));
+}
+
+function scanStorageIds(storage, namespace, type) {
+  // Normal list calls are intentionally capped. Security cleanup needs a full
+  // sweep, so this scans the Storage keyspace when the backend exposes it.
+  if (!storage || typeof storage.key !== 'function' || typeof storage.length !== 'number') return [];
+  var prefix = storageKeyPrefix(namespace, type);
+  var ids = [];
+  for (var i = 0; i < storage.length; i += 1) {
+    var key = storage.key(i);
+    if (typeof key === 'string' && key.startsWith(prefix)) {
+      try {
+        ids.push(safePart(key.slice(prefix.length), 'stored id'));
+      } catch (_error) {
+        // Ignore same-origin garbage keys instead of letting one bad local
+        // storage entry block cleanup of valid records.
+      }
+    }
+  }
+  return ids;
+}
+
+function uniqueIds(ids) {
+  var seen = [];
+  for (var id of ids) {
+    var clean = safePart(id, 'stored id');
+    if (!seen.includes(clean)) seen.push(clean);
+  }
+  return seen;
+}
+
+export function createBrowserSimplexStore(options = {}) {
+  return new BrowserSimplexStore(options);
+}
+
+export class BrowserSimplexStore {
+  constructor(options = {}) {
+    this.storage = options.storage || (typeof localStorage !== 'undefined' ? localStorage : memoryStorage());
+    this.namespace = safePart(options.namespace || 'default', 'namespace');
+  }
+
+  save(type, id, record) {
+    var cleanType = safePart(type, 'record type');
+    var cleanId = safePart(id, 'record id');
+    this.storage.setItem(storageKey(this.namespace, cleanType, cleanId), serialize({
+      id: cleanId,
+      updatedAt: new Date().toISOString(),
+      value: record || {}
+    }));
+    var ids = readList(this.storage, this.namespace, cleanType);
+    if (!ids.includes(cleanId)) writeList(this.storage, this.namespace, cleanType, ids.concat(cleanId));
+    return cleanId;
+  }
+
+  load(type, id) {
+    var stored = deserialize(this.storage.getItem(storageKey(this.namespace, type, id)));
+    return stored ? stored.value : null;
+  }
+
+  list(type) {
+    return readList(this.storage, this.namespace, type).map((id) => ({ id, value: this.load(type, id) })).filter((row) => !!row.value);
+  }
+
+  scan(type) {
+    // Merge the capped list with the physical storage scan. This keeps ordinary
+    // reads bounded while giving cleanup paths a way to find older records.
+    var cleanType = safePart(type, 'record type');
+    var ids = uniqueIds(readList(this.storage, this.namespace, cleanType).concat(scanStorageIds(this.storage, this.namespace, cleanType)));
+    var rows = [];
+    for (var id of ids) {
+      try {
+        var value = this.load(cleanType, id);
+        if (value) rows.push({ id, value });
+      } catch (_error) {
+        // A malformed local record should not prevent cleanup of the rest of
+        // the namespace. Direct `load` and `list` still fail loudly.
+      }
+    }
+    return rows;
+  }
+
+  delete(type, id) {
+    var cleanType = safePart(type, 'record type');
+    var cleanId = safePart(id, 'record id');
+    this.storage.removeItem(storageKey(this.namespace, cleanType, cleanId));
+    writeList(this.storage, this.namespace, cleanType, readList(this.storage, this.namespace, cleanType).filter((item) => item !== cleanId));
+  }
+
+  deleteWhere(type, predicate, options = {}) {
+    var cleanType = safePart(type, 'record type');
+    var test = typeof predicate === 'function' ? predicate : () => false;
+    var deleted = 0;
+    var ids = uniqueIds(readList(this.storage, this.namespace, cleanType).concat(scanStorageIds(this.storage, this.namespace, cleanType)));
+    for (var id of ids) {
+      try {
+        var value = this.load(cleanType, id);
+        var row = { id, value };
+        if (value && test(value, id, row)) {
+          this.delete(cleanType, id);
+          deleted += 1;
+        }
+      } catch (_error) {
+        if (options.deleteMalformed === true) {
+          this.delete(cleanType, id);
+          deleted += 1;
+        }
+      }
+    }
+    return deleted;
+  }
+
+  deleteMalformed(type) {
+    var cleanType = safePart(type, 'record type');
+    var deleted = 0;
+    var ids = uniqueIds(readList(this.storage, this.namespace, cleanType).concat(scanStorageIds(this.storage, this.namespace, cleanType)));
+    for (var id of ids) {
+      try {
+        this.load(cleanType, id);
+      } catch (_error) {
+        this.delete(cleanType, id);
+        deleted += 1;
+      }
+    }
+    return deleted;
+  }
+
+  saveQueue(id, queue) { return this.save('queue', id, queue); }
+  loadQueue(id) { return this.load('queue', id); }
+  listQueues() { return this.list('queue'); }
+  deleteQueue(id) { return this.delete('queue', id); }
+  saveContact(id, contact) { return this.save('contact', id, contact); }
+  loadContact(id) { return this.load('contact', id); }
+  listContacts() { return this.list('contact'); }
+  deleteContact(id) { return this.delete('contact', id); }
+  saveRatchet(id, ratchet) { return this.save('ratchet', id, ratchet); }
+  loadRatchet(id) { return this.load('ratchet', id); }
+  deleteRatchet(id) { return this.delete('ratchet', id); }
+  saveProfile(profile) { return this.save('profile', 'local', profile || {}); }
+  loadProfile() { return this.load('profile', 'local') || {}; }
+  deleteProfile() { return this.delete('profile', 'local'); }
+
+  enqueuePending(id, task) {
+    var queue = this.load('pending', 'queue') || [];
+    var cleanId = safePart(id, 'pending id');
+    var next = queue.filter((item) => item.id !== cleanId).concat({ id: cleanId, task: task || {}, attempts: 0 });
+    this.save('pending', 'queue', next.slice(-SIMPLEX_STORE_MAX_LIST_ITEMS));
+  }
+
+  listPending() {
+    return this.load('pending', 'queue') || [];
+  }
+
+  replacePending(items) {
+    this.save('pending', 'queue', (Array.isArray(items) ? items : []).slice(0, SIMPLEX_STORE_MAX_LIST_ITEMS));
+  }
+
+  deletePendingWhere(predicate) {
+    var test = typeof predicate === 'function' ? predicate : () => false;
+    var next = this.listPending().filter((item) => !test(item));
+    this.replacePending(next);
+    return next;
+  }
+}
+
+export default {
+  BrowserSimplexStore,
+  BrowserSimplexStoreError,
+  SIMPLEX_STORE_PREFIX,
+  SIMPLEX_STORE_SCHEMA,
+  createBrowserSimplexStore
+};

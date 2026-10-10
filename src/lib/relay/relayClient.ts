@@ -11,6 +11,7 @@
 import { WebSocketWire, type RelayWire } from './wire';
 import { SupabaseRelayWire } from './supabaseRelayWire';
 import { AgentRelayWire } from './agentRelayWire';
+import { SmpRelayWire } from './smpRelayWire';
 import { PrivateMessenger } from './privateMessenger';
 import { IdbConnectionStore } from './connectionStore';
 import { IdbHistoryStore } from './historyStore';
@@ -117,7 +118,14 @@ export function getPrivateMessenger(): PrivateMessenger {
   if (!instance) {
     const mode = import.meta.env.VITE_RELAY_MODE as string | undefined;
     let wire: RelayWire;
-    if (mode === 'simplex-agent' || (mode === undefined && agentReachable)) {
+    if (mode === 'simplex-smp') {
+      // 100 % web : cœur SMP navigateur (simplex-web vendoré) -> relais SMP
+      // browser-profile (wss). Non validé (cf. smpRelayWire.ts).
+      wire = new SmpRelayWire({
+        url: (import.meta.env.VITE_SMP_RELAY_URL as string | undefined) ?? 'wss://smp.example.net/smp',
+        keyHash: import.meta.env.VITE_SMP_RELAY_KEY_HASH as string | undefined,
+      });
+    } else if (mode === 'simplex-agent' || (mode === undefined && agentReachable)) {
       // Voie A : le mode privé passe par l'agent SimpleX (relais SMP publics).
       // Priorité : mode explicite, sinon agent détecté automatiquement.
       wire = new AgentRelayWire(AGENT_URL);
