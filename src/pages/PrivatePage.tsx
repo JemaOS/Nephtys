@@ -23,6 +23,8 @@ import { getPrivateMessenger, getRelayUrl, getRelayLabel, setRelayUrl } from '@/
 import { getGroupMessenger } from '@/lib/relay/groupClient'
 import type { GroupRecord } from '@/lib/relay/groupMessenger'
 import { parseFileMessage } from '@/lib/relay/privateMessenger'
+import { parseStatus, encodeStatus, toRecord, type StatusPayload, type StatusRecord } from '@/lib/relay/statusStore'
+import { IdbStatusStore } from '@/lib/relay/statusIdbStore'
 import { encryptAndUploadFile, downloadAndDecryptFile, type FileDescriptor } from '@/lib/relay/fileTransfer'
 import type { PrivateConnectionRecord } from '@/lib/relay/connectionStore'
 
@@ -53,9 +55,6 @@ export function PrivatePage() {
   const [copied, setCopied] = useState(false)
   const [relayInput, setRelayInput] = useState('')
 
-  const unsubscribeRef = useRef<(() => void) | null>(null)
-  const rotationStopRef = useRef<(() => void) | null>(null)
-  const coverStopRef = useRef<(() => void) | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [uploading, setUploading] = useState(false)
 
@@ -71,6 +70,15 @@ export function PrivatePage() {
   const [groupError, setGroupError] = useState<string | null>(null)
   const groupUnsubRef = useRef<(() => void) | null>(null)
 
+  // Abonnements « monitor » : un seul par connexion (messages + statuts).
+  const activeRef = useRef<string | null>(null)
+  const monitorsRef = useRef<Map<string, () => void>>(new Map())
+
+  // Statuts privés (éphémères)
+  const statusStore = useMemo(() => new IdbStatusStore(), [])
+  const [statuses, setStatuses] = useState<StatusRecord[]>([])
+  const [statusDraft, setStatusDraft] = useState('')
+
   const refresh = useCallback(async () => {
     try {
       setConnections(await messenger.listConnections())
@@ -81,48 +89,97 @@ export function PrivatePage() {
 
   useEffect(() => {
     refresh()
-    return () => {
-      unsubscribeRef.current?.()
-      unsubscribeRef.current = null
-      rotationStopRef.current?.()
-      rotationStopRef.current = null
-      coverStopRef.current?.()
-      coverStopRef.current = null
-      groupUnsubRef.current?.()
-      groupUnsubRef.current = null
-    }
   }, [refresh])
+
+  const refreshStatuses = useCallback(async () => {
+    try {
+      setStatuses(await statusStore.active())
+    } catch (e) {
+      console.error('[status] load failed', e)
+    }
+  }, [statusStore])
+
+  const handleIncomingStatus = useCallback(
+    async (payload: StatusPayload, conversationId: string) => {
+      await statusStore.save(toRecord(payload, conversationId))
+      await refreshStatuses()
+    },
+    [statusStore, refreshStatuses],
+  )
+
+  const publishStatus = useCallback(async () => {
+    const text = statusDraft.trim()
+    if (!text) return
+    setStatusDraft('')
+    const conns = await messenger.listConnections()
+    const payload = encodeStatus(text)
+    for (const c of conns) {
+      try { await messenger.send(c.conversationId, payload) } catch { /* ignore */ }
+    }
+    const parsed = parseStatus(payload)
+    if (parsed) await statusStore.save(toRecord(parsed, 'moi'))
+    await refreshStatuses()
+  }, [statusDraft, messenger, statusStore, refreshStatuses])
 
   const openConnection = useCallback(
     async (conversationId: string) => {
-      unsubscribeRef.current?.()
-      unsubscribeRef.current = null
+      activeRef.current = conversationId
       setActive(conversationId)
       setMessages([])
       setError(null)
-
-      // Recharge l'historique local persistant avant d'écouter le direct.
+      // Recharge l'historique local persistant.
       try {
         const rows = await messenger.history(conversationId)
         setMessages(rows.map(r => ({ id: r.id, text: r.text, mine: r.mine })))
       } catch {
         // historique indisponible → on démarre vide
       }
-
-      unsubscribeRef.current = messenger.subscribe(conversationId, text => {
-        setMessages(prev => [...prev, { id: `in-${Date.now()}-${prev.length}`, text, mine: false }])
-      })
-
-      // Durcissement métadonnées : rotation périodique des files
-      // (anti-corrélation longue durée) + trafic de couverture (brouille le
-      // timing/volume). Les précédents jobs de la connexion active sont arrêtés.
-      rotationStopRef.current?.()
-      coverStopRef.current?.()
-      rotationStopRef.current = messenger.startQueueRotation(conversationId)
-      coverStopRef.current = messenger.startCoverTraffic(conversationId)
     },
     [messenger],
   )
+
+  // Un SEUL abonnement par connexion (messages + statuts), pour toutes les
+  // connexions (pas seulement l'active) afin de capter les statuts. La rotation
+  // de files et le trafic de couverture démarrent ici, une fois par connexion.
+  useEffect(() => {
+    const monitors = monitorsRef.current
+    const ids = new Set(connections.map(c => c.conversationId))
+
+    for (const c of connections) {
+      if (monitors.has(c.conversationId)) continue
+      const convId = c.conversationId
+      const unsubMsg = messenger.subscribe(convId, text => {
+        const status = parseStatus(text)
+        if (status) {
+          void handleIncomingStatus(status, convId)
+          return
+        }
+        if (activeRef.current === convId) {
+          setMessages(prev => [...prev, { id: `in-${Date.now()}-${prev.length}`, text, mine: false }])
+        }
+      })
+      const stopRot = messenger.startQueueRotation(convId)
+      const stopCover = messenger.startCoverTraffic(convId)
+      monitors.set(convId, () => { unsubMsg(); stopRot(); stopCover() })
+    }
+
+    for (const [id, stop] of monitors) {
+      if (!ids.has(id)) { stop(); monitors.delete(id) }
+    }
+  }, [connections, messenger, handleIncomingStatus])
+
+  useEffect(() => {
+    refreshStatuses()
+  }, [refreshStatuses])
+
+  useEffect(() => {
+    return () => {
+      for (const stop of monitorsRef.current.values()) stop()
+      monitorsRef.current.clear()
+      groupUnsubRef.current?.()
+      groupUnsubRef.current = null
+    }
+  }, [])
 
   const handleCreate = useCallback(async () => {
     setBusy(true)
@@ -292,10 +349,11 @@ export function PrivatePage() {
 
   const handleForget = useCallback(
     async (conversationId: string) => {
+      monitorsRef.current.get(conversationId)?.()
+      monitorsRef.current.delete(conversationId)
       await messenger.forget(conversationId)
       if (active === conversationId) {
-        unsubscribeRef.current?.()
-        unsubscribeRef.current = null
+        activeRef.current = null
         setActive(null)
       }
       await refresh()
@@ -529,6 +587,40 @@ export function PrivatePage() {
                 </div>
               </div>
             )}
+          </div>
+
+          {/* Statuts privés (éphémères) */}
+          <div className="space-y-2">
+            <h2 className="text-sm font-semibold text-text-primary">Statuts privés</h2>
+            <p className="text-[11px] text-text-tertiary">
+              Diffusés à vos connexions privées, chiffrés, expirés après 24 h.
+            </p>
+            <div className="flex items-center gap-2">
+              <input
+                value={statusDraft}
+                onChange={e => setStatusDraft(e.target.value)}
+                placeholder="Écrire un statut…"
+                className="flex-1 min-w-0 px-3 py-2 rounded-xl bg-bg-primary text-sm text-text-primary"
+              />
+              <button
+                type="button"
+                onClick={publishStatus}
+                disabled={!statusDraft.trim()}
+                className="px-3 py-2 rounded-xl bg-[#7578db] text-white text-sm font-medium disabled:opacity-50"
+              >
+                Publier
+              </button>
+            </div>
+            {statuses.length === 0 && <p className="text-xs text-text-tertiary">Aucun statut actif.</p>}
+            {statuses.map(s => (
+              <div key={s.id} className="rounded-xl bg-bg-surface px-3 py-2">
+                <div className="flex items-center justify-between text-[10px] text-text-tertiary">
+                  <span className="truncate">{s.conversationId === 'moi' ? 'moi' : s.conversationId}</span>
+                  <span>{Math.max(0, Math.round((s.expiresAt - Date.now()) / 3_600_000))} h restantes</span>
+                </div>
+                <p className="text-sm text-text-primary whitespace-pre-wrap break-words">{s.text}</p>
+              </div>
+            ))}
           </div>
         </div>
 
