@@ -117,22 +117,21 @@ export function setRelayUrl(url: string): void {
 export function getPrivateMessenger(): PrivateMessenger {
   if (!instance) {
     const mode = import.meta.env.VITE_RELAY_MODE as string | undefined;
+    const smpUrl =
+      (import.meta.env.VITE_SMP_RELAY_URL as string | undefined) ?? 'wss://78-232-3-78.sslip.io/';
+    const smpKeyHash = import.meta.env.VITE_SMP_RELAY_KEY_HASH as string | undefined;
     let wire: RelayWire;
-    if (mode === 'simplex-smp') {
-      // 100 % web : cœur SMP navigateur (simplex-web vendoré) -> relais SMP
-      // browser-profile (wss). Non validé (cf. smpRelayWire.ts).
-      wire = new SmpRelayWire({
-        url: (import.meta.env.VITE_SMP_RELAY_URL as string | undefined) ?? 'wss://smp.example.net/smp',
-        keyHash: import.meta.env.VITE_SMP_RELAY_KEY_HASH as string | undefined,
-      });
-    } else if (mode === 'simplex-agent' || (mode === undefined && agentReachable)) {
-      // Voie A : le mode privé passe par l'agent SimpleX (relais SMP publics).
-      // Priorité : mode explicite, sinon agent détecté automatiquement.
+    if (mode === 'supabase') {
+      wire = new SupabaseRelayWire();
+    } else if (mode === 'simplex-agent') {
       wire = new AgentRelayWire(AGENT_URL);
     } else if (hasCustomRelay()) {
       wire = new WebSocketWire(getRelayUrl());
     } else {
-      wire = new SupabaseRelayWire();
+      // DÉFAUT PROD : relais SimpleX SMP (browser-profile) — aucun réglage
+      // requis de la part de l'utilisateur. Surchargeable par VITE_RELAY_MODE /
+      // VITE_SMP_RELAY_URL, ou par un relais perso (localStorage).
+      wire = new SmpRelayWire({ url: smpUrl, keyHash: smpKeyHash });
     }
     instance = new PrivateMessenger(
       wire,
