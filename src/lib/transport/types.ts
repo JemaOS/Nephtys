@@ -41,6 +41,7 @@ export interface OutgoingMessage {
   fileSize?: number | null;
   isMediaEncrypted?: boolean;
   ephemeralDuration?: number | null;
+  ephemeralExpiresAt?: string | null;
   /** Aperçu de lien (JSON) — déjà chiffré/opaque pour le transport. */
   linkPreview?: unknown;
   /**

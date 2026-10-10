@@ -20,6 +20,7 @@ import {
   type EncryptedTextPayload,
 } from '@/lib/textEncryption'
 import { tryEncryptWithRatchet } from '@/lib/ratchet/chatIntegration'
+import { getMessagingTransport } from '@/lib/transport'
 import { downloadMedia } from '@/lib/downloadMedia'
 import { offlineStorage } from '@/lib/offlineStorage'
 import { useUserPresence } from '@/hooks/usePresence'
@@ -48,6 +49,11 @@ import { ChatHeader, CallLog, TimelineItem, MessageList } from './ChatViewPageCo
 // un message ne ré-avance plus la session (fin des OperationError / OPK
 // consommée au rechargement). À REVALIDER en test 2-appareils.
 const ENABLE_RATCHET_ON_SEND = true
+
+// Câblage du transport (phases 2/4) : envoi routé via MessagingTransport.
+// OFF par défaut — à activer (VITE_TRANSPORT_SEND=1) une fois la réception et
+// le backend cible validés. Repli direct Supabase en cas d'échec du transport.
+const USE_TRANSPORT_SEND = import.meta.env.VITE_TRANSPORT_SEND === '1'
 
 // Lazy-load des modals lourds. Ils ne sont jamais rendus au premier paint
 // (ouverts uniquement sur action utilisateur), donc ils n'ont pas besoin
@@ -1847,7 +1853,32 @@ export function ChatViewPage() {
         : null
 
       // Use optional chaining as required by SonarQube
-      let insertResult = await supabase.from('messages').insert(messageData).select()
+      let insertResult: { data: any; error: any }
+      if (USE_TRANSPORT_SEND) {
+        // Envoi via l'abstraction de transport (phases 2/4). Repli direct si échec.
+        try {
+          const transport = getMessagingTransport()
+          const res = await transport.sendMessage({
+            conversationId: conversationId!,
+            senderId: user.id,
+            content: messageData.content,
+            type: messageData.type,
+            replyToId: messageData.reply_to_id ?? null,
+            encryptionMetadata: messageData.encryption_metadata,
+            isTextEncrypted: messageData.is_text_encrypted,
+            senderSealed: messageData.sender_sealed,
+            linkPreview: messageData.link_preview,
+            ephemeralDuration: messageData.ephemeral_duration,
+            ephemeralExpiresAt: messageData.ephemeral_expires_at,
+          })
+          insertResult = { data: [res.raw], error: null }
+        } catch (transportErr) {
+          console.warn('[transport] envoi via transport échoué, repli direct:', transportErr)
+          insertResult = await supabase.from('messages').insert(messageData).select()
+        }
+      } else {
+        insertResult = await supabase.from('messages').insert(messageData).select()
+      }
 
       // Fallback : si la migration E2EE n'est pas appliquée (colonnes/tables
       // absentes), on réessaie en clair pour ne pas casser l'envoi.

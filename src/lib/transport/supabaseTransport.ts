@@ -61,6 +61,7 @@ export class SupabaseTransport implements MessagingTransport {
       payload.is_ephemeral = true;
       payload.ephemeral_duration = msg.ephemeralDuration;
     }
+    if (msg.ephemeralExpiresAt) payload.ephemeral_expires_at = msg.ephemeralExpiresAt;
 
     const { data, error } = await supabase.from('messages').insert(payload).select().single();
     if (error || !data) {
