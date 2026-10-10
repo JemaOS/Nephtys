@@ -58,12 +58,11 @@ export async function tryEncryptWithRatchet(
   conversationId: string,
   plaintext: string,
 ): Promise<{ content: string; encryptionMetadata: unknown } | null> {
-  // Réactivé (2026-10-10) : le sealed sender RÉSOUT l'expéditeur réel
-  // (`resolveSealedSenders`) AVANT le déchiffrement ratchet → les sessions sont
-  // retrouvées même avec sender_id NULL. Et l'init se fait désormais SANS
-  // one-time prekey (cf. service) → plus d'échec « one-time prekey
-  // indisponible ». Repli automatique sur X25519 si indisponible.
-  const RATCHET_SEND_ENABLED = true;
+  // KILL-SWITCH (réactivé le 2026-10-10 puis RE-désactivé le même jour) :
+  // l'envoi via ratchet cassait l'AFFICHAGE en production (« aucune session »,
+  // OperationError → conversations vides). On retombe sur X25519 (fiable),
+  // en attendant un ratchet validé par un test 2-utilisateurs RÉEL.
+  const RATCHET_SEND_ENABLED = false;
   if (!RATCHET_SEND_ENABLED) return null;
 
   try {
