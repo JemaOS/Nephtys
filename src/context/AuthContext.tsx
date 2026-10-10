@@ -7,6 +7,7 @@ import { User } from '@supabase/supabase-js'
 import { supabase, Profile } from '@/lib/supabase'
 import { initializePresence, cleanupPresence } from '@/hooks/usePresence'
 import { resolveMediaUrl } from '@/lib/mediaUrl'
+import { deleteMyMessages } from '@/lib/conversationService'
 import { initKeyPairOnSignin, initKeyPairOnSignup } from '@/lib/mediaEncryption'
 import { initX25519OnSignin, initX25519OnSignup } from '@/lib/e2eeX25519'
 import { initRatchetOnSignin, initRatchetOnSignup } from '@/lib/ratchet/keyStore'
@@ -522,11 +523,12 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
     
     if (isEphemeral && user) {
       try {
+        // Supprimer nos messages d'abord (identifiés via sealed — Phase 1c),
+        // AVANT de retirer nos appartenances (sinon plus de conversations).
+        await deleteMyMessages(user.id)
+
         // Supprimer toutes les conversations de l'utilisateur
         await supabase.from('conversation_members').delete().eq('user_id', user.id)
-        
-        // Supprimer tous les messages
-        await supabase.from('messages').delete().eq('sender_id', user.id)
         
         // Supprimer tous les contacts
         await supabase.from('contacts').delete().eq('user_id', user.id)

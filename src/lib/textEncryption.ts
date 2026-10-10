@@ -509,8 +509,8 @@ export async function decryptMessageRow<T extends {
  * remplace `sender_id` en place. Repli : si absent/illisible, `sender_id`
  * (encore peuplé en transition) est conservé.
  */
-async function resolveSealedSenders(
-  rows: Array<{ sender_id?: string; sender_sealed?: unknown }>,
+export async function resolveSealedSenders(
+  rows: Array<{ sender_id?: string | null; sender_sealed?: unknown }>,
   userId: string,
 ): Promise<void> {
   const sealedRows = rows.filter(

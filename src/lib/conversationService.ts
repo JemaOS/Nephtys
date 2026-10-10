@@ -1,7 +1,7 @@
 import { supabase, Conversation, Profile, Message } from '@/lib/supabase'
 import { ConversationWithDetails } from '@/pages/ChatsPageComponents'
 import { signFieldsBatch } from '@/lib/mediaUrl'
-import { decryptMessageRows } from '@/lib/textEncryption'
+import { decryptMessageRows, resolveSealedSenders } from '@/lib/textEncryption'
 
 export const fetchConversationMembers = async (userId: string) => {
   let memberData: any[] | null = null
@@ -67,14 +67,68 @@ export const fetchLastMessages = async (conversationIds: string[]) => {
 }
 
 export const fetchUnreadCounts = async (conversationIds: string[], userId: string) => {
-  return await supabase
+  // Phase 1c : l'expéditeur est aveuglé côté serveur (sender_id NULL). On ne
+  // peut donc plus filtrer « non-moi » en SQL : on récupère les messages non
+  // lus et on résout l'expéditeur côté client via les blobs sealed.
+  const { data, error } = await supabase
     .from('messages')
-    .select('conversation_id')
+    .select('id, conversation_id, sender_id, sender_sealed')
     .in('conversation_id', conversationIds)
-    .neq('sender_id', userId)
     .neq('status', 'read')
     .is('deleted_at', null)
     .or(`ephemeral_expires_at.is.null,ephemeral_expires_at.gt.${new Date().toISOString()}`)
+
+  if (error) return { data: null, error }
+
+  const rows = (data ?? []) as Array<{
+    id: string
+    conversation_id: string
+    sender_id: string | null
+    sender_sealed?: unknown
+  }>
+
+  await resolveSealedSenders(rows, userId)
+
+  // Non lus = messages REÇUS (non-moi).
+  const received = rows
+    .filter(r => r.sender_id !== userId)
+    .map(r => ({ conversation_id: r.conversation_id }))
+
+  return { data: received, error: null }
+}
+
+/**
+ * Phase 1c : supprime les messages de l'utilisateur. L'expéditeur étant aveuglé
+ * côté serveur, on identifie nos messages via les blobs sealed puis on supprime
+ * par identifiants. À appeler AVANT la suppression des clés/profil.
+ */
+export async function deleteMyMessages(userId: string): Promise<void> {
+  const { data: memberships } = await supabase
+    .from('conversation_members')
+    .select('conversation_id')
+    .eq('user_id', userId)
+
+  const convIds = [
+    ...new Set((memberships ?? []).map((m: { conversation_id: string }) => m.conversation_id)),
+  ]
+  if (convIds.length === 0) return
+
+  const { data } = await supabase
+    .from('messages')
+    .select('id, sender_id, sender_sealed')
+    .in('conversation_id', convIds)
+
+  const rows = (data ?? []) as Array<{
+    id: string
+    sender_id: string | null
+    sender_sealed?: unknown
+  }>
+
+  await resolveSealedSenders(rows, userId)
+  const ids = rows.filter(r => r.sender_id === userId).map(r => r.id)
+  if (ids.length === 0) return
+
+  await supabase.from('messages').delete().in('id', ids)
 }
 
 export interface BuildEnrichedConversationsParams {

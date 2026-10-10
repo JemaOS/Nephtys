@@ -10,6 +10,7 @@ import { supabase } from '@/lib/supabase'
 import { createDeviceLink, redeemDeviceLink } from '@/lib/deviceLink'
 import { MediaImg } from '@/components/MediaImg'
 import { invalidateMediaUrl } from '@/lib/mediaUrl'
+import { deleteMyMessages } from '@/lib/conversationService'
 import { LanguageSelector } from '@/components/LanguageSelector'
 import { useI18n } from '@/i18n'
 import {
@@ -567,7 +568,7 @@ export function SettingsPage() {
     const confirmation = prompt(t('deleteAccountPrompt', { word: t('deleteConfirmWord') }))
     if (confirmation !== t('deleteConfirmWord')) return
     try {
-      await supabase.from('messages').delete().eq('sender_id', user.id)
+      await deleteMyMessages(user.id)
       await supabase.from('conversation_members').delete().eq('user_id', user.id)
       await supabase.from('contacts').delete().eq('user_id', user.id)
       await supabase.from('profiles').delete().eq('id', user.id)
