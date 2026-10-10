@@ -24,6 +24,7 @@ import {
 } from './x3dh';
 import { base64ToBytes, bytesToBase64 } from './primitives';
 import { generateLocalRatchetKeys, type LocalRatchetKeys, type PeerBundle } from './service';
+import { clearUserSessions } from './sessionStore';
 
 const DB_NAME = 'nephtys-ratchet-keys';
 const STORE = 'keys';
@@ -168,12 +169,22 @@ export async function unlockRatchetKeys(userId: string, password: string): Promi
   if (!enc) throw new Error('Aucune clé ratchet chiffrée en DB pour cet utilisateur.');
   const keys = decodeKeys(await decryptPrivateKeyWithPassphrase(enc, password));
   await idbSet(userId, keys);
+  // Réconciliation : republie le bundle public pour qu'il corresponde EXACTEMENT
+  // aux clés locales (sinon un pair chiffre pour une clé publiée périmée →
+  // OperationError / « message indéchiffrable »). Best-effort.
+  try {
+    await publishKeys(userId, keys);
+  } catch {
+    // ignore
+  }
   return keys;
 }
 
 /** Réinitialise le matériel ratchet (perte des sessions/anciens messages). */
 export async function resetRatchetKeys(userId: string, password: string): Promise<LocalRatchetKeys> {
   await idbDelete(userId);
+  // Purge AUSSI les sessions (sinon sessions périmées → OperationError).
+  await clearUserSessions(userId);
   await supabase
     .from('one_time_prekeys')
     .delete()
@@ -238,7 +249,12 @@ export async function initRatchetOnSignin(userId: string, password: string): Pro
       try {
         await unlockRatchetKeys(userId, password);
       } catch {
-        console.warn('[E2EE][ratchet] Déchiffrement échoué (mot de passe ?)');
+        console.warn('[E2EE][ratchet] Déverrouillage échoué → régénération');
+        try {
+          await resetRatchetKeys(userId, password);
+        } catch (e) {
+          console.error('[E2EE][ratchet] régénération échouée', e);
+        }
       }
     } else {
       await setupRatchetKeys(userId, password);

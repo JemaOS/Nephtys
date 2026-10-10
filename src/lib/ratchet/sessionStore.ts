@@ -67,3 +67,32 @@ export async function deleteSession(userId: string, peerId: string): Promise<voi
     tx.onerror = () => resolve();
   });
 }
+
+/**
+ * Supprime TOUTES les sessions de l'utilisateur (toutes les conversations).
+ *
+ * Indispensable au « Réinitialiser le chiffrement » : sans cela, des sessions
+ * périmées restaient en IndexedDB et faisaient échouer le déchiffrement
+ * (OperationError / clé divergente).
+ */
+export async function clearUserSessions(userId: string): Promise<void> {
+  try {
+    const db = await openDb();
+    const keys = await new Promise<string[]>((resolve) => {
+      const tx = db.transaction(STORE, 'readonly');
+      const req = tx.objectStore(STORE).getAllKeys();
+      req.onsuccess = () => resolve((req.result as string[]) ?? []);
+      req.onerror = () => resolve([]);
+    });
+    const prefix = `${userId}|`;
+    await new Promise<void>((resolve) => {
+      const tx = db.transaction(STORE, 'readwrite');
+      const store = tx.objectStore(STORE);
+      for (const k of keys) if (k.startsWith(prefix)) store.delete(k);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    });
+  } catch {
+    // best-effort
+  }
+}

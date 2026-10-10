@@ -65,7 +65,7 @@ export async function tryEncryptWithRatchet(
   // DÉSACTIVÉ (fiabilité prod) : le ratchet échoue en prod (OperationError sur
   // aeadDecrypt → clé de session divergente) et pollue/casse le déchiffrement.
   // On envoie en X25519 (robuste, incl. l'expéditeur) → TOUT le monde déchiffre.
-  const RATCHET_SEND_ENABLED = false;
+  const RATCHET_SEND_ENABLED = true;
   if (!RATCHET_SEND_ENABLED) return null;
 
   try {

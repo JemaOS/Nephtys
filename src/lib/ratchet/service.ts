@@ -181,21 +181,16 @@ export async function decryptFromPeer(
   envelope: RatchetEnvelope,
   content: string,
 ): Promise<string> {
-  let session = await deps.loadSession(userId, sessionId);
-
-  if (envelope.type === 'ratchet-init' && !session) {
+  const buildReceiverSession = async (): Promise<SessionState | null> => {
     const localKeys = await deps.loadLocalKeys(userId);
-    if (!localKeys) throw new Error('Ratchet: clés locales absentes');
-    if (!envelope.identityKey || !envelope.ephemeralPublicKey) {
-      throw new Error('Ratchet: init incomplet');
-    }
+    if (!localKeys) return null;
+    if (!envelope.identityKey || !envelope.ephemeralPublicKey) return null;
 
     const oneTimePreKeyPublic = envelope.usedOneTimePreKey ?? null;
     let oneTimePreKey: RawKeyPair | null = null;
     if (oneTimePreKeyPublic) {
       const priv = localKeys.oneTimePreKeys[oneTimePreKeyPublic];
-      if (!priv) throw new Error('Ratchet: one-time prekey indisponible (déjà consommée ?)');
-      oneTimePreKey = { privateKey: priv, publicKey: oneTimePreKeyPublic };
+      if (priv) oneTimePreKey = { privateKey: priv, publicKey: oneTimePreKeyPublic };
     }
 
     const resp = await x3dhRespond(
@@ -204,23 +199,54 @@ export async function decryptFromPeer(
       oneTimePreKey,
       envelope.identityKey,
       envelope.ephemeralPublicKey,
-      envelope.mlKemCiphertext ?? null,
-      localKeys.mlKemKeyPair?.secretKey ?? null,
+      null, // ML-KEM désactivé (source d'OperationError) — X3DH classique + Double Ratchet
+      null,
     );
-    session = initReceiverSession(resp.rootKey, localKeys.signedPreKey, resp.associatedData);
+    return initReceiverSession(resp.rootKey, localKeys.signedPreKey, resp.associatedData);
+  };
+
+  let session = await deps.loadSession(userId, sessionId);
+
+  // (Re)construit la session destinaire depuis l'init si absente OU si l'init
+  // annonce une clé de ratchet différente de la session stockée (périmée).
+  if (envelope.type === 'ratchet-init') {
+    const stale = !!session && session.remoteRatchetPublicKey && session.remoteRatchetPublicKey !== envelope.ephemeralPublicKey;
+    if (!session || stale) {
+      const fresh = await buildReceiverSession();
+      if (fresh) session = fresh;
+    }
   }
 
   if (!session) {
     throw new Error('Ratchet: aucune session pour ce message');
   }
 
-  const text = await ratchetDecrypt(session, {
-    header: envelope.header,
-    ivB64: envelope.iv,
-    ctB64: content,
-  });
-  await deps.saveSession(userId, sessionId, session);
-  return text;
+  try {
+    const text = await ratchetDecrypt(session, {
+      header: envelope.header,
+      ivB64: envelope.iv,
+      ctB64: content,
+    });
+    await deps.saveSession(userId, sessionId, session);
+    return text;
+  } catch (e) {
+    // Sécurité fiabilité : si le déchiffrement échoue (session périmée /
+    // divergente) ET qu'un `ratchet-init` est fourni, on reconstruit la
+    // session depuis zéro (X3DH déterministe) et on réessaie une fois.
+    if (envelope.type === 'ratchet-init') {
+      const fresh = await buildReceiverSession();
+      if (fresh) {
+        const text = await ratchetDecrypt(fresh, {
+          header: envelope.header,
+          ivB64: envelope.iv,
+          ctB64: content,
+        });
+        await deps.saveSession(userId, sessionId, fresh);
+        return text;
+      }
+    }
+    throw e;
+  }
 }
 
 /** Indique si une enveloppe décrit un message de ratchet géré ici. */

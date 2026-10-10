@@ -195,9 +195,21 @@ export async function unlockX25519KeyPair(userId: string, password: string): Pro
     password,
   );
 
-  const publicKey = profile?.x25519_public_key && isX25519PublicKey(profile.x25519_public_key)
-    ? profile.x25519_public_key
-    : deriveX25519PublicKey(privateKey);
+  // ⚠️ On DÉRIVE toujours la publique de la privée locale : préférer la
+  // publique STOCKÉE provoquait un désaccord (pubkey publiée ≠ privée locale)
+  // → les pairs enveloppaient pour une clé que l'on ne pouvait pas ouvrir
+  // (cause du « message indéchiffrable » côté destinataire).
+  const publicKey = deriveX25519PublicKey(privateKey);
+  if (profile?.x25519_public_key !== publicKey) {
+    try {
+      await supabase
+        .from('profiles')
+        .update({ x25519_public_key: publicKey, x25519_public_key_updated_at: new Date().toISOString() })
+        .eq('id', userId);
+    } catch {
+      // best-effort
+    }
+  }
 
   const keyPair: X25519KeyPair = { publicKey, privateKey };
   await idbSet(idbKeyFor(userId), keyPair);
@@ -241,7 +253,16 @@ export async function initX25519OnSignin(userId: string, password: string): Prom
       try {
         await unlockX25519KeyPair(userId, password);
       } catch {
-        console.warn('[E2EE][x25519] Déchiffrement échoué (mot de passe ?)');
+        // Self-healing : si le blob chiffré ne se déchiffre pas (ancien format,
+        // mot de passe, autre appareil), on RÉGÉNÈRE une paire fraîche et on
+        // republie → clé locale et publiée cohérentes. Les anciens messages
+        // restent illisibles, mais les NOUVEAUX fonctionnent.
+        console.warn('[E2EE][x25519] Déverrouillage échoué → régénération');
+        try {
+          await resetX25519KeyPair(userId, password);
+        } catch (e) {
+          console.error('[E2EE][x25519] régénération échouée', e);
+        }
       }
     } else {
       await setupX25519KeyPair(userId, password);
