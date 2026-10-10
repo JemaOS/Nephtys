@@ -19,6 +19,7 @@ import {
   buildSenderSealed,
   UNDECRYPTABLE_PLACEHOLDER,
   getCachedDecryptedText,
+  cacheDecryptedText,
   type EncryptedTextPayload,
 } from '@/lib/textEncryption'
 import { tryEncryptWithRatchet } from '@/lib/ratchet/chatIntegration'
@@ -1973,6 +1974,9 @@ await decryptMessageRows(validData as any[], user.id)
         // Replace optimistic message with real one from DB, en conservant
         // le texte en clair côté client (jamais le ciphertext à l'écran).
         const settled: any = { ...(data[0] as Message), content: plaintext, sender_id: (data[0] as any).sender_id ?? user.id }
+        // Mémorise le clair de CE message envoyé (l'expéditeur ne peut pas
+        // re-déchiffrer ses propres messages ratchet → sans ça, 🔒 après reload).
+        cacheDecryptedText(data[0].id, plaintext)
         // Conserve l'aperçu en clair côté client (le serveur n'a que le ciphertext).
         if (!settled.link_preview && linkPreviewPayload) {
           settled.link_preview = JSON.stringify(linkPreviewPayload)
