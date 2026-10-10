@@ -24,6 +24,8 @@ import { getGroupMessenger } from '@/lib/relay/groupClient'
 import type { GroupRecord } from '@/lib/relay/groupMessenger'
 import { parseFileMessage } from '@/lib/relay/privateMessenger'
 import { parseStatus, encodeStatus, toRecord, type StatusPayload, type StatusRecord } from '@/lib/relay/statusStore'
+import { PrivateCall, type CallState, type PeerLike } from '@/lib/relay/privateCall'
+import { isCallSignal } from '@/lib/relay/callSignaling'
 import { IdbStatusStore } from '@/lib/relay/statusIdbStore'
 import { encryptAndUploadFile, downloadAndDecryptFile, type FileDescriptor } from '@/lib/relay/fileTransfer'
 import type { PrivateConnectionRecord } from '@/lib/relay/connectionStore'
@@ -78,6 +80,25 @@ export function PrivatePage() {
   const statusStore = useMemo(() => new IdbStatusStore(), [])
   const [statuses, setStatuses] = useState<StatusRecord[]>([])
   const [statusDraft, setStatusDraft] = useState('')
+
+  // Appel privé (signalisation WebRTC via le canal chiffré)
+  const [callState, setCallState] = useState<CallState>('idle')
+  const [callConv, setCallConv] = useState<string | null>(null)
+  const privateCall = useMemo(
+    () =>
+      new PrivateCall({
+        createPeer: () =>
+          typeof RTCPeerConnection !== 'undefined'
+            ? (new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }) as unknown as PeerLike)
+            : null,
+        send: (convId, text) => messenger.send(convId, text),
+        onState: (convId, state) => {
+          setCallConv(convId)
+          setCallState(state)
+        },
+      }),
+    [messenger],
+  )
 
   const refresh = useCallback(async () => {
     try {
@@ -149,6 +170,10 @@ export function PrivatePage() {
       if (monitors.has(c.conversationId)) continue
       const convId = c.conversationId
       const unsubMsg = messenger.subscribe(convId, text => {
+        if (isCallSignal(text)) {
+          void privateCall.handleSignal(convId, text)
+          return
+        }
         const status = parseStatus(text)
         if (status) {
           void handleIncomingStatus(status, convId)
@@ -166,7 +191,7 @@ export function PrivatePage() {
     for (const [id, stop] of monitors) {
       if (!ids.has(id)) { stop(); monitors.delete(id) }
     }
-  }, [connections, messenger, handleIncomingStatus])
+  }, [connections, messenger, handleIncomingStatus, privateCall])
 
   useEffect(() => {
     refreshStatuses()
@@ -397,6 +422,18 @@ export function PrivatePage() {
         </div>
 
         <div className="flex-1 overflow-auto p-4 space-y-4">
+          {callState !== 'idle' && callState !== 'ended' && (
+            <div className="rounded-xl bg-[#7578db]/20 border border-[#7578db]/40 px-4 py-2 flex items-center justify-between text-sm text-text-primary">
+              <span>Appel — {callState}{callConv ? ` (${callConv})` : ''}</span>
+              <button
+                type="button"
+                onClick={() => callConv && privateCall.end(callConv)}
+                className="px-2 py-1 rounded-lg bg-red-500/20 text-red-300 text-xs"
+              >
+                Raccrocher
+              </button>
+            </div>
+          )}
           <div className="flex items-start gap-2 rounded-xl bg-blue-500/10 border border-blue-500/20 p-3 text-xs text-text-secondary">
             <ShieldCheck size={16} className="text-blue-400 mt-0.5 shrink-0" />
             <p>
@@ -627,8 +664,16 @@ export function PrivatePage() {
         {/* Chat actif */}
         {active && (
           <div className="border-t border-bg-hover bg-bg-secondary">
-            <div className="px-4 py-2 text-xs text-text-secondary flex items-center gap-2">
-              <Lock size={13} className="text-[#7578db]" /> {active}
+            <div className="px-4 py-2 text-xs text-text-secondary flex items-center justify-between gap-2">
+              <span className="flex items-center gap-2"><Lock size={13} className="text-[#7578db]" /> {active}</span>
+              <button
+                type="button"
+                onClick={() => active && privateCall.start(active)}
+                className="px-2 py-1 rounded-lg bg-bg-hover text-text-primary text-xs"
+                aria-label="Appeler"
+              >
+                Appeler
+              </button>
             </div>
             <div className="h-56 overflow-auto px-4 py-2 space-y-2">
               {messages.length === 0 && (
