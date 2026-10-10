@@ -121,14 +121,132 @@ export function setRelayUrl(url: string): void {
   instance = null;
 }
 
+const TOR_ENABLED_KEY = 'nephtys_tor_enabled';
+const ONION_URL_KEY = 'nephtys_smp_onion_url';
+
+/**
+ * Vrai si le routage Tor est activé (préférence locale, jamais envoyée au
+ * serveur). Quand Tor est actif et qu'une adresse `.onion` est configurée, le
+ * mode privé s'y connecte et **ne retombe pas** sur un relais clearnet : un
+ * repli exposerait l'IP, ce qui annulerait l'intérêt de Tor.
+ */
+export function isTorRelayEnabled(): boolean {
+  try {
+    return localStorage.getItem(TOR_ENABLED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+/** Active/désactive le routage Tor. Prend effet à la prochaine connexion. */
+export function setTorRelayEnabled(enabled: boolean): void {
+  try {
+    if (enabled) localStorage.setItem(TOR_ENABLED_KEY, '1');
+    else localStorage.removeItem(TOR_ENABLED_KEY);
+  } catch {
+    // localStorage indisponible
+  }
+  instance = null;
+}
+
+/**
+ * Normalise une adresse de relais Tor en URL WebSocket `ws://…`.
+ * Accepte `x.onion`, `http(s)://x.onion`, `ws(s)://x.onion`, avec chemin
+ * optionnel. Renvoie '' si l'entrée n'est pas une adresse `.onion` valide.
+ */
+export function normalizeOnionWsUrl(raw: string): string {
+  const value = raw.trim();
+  if (!value) return '';
+  const stripped = value.replace(/^[a-z]+:\/\//i, '');
+  const host = stripped.split('/')[0];
+  if (!/^[a-z2-7]{16,56}\.onion(?::\d+)?$/i.test(host)) return '';
+  return `ws://${stripped}`;
+}
+
+/**
+ * Adresse `.onion` du relais Tor (normalisée en `ws://…`). Priorité : override
+ * local (saisi dans l'UI) puis `VITE_SMP_RELAY_ONION_URL`. Vide si aucune
+ * adresse Tor n'est configurée.
+ */
+export function getOnionRelayUrl(): string {
+  try {
+    const override = localStorage.getItem(ONION_URL_KEY);
+    if (override) return normalizeOnionWsUrl(override);
+  } catch {
+    // localStorage indisponible
+  }
+  const envUrl = import.meta.env.VITE_SMP_RELAY_ONION_URL as string | undefined;
+  return envUrl ? normalizeOnionWsUrl(envUrl) : '';
+}
+
+/**
+ * Définit l'adresse `.onion` du relais Tor ('' = aucune). La valeur est
+ * normalisée au moment de la lecture ; prise en compte à la prochaine connexion.
+ */
+export function setOnionRelayUrl(url: string): void {
+  try {
+    const trimmed = url.trim();
+    if (trimmed) localStorage.setItem(ONION_URL_KEY, trimmed);
+    else localStorage.removeItem(ONION_URL_KEY);
+  } catch {
+    // localStorage indisponible
+  }
+  instance = null;
+}
+
+/**
+ * URL de la passerelle Tor hébergée sur l'infra (WebSocket « clearnet » qui
+ * relaie la session vers le relais distant À TRAVERS le réseau Tor). C'est ce
+ * qui rend le mode Tor utilisable depuis un navigateur ordinaire, sans Tor
+ * Browser ni réglage : le navigateur ne parle qu'à cette passerelle.
+ *
+ * Priorité : `VITE_TOR_GATEWAY_URL` puis dérivation depuis `VITE_SMP_RELAY_URL`
+ * (chemin `/tor`). Ex. `wss://relay.exemple/` → `wss://relay.exemple/tor`.
+ */
+export function getTorGatewayUrl(): string {
+  const envGateway = import.meta.env.VITE_TOR_GATEWAY_URL as string | undefined;
+  if (envGateway?.trim()) return envGateway.trim();
+  const relay =
+    (import.meta.env.VITE_SMP_RELAY_URL as string | undefined) ?? 'wss://78-232-3-78.sslip.io/';
+  try {
+    const u = new URL(relay);
+    u.pathname = '/tor';
+    u.search = '';
+    u.hash = '';
+    return u.toString();
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Point d'entrée Tor effectif du mode privé. Priorité à une adresse `.onion`
+ * explicitement fournie (parcours Tor Browser) puis à la passerelle Tor. Vide
+ * si l'infra n'expose aucun point d'entrée Tor.
+ */
+export function getTorRelayUrl(): string {
+  return getOnionRelayUrl() || getTorGatewayUrl();
+}
+
+/** Vrai si un point d'entrée Tor est disponible (`.onion` ou passerelle). */
+export function isTorAvailable(): boolean {
+  return Boolean(getTorRelayUrl());
+}
+
 export function getPrivateMessenger(): PrivateMessenger {
   if (!instance) {
     const mode = import.meta.env.VITE_RELAY_MODE as string | undefined;
     const smpUrl =
       (import.meta.env.VITE_SMP_RELAY_URL as string | undefined) ?? 'wss://78-232-3-78.sslip.io/';
     const smpKeyHash = import.meta.env.VITE_SMP_RELAY_KEY_HASH as string | undefined;
+    const torUrl = getTorRelayUrl();
     let wire: RelayWire;
-    if (mode === 'simplex-smp') {
+    if (isTorRelayEnabled() && torUrl) {
+      // Tor activé : transport via le point d'entrée Tor (passerelle du VPS ou
+      // `.onion`), SANS repli clearnet (fail-closed : l'échec n'expose jamais
+      // l'IP en clair). Un seul clic suffit, aucun réglage côté utilisateur.
+      wire = new SmpRelayWire({ url: torUrl });
+    } else if (mode === 'simplex-smp') {
       // Relais SimpleX SMP (browser-profile) — OPTION EXPLICITE.
       // ⚠️ WIP : l'adaptateur SmpRelayWire ne couvre pas encore le modèle de
       // connexion à deux files du mode privé ; à finaliser avant usage prod.

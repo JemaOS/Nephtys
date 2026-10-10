@@ -21,6 +21,11 @@ import {
   type TOTPFactor,
   type EnrollmentData
 } from '@/lib/twoFactorAuth'
+import {
+  isTorRelayEnabled,
+  setTorRelayEnabled,
+  isTorAvailable
+} from '@/lib/relay/relayClient'
 
 // Type for storage/media type filter
 type StorageType = 'all' | 'photos' | 'videos' | 'files' | 'audio';
@@ -151,6 +156,8 @@ export function SettingsPage() {
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const [showLastSeen, setShowLastSeen] = useState(true)
   const [showProfilePhoto, setShowProfilePhoto] = useState(true)
+  const [torEnabled, setTorEnabled] = useState<boolean>(() => isTorRelayEnabled())
+  const [torAvailable] = useState<boolean>(() => isTorAvailable())
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false)
   const [twoFactorFactors, setTwoFactorFactors] = useState<TOTPFactor[]>([])
   const [twoFactorLoading, setTwoFactorLoading] = useState(false)
@@ -479,6 +486,14 @@ export function SettingsPage() {
   useEffect(() => {
     setDiscoverable((profile as any)?.discoverable ?? true)
   }, [profile])
+
+  // Routage Tor : bascule une préférence locale (aucun envoi serveur). Le mode
+  // privé se reconnecte via la passerelle Tor du VPS à la prochaine connexion.
+  const handleToggleTor = () => {
+    const next = !torEnabled
+    setTorEnabled(next)
+    setTorRelayEnabled(next)
+  }
 
   const handleCreateDeviceLink = async () => {
     if (!user) return
@@ -983,6 +998,25 @@ export function SettingsPage() {
             <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${showProfilePhoto ? 'right-1' : 'left-1'}`}></div>
           </button>
         </div>
+      </div>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="pr-4">
+            <div className="text-text-primary">{t('torLabel')}</div>
+            <div className="text-sm text-text-secondary">{t('torDesc')}</div>
+          </div>
+          <button
+            onClick={handleToggleTor}
+            disabled={!torAvailable}
+            className={`w-12 h-6 rounded-full relative shrink-0 transition-colors ${torEnabled ? 'bg-accent' : 'bg-[#8696a0]'} ${torAvailable ? '' : 'opacity-50 cursor-not-allowed'}`}
+            aria-label={t('torLabel')}
+            aria-pressed={torEnabled}
+          >
+            <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${torEnabled ? 'right-1' : 'left-1'}`}></div>
+          </button>
+        </div>
+        {torEnabled && <p className="text-xs text-text-secondary px-1">{t('torActiveHint')}</p>}
+        {!torAvailable && <p className="text-xs text-[#e0a800] px-1">{t('torUnavailableHint')}</p>}
       </div>
     </div>
   )
