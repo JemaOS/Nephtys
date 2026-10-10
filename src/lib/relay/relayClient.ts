@@ -17,6 +17,50 @@ import { IdbHistoryStore } from './historyStore';
 
 let instance: PrivateMessenger | null = null;
 
+/** Vrai si un agent SimpleX local a été détecté (mode privé → SMP SimpleX). */
+let agentReachable = false;
+
+const AGENT_URL =
+  (import.meta.env.VITE_SMP_AGENT_URL as string | undefined) ?? 'ws://127.0.0.1:5225';
+
+/**
+ * Tente de joindre un agent SimpleX local (transparent, sans config). Résout
+ * `true` si une connexion WebSocket s'ouvre. Best-effort : échec silencieux.
+ * Note : en prod `https`, `ws://localhost` est bloqué par le navigateur
+ * (mixed content) → l'agent doit être en `wss://` ou l'app servie en http.
+ */
+export async function probeLocalAgent(url: string = AGENT_URL): Promise<boolean> {
+  return await new Promise<boolean>(resolve => {
+    try {
+      const Ws = (globalThis as { WebSocket?: typeof WebSocket }).WebSocket;
+      if (!Ws) return resolve(false);
+      const ws = new Ws(url);
+      let settled = false;
+      const done = (v: boolean): void => {
+        if (settled) return;
+        settled = true;
+        try { ws.close(); } catch { /* ignore */ }
+        resolve(v);
+      };
+      const timer = setTimeout(() => done(false), 1200);
+      ws.onopen = () => {
+        clearTimeout(timer);
+        agentReachable = true;
+        done(true);
+      };
+      ws.onerror = () => {
+        clearTimeout(timer);
+        done(false);
+      };
+    } catch {
+      resolve(false);
+    }
+  });
+}
+
+// Détection en tâche de fond au chargement (n'affecte pas le mode par défaut).
+void probeLocalAgent();
+
 const RELAY_OVERRIDE_KEY = 'nephtys_relay_url';
 
 /**
@@ -73,12 +117,10 @@ export function getPrivateMessenger(): PrivateMessenger {
   if (!instance) {
     const mode = import.meta.env.VITE_RELAY_MODE as string | undefined;
     let wire: RelayWire;
-    if (mode === 'simplex-agent') {
+    if (mode === 'simplex-agent' || (mode === undefined && agentReachable)) {
       // Voie A : le mode privé passe par l'agent SimpleX (relais SMP publics).
-      // Prérequis : l'agent `simplex-chat` doit être en écoute (VITE_SMP_AGENT_URL).
-      wire = new AgentRelayWire(
-        (import.meta.env.VITE_SMP_AGENT_URL as string | undefined) ?? 'ws://127.0.0.1:5225',
-      );
+      // Priorité : mode explicite, sinon agent détecté automatiquement.
+      wire = new AgentRelayWire(AGENT_URL);
     } else if (hasCustomRelay()) {
       wire = new WebSocketWire(getRelayUrl());
     } else {
