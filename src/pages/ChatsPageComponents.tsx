@@ -2,6 +2,7 @@ import React from 'react'
 import { Virtuoso } from 'react-virtuoso'
 import { ArrowLeft, Pin, Volume2, VolumeX, Archive, Trash2, Plus, UserPlus, Users, MoreVertical, Check, Search, MessageCircle, BellOff } from 'lucide-react'
 import { Conversation, Profile, Message } from '@/lib/supabase'
+import { getCachedDecryptedText } from '@/lib/textEncryption'
 import { prefetchChatView } from '@/lib/routePrefetch'
 import { MediaImg } from '@/components/MediaImg'
 import { useI18n, tStatic } from '@/i18n'
@@ -86,10 +87,13 @@ const getTextPreview = (msg: Message): string => {
 export const getLastMessagePreview = (lastMessage: Message | undefined): string => {
   if (!lastMessage) return tStatic('noMessages')
 
+  // Si ce dernier message a DÉJÀ été déchiffré (cache clair), on affiche le
+  // clair même si la ligne DB ne portait que le ciphertext/placeholder.
+  const cached = lastMessage.type === 'text' ? getCachedDecryptedText(lastMessage.id) : undefined
   const { type, content } = lastMessage
 
-  if (type === 'text' && content) {
-    return getTextPreview(lastMessage)
+  if (type === 'text' && (cached || content)) {
+    return cached ?? getTextPreview(lastMessage)
   }
 
   if (type === 'image') return tStatic('photoPreview')
