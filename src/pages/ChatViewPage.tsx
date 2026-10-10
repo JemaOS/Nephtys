@@ -62,6 +62,42 @@ const USE_TRANSPORT_SEND = import.meta.env.VITE_TRANSPORT_SEND === '1'
 // pas recalculés côté client.
 const BLIND_SENDER = true
 
+// Envoi d'un message (média/audio/autre) via le transport quand activé,
+// sinon insert Supabase direct (mono-ligne). Repli direct si le transport échoue.
+async function insertMessageSingle(messageData: Record<string, unknown>): Promise<{ data: any; error: any }> {
+  if (USE_TRANSPORT_SEND) {
+    try {
+      const transport = getMessagingTransport()
+      const res = await transport.sendMessage({
+        conversationId: String(messageData.conversation_id ?? ''),
+        senderId: String(messageData.sender_id ?? ''),
+        content: String(messageData.content ?? ''),
+        type: String(messageData.type ?? 'text'),
+        replyToId: (messageData.reply_to_id as string) ?? null,
+        encryptionMetadata: messageData.encryption_metadata,
+        isTextEncrypted: messageData.is_text_encrypted as boolean | undefined,
+        senderSealed: (messageData.sender_sealed as string[] | null) ?? null,
+        linkPreview: messageData.link_preview,
+        mediaUrl: (messageData.media_url as string) ?? null,
+        mediaType: (messageData.media_type as string) ?? null,
+        mediaThumbnail: (messageData.media_thumbnail as string) ?? null,
+        mediaWidth: (messageData.media_width as number) ?? null,
+        mediaHeight: (messageData.media_height as number) ?? null,
+        fileUrl: (messageData.file_url as string) ?? null,
+        fileName: (messageData.file_name as string) ?? null,
+        fileSize: (messageData.file_size as number) ?? null,
+        isMediaEncrypted: messageData.is_media_encrypted as boolean | undefined,
+        ephemeralDuration: (messageData.ephemeral_duration as number) ?? null,
+        ephemeralExpiresAt: (messageData.ephemeral_expires_at as string) ?? null,
+      })
+      return { data: res.raw, error: null }
+    } catch (e) {
+      console.warn('[transport] envoi échoué, repli direct:', e)
+    }
+  }
+  return await supabase.from('messages').insert(messageData).select().single()
+}
+
 // Lazy-load des modals lourds. Ils ne sont jamais rendus au premier paint
 // (ouverts uniquement sur action utilisateur), donc ils n'ont pas besoin
 // d'être dans le chunk principal de ChatViewPage. Avant : chunk de ~1 MB
@@ -920,12 +956,12 @@ export function ChatViewPage() {
     
     // WHATSAPP-LEVEL STABILITY: Single consolidated channel
     // Reduces WebSocket connections and prevents connection thrashing
-    const mainChannel = supabase
-      .channel(`main:${conversationId}`, {
-        config: {
-          broadcast: { self: false },
-          presence: { key: user?.id || 'anonymous' }
-        }
+    // Phase 2 : DEUX canaux séparés — « messagerie » d'un côté (prérequis pour
+    // router la réception via un transport décentralisé), « application » de
+    // l'autre (appels, profils, appartenance, présence). Comportement identique.
+    const msgChannel = supabase
+      .channel(`msg:${conversationId}`, {
+        config: { broadcast: { self: false } }
       })
       // Messages INSERT
       .on('postgres_changes', {
@@ -938,8 +974,6 @@ export function ChatViewPage() {
         filter: `conversation_id=eq.${conversationId}`
       }, (payload) => {
         const updatedMsg = payload.new as Message
-        
-        // Check if message was soft-deleted (has deleted_at)
         if (updatedMsg.deleted_at) {
           setMessages(prev => removeMessageFromList(prev, updatedMsg.id))
         } else {
@@ -956,38 +990,6 @@ export function ChatViewPage() {
           setMessages(prev => removeMessageFromList(prev, deletedId))
         }
       })
-      // Call logs changes
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'call_logs',
-        filter: `conversation_id=eq.${conversationId}`
-      }, () => {
-        loadCallLogs()
-      })
-      // Profile updates
-      .on('postgres_changes', {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'profiles'
-      }, (payload) => {
-        if (otherUser && payload.new.id === otherUser.id) {
-          setOtherUser(payload.new as Profile)
-        }
-        // Don't reload conversation on every profile update - too expensive
-        // loadConversation()
-      })
-      // Member left
-      .on('postgres_changes', {
-        event: 'DELETE',
-        schema: 'public',
-        table: 'conversation_members',
-        filter: `conversation_id=eq.${conversationId}`
-      }, (payload) => {
-        if (payload.old && payload.old.user_id === user?.id) {
-          navigate('/chats')
-        }
-      })
       // Broadcast for instant message delivery
       .on('broadcast', { event: 'message' }, ({ payload }) => {
         if (payload?.message) {
@@ -995,7 +997,39 @@ export function ChatViewPage() {
         }
       })
       .subscribe((status) => {
-        console.log(`[realtime][chat:${conversationId}] statut:`, status)
+        console.log(`[realtime][msg:${conversationId}] statut:`, status)
+      })
+
+    const appChannel = supabase
+      .channel(`app:${conversationId}`, {
+        config: { presence: { key: user?.id || 'anonymous' } }
+      })
+      // Call logs changes
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'call_logs',
+        filter: `conversation_id=eq.${conversationId}`
+      }, () => {
+        loadCallLogs()
+      })
+      // Profile updates
+      .on('postgres_changes', {
+        event: 'UPDATE', schema: 'public', table: 'profiles'
+      }, (payload) => {
+        if (otherUser && payload.new.id === otherUser.id) {
+          setOtherUser(payload.new as Profile)
+        }
+      })
+      // Member left
+      .on('postgres_changes', {
+        event: 'DELETE', schema: 'public', table: 'conversation_members',
+        filter: `conversation_id=eq.${conversationId}`
+      }, (payload) => {
+        if (payload.old && payload.old.user_id === user?.id) {
+          navigate('/chats')
+        }
+      })
+      .subscribe((status) => {
+        console.log(`[realtime][app:${conversationId}] statut:`, status)
       })
 
     // Handle visibility change - WHATSAPP STYLE: NO reload on visibility change
@@ -1053,7 +1087,8 @@ export function ChatViewPage() {
       clearInterval(fallbackPoll)
       if (reconnectTimeout) clearTimeout(reconnectTimeout)
       try {
-        supabase.removeChannel(mainChannel)
+        supabase.removeChannel(msgChannel)
+        supabase.removeChannel(appChannel)
       } catch {
         // Ignore channel removal errors
       }
@@ -2166,7 +2201,7 @@ export function ChatViewPage() {
             : null
         }
         
-        let insertResult = await supabase.from('messages').insert(messageData).select().single()
+        let insertResult = await insertMessageSingle(messageData)
         if (insertResult.error?.message?.includes('is_media_encrypted')) {
           delete messageData.is_media_encrypted
           insertResult = await supabase.from('messages').insert(messageData).select().single()
@@ -2278,7 +2313,7 @@ export function ChatViewPage() {
       setReplyToMessage(null)
       
       // Insert into database
-      const { data: insertedMessage, error } = await supabase.from('messages').insert(messageData).select().single()
+      const { data: insertedMessage, error } = await insertMessageSingle(messageData)
       
       if (!error && insertedMessage) {
         // Replace optimistic message with real one
@@ -3331,7 +3366,7 @@ export function ChatViewPage() {
                   : null
               }
               
-              const { data, error } = await supabase.from('messages').insert(messageData).select().single()
+              const { data, error } = await insertMessageSingle(messageData)
               
               if (!error && data) {
                 setMessages(prev => prev.map(m => m.id === tempId ? { ...data, sender_id: data.sender_id ?? user.id } : m))
