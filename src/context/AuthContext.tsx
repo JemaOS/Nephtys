@@ -349,14 +349,17 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
           console.error('Session error:', sessionError)
           throw new Error('❌ Erreur de session\n\nImpossible de vous connecter.')
         }
-        // Restaurer (ou créer) la clé E2EE silencieusement avec le password
+        // Restaurer (ou créer) la clé E2EE AVEC le password. On ATTEND la
+        // restauration (multi-appareil) : sinon les conversations se chargent
+        // avant que les clés (ratchet) soient en IndexedDB → « clés locales
+        // absentes » → 🔒. Les fonctions ne lèvent jamais (try/catch interne).
         const userId = data.data.session.user?.id
         if (userId) {
-          initKeyPairOnSignin(userId, password)
-          // Paire X25519 (utilisée en priorité par le chiffrement du texte)
-          initX25519OnSignin(userId, password)
-          // Matériel X3DH/Double Ratchet (forward secrecy, conversations directes)
-          initRatchetOnSignin(userId, password)
+          await Promise.all([
+            initKeyPairOnSignin(userId, password),
+            initX25519OnSignin(userId, password),
+            initRatchetOnSignin(userId, password),
+          ])
         }
       } else {
         throw new Error(tStatic('authNoSession'))

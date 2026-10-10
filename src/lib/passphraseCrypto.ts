@@ -34,14 +34,23 @@ export function base64ToBuf(b64: string): ArrayBuffer {
   return bytes.buffer;
 }
 
+function encodePassphrase(passphrase: string, form: 'NFC' | 'NFD' | 'raw'): Uint8Array {
+  const enc = new TextEncoder();
+  try {
+    return enc.encode(form === 'raw' ? passphrase : passphrase.normalize(form));
+  } catch {
+    return enc.encode(passphrase);
+  }
+}
+
 export async function deriveKeyFromPassphrase(
   passphrase: string,
   salt: Uint8Array,
+  form: 'NFC' | 'NFD' | 'raw' = 'NFC',
 ): Promise<CryptoKey> {
-  const enc = new TextEncoder();
   const baseKey = await crypto.subtle.importKey(
     'raw',
-    enc.encode(passphrase),
+    encodePassphrase(passphrase, form),
     { name: 'PBKDF2' },
     false,
     ['deriveKey'],
@@ -82,7 +91,11 @@ export async function encryptPrivateKeyRaw(
   };
 }
 
-/** Déchiffre (throws si passphrase incorrecte — AES-GCM lève une erreur). */
+/** Déchiffre (throws si passphrase incorrecte — AES-GCM lève une erreur).
+ *  Multi-appareil : on essaie NFC, puis NFD, puis la forme brute, car un même
+ *  mot de passe tapé sur Windows (NFC) vs macOS/iOS (NFD) produit des octets
+ *  différents → clé PBKDF2 différente → échec de déchiffrement sur l'autre
+ *  appareil. Ces essais rendent la restauration robuste quel que soit l'appareil. */
 export async function decryptPrivateKeyRaw(
   encrypted: EncryptedPrivateKey,
   passphrase: string,
@@ -90,11 +103,20 @@ export async function decryptPrivateKeyRaw(
   const salt = new Uint8Array(base64ToBuf(encrypted.salt));
   const iv = new Uint8Array(base64ToBuf(encrypted.iv));
 
-  const aesKey = await deriveKeyFromPassphrase(passphrase, salt);
-  const decrypted = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv: iv as BufferSource },
-    aesKey,
-    base64ToBuf(encrypted.encryptedPrivateKey),
-  );
-  return bufToBase64(decrypted);
+  const forms: Array<'NFC' | 'NFD' | 'raw'> = ['NFC', 'NFD', 'raw'];
+  let lastErr: unknown;
+  for (const form of forms) {
+    try {
+      const aesKey = await deriveKeyFromPassphrase(passphrase, salt, form);
+      const decrypted = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: iv as BufferSource },
+        aesKey,
+        base64ToBuf(encrypted.encryptedPrivateKey),
+      );
+      return bufToBase64(decrypted);
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error('decrypt failed');
 }
