@@ -109,12 +109,13 @@ async function publishKeys(userId: string, keys: LocalRatchetKeys): Promise<void
       ratchet_signing_key: keys.signingKeyPair.publicKey,
       ratchet_signed_prekey: keys.signedPreKey.publicKey,
       ratchet_signed_prekey_sig: signPreKey(keys.signingKeyPair.privateKey, keys.signedPreKey.publicKey),
+      ml_kem_public_key: keys.mlKemKeyPair?.publicKey ?? null,
       ratchet_updated_at: new Date().toISOString(),
     })
     .eq('id', userId);
   if (error) {
-    if (error.message?.includes('ratchet_')) {
-      throw new Error('Migration manquante : applique 20261010_ratchet_prekeys.sql');
+    if (error.message?.includes('ratchet_') || error.message?.includes('ml_kem')) {
+      throw new Error('Migration manquante : applique 20261010_ratchet_prekeys.sql / ml_kem');
     }
     throw error;
   }
@@ -189,7 +190,7 @@ export async function resetRatchetKeys(userId: string, password: string): Promis
 export async function loadPeerBundle(peerId: string): Promise<PeerBundle | null> {
   const { data: profile, error } = await supabase
     .from('profiles')
-    .select('ratchet_identity_key, ratchet_signing_key, ratchet_signed_prekey, ratchet_signed_prekey_sig')
+    .select('ratchet_identity_key, ratchet_signing_key, ratchet_signed_prekey, ratchet_signed_prekey_sig, ml_kem_public_key')
     .eq('id', peerId)
     .maybeSingle();
   if (error || !profile?.ratchet_identity_key) return null;
@@ -208,6 +209,7 @@ export async function loadPeerBundle(peerId: string): Promise<PeerBundle | null>
     signedPreKey: profile.ratchet_signed_prekey,
     signedPreKeySignature: profile.ratchet_signed_prekey_sig,
     oneTimePreKey: opk?.public_key ?? null,
+    mlKemPublicKey: (profile as { ml_kem_public_key?: string | null }).ml_kem_public_key ?? null,
   };
 }
 

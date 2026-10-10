@@ -15,6 +15,7 @@
  */
 
 import { ed25519 } from '@noble/curves/ed25519.js';
+import { mlKemEncapsulate, mlKemDecapsulate } from './pqKem';
 import {
   base64ToBytes,
   bytesToBase64,
@@ -36,6 +37,8 @@ export interface PreKeyBundle {
   signedPreKey: string;           // X25519 pub
   signedPreKeySignature: string;  // Ed25519 signature (base64) sur signedPreKey
   oneTimePreKey?: string | null;  // X25519 pub (usage unique)
+  /** Clé publique ML-KEM-768 (post-quantique). Optionnelle (rétro-compat). */
+  mlKemPublicKey?: string | null;
 }
 
 export interface X3DHInitResult {
@@ -46,6 +49,8 @@ export interface X3DHInitResult {
   /** À transmettre au destinataire dans le message initial. */
   ephemeralPublicKey: string;
   usedOneTimePreKey: string | null;
+  /** Ciphertext ML-KEM à transmettre au destinataire (post-quantique). */
+  mlKemCiphertext?: string | null;
 }
 
 export function generateIdentityKeyPair(): IdentityKeyPair {
@@ -113,7 +118,22 @@ export async function x3dhInitiate(
     ? dh(ratchetKeyPair.privateKey, bundle.oneTimePreKey)
     : new Uint8Array(0);
 
-  const rootKey = await hkdf(concat(dh1, dh2, dh3, dh4), new Uint8Array(32), kdfInfo(), 32);
+  // Hybride post-quantique : si le destinataire publie une clé ML-KEM, on
+  // encapsule un secret supplémentaire (résistant au quantique).
+  let mlKemCiphertext: string | null = null;
+  let pqSecret = new Uint8Array(0);
+  if (bundle.mlKemPublicKey) {
+    const enc = mlKemEncapsulate(bundle.mlKemPublicKey);
+    mlKemCiphertext = enc.cipherText;
+    pqSecret = base64ToBytes(enc.sharedSecret);
+  }
+
+  const rootKey = await hkdf(
+    concat(dh1, dh2, dh3, dh4, pqSecret),
+    new Uint8Array(32),
+    kdfInfo(),
+    32,
+  );
 
   return {
     rootKey,
@@ -121,6 +141,7 @@ export async function x3dhInitiate(
     ratchetKeyPair,
     ephemeralPublicKey: ratchetKeyPair.publicKey,
     usedOneTimePreKey: bundle.oneTimePreKey ?? null,
+    mlKemCiphertext,
   };
 }
 
@@ -134,6 +155,8 @@ export async function x3dhRespond(
   myOneTimePreKey: RawKeyPair | null,
   initiatorIdentityKey: string,
   initiatorEphemeralKey: string,
+  initiatorMlKemCiphertext: string | null = null,
+  myMlKemSecretKey: string | null = null,
 ): Promise<{ rootKey: Uint8Array; associatedData: Uint8Array }> {
   const dh1 = dh(mySignedPreKey.privateKey, initiatorIdentityKey);
   const dh2 = dh(myIdentity.privateKey, initiatorEphemeralKey);
@@ -142,7 +165,18 @@ export async function x3dhRespond(
     ? dh(myOneTimePreKey.privateKey, initiatorEphemeralKey)
     : new Uint8Array(0);
 
-  const rootKey = await hkdf(concat(dh1, dh2, dh3, dh4), new Uint8Array(32), kdfInfo(), 32);
+  // Hybride post-quantique (miroir exact de l'initiateur).
+  let pqSecret = new Uint8Array(0);
+  if (initiatorMlKemCiphertext && myMlKemSecretKey) {
+    pqSecret = base64ToBytes(mlKemDecapsulate(initiatorMlKemCiphertext, myMlKemSecretKey));
+  }
+
+  const rootKey = await hkdf(
+    concat(dh1, dh2, dh3, dh4, pqSecret),
+    new Uint8Array(32),
+    kdfInfo(),
+    32,
+  );
 
   return {
     rootKey,

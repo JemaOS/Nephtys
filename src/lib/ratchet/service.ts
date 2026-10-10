@@ -37,6 +37,7 @@ import {
   type SigningKeyPair,
 } from './index';
 import { generateX25519KeyPair } from './primitives';
+import { generateMlKemKeyPair, type MlKemKeyPair } from './pqKem';
 
 /** Bundle public d'un pair (avec une one-time prekey disponible). */
 export interface PeerBundle {
@@ -45,6 +46,8 @@ export interface PeerBundle {
   signedPreKey: string;
   signedPreKeySignature: string;
   oneTimePreKey: string | null;
+  /** Clé publique ML-KEM-768 (post-quantique). Optionnelle (rétro-compat). */
+  mlKemPublicKey?: string | null;
 }
 
 /** Matériel local (privé) d'un utilisateur. */
@@ -54,6 +57,8 @@ export interface LocalRatchetKeys {
   signedPreKey: RawKeyPair;
   /** one-time prekeys encore disponibles : public → privé. */
   oneTimePreKeys: Record<string, string>;
+  /** Clé ML-KEM (post-quantique). Optionnelle (comptes pré-PQ). */
+  mlKemKeyPair?: MlKemKeyPair;
 }
 
 export interface RatchetServiceDeps {
@@ -77,7 +82,7 @@ export function generateLocalRatchetKeys(oneTimePreKeyCount = 20): LocalRatchetK
   for (const k of generateOneTimePreKeys(oneTimePreKeyCount)) {
     oneTimePreKeys[k.publicKey] = k.privateKey;
   }
-  return { identityKeyPair, signingKeyPair, signedPreKey, oneTimePreKeys };
+  return { identityKeyPair, signingKeyPair, signedPreKey, oneTimePreKeys, mlKemKeyPair: generateMlKemKeyPair() };
 }
 /** Enveloppe rangée dans `messages.encryption_metadata`. */
 export interface RatchetEnvelope {
@@ -89,6 +94,8 @@ export interface RatchetEnvelope {
   identityKey?: string;
   ephemeralPublicKey?: string;
   usedOneTimePreKey?: string | null;
+  /** Ciphertext ML-KEM (post-quantique), présent pour `ratchet-init`. */
+  mlKemCiphertext?: string | null;
 }
 
 export interface EncryptedRatchetMessage {
@@ -103,6 +110,7 @@ function toBundle(bundle: PeerBundle): PreKeyBundle {
     signedPreKey: bundle.signedPreKey,
     signedPreKeySignature: bundle.signedPreKeySignature,
     oneTimePreKey: bundle.oneTimePreKey,
+    mlKemPublicKey: bundle.mlKemPublicKey ?? null,
   };
 }
 
@@ -117,7 +125,7 @@ export async function encryptForPeer(
   plaintext: string,
 ): Promise<EncryptedRatchetMessage> {
   let session = await deps.loadSession(userId, peerId);
-  let initFields: Pick<RatchetEnvelope, 'identityKey' | 'ephemeralPublicKey' | 'usedOneTimePreKey'> | null = null;
+  let initFields: Pick<RatchetEnvelope, 'identityKey' | 'ephemeralPublicKey' | 'usedOneTimePreKey' | 'mlKemCiphertext'> | null = null;
 
   if (!session) {
     const localKeys = await deps.loadLocalKeys(userId);
@@ -144,6 +152,7 @@ export async function encryptForPeer(
       identityKey: localKeys.identityKeyPair.publicKey,
       ephemeralPublicKey: init.ephemeralPublicKey,
       usedOneTimePreKey,
+      mlKemCiphertext: init.mlKemCiphertext ?? null,
     };
   }
 
@@ -194,6 +203,8 @@ export async function decryptFromPeer(
       oneTimePreKey,
       envelope.identityKey,
       envelope.ephemeralPublicKey,
+      envelope.mlKemCiphertext ?? null,
+      localKeys.mlKemKeyPair?.secretKey ?? null,
     );
     session = initReceiverSession(resp.rootKey, localKeys.signedPreKey, resp.associatedData);
   }
