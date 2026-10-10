@@ -13,6 +13,7 @@ import { WebSocketServer } from 'ws';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import * as smp from './lib/browser-smp-core.mjs';
 import { encryptRcvMessageBody } from './lib/browser-simplex-agent.mjs';
 
@@ -286,6 +287,10 @@ export function startServer({ port = 8765, host = '0.0.0.0', storePath = process
 }
 
 // Démarrage direct : `node index.mjs`
-if (process.argv[1] && import.meta.url === `file://${process.argv[1].replace(/\\/g, '/')}`) {
+const isMain = process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
+if (isMain) {
   startServer({ port: Number(process.env.PORT || 8765), storePath: process.env.STORE_PATH || '' });
 }
+
+
+

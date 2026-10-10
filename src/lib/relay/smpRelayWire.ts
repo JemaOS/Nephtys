@@ -4,99 +4,194 @@
 /**
  * `SmpRelayWire` — transport du mode privé via **SimpleX SMP, 100 % navigateur**.
  *
- * S'appuie sur le cœur SMP navigateur vendoré depuis `simplex-web` (AGPL-3,
- * voir `src/lib/simplexweb/`) : pas d'agent natif, connexion WebSocket binaire
- * (un bloc SMP paddé par frame) vers un relais **SMP browser-profile**.
+ * Implémente le contrat `RelayWire` (createQueue/send/read/ack/delete) au niveau
+ * **file SMP**, ce qui correspond exactement au modèle « 2 files » du mode privé :
+ *   • `createQueue`  : crée une file SMP (`NEW`), autorise une clé émetteur
+ *     (`KEY`) et renvoie (a) nos identifiants de lecture, (b) le **bundle
+ *     d'envoi** pour le pair (`sndId` + clé de signature), (c) une clé de lecture.
+ *   • `send`  : `SEND` signé vers la file du pair (à partir du bundle, sans join).
+ *   • `read`  : `SUB` + réception `MSG` + déchiffrement du corps (secret serveur).
+ *   • `ack`/`delete` : `ACK` / `DEL`.
  *
- * ⚠️ STATUT — NON VALIDÉ :
- *   • requiert un relais SMP « browser-profile » (wss) joignable ;
- *   • le mapping du modèle de connexion du mode privé (files/ invitations) vers
- *     l'API de `simplex-web` doit être validé en conditions réelles ;
- *   • tant que ce n'est pas validé, garder `VITE_RELAY_MODE` ≠ `simplex-smp`.
- *
- * Le corps des messages reste chiffré par la crypto Nephtys (corps opaque) :
- * `simplex-web` ne sert que de transport (files SMP).
+ * Le corps des messages reste chiffré bout-en-bout par les clients (le relais ne
+ * voit que des blocs opaques). S'appuie sur le cœur SMP navigateur vendoré
+ * (`simplex-web`, AGPL-3).
  */
 
 import { connectBrowserSmpWebSocketTransport } from '@/lib/simplexweb/browser-smp-websocket-transport.mjs';
 import { createBrowserSimplexClient } from '@/lib/simplexweb/browser-simplex-client.mjs';
-import { createBrowserSimplexStore } from '@/lib/simplexweb/browser-simplex-store.mjs';
-import { createBrowserSimplexContactClient } from '@/lib/simplexweb/browser-simplex-contact-client.mjs';
+import {
+  generateEd25519KeyPair,
+  encodeBase64Url,
+  decodeBase64Url,
+  utf8Bytes,
+  utf8Text,
+} from '@/lib/simplexweb/browser-smp-core.mjs';
+import { decryptRcvMessageBody } from '@/lib/simplexweb/browser-simplex-agent.mjs';
 import type { RelayOp, RelayResponse, RelayWire } from './wire';
 import type { QueueCredentials, StoredEnvelope } from './relayCore';
+
+const TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const READ_TIMEOUT_MS = 300;
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+function b64(bytes: Uint8Array): string {
+  return encodeBase64Url(bytes);
+}
+function unb64(value: string): Uint8Array {
+  return decodeBase64Url(value);
+}
+function token(obj: unknown): string {
+  return b64(utf8Bytes(JSON.stringify(obj)));
+}
+function parseToken(value: string): any {
+  return JSON.parse(utf8Text(unb64(value)));
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
 export interface SmpRelayOptions {
   /** URL du relais SMP browser-profile (wss://…). */
   url: string;
-  /** Hash d'identité du serveur (base64url/hex) — cf. simplex-web. */
+  /** Hash d'identité du serveur (optionnel pour le profil navigateur). */
   keyHash?: string;
-  /** Espace de noms du store navigateur local. */
-  namespace?: string;
 }
 
-const TTL_MS = 7 * 24 * 60 * 60 * 1000;
-
 export class SmpRelayWire implements RelayWire {
-  private contacts: any = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private client: any = null;
   private connecting: Promise<void> | null = null;
-  private invitationCount = 0;
+  private readonly subscribed = new Set<string>();
+  /** Sérialise les opérations : le transport SMP ne supporte pas les accès
+   *  concurrents (les frames se volent). */
+  private chain: Promise<unknown> = Promise.resolve();
 
   constructor(private readonly opts: SmpRelayOptions) {}
 
   private async ready(): Promise<void> {
-    if (this.contacts) return;
+    if (this.client) return;
     if (!this.connecting) {
       this.connecting = (async () => {
         const transport = await connectBrowserSmpWebSocketTransport({
           url: this.opts.url,
           keyHash: this.opts.keyHash ?? '',
         });
-        const client = createBrowserSimplexClient({ transport });
-        const store = createBrowserSimplexStore({
-          namespace: this.opts.namespace ?? 'nephtys-private-smp',
-        });
-        this.contacts = createBrowserSimplexContactClient({ client, store });
+        this.client = createBrowserSimplexClient({ transport });
       })();
     }
     return this.connecting;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private recipientFrom(queueId: string): any {
+    const t = parseToken(queueId);
+    return {
+      server: t.server ?? null,
+      queueMode: t.queueMode || 'messaging',
+      rcvId: unb64(t.rcvId),
+      rcvSignKey: { publicKeyDer: unb64(t.rcvSignPub), secretKey: unb64(t.rcvSignSec) },
+      serverDhSecret: unb64(t.serverDhSecret),
+    };
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private senderFrom(sendKey: string): any {
+    const t = parseToken(sendKey);
+    return {
+      server: t.server ?? null,
+      queueMode: t.queueMode || 'messaging',
+      sndId: unb64(t.sndId),
+      senderSignKey: { publicKeyDer: unb64(t.sndSignPub), secretKey: unb64(t.sndSignSec) },
+    };
+  }
+
   async request(op: RelayOp): Promise<RelayResponse> {
+    const run = this.chain.then(
+      () => this.doRequest(op),
+      () => this.doRequest(op),
+    );
+    this.chain = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  }
+
+  private async doRequest(op: RelayOp): Promise<RelayResponse> {
     try {
       await this.ready();
       switch (op.op) {
         case 'createQueue': {
-          const id = `conn-${++this.invitationCount}`;
-          await this.contacts.createInvitation({ id });
-          const uri = this.contacts.invitationUri(id);
-          const creds: QueueCredentials = { queueId: uri, sendKey: 'smp', rcvKey: id };
+          // 1) file SMP (NEW) 2) autorise une clé émetteur (KEY).
+          // (Pas de SUB ici : on s'abonne seulement à la LECTURE, sinon le
+          // créateur capterait les messages destinés au pair.)
+          const R = await this.client.createQueue({});
+          const senderSign = generateEd25519KeyPair();
+          await this.client.secureQueue(R, senderSign.publicKeyDer, {});
+
+          const queueId = token({
+            rcvId: b64(R.rcvId),
+            rcvSignPub: b64(R.rcvSignKey.publicKeyDer),
+            rcvSignSec: b64(R.rcvSignKey.secretKey),
+            serverDhSecret: b64(R.serverDhSecret),
+            server: R.server ?? null,
+            queueMode: R.queueMode || 'messaging',
+          });
+          const sendKey = token({
+            sndId: b64(R.sndId),
+            sndSignPub: b64(senderSign.publicKeyDer),
+            sndSignSec: b64(senderSign.secretKey),
+            server: R.server ?? null,
+            queueMode: R.queueMode || 'messaging',
+          });
+          const creds: QueueCredentials = { queueId, sendKey, rcvKey: 'r' };
           return { ok: true, result: creds };
         }
         case 'send': {
-          await this.contacts.sendText(op.queueId, op.ciphertext);
+          const sender = this.senderFrom(op.queueKey);
+          await this.client.sendQueueMessage(sender, utf8Bytes(op.ciphertext), {});
           return { ok: true, result: { id: `smp-${Date.now()}` } };
         }
         case 'read': {
-          const msg = await Promise.resolve(this.contacts.receiveNext(op.queueId)).catch(() => null);
-          if (!msg) return { ok: true, result: [] as StoredEnvelope[] };
+          const R = this.recipientFrom(op.queueId); if (!this.subscribed.has(op.queueId)) {
+            await this.client.subscribeQueue(R, {});
+            this.subscribed.add(op.queueId);
+          }
+          let message: { msgId: Uint8Array; body: Uint8Array };
+          try {
+            message = (await this.client.receiveQueueMessage(R, { timeoutMs: READ_TIMEOUT_MS })).message;
+          } catch {
+            return { ok: true, result: [] as StoredEnvelope[] };
+          }
+          const body = decryptRcvMessageBody({
+            serverDhSecret: R.serverDhSecret,
+            msgId: message.msgId,
+            encryptedBody: message.body,
+          });
           const env: StoredEnvelope = {
-            id: String(msg.id ?? msg.messageId ?? Date.now()),
-            ciphertext: String(msg.text ?? msg.body ?? ''),
+            id: b64(message.msgId),
+            ciphertext: utf8Text(body),
             ts: Date.now(),
             expiresAt: Date.now() + TTL_MS,
           };
           return { ok: true, result: [env] };
         }
-        case 'ack':
-          // L'agent côté SMP (client) acquitte : no-op ici.
+        case 'ack': {
+          const R = this.recipientFrom(op.queueId);
+          for (const id of op.ids ?? []) {
+            await this.client.acknowledgeMessage(R, unb64(id), {});
+          }
           return { ok: true, result: true };
+        }
         case 'delete': {
-          await Promise.resolve(this.contacts.deleteContactEverywhere?.(op.queueId)).catch(() => undefined);
+          const R = this.recipientFrom(op.queueId);
+          await this.client.deleteQueue(R, {});
           return { ok: true, result: true };
         }
       }
     } catch (e) {
+      console.error('[smpRelayWire] op', op.op, 'failed:', e);
       return { ok: false, error: (e as Error)?.message ?? 'smp error' };
     }
   }
 }
+
