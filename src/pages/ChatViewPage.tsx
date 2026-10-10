@@ -22,6 +22,7 @@ import {
   cacheDecryptedText,
   type EncryptedTextPayload,
 } from '@/lib/textEncryption'
+import { markOwnMessage, isOwnMessage } from '@/lib/ownMessages'
 import { tryEncryptWithRatchet } from '@/lib/ratchet/chatIntegration'
 import { getMessagingTransport } from '@/lib/transport'
 import { downloadMedia } from '@/lib/downloadMedia'
@@ -618,7 +619,7 @@ export function ChatViewPage() {
           senderName: senderInfo.name,
           senderAvatar: senderInfo.avatar,
           timestamp: m.created_at,
-          isOwn: m.sender_id === user?.id,
+          isOwn: (m.sender_id === user?.id || isOwnMessage(m.id)),
           messageId: m.id,
           // Per-item download metadata so the viewer's download button can save
           // the file under its original name and decrypt E2EE entries.
@@ -1977,6 +1978,7 @@ await decryptMessageRows(validData as any[], user.id)
         // Mémorise le clair de CE message envoyé (l'expéditeur ne peut pas
         // re-déchiffrer ses propres messages ratchet → sans ça, 🔒 après reload).
         cacheDecryptedText(data[0].id, plaintext)
+        markOwnMessage(data[0].id)
         // Conserve l'aperçu en clair côté client (le serveur n'a que le ciphertext).
         if (!settled.link_preview && linkPreviewPayload) {
           settled.link_preview = JSON.stringify(linkPreviewPayload)
@@ -3480,7 +3482,7 @@ await decryptMessageRows(validData as any[], user.id)
           messageId={contextMenu.message.id}
           messageContent={contextMenu.message.content || ''}
           messageType={contextMenu.message.type as 'text' | 'image' | 'video' | 'file' | 'audio'}
-          isOwn={contextMenu.message.sender_id === user?.id}
+          isOwn={(contextMenu.message.sender_id === user?.id || isOwnMessage(contextMenu.message.id))}
           isGroupChat={conversation?.type === 'group'}
           senderName={getSenderInfo(contextMenu.message.sender_id).name}
           mediaUrl={contextMenu.message.media_url || contextMenu.message.file_url || undefined}
@@ -3536,7 +3538,7 @@ await decryptMessageRows(validData as any[], user.id)
         }}
         onDeleteForEveryone={handleDeleteForEveryone}
         onDeleteForMe={handleDeleteForMe}
-        isOwn={messageToDelete?.sender_id === user?.id}
+        isOwn={(messageToDelete?.sender_id === user?.id || (messageToDelete ? isOwnMessage(messageToDelete.id) : false))}
         hasMedia={!!messageToDelete?.media_url}
       />
 

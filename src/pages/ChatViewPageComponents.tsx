@@ -2,6 +2,7 @@ import React, { useRef, useEffect } from 'react'
 import { Virtuoso, VirtuosoHandle } from 'react-virtuoso'
 import { ArrowLeft, Search, Phone, Video, MoreVertical, UserPlus, BellOff, Archive, Trash2, Lock, Star, Info, Copy, Reply, Forward, Pin, Smile } from 'lucide-react'
 import { Message, Conversation, Profile } from '@/lib/supabase'
+import { isOwnMessage } from '@/lib/ownMessages'
 import { CallMessage } from '@/components/CallMessage'
 import { MessageHoverActions } from '@/components/MessageHoverActions'
 import { MessageReactions } from '@/components/MessageReactions'
@@ -675,7 +676,7 @@ const GifStickerMessageDisplay = ({ message, typeInfo, hoveredMessageId, isOwn, 
                   senderName: senderInfo.name,
                   senderAvatar: senderInfo.avatar,
                   timestamp: message.created_at,
-                  isOwn: message.sender_id === user?.id,
+                  isOwn: (message.sender_id === user?.id || isOwnMessage(message.id)),
                   messageId: message.id
                 })
               }}
@@ -714,7 +715,7 @@ const GifStickerMessageDisplay = ({ message, typeInfo, hoveredMessageId, isOwn, 
                   senderName: senderInfo.name,
                   senderAvatar: senderInfo.avatar,
                   timestamp: message.created_at,
-                  isOwn: message.sender_id === user?.id,
+                  isOwn: (message.sender_id === user?.id || isOwnMessage(message.id)),
                   messageId: message.id
                 })
               }}
@@ -757,7 +758,7 @@ const MediaMessageDisplay = ({ message, typeInfo, hoveredMessageId, isOwn, setCo
         <MediaAlbum
           messages={albumEntry.members}
           currentUserId={user?.id}
-          isOwn={message.sender_id === user?.id}
+          isOwn={(message.sender_id === user?.id || isOwnMessage(message.id))}
           showHoverActions={hoveredMessageId === message.id}
           onOpenMenu={(e) => {
             const rect = e.currentTarget.getBoundingClientRect()
@@ -797,7 +798,7 @@ const MediaMessageDisplay = ({ message, typeInfo, hoveredMessageId, isOwn, setCo
             senderName={mediaSenderInfo.name}
             senderAvatar={mediaSenderInfo.avatar}
             timestamp={message.created_at}
-            isOwn={message.sender_id === user?.id}
+            isOwn={(message.sender_id === user?.id || isOwnMessage(message.id))}
             isStarred={message.is_starred || false}
             messageId={message.id}
             status={message.status as 'sent' | 'delivered' | 'read' | undefined}
@@ -852,7 +853,7 @@ const DocumentMessageDisplay = ({ message, typeInfo, hoveredMessageId, isOwn, se
         thumbnail={message.media_thumbnail ?? undefined}
         senderName={docSenderInfo.name}
         timestamp={message.created_at}
-        isOwn={message.sender_id === user?.id}
+        isOwn={(message.sender_id === user?.id || isOwnMessage(message.id))}
         isStarred={message.is_starred || false}
         messageId={message.id}
         status={message.status as 'sent' | 'delivered' | 'read' | undefined}
@@ -894,7 +895,7 @@ const TextMessageDisplay = ({ message, hoveredMessageId, isOwn, setContextMenu, 
       {message.reply_to_id && (() => {
         const replyMessage = messages.find((m: Message) => m.id === message.reply_to_id)
         if (replyMessage) {
-          const replySenderName = replyMessage.sender_id === user?.id
+          const replySenderName = (message.sender_id === user?.id || isOwnMessage(message.id))
             ? 'Vous'
             : otherUser?.display_name || otherUser?.username || 'Utilisateur'
           return (
@@ -1148,7 +1149,7 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = React.memo((
   }
   
   const message = item.data as Message
-  const isOwn = message.sender_id === user?.id
+  const isOwn = (message.sender_id === user?.id || isOwnMessage(message.id))
   const messageReactions = reactions.filter(r => r.message_id === message.id)
   const isSelected = selectedMessages.has(message.id)
   
