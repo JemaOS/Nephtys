@@ -8,8 +8,9 @@
  * pointé sur le relais `VITE_RELAY_URL`.
  */
 
-import { WebSocketWire } from './wire';
+import { WebSocketWire, type RelayWire } from './wire';
 import { SupabaseRelayWire } from './supabaseRelayWire';
+import { AgentRelayWire } from './agentRelayWire';
 import { PrivateMessenger } from './privateMessenger';
 import { IdbConnectionStore } from './connectionStore';
 import { IdbHistoryStore } from './historyStore';
@@ -70,7 +71,19 @@ export function setRelayUrl(url: string): void {
 
 export function getPrivateMessenger(): PrivateMessenger {
   if (!instance) {
-    const wire = hasCustomRelay() ? new WebSocketWire(getRelayUrl()) : new SupabaseRelayWire();
+    const mode = import.meta.env.VITE_RELAY_MODE as string | undefined;
+    let wire: RelayWire;
+    if (mode === 'simplex-agent') {
+      // Voie A : le mode privé passe par l'agent SimpleX (relais SMP publics).
+      // Prérequis : l'agent `simplex-chat` doit être en écoute (VITE_SMP_AGENT_URL).
+      wire = new AgentRelayWire(
+        (import.meta.env.VITE_SMP_AGENT_URL as string | undefined) ?? 'ws://127.0.0.1:5225',
+      );
+    } else if (hasCustomRelay()) {
+      wire = new WebSocketWire(getRelayUrl());
+    } else {
+      wire = new SupabaseRelayWire();
+    }
     instance = new PrivateMessenger(
       wire,
       new IdbConnectionStore(),
