@@ -121,10 +121,11 @@ function toBundle(bundle: PeerBundle): PreKeyBundle {
 export async function encryptForPeer(
   deps: RatchetServiceDeps,
   userId: string,
+  sessionId: string,
   peerId: string,
   plaintext: string,
 ): Promise<EncryptedRatchetMessage> {
-  let session = await deps.loadSession(userId, peerId);
+  let session = await deps.loadSession(userId, sessionId);
   let initFields: Pick<RatchetEnvelope, 'identityKey' | 'ephemeralPublicKey' | 'usedOneTimePreKey' | 'mlKemCiphertext'> | null = null;
 
   if (!session) {
@@ -157,7 +158,7 @@ export async function encryptForPeer(
   }
 
   const message = await ratchetEncrypt(session, plaintext);
-  await deps.saveSession(userId, peerId, session);
+  await deps.saveSession(userId, sessionId, session);
 
   const envelope: RatchetEnvelope = {
     type: initFields ? 'ratchet-init' : 'ratchet',
@@ -176,11 +177,11 @@ export async function encryptForPeer(
 export async function decryptFromPeer(
   deps: RatchetServiceDeps,
   userId: string,
-  senderId: string,
+  sessionId: string,
   envelope: RatchetEnvelope,
   content: string,
 ): Promise<string> {
-  let session = await deps.loadSession(userId, senderId);
+  let session = await deps.loadSession(userId, sessionId);
 
   if (envelope.type === 'ratchet-init' && !session) {
     const localKeys = await deps.loadLocalKeys(userId);
@@ -218,7 +219,7 @@ export async function decryptFromPeer(
     ivB64: envelope.iv,
     ctB64: content,
   });
-  await deps.saveSession(userId, senderId, session);
+  await deps.saveSession(userId, sessionId, session);
   return text;
 }
 

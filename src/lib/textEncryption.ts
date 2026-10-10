@@ -348,7 +348,7 @@ async function unwrapKeyRowForUser(
  * ou si le déchiffrement est impossible (clé absente, pas de passphrase…).
  */
 export async function decryptMessageContent(
-  message: { id: string; content: string; is_text_encrypted?: boolean | null; encryption_metadata?: unknown; sender_id?: string; sender_sealed?: unknown },
+  message: { id: string; content: string; is_text_encrypted?: boolean | null; encryption_metadata?: unknown; sender_id?: string; sender_sealed?: unknown; conversation_id?: string },
   userId: string,
 ): Promise<string | null> {
   await resolveSealedSenders([message], userId);
@@ -356,11 +356,15 @@ export async function decryptMessageContent(
 
   // Chemin forward-secret (Double Ratchet) prioritaire.
   if (isRatchetEnvelope(message.encryption_metadata)) {
+    // Ses propres messages ne peuvent pas être re-déchiffrés (pas de session
+    // « destinataire de soi ») → on laisse le cache/optimiste local gérer.
+    if (message.sender_id && message.sender_id === userId) return null;
     const raw = await tryDecryptWithRatchet(
       message.encryption_metadata,
       message.content,
       userId,
-      message.sender_id ?? '',
+      // Session indexée par CONVERSATION (insensible au sealed sender).
+      message.conversation_id ?? message.sender_id ?? '',
     );
     if (raw !== null) return parseTextPayload(raw).text;
     return UNDECRYPTABLE_PLACEHOLDER;
@@ -448,11 +452,17 @@ export async function decryptMessageRows<T extends {
     encrypted.map(async row => {
       // Chemin forward-secret (Double Ratchet).
       if (isRatchetEnvelope(row.encryption_metadata)) {
+        // Ses propres messages : pas de re-déchiffrement possible → placeholder
+        // (le clair est conservé côté client/cache), jamais d'erreur.
+        if ((row as any).sender_id && (row as any).sender_id === userId) {
+          row.content = UNDECRYPTABLE_PLACEHOLDER;
+          return;
+        }
         const raw = await tryDecryptWithRatchet(
           row.encryption_metadata,
           row.content,
           userId,
-          (row as any).sender_id ?? '',
+          (row as any).conversation_id ?? (row as any).sender_id ?? '',
         );
         if (raw !== null) {
           const payload = parseTextPayload(raw);

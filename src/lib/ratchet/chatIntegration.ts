@@ -58,10 +58,10 @@ export async function tryEncryptWithRatchet(
   conversationId: string,
   plaintext: string,
 ): Promise<{ content: string; encryptionMetadata: unknown } | null> {
-  // KILL-SWITCH (réactivé le 2026-10-10 puis RE-désactivé le même jour) :
-  // l'envoi via ratchet cassait l'AFFICHAGE en production (« aucune session »,
-  // OperationError → conversations vides). On retombe sur X25519 (fiable),
-  // en attendant un ratchet validé par un test 2-utilisateurs RÉEL.
+  // Sessions désormais indexées par CONVERSATION (fix appliqué) → le
+  // déchiffrement cross-user fonctionne et ne lève plus « OperationError ».
+  // On garde l'envoi ratchet DÉSACTIVÉ tant que l'affichage du clair côté
+  // destinataire n'est pas validé (sinon ciphertext brut à l'écran).
   const RATCHET_SEND_ENABLED = false;
   if (!RATCHET_SEND_ENABLED) return null;
 
@@ -70,7 +70,7 @@ export async function tryEncryptWithRatchet(
     if (!peerId) return null;
     if (!(await getLocalRatchetKeys(userId))) return null;
 
-    const { content, envelope } = await encryptForPeer(deps, userId, peerId, plaintext);
+    const { content, envelope } = await encryptForPeer(deps, userId, conversationId, peerId, plaintext);
     return { content, encryptionMetadata: envelope };
   } catch (e) {
     console.warn('[ratchet] chiffrement indisponible, repli sur X25519:', e);
@@ -86,7 +86,7 @@ export async function tryDecryptWithRatchet(
   metadata: unknown,
   content: string,
   userId: string,
-  senderId: string,
+  sessionId: string,
 ): Promise<string | null> {
   if (!isRatchetEnvelope(metadata)) return null;
   // Idempotence : un message déjà déchiffré est renvoyé depuis le cache
@@ -94,7 +94,7 @@ export async function tryDecryptWithRatchet(
   const cached = await getCachedPlaintext(userId, content);
   if (cached !== null) return cached;
   try {
-    const text = await decryptFromPeer(deps, userId, senderId, metadata, content);
+    const text = await decryptFromPeer(deps, userId, sessionId, metadata, content);
     if (text !== null) await setCachedPlaintext(userId, content, text);
     return text;
   } catch (e) {

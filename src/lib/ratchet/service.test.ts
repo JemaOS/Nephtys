@@ -67,7 +67,7 @@ describe('ratchet service (X3DH + Double Ratchet end-to-end)', () => {
     const { deps } = makeDeps(users);
     const bobOpk = users.bob.bundle.oneTimePreKey;
 
-    const msg = await encryptForPeer(deps, 'alice', 'bob', 'bonjour');
+    const msg = await encryptForPeer(deps, 'alice', 'conv', 'bob', 'bonjour');
     expect(msg.envelope.type).toBe('ratchet-init');
     expect(msg.envelope.identityKey).toBe(users.alice.local.identityKeyPair.publicKey);
     // Init SANS one-time prekey (fiabilité) → usedOneTimePreKey null.
@@ -76,7 +76,7 @@ describe('ratchet service (X3DH + Double Ratchet end-to-end)', () => {
     // La one-time prekey de Bob n'est PAS consommée (init sans OPK).
     expect(users.bob.bundle.oneTimePreKey).toBe(bobOpk);
 
-    const text = await decryptFromPeer(deps, 'bob', 'alice', msg.envelope, msg.content);
+    const text = await decryptFromPeer(deps, 'bob', 'conv', msg.envelope, msg.content);
     expect(text).toBe('bonjour');
   });
 
@@ -85,12 +85,12 @@ describe('ratchet service (X3DH + Double Ratchet end-to-end)', () => {
     const { deps } = makeDeps(users);
 
     const a = async (t: string) => {
-      const m = await encryptForPeer(deps, 'alice', 'bob', t);
-      expect(await decryptFromPeer(deps, 'bob', 'alice', m.envelope, m.content)).toBe(t);
+      const m = await encryptForPeer(deps, 'alice', 'conv', 'bob', t);
+      expect(await decryptFromPeer(deps, 'bob', 'conv', m.envelope, m.content)).toBe(t);
     };
     const b = async (t: string) => {
-      const m = await encryptForPeer(deps, 'bob', 'alice', t);
-      expect(await decryptFromPeer(deps, 'alice', 'bob', m.envelope, m.content)).toBe(t);
+      const m = await encryptForPeer(deps, 'bob', 'conv', 'alice', t);
+      expect(await decryptFromPeer(deps, 'alice', 'conv', m.envelope, m.content)).toBe(t);
     };
 
     await a('a1'); // init
@@ -104,16 +104,16 @@ describe('ratchet service (X3DH + Double Ratchet end-to-end)', () => {
     const users = { alice: makeUser(), bob: makeUser() };
     const { deps } = makeDeps(users);
 
-    const init = await encryptForPeer(deps, 'alice', 'bob', 'init');
-    await decryptFromPeer(deps, 'bob', 'alice', init.envelope, init.content);
+    const init = await encryptForPeer(deps, 'alice', 'conv', 'bob', 'init');
+    await decryptFromPeer(deps, 'bob', 'conv', init.envelope, init.content);
 
-    const m1 = await encryptForPeer(deps, 'alice', 'bob', 'm1');
-    const m2 = await encryptForPeer(deps, 'alice', 'bob', 'm2');
-    const m3 = await encryptForPeer(deps, 'alice', 'bob', 'm3');
+    const m1 = await encryptForPeer(deps, 'alice', 'conv', 'bob', 'm1');
+    const m2 = await encryptForPeer(deps, 'alice', 'conv', 'bob', 'm2');
+    const m3 = await encryptForPeer(deps, 'alice', 'conv', 'bob', 'm3');
 
-    expect(await decryptFromPeer(deps, 'bob', 'alice', m3.envelope, m3.content)).toBe('m3');
-    expect(await decryptFromPeer(deps, 'bob', 'alice', m1.envelope, m1.content)).toBe('m1');
-    expect(await decryptFromPeer(deps, 'bob', 'alice', m2.envelope, m2.content)).toBe('m2');
+    expect(await decryptFromPeer(deps, 'bob', 'conv', m3.envelope, m3.content)).toBe('m3');
+    expect(await decryptFromPeer(deps, 'bob', 'conv', m1.envelope, m1.content)).toBe('m1');
+    expect(await decryptFromPeer(deps, 'bob', 'conv', m2.envelope, m2.content)).toBe('m2');
   });
 
   it('rejects a tampered init (bad signature) and detects envelopes', async () => {
@@ -124,7 +124,7 @@ describe('ratchet service (X3DH + Double Ratchet end-to-end)', () => {
       users.bob.bundle.signedPreKey,
     );
 
-    await expect(encryptForPeer(deps, 'alice', 'bob', 'x')).rejects.toThrow(/signature/);
+    await expect(encryptForPeer(deps, 'alice', 'conv', 'bob', 'x')).rejects.toThrow(/signature/);
 
     expect(isRatchetEnvelope({ type: 'ratchet', header: { dh: 'a', pn: 0, n: 0 }, iv: 'x' })).toBe(true);
     expect(isRatchetEnvelope({ type: 'text', iv: 'x' })).toBe(false);
