@@ -14,6 +14,7 @@
 import { supabase } from '../supabase';
 import { getLocalRatchetKeys, loadPeerBundle, markOneTimePreKeyUsed } from './keyStore';
 import { loadSession, saveSession } from './sessionStore';
+import { getCachedPlaintext, setCachedPlaintext } from './decryptCache';
 import {
   decryptFromPeer,
   encryptForPeer,
@@ -81,8 +82,14 @@ export async function tryDecryptWithRatchet(
   senderId: string,
 ): Promise<string | null> {
   if (!isRatchetEnvelope(metadata)) return null;
+  // Idempotence : un message déjà déchiffré est renvoyé depuis le cache
+  // (évite de ré-avancer la session ou de refaire X3DH au rechargement).
+  const cached = await getCachedPlaintext(userId, content);
+  if (cached !== null) return cached;
   try {
-    return await decryptFromPeer(deps, userId, senderId, metadata, content);
+    const text = await decryptFromPeer(deps, userId, senderId, metadata, content);
+    if (text !== null) await setCachedPlaintext(userId, content, text);
+    return text;
   } catch (e) {
     console.warn('[ratchet] déchiffrement échoué:', e);
     return null;
