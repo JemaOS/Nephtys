@@ -15,9 +15,38 @@ import { IdbHistoryStore } from './historyStore';
 
 let instance: PrivateMessenger | null = null;
 
-/** URL du relais (self-hosted ou .onion pour Tor). */
+const RELAY_OVERRIDE_KEY = 'nephtys_relay_url';
+
+/**
+ * URL du relais. Priorité :
+ *   1. override « à chaud » (localStorage) — permet de basculer sur un relais
+ *      `.onion` (Tor) sans rebuilder ;
+ *   2. `VITE_RELAY_URL` (au build) ;
+ *   3. défaut local (développement).
+ */
 export function getRelayUrl(): string {
+  try {
+    const override = localStorage.getItem(RELAY_OVERRIDE_KEY);
+    if (override) return override;
+  } catch {
+    // localStorage indisponible → on ignore l'override
+  }
   return (import.meta.env.VITE_RELAY_URL as string | undefined) ?? 'ws://127.0.0.1:8090';
+}
+
+/**
+ * Change le relais à chaud (ex. `wss://xxxx.onion`). Prend effet à la
+ * prochaine création de connexion (ou après rechargement de la page).
+ */
+export function setRelayUrl(url: string): void {
+  try {
+    const trimmed = url.trim();
+    if (trimmed) localStorage.setItem(RELAY_OVERRIDE_KEY, trimmed);
+    else localStorage.removeItem(RELAY_OVERRIDE_KEY);
+  } catch {
+    // localStorage indisponible
+  }
+  instance = null;
 }
 
 export function getPrivateMessenger(): PrivateMessenger {
