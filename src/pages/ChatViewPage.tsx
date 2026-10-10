@@ -16,6 +16,7 @@ import {
   decryptMessageRow,
   decryptMessageRows,
   serializeTextPayload,
+  buildSenderSealed,
   type EncryptedTextPayload,
 } from '@/lib/textEncryption'
 import { tryEncryptWithRatchet } from '@/lib/ratchet/chatIntegration'
@@ -1836,6 +1837,12 @@ export function ChatViewPage() {
         messageData.ephemeral_expires_at = expiresAt.toISOString()
       }
       
+      // Phase 1 (sealed sender) : identité de l'expéditeur scellée pour les
+      // membres (dual-write, en plus de sender_id). null = repli sender_id.
+      messageData.sender_sealed = conversationId
+        ? await buildSenderSealed(user.id, conversationId)
+        : null
+
       // Use optional chaining as required by SonarQube
       let insertResult = await supabase.from('messages').insert(messageData).select()
 
@@ -2552,6 +2559,8 @@ export function ChatViewPage() {
           encryptedText = null
         }
       }
+
+      messageData.sender_sealed = await buildSenderSealed(userId, targetConversationId)
 
       let insertResult = await supabase
         .from('messages')

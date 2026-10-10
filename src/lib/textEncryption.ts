@@ -46,6 +46,7 @@ import {
 import { fetchX25519PublicKeys, getLocalX25519KeyPair } from './e2eeX25519';
 import { isX25519PublicKey, wrapKeyForRecipientX25519, unwrapKeyFromSenderX25519 } from './x25519';
 import { isRatchetEnvelope, tryDecryptWithRatchet } from './ratchet/chatIntegration';
+import { findMySealedSender, sealSenderForMembers } from './messaging/sealedSender';
 
 // Taille de bloc du rembourrage. Un message texte est rembourré au
 // multiple de PAD_BLOCK supérieur, avec des octets aléatoires après la
@@ -346,9 +347,10 @@ async function unwrapKeyRowForUser(
  * ou si le déchiffrement est impossible (clé absente, pas de passphrase…).
  */
 export async function decryptMessageContent(
-  message: { id: string; content: string; is_text_encrypted?: boolean | null; encryption_metadata?: unknown; sender_id?: string },
+  message: { id: string; content: string; is_text_encrypted?: boolean | null; encryption_metadata?: unknown; sender_id?: string; sender_sealed?: unknown },
   userId: string,
 ): Promise<string | null> {
+  await resolveSealedSenders([message], userId);
   if (!message.is_text_encrypted) return message.content;
 
   // Chemin forward-secret (Double Ratchet) prioritaire.
@@ -407,6 +409,10 @@ export async function decryptMessageRows<T extends {
   encryption_metadata?: unknown;
 }>(rows: T[] | null | undefined, userId: string): Promise<T[]> {
   if (!rows || rows.length === 0) return rows ?? [];
+
+  // Phase 1 (sealed sender) : résout l'expéditeur réel depuis les blobs scellés
+  // AVANT tout usage de sender_id. Repli sur sender_id si absent/illisible.
+  await resolveSealedSenders(rows as Array<{ sender_id?: string; sender_sealed?: unknown }>, userId);
 
   const encrypted = rows.filter(
     r => r.is_text_encrypted
@@ -493,4 +499,71 @@ export async function decryptMessageRow<T extends {
   if (!row.is_text_encrypted) return row;
   const [decrypted] = await decryptMessageRows([row], userId);
   return decrypted ?? row;
+}
+
+// ─── Sealed sender (Phase 1 — cacher le graphe au serveur) ────────────
+
+/**
+ * Résout l'expéditeur réel de messages via leurs blobs sealed sender et
+ * remplace `sender_id` en place. Repli : si absent/illisible, `sender_id`
+ * (encore peuplé en transition) est conservé.
+ */
+async function resolveSealedSenders(
+  rows: Array<{ sender_id?: string; sender_sealed?: unknown }>,
+  userId: string,
+): Promise<void> {
+  const sealedRows = rows.filter(
+    r => Array.isArray(r.sender_sealed) && (r.sender_sealed as string[]).length > 0,
+  );
+  if (sealedRows.length === 0) return;
+
+  let myPrivateKey: string;
+  try {
+    const kp = await getLocalX25519KeyPair(userId);
+    if (!kp) return;
+    myPrivateKey = kp.privateKey;
+  } catch {
+    return; // clés verrouillées → repli sender_id
+  }
+
+  await Promise.all(sealedRows.map(async r => {
+    try {
+      const resolved = await findMySealedSender(myPrivateKey, r.sender_sealed as string[]);
+      if (resolved) r.sender_id = resolved;
+    } catch {
+      // repli : on garde sender_id
+    }
+  }));
+}
+
+/**
+ * Construit les blobs sealed sender de l'expéditeur pour tous les membres
+ * d'une conversation (phase 1 : dual-write en plus de `sender_id`).
+ * Retourne `null` si impossible → le message conserve `sender_id` en clair.
+ */
+export async function buildSenderSealed(
+  senderId: string,
+  conversationId: string,
+): Promise<string[] | null> {
+  try {
+    const { data: members } = await supabase
+      .from('conversation_members')
+      .select('user_id')
+      .eq('conversation_id', conversationId);
+    const ids = (members ?? [])
+      .map((m: { user_id: string }) => m.user_id)
+      .filter(Boolean);
+    if (ids.length === 0) return null;
+
+    const publicKeys = await fetchX25519PublicKeys(ids);
+    const recipientKeys = ids
+      .map(id => publicKeys.get(id))
+      .filter((k): k is string => typeof k === 'string' && k.length > 0);
+    if (recipientKeys.length === 0) return null;
+
+    return await sealSenderForMembers(recipientKeys, senderId);
+  } catch (e) {
+    console.warn('[sealedSender] build failed (repli sender_id):', e);
+    return null;
+  }
 }
