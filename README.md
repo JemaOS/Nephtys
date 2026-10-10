@@ -20,7 +20,7 @@
 
 ## Fonctionnalités
 
-- **Messagerie de bout en bout** : Double Ratchet (forward secrecy), poignée de main type X3DH, **post‑quantique (ML‑KEM)** et **sealed sender** (anonymat de l'expéditeur).
+- **Messagerie de bout en bout** : chiffrement **X25519** + **sealed sender** (anonymat de l'expéditeur). Les primitives **Double Ratchet** (forward secrecy) et **post‑quantique (ML‑KEM)** sont présentes dans le code mais **désactivées en production** (bugs `OperationError` en cours de correction).
 - **Mode privé** : connexions 1‑à‑1 par **invitation** (lien/QR), sans compte ; le relais ne voit que des blocs opaques.
 - **Groupes privés** : clé de groupe distribuée via les files du relais, rotation à l'ajout/retrait de membres.
 - **Statuts éphémères** : chiffrés, expirés automatiquement.
@@ -76,9 +76,12 @@ flowchart LR
 
 ## Modèle de sécurité — et ses limites
 
-**Garanti**
-- E2EE de bout en bout, forward secrecy (Double Ratchet), post‑quantique (ML‑KEM), sealed sender.
+**Garanti (actif en production)**
+- E2EE de bout en bout (**X25519**) et **sealed sender**.
 - Mode privé : pas de compte, relais aveugle, **invitations explicites** (pas d'annuaire).
+
+**Présent mais désactivé (en cours de correction)**
+- **Double Ratchet** (forward secrecy) et **post‑quantique (ML‑KEM)** : code présent, **non activés en production** (bugs `OperationError`).
 
 **Limites (assumées)**
 - **Pas d'audit indépendant** à ce jour.
@@ -90,8 +93,8 @@ flowchart LR
 
 | Critère | Nephtys privé | Nephtys compte | Signal | Telegram | SimpleX |
 |---|---|---|---|---|---|
-| E2EE par défaut | Oui | Oui | Oui | Non | Oui |
-| Post‑quantique | Oui | Oui | Oui | Non | Oui |
+| E2EE par défaut | Oui (X25519) | Oui (X25519) | Oui | Non | Oui |
+| Post‑quantique | Présent (off) | Présent (off) | Oui | Non | Oui |
 | Sealed sender | Oui | Oui | Oui | Non | Oui |
 | Compte / identifiant | Aucun | Compte | N° tél. | N° tél. | Aucun |
 | Métadonnées serveur | Minimales | Élevées | Faibles | Élevées | Minimales |
