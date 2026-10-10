@@ -137,7 +137,7 @@ export function isTorRelayEnabled(): boolean {
   } catch {
     return false;
   }
-  if (enabled && !getOnionRelayUrl()) {
+  if (enabled && !getTorRelayUrl()) {
     try {
       localStorage.removeItem(TOR_ENABLED_KEY);
     } catch {
@@ -230,21 +230,18 @@ export function getTorGatewayUrl(): string {
 }
 
 /**
- * Point d'entrée Tor du mode privé. **Mode strict : uniquement l'adresse
- * `.onion`.** Aucun repli sur une passerelle clearnet — un repli exposerait
- * l'IP réelle et recollerait les rôles « voit ton IP » et « voit ta
- * destination ». Vide si aucune adresse `.onion` n'est configurée.
+ * Point d'entrée Tor du mode privé. Priorité à une adresse `.onion` si elle est
+ * fournie (Tor natif), sinon la **passerelle Tor** de l'infra : un clic depuis
+ * n'importe quel navigateur, **sans logiciel externe ni Tor Browser**. Vide si
+ * aucun point d'entrée n'est disponible.
  */
 export function getTorRelayUrl(): string {
-  return getOnionRelayUrl();
+  return getOnionRelayUrl() || getTorGatewayUrl();
 }
 
-/**
- * Vrai si le mode Tor strict est exploitable, c'est-à-dire si une adresse
- * `.onion` du relais est configurée. Sans elle, Tor n'est pas disponible.
- */
+/** Vrai si un point d'entrée Tor est disponible (`.onion` ou passerelle). */
 export function isTorAvailable(): boolean {
-  return Boolean(getOnionRelayUrl());
+  return Boolean(getTorRelayUrl());
 }
 
 export function getPrivateMessenger(): PrivateMessenger {
