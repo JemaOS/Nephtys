@@ -137,7 +137,7 @@ export async function encryptForPeer(
     // Fiabilité : on n'utilise PAS de one-time prekey à l'init (source des
     // échecs « one-time prekey indisponible »). X3DH reste valide sans OPK ;
     // la forward secrecy est ensuite assurée par le Double Ratchet.
-    const init = await x3dhInitiate(localKeys.identityKeyPair, { ...toBundle(bundle), oneTimePreKey: null });
+    const init = await x3dhInitiate(localKeys.identityKeyPair, { ...toBundle(bundle), oneTimePreKey: null, mlKemPublicKey: null });
     session = await initSenderSession(
       init.rootKey,
       bundle.signedPreKey,

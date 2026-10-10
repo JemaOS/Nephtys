@@ -1531,7 +1531,7 @@ export function ChatViewPage() {
   }
 
   const cacheMessageProfiles = async (messages: Message[]) => {
-    const senderIds = [...new Set(messages.map(m => m.sender_id))]
+    const senderIds = [...new Set(messages.map(m => m.sender_id))].filter((id): id is string => !!id)
     if (senderIds.length > 0) {
       const { data: profiles } = await supabase.from('profiles').select('*').in('id', senderIds)
       if (profiles && profiles.length > 0) {
@@ -1758,7 +1758,7 @@ await decryptMessageRows(validData as any[], user.id)
         setHasMoreMessages(data.length >= 50)
         
         // Cache new profiles
-        const senderIds = [...new Set(validData.map(m => m.sender_id))]
+        const senderIds = [...new Set(validData.map(m => m.sender_id))].filter((id): id is string => !!id)
         if (senderIds.length > 0) {
           const { data: profiles } = await supabase.from('profiles').select('*').in('id', senderIds)
           if (profiles && profiles.length > 0) {
