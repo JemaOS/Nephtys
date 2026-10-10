@@ -997,7 +997,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
     const handleGifStickerSelect = (item: any, type: 'gif' | 'sticker') => {
       const formats = item.media_formats;
       let url = '';
-      let previewUrl = '';
+      const previewUrl = '';
       
       if (type === 'sticker') {
         // For stickers, prefer webp formats

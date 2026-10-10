@@ -177,7 +177,9 @@ async function getAccessToken(exclude?: string): Promise<string | null> {
   try {
     const sessionToken = sessionStorage.getItem('jemaos_access_token');
     if (sessionToken && sessionToken !== exclude) return sessionToken;
-  } catch {}
+  } catch {
+    /* storage unavailable (private mode / quota) — best-effort */
+  }
   // Portail jema-auth (iframe + postMessage) : récupère les jetons de la
   // session OS (access + refresh) quand aucune autre source n'en a.
   // JAMAIS en mode géré : les jetons du portail appartiennent à la session
@@ -218,7 +220,9 @@ function clearStaleTokenCookie() {
 function markSubscriptionOk() {
   try {
     localStorage.setItem(GRACE_KEY, String(Date.now() + GRACE_MS));
-  } catch {}
+  } catch {
+    /* storage unavailable — best-effort */
+  }
   // Token frais obtenu : on réarme la reconnexion automatique.
   clearReauthAttempt();
 }
@@ -228,7 +232,9 @@ function markSubscriptionOk() {
 function clearSubscriptionGrace() {
   try {
     localStorage.removeItem(GRACE_KEY);
-  } catch {}
+  } catch {
+    /* storage unavailable — best-effort */
+  }
 }
 
 function inGracePeriod(): boolean {
@@ -245,7 +251,9 @@ function inGracePeriod(): boolean {
 const REAUTH_FLAG = 'jemaos_reauth_attempted';
 
 function markReauthAttempted() {
-  try { sessionStorage.setItem(REAUTH_FLAG, '1'); } catch {}
+  try { sessionStorage.setItem(REAUTH_FLAG, '1'); } catch {
+    /* storage unavailable — best-effort */
+  }
 }
 
 function reauthAlreadyAttempted(): boolean {
@@ -253,7 +261,9 @@ function reauthAlreadyAttempted(): boolean {
 }
 
 function clearReauthAttempt() {
-  try { sessionStorage.removeItem(REAUTH_FLAG); } catch {}
+  try { sessionStorage.removeItem(REAUTH_FLAG); } catch {
+    /* storage unavailable — best-effort */
+  }
 }
 
 // return_to de la page /auth interne : même origine uniquement
@@ -343,14 +353,18 @@ async function requestTokensFromPortal(): Promise<{
 // partagé .jemaos.com permet aux autres PWA d'en profiter directement).
 function storePortalTokens(accessToken: string | null, refreshToken: string | null) {
   if (accessToken) {
-    try { sessionStorage.setItem('jemaos_access_token', accessToken); } catch {}
+    try { sessionStorage.setItem('jemaos_access_token', accessToken); } catch {
+      /* storage unavailable — best-effort */
+    }
     document.cookie = `jemaos_access_token=${accessToken}; Domain=.jemaos.com; Path=/; Secure; SameSite=Lax; Max-Age=86400`;
   }
   if (refreshToken) {
     try {
       sessionStorage.setItem('jemaos_refresh_token', refreshToken);
       localStorage.setItem('jemaos_refresh_token', refreshToken);
-    } catch {}
+    } catch {
+      /* storage unavailable — best-effort */
+    }
     document.cookie = `jemaos_refresh_token=${refreshToken}; Domain=.jemaos.com; Path=/; Secure; SameSite=Lax; Max-Age=604800`;
   }
 }
@@ -395,11 +409,15 @@ function getRefreshTokenFromStores(): string | null {
   try {
     const t = sessionStorage.getItem('jemaos_refresh_token');
     if (t) return t;
-  } catch {}
+  } catch {
+    /* storage unavailable — best-effort */
+  }
   try {
     const t = localStorage.getItem('jemaos_refresh_token');
     if (t) return t;
-  } catch {}
+  } catch {
+    /* storage unavailable — best-effort */
+  }
   return null;
 }
 
@@ -460,7 +478,9 @@ async function tryRefreshToken(): Promise<boolean> {
     const rt = data?.refresh_token || data?.refreshToken;
     if (typeof rt === 'string' && rt) {
       sessionStorage.setItem('jemaos_refresh_token', rt);
-      try { localStorage.setItem('jemaos_refresh_token', rt); } catch {}
+      try { localStorage.setItem('jemaos_refresh_token', rt); } catch {
+        /* storage unavailable — best-effort */
+      }
       document.cookie = `jemaos_refresh_token=${rt}; Domain=.jemaos.com; Path=/; Secure; SameSite=Lax; Max-Age=604800`;
     }
     return true;

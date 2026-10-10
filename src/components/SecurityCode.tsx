@@ -4,7 +4,7 @@
 import React, { useState, useEffect } from 'react';
 import { useI18n } from '@/i18n';
 import { Shield, Check, Copy } from 'lucide-react';
-import { generateSafetyNumber } from '@/lib/crypto';
+import { generateSafetyNumber } from '@/lib/safetyNumber';
 
 interface SecurityCodeProps {
   myPublicKey: string;

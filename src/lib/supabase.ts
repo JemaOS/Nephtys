@@ -6,6 +6,25 @@ import { createClient } from '@supabase/supabase-js'
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://imkfbalgviqeotpjogff.supabase.co'
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlta2ZiYWxndmlxZW90cGpvZ2ZmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ0NjE2NjYsImV4cCI6MjA4MDAzNzY2Nn0.POv8NbJu6TefE1e-J-9L8m5QTSp41XXwsO2ck69GnYc'
 
+// Contournement de l'erreur « Acquiring an exclusive Navigator LockManager
+// lock "lock:nephtys-auth" immediately failed » (instable en PWA / onglets
+// multiples). On sérialise nous-mêmes les opérations d'auth via une chaîne de
+// promesses au lieu de dépendre de navigator.locks. Évite les rejets du
+// rafraîchissement de token qui déstabilisaient le Realtime (CLOSED en boucle).
+let authLockChain: Promise<unknown> = Promise.resolve()
+const serializedAuthLock = <R>(
+  _name: string,
+  _acquireTimeout: number,
+  fn: () => Promise<R>,
+): Promise<R> => {
+  const run = authLockChain.then(fn, fn)
+  authLockChain = run.then(
+    () => undefined,
+    () => undefined,
+  )
+  return run
+}
+
 // WHATSAPP-LEVEL STABILITY: Minimal configuration
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
@@ -13,6 +32,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     autoRefreshToken: true,
     detectSessionInUrl: true,
     storageKey: 'nephtys-auth',
+    lock: serializedAuthLock,
   },
   realtime: {
     params: {

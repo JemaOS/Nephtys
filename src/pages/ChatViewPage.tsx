@@ -818,6 +818,14 @@ export function ChatViewPage() {
     }
   }, [user, handleNewMessageNotification])
 
+  // Ref stable pour le handler realtime : le canal ne doit PAS se re-souscrire
+  // à chaque changement d'identité du callback (sinon statut CLOSED/SUBSCRIBED
+  // en boucle → messages manqués → « pas de temps réel »).
+  const handleNewMessageRef = useRef(handleNewMessage)
+  useEffect(() => {
+    handleNewMessageRef.current = handleNewMessage
+  }, [handleNewMessage])
+
   // CRITICAL STABILITY FIX: Prevent multiple simultaneous data loads
   const isLoadingDataRef = useRef(false)
   const lastLoadTimeRef = useRef(0)
@@ -899,7 +907,7 @@ export function ChatViewPage() {
       .on('postgres_changes', {
         event: 'INSERT', schema: 'public', table: 'messages',
         filter: `conversation_id=eq.${conversationId}`
-      }, handleNewMessage)
+      }, (payload) => handleNewMessageRef.current(payload))
       // Messages UPDATE
       .on('postgres_changes', {
         event: 'UPDATE', schema: 'public', table: 'messages',
@@ -959,7 +967,7 @@ export function ChatViewPage() {
       // Broadcast for instant message delivery
       .on('broadcast', { event: 'message' }, ({ payload }) => {
         if (payload?.message) {
-          handleNewMessage({ new: payload.message })
+          handleNewMessageRef.current({ new: payload.message })
         }
       })
       .subscribe((status) => {
@@ -1030,7 +1038,7 @@ export function ChatViewPage() {
       globalThis.removeEventListener('supabase-reconnected', handleSupabaseReconnect)
       globalThis.removeEventListener('call-log-created', handleCallLogCreated as EventListener)
     }
-  }, [conversationId, user?.id, permission, handleNewMessage, debouncedLoadData])
+  }, [conversationId, user?.id, permission, debouncedLoadData])
 
   // Track previous message count to detect new messages
   const prevMessageCountRef = useRef(0)
