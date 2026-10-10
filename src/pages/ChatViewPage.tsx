@@ -43,8 +43,14 @@ import { ChatHeader, CallLog, TimelineItem, MessageList } from './ChatViewPageCo
 
 // Kill-switch : Double Ratchet (forward secrecy) à l'envoi des conversations
 // directes. Repli automatique sur la pile X25519/P-256 si indisponible.
-// Mettre à false pour revenir au comportement précédent (clé statique).
-const ENABLE_RATCHET_ON_SEND = true
+//
+// ⚠️ DÉSACTIVÉ le 2026-10-10 après TEST RÉEL 2-UTILISATEURS : un message
+// `ratchet-init` se déchiffrait une fois puis redevenait « indéchiffrable »
+// sur relance (`[ratchet] déchiffrement échoué: OperationError` + « one-time
+// prekey déjà consommé »). Bug d'état/OPK non rejouable — le ratchet n'est pas
+// prêt pour la prod. À réactiver seulement quand la re-lecture/idempotence est
+// corrigée et validée. Le chemin X25519 reste pleinement fonctionnel.
+const ENABLE_RATCHET_ON_SEND = false
 
 // Lazy-load des modals lourds. Ils ne sont jamais rendus au premier paint
 // (ouverts uniquement sur action utilisateur), donc ils n'ont pas besoin
