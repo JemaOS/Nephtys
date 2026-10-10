@@ -9,6 +9,7 @@
  */
 
 import { WebSocketWire } from './wire';
+import { SupabaseRelayWire } from './supabaseRelayWire';
 import { PrivateMessenger } from './privateMessenger';
 import { IdbConnectionStore } from './connectionStore';
 import { IdbHistoryStore } from './historyStore';
@@ -16,6 +17,19 @@ import { IdbHistoryStore } from './historyStore';
 let instance: PrivateMessenger | null = null;
 
 const RELAY_OVERRIDE_KEY = 'nephtys_relay_url';
+
+/**
+ * Vrai si un relais WebSocket dédié est configuré (override à chaud ou env).
+ * Sinon, on utilise le **relais aveugle sur Supabase** (aucun serveur requis).
+ */
+export function hasCustomRelay(): boolean {
+  try {
+    if (localStorage.getItem(RELAY_OVERRIDE_KEY)) return true;
+  } catch {
+    // localStorage indisponible
+  }
+  return !!(import.meta.env.VITE_RELAY_URL as string | undefined);
+}
 
 /**
  * URL du relais. Priorité :
@@ -34,9 +48,14 @@ export function getRelayUrl(): string {
   return (import.meta.env.VITE_RELAY_URL as string | undefined) ?? 'ws://127.0.0.1:8090';
 }
 
+/** Libellé lisible du transport privé actif. */
+export function getRelayLabel(): string {
+  return hasCustomRelay() ? getRelayUrl() : 'Supabase (files anonymes)';
+}
+
 /**
- * Change le relais à chaud (ex. `wss://xxxx.onion`). Prend effet à la
- * prochaine création de connexion (ou après rechargement de la page).
+ * Change le relais à chaud (ex. `wss://xxxx.onion`). Vide = revenir au relais
+ * Supabase par défaut. Prend effet au prochain rechargement.
  */
 export function setRelayUrl(url: string): void {
   try {
@@ -51,8 +70,9 @@ export function setRelayUrl(url: string): void {
 
 export function getPrivateMessenger(): PrivateMessenger {
   if (!instance) {
+    const wire = hasCustomRelay() ? new WebSocketWire(getRelayUrl()) : new SupabaseRelayWire();
     instance = new PrivateMessenger(
-      new WebSocketWire(getRelayUrl()),
+      wire,
       new IdbConnectionStore(),
       undefined,
       new IdbHistoryStore(),

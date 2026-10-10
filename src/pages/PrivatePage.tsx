@@ -19,7 +19,7 @@ import { useNavigate } from 'react-router-dom'
 import QRCode from 'react-qr-code'
 import { ArrowLeft, Copy, Link2, Lock, Plus, Send, ShieldCheck, Trash2 } from 'lucide-react'
 import { MainLayout } from '@/components/MainLayout'
-import { getPrivateMessenger, getRelayUrl, setRelayUrl } from '@/lib/relay/relayClient'
+import { getPrivateMessenger, getRelayUrl, getRelayLabel, setRelayUrl } from '@/lib/relay/relayClient'
 import type { PrivateConnectionRecord } from '@/lib/relay/connectionStore'
 
 interface ChatItem {
@@ -47,7 +47,7 @@ export function PrivatePage() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState(false)
-  const [relayInput, setRelayInput] = useState(relayUrl)
+  const [relayInput, setRelayInput] = useState('')
 
   const unsubscribeRef = useRef<(() => void) | null>(null)
   const rotationStopRef = useRef<(() => void) | null>(null)
@@ -208,12 +208,15 @@ export function PrivatePage() {
               de vive voix, par QR ou via un autre canal de confiance.
             </p>
           </div>
+          <p className="text-[11px] text-text-tertiary">
+            Transport privé : <span className="text-text-secondary">{getRelayLabel()}</span>
+          </p>
           <div className="flex items-center gap-2 text-[11px] text-text-tertiary">
             <span className="shrink-0">Relais :</span>
             <input
               value={relayInput}
               onChange={e => setRelayInput(e.target.value)}
-              placeholder="ws://127.0.0.1:8090 ou wss://xxxx.onion"
+              placeholder="(vide = Supabase) ou wss://xxxx.onion"
               aria-label="URL du relais"
               className="flex-1 min-w-0 px-2 py-1 rounded-lg bg-bg-primary text-[11px] text-text-secondary font-mono"
             />
