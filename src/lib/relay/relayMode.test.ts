@@ -58,19 +58,24 @@ describe('préférence Tor', () => {
   });
 });
 
-describe('passerelle Tor (un clic, sans réglage)', () => {
-  it('dérive l’URL de la passerelle depuis le relais SMP', () => {
+describe('mode Tor strict (onion uniquement)', () => {
+  it('dérive la passerelle (legacy) depuis le relais SMP', () => {
     expect(getTorGatewayUrl()).toMatch(/^wss?:\/\/.+\/tor$/);
   });
 
-  it('préfère une adresse .onion explicite à la passerelle', () => {
-    setOnionRelayUrl(V3);
-    expect(getTorRelayUrl()).toBe(`ws://${V3}`);
-    setOnionRelayUrl('');
-    expect(getTorRelayUrl()).toBe(getTorGatewayUrl());
+  it('n’utilise QUE le .onion : relay vide sans onion, même si une passerelle existe', () => {
+    expect(getTorGatewayUrl()).not.toBe('');
+    expect(getTorRelayUrl()).toBe('');
   });
 
-  it('indique que Tor est disponible via la passerelle', () => {
+  it('utilise le .onion quand il est configuré', () => {
+    setOnionRelayUrl(V3);
+    expect(getTorRelayUrl()).toBe(`ws://${V3}`);
+  });
+
+  it('Tor n’est disponible qu’avec un .onion (jamais via la passerelle)', () => {
+    expect(isTorAvailable()).toBe(false);
+    setOnionRelayUrl(V3);
     expect(isTorAvailable()).toBe(true);
   });
 });

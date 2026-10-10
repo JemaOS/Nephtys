@@ -220,17 +220,21 @@ export function getTorGatewayUrl(): string {
 }
 
 /**
- * Point d'entrée Tor effectif du mode privé. Priorité à une adresse `.onion`
- * explicitement fournie (parcours Tor Browser) puis à la passerelle Tor. Vide
- * si l'infra n'expose aucun point d'entrée Tor.
+ * Point d'entrée Tor du mode privé. **Mode strict : uniquement l'adresse
+ * `.onion`.** Aucun repli sur une passerelle clearnet — un repli exposerait
+ * l'IP réelle et recollerait les rôles « voit ton IP » et « voit ta
+ * destination ». Vide si aucune adresse `.onion` n'est configurée.
  */
 export function getTorRelayUrl(): string {
-  return getOnionRelayUrl() || getTorGatewayUrl();
+  return getOnionRelayUrl();
 }
 
-/** Vrai si un point d'entrée Tor est disponible (`.onion` ou passerelle). */
+/**
+ * Vrai si le mode Tor strict est exploitable, c'est-à-dire si une adresse
+ * `.onion` du relais est configurée. Sans elle, Tor n'est pas disponible.
+ */
 export function isTorAvailable(): boolean {
-  return Boolean(getTorRelayUrl());
+  return Boolean(getOnionRelayUrl());
 }
 
 export function getPrivateMessenger(): PrivateMessenger {
@@ -241,10 +245,14 @@ export function getPrivateMessenger(): PrivateMessenger {
     const smpKeyHash = import.meta.env.VITE_SMP_RELAY_KEY_HASH as string | undefined;
     const torUrl = getTorRelayUrl();
     let wire: RelayWire;
-    if (isTorRelayEnabled() && torUrl) {
-      // Tor activé : transport via le point d'entrée Tor (passerelle du VPS ou
-      // `.onion`), SANS repli clearnet (fail-closed : l'échec n'expose jamais
-      // l'IP en clair). Un seul clic suffit, aucun réglage côté utilisateur.
+    if (isTorRelayEnabled()) {
+      // Mode Tor STRICT : uniquement l'adresse `.onion`. Fail-closed — si elle
+      // manque, on refuse au lieu de retomber en clair (aucune exposition d'IP).
+      if (!torUrl) {
+        throw new Error(
+          'Mode Tor strict : aucune adresse .onion configurée (Paramètres → Confidentialité).',
+        );
+      }
       wire = new SmpRelayWire({ url: torUrl });
     } else if (mode === 'simplex-smp') {
       // Relais SimpleX SMP (browser-profile) — OPTION EXPLICITE.

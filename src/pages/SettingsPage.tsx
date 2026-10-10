@@ -26,7 +26,10 @@ import {
 import {
   isTorRelayEnabled,
   setTorRelayEnabled,
-  isTorAvailable
+  isTorAvailable,
+  getOnionRelayUrl,
+  setOnionRelayUrl,
+  normalizeOnionWsUrl
 } from '@/lib/relay/relayClient'
 
 // Type for storage/media type filter
@@ -162,7 +165,9 @@ export function SettingsPage() {
   const [showLastSeen, setShowLastSeen] = useState(true)
   const [showProfilePhoto, setShowProfilePhoto] = useState(true)
   const [torEnabled, setTorEnabled] = useState<boolean>(() => isTorRelayEnabled())
-  const [torAvailable] = useState<boolean>(() => isTorAvailable())
+  const [torAvailable, setTorAvailable] = useState<boolean>(() => isTorAvailable())
+  const [onionInput, setOnionInput] = useState<string>(() => getOnionRelayUrl())
+  const [onionSaved, setOnionSaved] = useState(false)
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false)
   const [twoFactorFactors, setTwoFactorFactors] = useState<TOTPFactor[]>([])
   const [twoFactorLoading, setTwoFactorLoading] = useState(false)
@@ -492,12 +497,25 @@ export function SettingsPage() {
     setDiscoverable((profile as any)?.discoverable ?? true)
   }, [profile])
 
-  // Routage Tor : bascule une préférence locale (aucun envoi serveur). Le mode
-  // privé se reconnecte via la passerelle Tor du VPS à la prochaine connexion.
+  // Mode Tor strict : préférence locale (aucun envoi serveur). Le mode privé se
+  // connecte uniquement à l'adresse `.onion` configurée, à la prochaine connexion.
   const handleToggleTor = () => {
     const next = !torEnabled
     setTorEnabled(next)
     setTorRelayEnabled(next)
+  }
+
+  const handleSaveOnion = () => {
+    setOnionRelayUrl(onionInput)
+    const valid = Boolean(normalizeOnionWsUrl(onionInput))
+    setTorAvailable(valid)
+    setOnionSaved(valid)
+    // Sans adresse .onion valide, le mode strict ne peut pas rester activé.
+    if (!valid && torEnabled) {
+      setTorEnabled(false)
+      setTorRelayEnabled(false)
+    }
+    setTimeout(() => setOnionSaved(false), 2000)
   }
 
   const handleCreateDeviceLink = async () => {
@@ -1055,6 +1073,24 @@ export function SettingsPage() {
         </div>
       </div>
       <div className="space-y-4">
+        <div className="space-y-2">
+          <label className="text-sm text-accent" htmlFor="onion-url">{t('onionUrlLabel')}</label>
+          <div className="flex items-center gap-3 p-4 bg-bg-surface rounded-2xl">
+            <input
+              id="onion-url"
+              type="text"
+              value={onionInput}
+              onChange={(e) => setOnionInput(e.target.value)}
+              placeholder={t('onionUrlPlaceholder')}
+              className="flex-1 bg-transparent text-text-primary outline-none placeholder:text-text-secondary text-sm"
+              aria-label={t('onionUrlLabel')}
+            />
+            <button type="button" onClick={handleSaveOnion} className="text-accent shrink-0">
+              {onionSaved ? <Check size={18} /> : t('save')}
+            </button>
+          </div>
+          {onionSaved && <p className="text-xs text-text-secondary px-1">{t('onionSavedHint')}</p>}
+        </div>
         <div className="flex items-center justify-between">
           <div className="pr-4">
             <div className="text-text-primary">{t('torLabel')}</div>
