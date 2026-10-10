@@ -46,7 +46,8 @@ import {
 import { fetchX25519PublicKeys, getLocalX25519KeyPair } from './e2eeX25519';
 import { isX25519PublicKey, wrapKeyForRecipientX25519, unwrapKeyFromSenderX25519 } from './x25519';
 import { isRatchetEnvelope, tryDecryptWithRatchet } from './ratchet/chatIntegration';
-import { findMySealedSender, sealSenderForMembers } from './messaging/sealedSender';
+import { getLocalRatchetKeys } from './ratchet/keyStore';
+import { findVerifiedSender, sealSenderForMembers } from './messaging/sealedSender';
 
 // Taille de bloc du rembourrage. Un message texte est rembourré au
 // multiple de PAD_BLOCK supérieur, avec des octets aléatoires après la
@@ -526,12 +527,32 @@ async function resolveSealedSenders(
     return; // clés verrouillées → repli sender_id
   }
 
+  // Clé publique de signature par expéditeur revendiqué (cache par lot).
+  const signingKeyCache = new Map<string, string | null>();
+  const getSigningKey = async (senderId: string): Promise<string | null> => {
+    if (signingKeyCache.has(senderId)) return signingKeyCache.get(senderId) ?? null;
+    let key: string | null = null;
+    try {
+      const { data } = await supabase
+        .from('profiles')
+        .select('ratchet_signing_key')
+        .eq('id', senderId)
+        .maybeSingle();
+      key = data?.ratchet_signing_key ?? null;
+    } catch {
+      key = null;
+    }
+    signingKeyCache.set(senderId, key);
+    return key;
+  };
+
   await Promise.all(sealedRows.map(async r => {
     try {
-      const resolved = await findMySealedSender(myPrivateKey, r.sender_sealed as string[]);
+      // Vérifie la signature Ed25519 → empêche l'usurpation.
+      const resolved = await findVerifiedSender(myPrivateKey, r.sender_sealed as string[], getSigningKey);
       if (resolved) r.sender_id = resolved;
     } catch {
-      // repli : on garde sender_id
+      // repli : on garde sender_id (authentifié par la RLS)
     }
   }));
 }
@@ -546,6 +567,10 @@ export async function buildSenderSealed(
   conversationId: string,
 ): Promise<string[] | null> {
   try {
+    // La clé de signature Ed25519 (ratchet) authentifie le scellé.
+    const keys = await getLocalRatchetKeys(senderId);
+    if (!keys?.signingKeyPair?.privateKey) return null; // pas de clé → repli sender_id
+
     const { data: members } = await supabase
       .from('conversation_members')
       .select('user_id')
@@ -561,7 +586,7 @@ export async function buildSenderSealed(
       .filter((k): k is string => typeof k === 'string' && k.length > 0);
     if (recipientKeys.length === 0) return null;
 
-    return await sealSenderForMembers(recipientKeys, senderId);
+    return await sealSenderForMembers(recipientKeys, senderId, keys.signingKeyPair.privateKey);
   } catch (e) {
     console.warn('[sealedSender] build failed (repli sender_id):', e);
     return null;
