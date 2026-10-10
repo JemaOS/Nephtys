@@ -18,7 +18,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getIceServers } from '@/lib/iceServers'
 import QRCode from 'react-qr-code'
-import { ArrowLeft, Copy, Link2, Lock, Paperclip, Plus, Send, ShieldCheck, Trash2 } from 'lucide-react'
+import { ArrowLeft, Copy, Lock, Paperclip, Plus, Send, ShieldCheck, SlidersHorizontal, Trash2, X } from 'lucide-react'
 import { MainLayout } from '@/components/MainLayout'
 import { getPrivateMessenger, getRelayUrl, getRelayLabel, setRelayUrl } from '@/lib/relay/relayClient'
 import { getGroupMessenger } from '@/lib/relay/groupClient'
@@ -86,6 +86,10 @@ export function PrivatePage() {
   const [callState, setCallState] = useState<CallState>('idle')
   const [callConv, setCallConv] = useState<string | null>(null)
   const [mediaError, setMediaError] = useState<string | null>(null)
+
+  // Onglets : une seule section à la fois (écran plus lisible, moins chargé).
+  const [tab, setTab] = useState<'connections' | 'groups' | 'status'>('connections')
+  const [showAdvanced, setShowAdvanced] = useState(false)
   const localMediaRef = useRef<MediaStream | null>(null)
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null)
   const localVideoRef = useRef<HTMLVideoElement | null>(null)
@@ -464,7 +468,29 @@ export function PrivatePage() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-auto p-4 space-y-4">
+        {/* Onglets */}
+        <div className="px-4 pt-3">
+          <div className="flex gap-1 p-1 rounded-xl bg-bg-surface">
+            {([
+              { id: 'connections', label: 'Connexions' },
+              { id: 'groups', label: 'Groupes' },
+              { id: 'status', label: 'Statuts' },
+            ] as const).map(item => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setTab(item.id)}
+                className={`flex-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  tab === item.id ? 'bg-[#7578db] text-white' : 'text-text-secondary hover:text-text-primary'
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-auto p-4 space-y-5">
           {callState !== 'idle' && callState !== 'ended' && (
             <div className="rounded-xl bg-[#7578db]/20 border border-[#7578db]/40 p-3 space-y-2">
               <div className="flex items-center justify-between text-sm text-text-primary">
@@ -484,235 +510,230 @@ export function PrivatePage() {
               {mediaError && <p className="text-xs text-red-400">{mediaError}</p>}
             </div>
           )}
-          <div className="flex items-start gap-2 rounded-xl bg-blue-500/10 border border-blue-500/20 p-3 text-xs text-text-secondary">
-            <ShieldCheck size={16} className="text-blue-400 mt-0.5 shrink-0" />
-            <p>
-              Le mode privé chiffre de bout en bout (Double Ratchet) et livre via un relais qui
-              ne connaît ni votre identité, ni votre correspondant. Échangez le lien ci-dessous
-              de vive voix, par QR ou via un autre canal de confiance.
-            </p>
-          </div>
-          <p className="text-[11px] text-text-tertiary">
-            Transport privé : <span className="text-text-secondary">{getRelayLabel()}</span>
-          </p>
-          <div className="flex items-center gap-2 text-[11px] text-text-tertiary">
-            <span className="shrink-0">Relais :</span>
-            <input
-              value={relayInput}
-              onChange={e => setRelayInput(e.target.value)}
-              placeholder="(vide = réseau chiffré) ou wss://xxxx.onion"
-              aria-label="URL du relais"
-              className="flex-1 min-w-0 px-2 py-1 rounded-lg bg-bg-primary text-[11px] text-text-secondary font-mono"
-            />
-            <button
-              type="button"
-              onClick={() => {
-                setRelayUrl(relayInput)
-                globalThis.location.reload()
-              }}
-              className="px-2 py-1 rounded-lg bg-bg-hover text-[11px] text-text-primary shrink-0"
-            >
-              Appliquer
-            </button>
-          </div>
+          {tab === 'connections' && (
+            <>
+              {invite && (
+                <div className="rounded-2xl bg-bg-surface p-4 flex flex-col items-center gap-3">
+                  <div className="w-full flex items-center justify-between">
+                    <span className="text-xs text-text-secondary">Invitation à partager</span>
+                    <button
+                      type="button"
+                      onClick={() => setInvite(null)}
+                      className="p-1 rounded-lg hover:bg-bg-hover text-text-tertiary"
+                      aria-label="Fermer"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                  <div className="bg-white p-3 rounded-xl">
+                    <QRCode value={invite} size={180} />
+                  </div>
+                  <div className="w-full flex items-center gap-2">
+                    <input
+                      readOnly
+                      value={invite}
+                      className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-bg-primary text-xs text-text-secondary font-mono truncate"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleCopy}
+                      className="flex items-center gap-1 px-3 py-2 rounded-lg bg-bg-hover text-xs text-text-primary"
+                    >
+                      <Copy size={14} /> {copied ? 'Copié' : 'Copier'}
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-text-tertiary text-center">
+                    Transmettez ce lien/QR de vive voix ou par un canal de confiance.
+                  </p>
+                </div>
+              )}
 
-          {/* Actions */}
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={handleCreate}
-              disabled={busy}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl bg-[#7578db] text-white text-sm font-medium hover:opacity-90 disabled:opacity-50"
-            >
-              <Plus size={16} /> Créer une connexion privée
-            </button>
-          </div>
+              <button
+                type="button"
+                onClick={handleCreate}
+                disabled={busy}
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-[#7578db] text-white text-sm font-medium hover:opacity-90 disabled:opacity-50"
+              >
+                <Plus size={16} /> Créer une connexion privée
+              </button>
 
-          {/* Invite (QR + lien) */}
-          {invite && (
-            <div className="rounded-2xl bg-bg-surface p-4 flex flex-col items-center gap-3">
-              <div className="bg-white p-3 rounded-xl">
-                <QRCode value={invite} size={180} />
-              </div>
-              <div className="w-full flex items-center gap-2">
-                <input
-                  readOnly
-                  value={invite}
-                  className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-bg-primary text-xs text-text-secondary font-mono truncate"
+              <div className="space-y-2">
+                <textarea
+                  value={joinLink}
+                  onChange={e => setJoinLink(e.target.value)}
+                  placeholder="Collez ici le lien d'invitation reçu"
+                  rows={2}
+                  className="w-full px-3 py-2 rounded-xl bg-bg-surface text-xs text-text-primary font-mono resize-none outline-none"
                 />
                 <button
                   type="button"
-                  onClick={handleCopy}
-                  className="flex items-center gap-1 px-3 py-2 rounded-lg bg-bg-hover text-xs text-text-primary"
+                  onClick={handleJoin}
+                  disabled={busy || !joinLink.trim()}
+                  className="w-full px-3 py-2 rounded-xl bg-bg-hover text-text-primary text-sm font-medium hover:brightness-110 disabled:opacity-50"
                 >
-                  <Copy size={14} /> {copied ? 'Copié' : 'Copier'}
+                  Rejoindre
                 </button>
               </div>
-              <p className="text-[11px] text-text-tertiary text-center">
-                Partagez ce lien/QR avec votre contact. Il l'ouvrira pour établir la connexion.
+
+              {error && (
+                <div className="rounded-xl bg-red-500/10 border border-red-500/20 p-3 text-xs text-red-400">
+                  {error}
+                </div>
+              )}
+
+              <section className="space-y-2">
+                <h2 className="text-xs font-semibold uppercase tracking-wide text-text-tertiary">Mes connexions</h2>
+                {connections.length === 0 && (
+                  <p className="text-sm text-text-tertiary">Aucune connexion pour l'instant.</p>
+                )}
+                {connections.map(conn => (
+                  <div
+                    key={conn.conversationId}
+                    className="flex items-center justify-between gap-2 rounded-xl bg-bg-surface px-3 py-2"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => openConnection(conn.conversationId)}
+                      className="flex items-center gap-2 text-sm text-text-primary min-w-0"
+                    >
+                      <Lock size={15} className="text-[#7578db] shrink-0" />
+                      <span className="truncate">{conn.conversationId}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleForget(conn.conversationId)}
+                      className="p-2 rounded-lg hover:bg-bg-hover text-text-tertiary"
+                      aria-label="Oublier"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                ))}
+              </section>
+
+              <p className="flex items-center gap-1.5 text-[11px] text-text-tertiary">
+                <ShieldCheck size={13} className="text-[#7578db] shrink-0" />
+                Chiffré de bout en bout — le relais ne voit ni votre identité ni vos contacts.
               </p>
-            </div>
-          )}
 
-          {/* Rejoindre */}
-          <div className="rounded-2xl bg-bg-surface p-4 space-y-2">
-            <div className="flex items-center gap-2 text-sm text-text-primary font-medium">
-              <Link2 size={16} /> Rejoindre une connexion
-            </div>
-            <textarea
-              value={joinLink}
-              onChange={e => setJoinLink(e.target.value)}
-              placeholder="Collez ici le lien d'invitation reçu"
-              rows={2}
-              className="w-full px-3 py-2 rounded-lg bg-bg-primary text-xs text-text-primary font-mono resize-none"
-            />
-            <button
-              type="button"
-              onClick={handleJoin}
-              disabled={busy || !joinLink.trim()}
-              className="px-3 py-2 rounded-xl bg-[#7578db] text-white text-sm font-medium hover:opacity-90 disabled:opacity-50"
-            >
-              Rejoindre
-            </button>
-          </div>
-
-          {error && (
-            <div className="rounded-xl bg-red-500/10 border border-red-500/20 p-3 text-xs text-red-400">
-              {error}
-            </div>
-          )}
-
-          {/* Connexions */}
-          <div className="space-y-2">
-            <h2 className="text-sm font-semibold text-text-primary">Mes connexions privées</h2>
-            {connections.length === 0 && (
-              <p className="text-xs text-text-tertiary">Aucune connexion pour l'instant.</p>
-            )}
-            {connections.map(conn => (
-              <div
-                key={conn.conversationId}
-                className="flex items-center justify-between gap-2 rounded-xl bg-bg-surface px-3 py-2"
-              >
+              <div>
                 <button
                   type="button"
-                  onClick={() => openConnection(conn.conversationId)}
-                  className="flex items-center gap-2 text-sm text-text-primary min-w-0"
+                  onClick={() => setShowAdvanced(v => !v)}
+                  className="flex items-center gap-2 text-xs text-text-tertiary hover:text-text-secondary"
                 >
-                  <Lock size={15} className="text-[#7578db] shrink-0" />
-                  <span className="truncate">{conn.conversationId}</span>
+                  <SlidersHorizontal size={13} /> Options avancées
                 </button>
-                <button
-                  type="button"
-                  onClick={() => handleForget(conn.conversationId)}
-                  className="p-2 rounded-lg hover:bg-bg-hover text-text-tertiary"
-                  aria-label="Oublier"
-                >
-                  <Trash2 size={15} />
-                </button>
+                {showAdvanced && (
+                  <div className="mt-2 space-y-2 rounded-xl bg-bg-surface p-3">
+                    <p className="text-[11px] text-text-tertiary">
+                      Transport : <span className="text-text-secondary">{getRelayLabel()}</span>
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <input
+                        value={relayInput}
+                        onChange={e => setRelayInput(e.target.value)}
+                        placeholder="wss://… (vide = réseau chiffré)"
+                        aria-label="URL du relais"
+                        className="flex-1 min-w-0 px-2 py-1 rounded-lg bg-bg-primary text-[11px] text-text-secondary font-mono"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRelayUrl(relayInput)
+                          globalThis.location.reload()
+                        }}
+                        className="px-2 py-1 rounded-lg bg-bg-hover text-[11px] text-text-primary shrink-0"
+                      >
+                        Appliquer
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
-            ))}
-          </div>
+            </>
+          )}
 
-          {/* Groupes privés */}
-          <div className="space-y-2">
-            <h2 className="text-sm font-semibold text-text-primary">Groupes privés</h2>
-            <p className="text-[11px] text-text-tertiary">
-              Groupe chiffré : clé de groupe distribuée via les files du relais, rotation à
-              l'ajout/retrait de membres.
-            </p>
-            <button
-              type="button"
-              onClick={handleCreateGroup}
-              disabled={groupBusy}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl bg-[#7578db] text-white text-sm font-medium disabled:opacity-50"
-            >
-              <Plus size={16} /> Créer un groupe privé
-            </button>
-
-            {groupInvite && (
-              <div className="rounded-2xl bg-bg-surface p-4 flex flex-col items-center gap-3">
-                <div className="bg-white p-3 rounded-xl"><QRCode value={groupInvite} size={160} /></div>
-                <div className="w-full flex items-center gap-2">
-                  <input readOnly value={groupInvite} className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-bg-primary text-[11px] font-mono text-text-secondary truncate" />
-                  <button type="button" onClick={() => navigator.clipboard?.writeText(groupInvite)} className="px-3 py-2 rounded-lg bg-bg-hover text-xs text-text-primary">Copier</button>
-                </div>
-              </div>
-            )}
-
-            <div className="rounded-2xl bg-bg-surface p-4 space-y-2">
-              <div className="flex items-center gap-2 text-sm text-text-primary font-medium"><Link2 size={16} /> Rejoindre un groupe</div>
-              <textarea value={groupJoinLink} onChange={e => setGroupJoinLink(e.target.value)} placeholder="Collez le lien d'invitation au groupe" rows={2} className="w-full px-3 py-2 rounded-lg bg-bg-primary text-xs text-text-primary font-mono resize-none" />
-              <button type="button" onClick={handleJoinGroup} disabled={groupBusy || !groupJoinLink.trim()} className="px-3 py-2 rounded-xl bg-[#7578db] text-white text-sm font-medium disabled:opacity-50">Rejoindre</button>
-            </div>
-
-            {groupError && <div className="rounded-xl bg-red-500/10 border border-red-500/20 p-3 text-xs text-red-400">{groupError}</div>}
-
-            {groups.length === 0 && <p className="text-xs text-text-tertiary">Aucun groupe pour l'instant.</p>}
-            {groups.map(g => (
-              <div key={g.groupId} className="flex items-center justify-between gap-2 rounded-xl bg-bg-surface px-3 py-2">
-                <button type="button" onClick={() => openGroup(g.groupId)} className="flex items-center gap-2 text-sm text-text-primary min-w-0">
-                  <Lock size={15} className="text-[#7578db] shrink-0" />
-                  <span className="truncate">{g.name}</span>
-                  <span className="text-[10px] text-text-tertiary shrink-0">{g.members.length + 1} membres</span>
-                </button>
-                <button type="button" onClick={() => handleForgetGroup(g.groupId)} className="p-2 rounded-lg hover:bg-bg-hover text-text-tertiary" aria-label="Oublier"><Trash2 size={15} /></button>
-              </div>
-            ))}
-
-            {activeGroupId && (
-              <div className="border border-bg-hover rounded-2xl bg-bg-secondary overflow-hidden">
-                <div className="px-4 py-2 text-xs text-text-secondary flex items-center gap-2"><Lock size={13} className="text-[#7578db]" /> groupe {activeGroupId}</div>
-                <div className="h-48 overflow-auto px-4 py-2 space-y-2">
-                  {groupMessages.length === 0 && <p className="text-xs text-text-tertiary">Aucun message.</p>}
-                  {groupMessages.map(m => (
-                    <div key={m.id} className={`max-w-[75%] px-3 py-2 rounded-2xl text-sm ${m.mine ? 'ml-auto bg-[#7578db] text-white' : 'mr-auto bg-bg-surface text-text-primary'}`}>{m.text}</div>
-                  ))}
-                </div>
-                <div className="flex items-center gap-2 px-4 py-3 border-t border-bg-hover">
-                  <input value={groupDraft} onChange={e => setGroupDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendGroup() } }} placeholder="Message de groupe chiffré…" className="flex-1 px-3 py-2 rounded-xl bg-bg-primary text-sm text-text-primary" />
-                  <button type="button" onClick={handleSendGroup} disabled={!groupDraft.trim()} className="p-2 rounded-xl bg-[#7578db] text-white disabled:opacity-50" aria-label="Envoyer"><Send size={18} /></button>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Statuts privés (éphémères) */}
-          <div className="space-y-2">
-            <h2 className="text-sm font-semibold text-text-primary">Statuts privés</h2>
-            <p className="text-[11px] text-text-tertiary">
-              Diffusés à vos connexions privées, chiffrés, expirés après 24 h.
-            </p>
-            <div className="flex items-center gap-2">
-              <input
-                value={statusDraft}
-                onChange={e => setStatusDraft(e.target.value)}
-                placeholder="Écrire un statut…"
-                className="flex-1 min-w-0 px-3 py-2 rounded-xl bg-bg-primary text-sm text-text-primary"
-              />
+          {tab === 'groups' && (
+            <>
               <button
                 type="button"
-                onClick={publishStatus}
-                disabled={!statusDraft.trim()}
-                className="px-3 py-2 rounded-xl bg-[#7578db] text-white text-sm font-medium disabled:opacity-50"
+                onClick={handleCreateGroup}
+                disabled={groupBusy}
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-[#7578db] text-white text-sm font-medium disabled:opacity-50"
               >
-                Publier
+                <Plus size={16} /> Créer un groupe privé
               </button>
-            </div>
-            {statuses.length === 0 && <p className="text-xs text-text-tertiary">Aucun statut actif.</p>}
-            {statuses.map(s => (
-              <div key={s.id} className="rounded-xl bg-bg-surface px-3 py-2">
-                <div className="flex items-center justify-between text-[10px] text-text-tertiary">
-                  <span className="truncate">{s.conversationId === 'moi' ? 'moi' : s.conversationId}</span>
-                  <span>{Math.max(0, Math.round((s.expiresAt - Date.now()) / 3_600_000))} h restantes</span>
+
+              {groupInvite && (
+                <div className="rounded-2xl bg-bg-surface p-4 flex flex-col items-center gap-3">
+                  <div className="bg-white p-3 rounded-xl"><QRCode value={groupInvite} size={160} /></div>
+                  <div className="w-full flex items-center gap-2">
+                    <input readOnly value={groupInvite} className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-bg-primary text-[11px] font-mono text-text-secondary truncate" />
+                    <button type="button" onClick={() => navigator.clipboard?.writeText(groupInvite)} className="px-3 py-2 rounded-lg bg-bg-hover text-xs text-text-primary">Copier</button>
+                  </div>
                 </div>
-                <p className="text-sm text-text-primary whitespace-pre-wrap break-words">{s.text}</p>
+              )}
+
+              <div className="space-y-2">
+                <textarea value={groupJoinLink} onChange={e => setGroupJoinLink(e.target.value)} placeholder="Collez le lien d'invitation au groupe" rows={2} className="w-full px-3 py-2 rounded-xl bg-bg-surface text-xs text-text-primary font-mono resize-none outline-none" />
+                <button type="button" onClick={handleJoinGroup} disabled={groupBusy || !groupJoinLink.trim()} className="w-full px-3 py-2 rounded-xl bg-bg-hover text-text-primary text-sm font-medium disabled:opacity-50">Rejoindre</button>
               </div>
-            ))}
-          </div>
+
+              {groupError && <div className="rounded-xl bg-red-500/10 border border-red-500/20 p-3 text-xs text-red-400">{groupError}</div>}
+
+              <section className="space-y-2">
+                <h2 className="text-xs font-semibold uppercase tracking-wide text-text-tertiary">Mes groupes</h2>
+                {groups.length === 0 && <p className="text-sm text-text-tertiary">Aucun groupe pour l'instant.</p>}
+                {groups.map(g => (
+                  <div key={g.groupId} className="flex items-center justify-between gap-2 rounded-xl bg-bg-surface px-3 py-2">
+                    <button type="button" onClick={() => openGroup(g.groupId)} className="flex items-center gap-2 text-sm text-text-primary min-w-0">
+                      <Lock size={15} className="text-[#7578db] shrink-0" />
+                      <span className="truncate">{g.name}</span>
+                      <span className="text-[10px] text-text-tertiary shrink-0">{g.members.length + 1} membres</span>
+                    </button>
+                    <button type="button" onClick={() => handleForgetGroup(g.groupId)} className="p-2 rounded-lg hover:bg-bg-hover text-text-tertiary" aria-label="Oublier"><Trash2 size={15} /></button>
+                  </div>
+                ))}
+              </section>
+            </>
+          )}
+
+          {tab === 'status' && (
+            <>
+              <div className="flex items-center gap-2">
+                <input
+                  value={statusDraft}
+                  onChange={e => setStatusDraft(e.target.value)}
+                  placeholder="Écrire un statut…"
+                  className="flex-1 min-w-0 px-3 py-2 rounded-xl bg-bg-surface text-sm text-text-primary outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={publishStatus}
+                  disabled={!statusDraft.trim()}
+                  className="px-3 py-2 rounded-xl bg-[#7578db] text-white text-sm font-medium disabled:opacity-50"
+                >
+                  Publier
+                </button>
+              </div>
+              <p className="text-[11px] text-text-tertiary">Diffusés à vos connexions, chiffrés, expirés après 24 h.</p>
+              {statuses.length === 0 && <p className="text-sm text-text-tertiary">Aucun statut actif.</p>}
+              {statuses.map(s => (
+                <div key={s.id} className="rounded-xl bg-bg-surface px-3 py-2">
+                  <div className="flex items-center justify-between text-[10px] text-text-tertiary">
+                    <span className="truncate">{s.conversationId === 'moi' ? 'moi' : s.conversationId}</span>
+                    <span>{Math.max(0, Math.round((s.expiresAt - Date.now()) / 3_600_000))} h restantes</span>
+                  </div>
+                  <p className="text-sm text-text-primary whitespace-pre-wrap break-words">{s.text}</p>
+                </div>
+              ))}
+            </>
+          )}
         </div>
 
-        {/* Chat actif */}
-        {active && (
+        {/* Chat 1:1 */}
+        {tab === 'connections' && active && (
           <div className="border-t border-bg-hover bg-bg-secondary">
             <div className="px-4 py-2 text-xs text-text-secondary flex items-center justify-between gap-2">
               <span className="flex items-center gap-2"><Lock size={13} className="text-[#7578db]" /> {active}</span>
@@ -802,6 +823,25 @@ export function PrivatePage() {
               >
                 <Send size={18} />
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* Chat de groupe */}
+        {tab === 'groups' && activeGroupId && (
+          <div className="border-t border-bg-hover bg-bg-secondary">
+            <div className="px-4 py-2 text-xs text-text-secondary flex items-center gap-2">
+              <Lock size={13} className="text-[#7578db]" /> groupe {activeGroupId}
+            </div>
+            <div className="h-56 overflow-auto px-4 py-2 space-y-2">
+              {groupMessages.length === 0 && <p className="text-xs text-text-tertiary">Aucun message.</p>}
+              {groupMessages.map(m => (
+                <div key={m.id} className={`max-w-[75%] px-3 py-2 rounded-2xl text-sm ${m.mine ? 'ml-auto bg-[#7578db] text-white' : 'mr-auto bg-bg-surface text-text-primary'}`}>{m.text}</div>
+              ))}
+            </div>
+            <div className="flex items-center gap-2 px-4 py-3 border-t border-bg-hover">
+              <input value={groupDraft} onChange={e => setGroupDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendGroup() } }} placeholder="Message de groupe chiffré…" className="flex-1 px-3 py-2 rounded-xl bg-bg-primary text-sm text-text-primary" />
+              <button type="button" onClick={handleSendGroup} disabled={!groupDraft.trim()} className="p-2 rounded-xl bg-[#7578db] text-white disabled:opacity-50" aria-label="Envoyer"><Send size={18} /></button>
             </div>
           </div>
         )}
