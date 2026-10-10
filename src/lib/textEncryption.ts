@@ -415,10 +415,10 @@ export async function decryptMessageRows<T extends {
   // AVANT tout usage de sender_id. Repli sur sender_id si absent/illisible.
   await resolveSealedSenders(rows as Array<{ sender_id?: string; sender_sealed?: unknown }>, userId);
 
-  const encrypted = rows.filter(
-    r => r.is_text_encrypted
-      && (isRatchetEnvelope(r.encryption_metadata) || parseEnvelope(r.encryption_metadata)),
-  );
+  // Tout message marqué chiffré est traité : s'il n'est pas déchiffrable (clé
+  // absente, enveloppe illisible), il reçoit le PLACEHOLDER — jamais le
+  // ciphertext brut (régression détectée en test 2-appareils avec serveur aveugle).
+  const encrypted = rows.filter(r => r.is_text_encrypted);
   if (encrypted.length === 0) return rows;
 
   // On n'interroge les clés enveloppées QUE pour les messages non-ratchet.
