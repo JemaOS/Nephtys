@@ -55,6 +55,13 @@ const ENABLE_RATCHET_ON_SEND = true
 // le backend cible validés. Repli direct Supabase en cas d'échec du transport.
 const USE_TRANSPORT_SEND = import.meta.env.VITE_TRANSPORT_SEND === '1'
 
+// Phase 1c — serveur aveugle à l'expéditeur : n'écrit plus `sender_id` en clair.
+// L'identité est portée par `sender_sealed` (authentifié, vérifié côté client).
+// Risque assumé (directive produit) : les filtres/agrégats SERVEUR par sender_id
+// (compteurs non-lus, purge « mes messages ») se dégradent tant qu'ils ne sont
+// pas recalculés côté client.
+const BLIND_SENDER = true
+
 // Lazy-load des modals lourds. Ils ne sont jamais rendus au premier paint
 // (ouverts uniquement sur action utilisateur), donc ils n'ont pas besoin
 // d'être dans le chunk principal de ChatViewPage. Avant : chunk de ~1 MB
@@ -1490,26 +1497,20 @@ export function ChatViewPage() {
     // Utilise la RPC mark_messages_as_read (SECURITY DEFINER) pour bypass
     // d'\u00e9ventuels probl\u00e8mes RLS sur la table messages. Met \u00e0 jour TOUS les
     // messages non-lus de la conv en une seule requ\u00eate.
-    const { data, error } = await supabase.rpc('mark_messages_as_read', {
-      p_conversation_id: conversationIdRef,
-      p_user_id: currentUserId,
-    })
-
+    // Phase 1c : le serveur ne connait plus l'expediteur (sender_id NULL).
+    // On marque par identifiants explicites — l'expediteur a deja ete resolu
+    // cote client, on ne retient que les messages recus non lus.
+    const ids = unreadMessages.map(msg => msg.id)
+    const { error } = await supabase
+      .from('messages')
+      .update({ status: 'read' })
+      .in('id', ids)
     if (error) {
-      console.error('[ChatViewPage] mark_messages_as_read RPC error:', error)
-      // Fallback : tenter l'UPDATE direct (au cas o\u00f9 la migration RPC n'est pas appliqu\u00e9e)
-      const ids = unreadMessages.map(msg => msg.id)
-      const { error: fallbackError } = await supabase
-        .from('messages')
-        .update({ status: 'read' })
-        .in('id', ids)
-      if (fallbackError) {
-        console.error('[ChatViewPage] Fallback UPDATE also failed:', fallbackError)
-        return
-      }
+      console.error('[ChatViewPage] mark-as-read UPDATE failed:', error)
+      return
     }
 
-    const updatedCount = Array.isArray(data) ? (data[0]?.updated_count ?? 0) : (data?.updated_count ?? unreadMessages.length)
+    const updatedCount = ids.length
     console.log('[ChatViewPage] Marked as read:', updatedCount, 'messages in conv', conversationIdRef)
 
     // Mise \u00e0 jour optimiste de l'\u00e9tat local
@@ -1793,7 +1794,7 @@ export function ChatViewPage() {
     try {
       const plaintext = newMessage.trim()
       const messageData: any = {
-        conversation_id: conversationId!, sender_id: user.id, content: plaintext,
+        conversation_id: conversationId!, sender_id: BLIND_SENDER ? null : user.id, content: plaintext,
         type: 'text', status: 'sent', reply_to_id: replyToMessage?.id || null,
       }
 
@@ -1915,7 +1916,7 @@ export function ChatViewPage() {
 
         // Replace optimistic message with real one from DB, en conservant
         // le texte en clair côté client (jamais le ciphertext à l'écran).
-        const settled: any = { ...(data[0] as Message), content: plaintext }
+        const settled: any = { ...(data[0] as Message), content: plaintext, sender_id: (data[0] as any).sender_id ?? user.id }
         // Conserve l'aperçu en clair côté client (le serveur n'a que le ciphertext).
         if (!settled.link_preview && linkPreviewPayload) {
           settled.link_preview = JSON.stringify(linkPreviewPayload)
