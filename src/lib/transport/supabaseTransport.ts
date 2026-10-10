@@ -15,6 +15,7 @@ import type {
   MessagingTransport,
   OutgoingMessage,
   SendResult,
+  TransportEvent,
   Unsubscribe,
 } from './types';
 
@@ -95,5 +96,34 @@ export class SupabaseTransport implements MessagingTransport {
       .limit(limit);
     if (error) throw new Error(`SupabaseTransport.fetchHistory: ${error.message}`);
     return (data ?? []).map(row => toIncoming(row as Record<string, unknown>));
+  }
+
+  /**
+   * Événements temps réel (insert/update/delete) d'une conversation.
+   * Couvre ce que `subscribe` (insert seul) ne fait pas : éditions, statuts,
+   * suppressions — prérequis pour brancher la réception de l'app sur le transport.
+   */
+  subscribeEvents(
+    conversationId: string,
+    onEvent: (ev: TransportEvent) => void,
+  ): Unsubscribe {
+    const filter = `conversation_id=eq.${conversationId}`;
+    const table = { schema: 'public', table: 'messages', filter };
+    const channel = supabase
+      .channel(`transport-events:${conversationId}`)
+      .on('postgres_changes', { event: 'INSERT', ...table }, payload =>
+        onEvent({ kind: 'insert', message: toIncoming(payload.new as Record<string, unknown>) }),
+      )
+      .on('postgres_changes', { event: 'UPDATE', ...table }, payload =>
+        onEvent({ kind: 'update', message: toIncoming(payload.new as Record<string, unknown>) }),
+      )
+      .on('postgres_changes', { event: 'DELETE', ...table }, payload =>
+        onEvent({ kind: 'delete', message: toIncoming(payload.old as Record<string, unknown>) }),
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }
 }

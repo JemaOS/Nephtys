@@ -70,6 +70,15 @@ export interface SendResult {
 
 export type Unsubscribe = () => void;
 
+/** Nature d'un événement de message (pour la réception temps réel). */
+export type TransportEventKind = 'insert' | 'update' | 'delete';
+
+/** Événement de message : le backend ne fournit que des enveloppes chiffrées. */
+export interface TransportEvent {
+  kind: TransportEventKind;
+  message: IncomingMessage;
+}
+
 /**
  * Contrat que tout backend de messagerie doit respecter.
  *
@@ -87,6 +96,15 @@ export interface MessagingTransport {
 
   /** Souscrit aux messages entrants d'une conversation. */
   subscribe(conversationId: string, onMessage: (msg: IncomingMessage) => void): Unsubscribe;
+
+  /**
+   * Souscrit aux **changements** de messages d'une conversation
+   * (insert/update/delete) — nécessaire pour les statuts, éditions, suppressions
+   * et reçus de lecture. **Optionnel** : les backends qui ne l'implémentent pas
+   * (ex. relais volatil sans historique) peuvent l'omettre ; l'appelant doit
+   * alors retomber sur un poll/refetch.
+   */
+  subscribeEvents?(conversationId: string, onEvent: (ev: TransportEvent) => void): Unsubscribe;
 
   /** Récupère l'historique d'une conversation (contenus chiffrés bruts). */
   fetchHistory(conversationId: string, limit?: number): Promise<IncomingMessage[]>;
