@@ -826,8 +826,18 @@ export function ChatsPage() {
       globalThis.addEventListener('messages-marked-read', handleMessagesMarkedRead)
       globalThis.addEventListener('focus', handleFocus)
 
+      // Filet de sécurité anti-F5 : polling périodique si le Realtime ne
+      // délivre pas les événements (onglet visible). Garantit la mise à jour
+      // de la liste des conversations sans rechargement manuel.
+      const fallbackPoll = setInterval(() => {
+        if (document.visibilityState === 'visible') {
+          loadConversationsFromServer(false)
+        }
+      }, 8000)
+
       return () => {
         clearTimeout(loadingTimeout)
+        clearInterval(fallbackPoll)
         supabase.removeChannel(chatsListChannel)
         document.removeEventListener('visibilitychange', handleVisibilityChange)
         globalThis.removeEventListener('supabase-reconnected', handleSupabaseReconnect)

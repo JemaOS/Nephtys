@@ -999,8 +999,17 @@ export function ChatViewPage() {
     
     globalThis.addEventListener('call-log-created', handleCallLogCreated as EventListener)
 
+    // Filet de sécurité anti-F5 : rafraîchit la conversation ouverte si le
+    // Realtime ne délivre pas (onglet visible).
+    const fallbackPoll = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        debouncedLoadData()
+      }
+    }, 8000)
+
     return () => {
       clearTimeout(loadingTimeout)
+      clearInterval(fallbackPoll)
       if (reconnectTimeout) clearTimeout(reconnectTimeout)
       try {
         supabase.removeChannel(mainChannel)
