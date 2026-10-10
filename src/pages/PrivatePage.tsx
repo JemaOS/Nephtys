@@ -20,7 +20,7 @@ import { getIceServers } from '@/lib/iceServers'
 import QRCode from 'react-qr-code'
 import { ArrowLeft, Copy, Lock, Paperclip, Plus, Send, ShieldCheck, SlidersHorizontal, Trash2, X } from 'lucide-react'
 import { MainLayout } from '@/components/MainLayout'
-import { getPrivateMessenger, getRelayUrl, getRelayLabel, setRelayUrl } from '@/lib/relay/relayClient'
+import { getPrivateMessenger, getRelayUrl, getRelayLabel, setRelayUrl, isTorRelayEnabled } from '@/lib/relay/relayClient'
 import { getGroupMessenger } from '@/lib/relay/groupClient'
 import type { GroupRecord } from '@/lib/relay/groupMessenger'
 import { parseFileMessage } from '@/lib/relay/privateMessenger'
@@ -132,6 +132,12 @@ export function PrivatePage() {
 
   const startCall = useCallback(async () => {
     if (!active) return
+    // Fail-closed : un appel WebRTC (ICE) contourne le transport Tor et expose
+    // l'adresse IP réelle de l'appareil. En mode Tor, on refuse l'appel.
+    if (isTorRelayEnabled()) {
+      setMediaError('Appels désactivés en mode Tor : WebRTC exposerait votre IP réelle.')
+      return
+    }
     setMediaError(null)
     await acquireMedia()
     await privateCall.start(active)
@@ -210,6 +216,8 @@ export function PrivatePage() {
       const convId = c.conversationId
       const unsubMsg = messenger.subscribe(convId, text => {
         if (isCallSignal(text)) {
+          // Mode Tor : on n'établit aucun média WebRTC (ICE exposarait l'IP réelle).
+          if (isTorRelayEnabled()) return
           const sig = parseCallSignal(text)
           if (sig?.kind === 'offer' && !localMediaRef.current) {
             void (async () => {
@@ -740,7 +748,9 @@ export function PrivatePage() {
               <button
                 type="button"
                 onClick={() => active && startCall()}
-                className="px-2 py-1 rounded-lg bg-bg-hover text-text-primary text-xs"
+                disabled={isTorRelayEnabled()}
+                title={isTorRelayEnabled() ? 'Appels désactivés en mode Tor (fuite d\u2019IP WebRTC)' : undefined}
+                className="px-2 py-1 rounded-lg bg-bg-hover text-text-primary text-xs disabled:opacity-40 disabled:cursor-not-allowed"
                 aria-label="Appeler"
               >
                 Appeler
