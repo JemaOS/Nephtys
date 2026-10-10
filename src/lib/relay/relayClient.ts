@@ -48,9 +48,9 @@ export function getRelayUrl(): string {
   return (import.meta.env.VITE_RELAY_URL as string | undefined) ?? 'ws://127.0.0.1:8090';
 }
 
-/** Libellé lisible du transport privé actif. */
+/** Libellé lisible du transport privé actif (générique, rassurant). */
 export function getRelayLabel(): string {
-  return hasCustomRelay() ? getRelayUrl() : 'Supabase (files anonymes)';
+  return hasCustomRelay() ? getRelayUrl() : 'Réseau privé chiffré';
 }
 
 /**

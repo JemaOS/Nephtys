@@ -11,6 +11,7 @@ import { DocumentPreviewModal, generatePDFThumbnail } from './DocumentPreview';
 import { useI18n } from '@/i18n';
 import { AudioPreviewPlayer, EmojiPicker, StickerPicker } from './MediaUploaderComponents';
 import { uploadEncryptedMedia } from '@/lib/encryptedMediaService';
+import { fetchGifItems } from '@/lib/gifProviders';
 
 // Helper function to get file extension
 const getFileExtension = (filename: string): string => {
@@ -106,33 +107,8 @@ const checkVideoNeedsCompression = async (previewUrl: string): Promise<boolean> 
 
 
 
-// Tenor GIF API - use environment variable for security
-const TENOR_API_KEY = import.meta.env.VITE_TENOR_API_KEY || '';
-const FALLBACK_TENOR_KEY = 'LIVDSRZULELA'; // Public test key (V1 API)
-const TENOR_CLIENT_KEY = 'nephtys_app';
+// GIF/stickers : chaîne de fournisseurs avec fallbacks (cf. @/lib/gifProviders).
 
-// Helper to normalize Tenor API response (V1 -> V2 format)
-const normalizeTenorResult = (result: any) => {
-  if (result.media_formats) {
-    // V2 format
-    return result;
-  } else if (result.media && result.media.length > 0) {
-    // V1 format -> convert to V2-like structure for compatibility
-    const media = result.media[0];
-    return {
-      ...result,
-      media_formats: {
-        gif: media.gif,
-        tinygif: media.tinygif,
-        mediumgif: media.mediumgif,
-        nanogif: media.nanogif,
-        webp: media.webp,
-        tinywebp: media.tinywebp,
-      }
-    };
-  }
-  return result;
-};
 
 
 interface UploadedFileData {
@@ -935,25 +911,11 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
   const [loadingStickers, setLoadingStickers] = useState(false);
   const [stickerSearchQuery, setStickerSearchQuery] = useState('');
 
-  // Fetch stickers from Tenor API
+  // Fetch stickers via la chaîne de fournisseurs (fallbacks)
   const fetchStickers = async (query: string = 'love') => {
     setLoadingStickers(true);
     try {
-      let endpoint = '';
-      
-      // Determine endpoint based on API key availability
-      if (TENOR_API_KEY) {
-        endpoint = `https://tenor.googleapis.com/v2/search?q=${encodeURIComponent(query)}&key=${TENOR_API_KEY}&client_key=${TENOR_CLIENT_KEY}&searchfilter=sticker&limit=20`;
-      } else {
-        endpoint = `https://g.tenor.com/v1/search?q=${encodeURIComponent(query)}&key=${FALLBACK_TENOR_KEY}&searchfilter=sticker&limit=20`;
-      }
-      
-      const response = await fetch(endpoint);
-      const data = await response.json();
-      
-      if (data.results) {
-        setStickers(data.results.map(normalizeTenorResult));
-      }
+      setStickers(await fetchGifItems('sticker', query));
     } catch (err) {
       console.warn('Failed to fetch stickers:', err);
       setStickers([]);
@@ -962,29 +924,11 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
     }
   };
 
-  // Fetch GIFs from Tenor API
+  // Fetch GIFs via la chaîne de fournisseurs (fallbacks)
   const fetchGifs = async (query: string = 'trending') => {
     setLoadingGifs(true);
     try {
-      let endpoint = '';
-      
-      // Determine endpoint based on API key availability
-      if (TENOR_API_KEY) {
-        endpoint = query === 'trending'
-          ? `https://tenor.googleapis.com/v2/featured?key=${TENOR_API_KEY}&client_key=${TENOR_CLIENT_KEY}&limit=20`
-          : `https://tenor.googleapis.com/v2/search?q=${encodeURIComponent(query)}&key=${TENOR_API_KEY}&client_key=${TENOR_CLIENT_KEY}&limit=20`;
-      } else {
-        endpoint = query === 'trending'
-          ? `https://g.tenor.com/v1/trending?key=${FALLBACK_TENOR_KEY}&limit=20`
-          : `https://g.tenor.com/v1/search?q=${encodeURIComponent(query)}&key=${FALLBACK_TENOR_KEY}&limit=20`;
-      }
-      
-      const response = await fetch(endpoint);
-      const data = await response.json();
-      
-      if (data.results) {
-        setGifs(data.results.map(normalizeTenorResult));
-      }
+      setGifs(await fetchGifItems('gif', query));
     } catch (err) {
       console.warn('Failed to fetch GIFs:', err);
       setGifs([]);

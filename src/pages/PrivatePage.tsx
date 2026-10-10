@@ -258,7 +258,7 @@ export function PrivatePage() {
             <input
               value={relayInput}
               onChange={e => setRelayInput(e.target.value)}
-              placeholder="(vide = Supabase) ou wss://xxxx.onion"
+              placeholder="(vide = réseau chiffré) ou wss://xxxx.onion"
               aria-label="URL du relais"
               className="flex-1 min-w-0 px-2 py-1 rounded-lg bg-bg-primary text-[11px] text-text-secondary font-mono"
             />
