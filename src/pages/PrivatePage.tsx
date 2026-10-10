@@ -17,9 +17,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import QRCode from 'react-qr-code'
-import { ArrowLeft, Copy, Link2, Lock, Plus, Send, ShieldCheck, Trash2 } from 'lucide-react'
+import { ArrowLeft, Copy, Link2, Lock, Paperclip, Plus, Send, ShieldCheck, Trash2 } from 'lucide-react'
 import { MainLayout } from '@/components/MainLayout'
 import { getPrivateMessenger, getRelayUrl, getRelayLabel, setRelayUrl } from '@/lib/relay/relayClient'
+import { parseFileMessage } from '@/lib/relay/privateMessenger'
+import { encryptAndUploadFile, downloadAndDecryptFile, type FileDescriptor } from '@/lib/relay/fileTransfer'
 import type { PrivateConnectionRecord } from '@/lib/relay/connectionStore'
 
 interface ChatItem {
@@ -52,6 +54,8 @@ export function PrivatePage() {
   const unsubscribeRef = useRef<(() => void) | null>(null)
   const rotationStopRef = useRef<(() => void) | null>(null)
   const coverStopRef = useRef<(() => void) | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const [uploading, setUploading] = useState(false)
 
   const refresh = useCallback(async () => {
     try {
@@ -150,6 +154,44 @@ export function PrivatePage() {
       setError(`Envoi impossible — ${(e as Error).message}`)
     }
   }, [draft, active, messenger])
+
+  const handleFileSend = useCallback(
+    async (file: File) => {
+      if (!active) return
+      setUploading(true)
+      setError(null)
+      try {
+        const descriptor = await encryptAndUploadFile(file)
+        await messenger.sendFile(active, descriptor)
+        // Affiche le descripteur localement (rendu comme fichier chiffré).
+        setMessages(prev => [
+          ...prev,
+          { id: `out-file-${Date.now()}-${prev.length}`, text: `\u0000NPT-FILE:${JSON.stringify(descriptor)}`, mine: true },
+        ])
+      } catch (e) {
+        setError(`Envoi du fichier impossible — ${(e as Error).message}`)
+      } finally {
+        setUploading(false)
+      }
+    },
+    [active, messenger],
+  )
+
+  const handleDownloadFile = useCallback(async (descriptor: FileDescriptor) => {
+    try {
+      const blob = await downloadAndDecryptFile(descriptor)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = descriptor.name || 'fichier'
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 10_000)
+    } catch (e) {
+      setError(`Téléchargement impossible — ${(e as Error).message}`)
+    }
+  }, [])
 
   const handleForget = useCallback(
     async (conversationId: string) => {
@@ -342,20 +384,56 @@ export function PrivatePage() {
                   Aucun message. Les messages privés ne sont pas conservés par le relais.
                 </p>
               )}
-              {messages.map(item => (
-                <div
-                  key={item.id}
-                  className={`max-w-[75%] px-3 py-2 rounded-2xl text-sm ${
-                    item.mine
-                      ? 'ml-auto bg-[#7578db] text-white'
-                      : 'mr-auto bg-bg-surface text-text-primary'
-                  }`}
-                >
-                  {item.text}
-                </div>
-              ))}
+              {messages.map(item => {
+                const file = parseFileMessage(item.text) as FileDescriptor | null
+                return (
+                  <div
+                    key={item.id}
+                    className={`max-w-[75%] px-3 py-2 rounded-2xl text-sm ${
+                      item.mine
+                        ? 'ml-auto bg-[#7578db] text-white'
+                        : 'mr-auto bg-bg-surface text-text-primary'
+                    }`}
+                  >
+                    {file ? (
+                      <button
+                        type="button"
+                        onClick={() => handleDownloadFile(file)}
+                        className="flex items-center gap-2 text-left"
+                      >
+                        <Paperclip size={14} />
+                        <span className="truncate max-w-[180px]">{file.name}</span>
+                        <span className="opacity-70 text-[10px]">
+                          {Math.max(1, Math.round(file.size / 1024))} Ko
+                        </span>
+                      </button>
+                    ) : (
+                      item.text
+                    )}
+                  </div>
+                )
+              })}
             </div>
             <div className="flex items-center gap-2 px-4 py-3 border-t border-bg-hover">
+              <input
+                ref={fileInputRef}
+                type="file"
+                className="hidden"
+                onChange={e => {
+                  const f = e.target.files?.[0]
+                  if (f) handleFileSend(f)
+                  e.target.value = ''
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="p-2 rounded-xl bg-bg-hover text-text-primary disabled:opacity-50"
+                aria-label="Joindre un fichier"
+              >
+                <Paperclip size={18} />
+              </button>
               <input
                 value={draft}
                 onChange={e => setDraft(e.target.value)}

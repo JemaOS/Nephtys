@@ -53,6 +53,22 @@ export const COVER_MARKER = '\u0000NPT-COVER';
 /** Préfixe des messages de contrôle (rotation de file) — jamais affichés. */
 const CONTROL_PREFIX = '\u0000NPT-CTRL:';
 
+/** Préfixe des messages-fichier (descripteur chiffré) — rendus comme fichiers. */
+export const FILE_MARKER = '\u0000NPT-FILE:';
+
+export function encodeFileMessage(descriptor: unknown): string {
+  return FILE_MARKER + JSON.stringify(descriptor);
+}
+
+export function parseFileMessage(text: string): unknown | null {
+  if (!text.startsWith(FILE_MARKER)) return null;
+  try {
+    return JSON.parse(text.slice(FILE_MARKER.length));
+  } catch {
+    return null;
+  }
+}
+
 /** Message tel qu'il circule dans le relais (opaque, base64). */
 interface WireMessage {
   header: RatchetHeader;
@@ -279,6 +295,11 @@ export class PrivateMessenger {
         ts: Date.now(),
       });
     }
+  }
+
+  /** Envoie un descripteur de fichier (le fichier est déjà chiffré+uploadé). */
+  async sendFile(conversationId: string, descriptor: unknown): Promise<void> {
+    await this.send(conversationId, encodeFileMessage(descriptor));
   }
 
   /** Écoute les messages privés entrants et livre le clair. */
