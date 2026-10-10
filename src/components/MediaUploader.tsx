@@ -1014,7 +1014,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
     <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm">
       <div className="bg-bg-surface w-full sm:w-[480px] sm:rounded-2xl rounded-t-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-bg-hover">
+        <div className="flex items-center justify-between p-4 border-b border-bg-hover shrink-0">
           <h3 className="text-lg font-semibold text-text-primary">
             {activeTab === 'attach' && 'Joindre un fichier'}
             {activeTab === 'emoji' && 'Emoji'}
@@ -1030,10 +1030,10 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
         </div>
 
           {/* Tab Navigation */}
-          <div className="flex border-b border-bg-hover overflow-x-auto hide-scrollbar">
+          <div className="flex border-b border-bg-hover shrink-0 bg-bg-surface relative z-10">
             <button
               onClick={() => setActiveTab('attach')}
-              className={`flex-1 min-w-[80px] py-3 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm font-medium transition-colors ${
+              className={`flex-1 min-w-0 px-1 py-3 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm font-medium transition-colors whitespace-nowrap ${
                 activeTab === 'attach' ? 'text-accent border-b-2 border-accent' : 'text-text-secondary hover:text-text-primary'
               }`}
             >
@@ -1042,7 +1042,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
             </button>
             <button
               onClick={() => setActiveTab('emoji')}
-              className={`flex-1 min-w-[80px] py-3 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm font-medium transition-colors ${
+              className={`flex-1 min-w-0 px-1 py-3 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm font-medium transition-colors whitespace-nowrap ${
                 activeTab === 'emoji' ? 'text-accent border-b-2 border-accent' : 'text-text-secondary hover:text-text-primary'
               }`}
             >
@@ -1051,7 +1051,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
             </button>
             <button
               onClick={() => setActiveTab('sticker')}
-              className={`flex-1 min-w-[80px] py-3 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm font-medium transition-colors ${
+              className={`flex-1 min-w-0 px-1 py-3 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm font-medium transition-colors whitespace-nowrap ${
                 activeTab === 'sticker' ? 'text-accent border-b-2 border-accent' : 'text-text-secondary hover:text-text-primary'
               }`}
             >
@@ -1060,7 +1060,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
             </button>
             <button
               onClick={() => setActiveTab('gif')}
-              className={`flex-1 min-w-[80px] py-3 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm font-medium transition-colors ${
+              className={`flex-1 min-w-0 px-1 py-3 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm font-medium transition-colors whitespace-nowrap ${
                 activeTab === 'gif' ? 'text-accent border-b-2 border-accent' : 'text-text-secondary hover:text-text-primary'
               }`}
             >
@@ -1070,7 +1070,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
           </div>
 
           {/* Content */}
-          <div className="flex-1 overflow-y-auto p-4">
+          <div className="flex-1 min-h-0 overflow-y-auto p-4">
             {/* Attach Tab */}
             {activeTab === 'attach' && !selectedFile && !multipleSelectionMode && !showImageEditor && !showDocumentPreview && !cameraMode && (
               <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 sm:gap-4">
