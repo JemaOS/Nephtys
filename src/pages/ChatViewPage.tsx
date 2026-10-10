@@ -1642,7 +1642,8 @@ export function ChatViewPage() {
       // de les injecter dans le state (le cache local garde donc du clair,
       // ce qui est acceptable car il ne quitte jamais l'appareil).
       if (user) {
-        await decryptMessageRows(validData as any[], user.id)
+await decryptMessageRows(validData as any[], user.id)
+          for (let i = 0; i < validData.length; i++) ((validData as any[])[i]) = { ...(validData as any[])[i] }
       }
 
       setMessages(validData)
@@ -1720,7 +1721,11 @@ export function ChatViewPage() {
 
         // Déchiffrement E2EE des messages paginés avant affichage.
         if (user) {
-          await decryptMessageRows(validData as any[], user.id)
+await decryptMessageRows(validData as any[], user.id)
+        // ⚠️ `decryptMessageRows` mute `content` EN PLACE (même référence objet)
+        // → `MessageItem` (React.memo) ne re-rendait pas et gardait le ciphertext
+        // déjà affiché. On force de NOUVELLES références pour les lignes déchiffrées.
+        for (let i = 0; i < validData.length; i++) ((validData as any[])[i]) = { ...(validData as any[])[i] }
         }
 
         // Prepend older messages to the list
