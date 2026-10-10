@@ -64,34 +64,40 @@ void probeLocalAgent();
 
 const RELAY_OVERRIDE_KEY = 'nephtys_relay_url';
 
-/**
- * Vrai si un relais WebSocket dédié est configuré (override à chaud ou env).
- * Sinon, on utilise le **relais aveugle sur Supabase** (aucun serveur requis).
- */
-export function hasCustomRelay(): boolean {
-  try {
-    if (localStorage.getItem(RELAY_OVERRIDE_KEY)) return true;
-  } catch {
-    // localStorage indisponible
-  }
-  return !!(import.meta.env.VITE_RELAY_URL as string | undefined);
+/** Vrai pour un relais local (127.0.0.1 / localhost) — valeur de DEV à ignorer. */
+function isLocalRelay(url: string): boolean {
+  return /^(wss?:\/\/)?(127\.0\.0\.1|localhost|\[::1\])(:\d+)?/i.test(url.trim());
 }
 
 /**
- * URL du relais. Priorité :
- *   1. override « à chaud » (localStorage) — permet de basculer sur un relais
- *      `.onion` (Tor) sans rebuilder ;
- *   2. `VITE_RELAY_URL` (au build) ;
- *   3. défaut local (développement).
+ * Vrai si un relais WebSocket **externe** est configuré (override à chaud ou env).
+ * Les relais **locaux** (127.0.0.1/localhost) sont ignorés : ce sont des valeurs
+ * de dev qui ne doivent pas court-circuiter le relais SMP par défaut.
+ */
+export function hasCustomRelay(): boolean {
+  try {
+    const o = localStorage.getItem(RELAY_OVERRIDE_KEY);
+    if (o && !isLocalRelay(o)) return true;
+  } catch {
+    // localStorage indisponible
+  }
+  const envUrl = import.meta.env.VITE_RELAY_URL as string | undefined;
+  return !!(envUrl && !isLocalRelay(envUrl));
+}
+
+/**
+ * URL du relais externe. Priorité : override « à chaud » (localStorage, non local)
+ * puis `VITE_RELAY_URL` (non local). Vide si aucun relais externe → SMP par défaut.
  */
 export function getRelayUrl(): string {
   try {
     const override = localStorage.getItem(RELAY_OVERRIDE_KEY);
-    if (override) return override;
+    if (override && !isLocalRelay(override)) return override;
   } catch {
     // localStorage indisponible → on ignore l'override
   }
-  return (import.meta.env.VITE_RELAY_URL as string | undefined) ?? 'ws://127.0.0.1:8090';
+  const envUrl = import.meta.env.VITE_RELAY_URL as string | undefined;
+  return envUrl && !isLocalRelay(envUrl) ? envUrl : '';
 }
 
 /** Libellé lisible du transport privé actif (générique, rassurant). */
@@ -121,17 +127,19 @@ export function getPrivateMessenger(): PrivateMessenger {
       (import.meta.env.VITE_SMP_RELAY_URL as string | undefined) ?? 'wss://78-232-3-78.sslip.io/';
     const smpKeyHash = import.meta.env.VITE_SMP_RELAY_KEY_HASH as string | undefined;
     let wire: RelayWire;
-    if (mode === 'supabase') {
-      wire = new SupabaseRelayWire();
+    if (mode === 'simplex-smp') {
+      // Relais SimpleX SMP (browser-profile) — OPTION EXPLICITE.
+      // ⚠️ WIP : l'adaptateur SmpRelayWire ne couvre pas encore le modèle de
+      // connexion à deux files du mode privé ; à finaliser avant usage prod.
+      wire = new SmpRelayWire({ url: smpUrl, keyHash: smpKeyHash });
     } else if (mode === 'simplex-agent') {
       wire = new AgentRelayWire(AGENT_URL);
     } else if (hasCustomRelay()) {
       wire = new WebSocketWire(getRelayUrl());
     } else {
-      // DÉFAUT PROD : relais SimpleX SMP (browser-profile) — aucun réglage
-      // requis de la part de l'utilisateur. Surchargeable par VITE_RELAY_MODE /
-      // VITE_SMP_RELAY_URL, ou par un relais perso (localStorage).
-      wire = new SmpRelayWire({ url: smpUrl, keyHash: smpKeyHash });
+      // DÉFAUT (fonctionnel) : relais aveugle hébergé sur Supabase — aucune
+      // config requise, un relais LOCAL (127.0.0.1) traînant est ignored.
+      wire = new SupabaseRelayWire();
     }
     instance = new PrivateMessenger(
       wire,
