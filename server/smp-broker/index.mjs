@@ -176,7 +176,7 @@ class BrowserProfileBroker {
       rcvPublicVerifyKey: command.rcvPublicVerifyKey,
       serverDhSecret: smp.x25519SharedSecret(serverDh.secretKey, recipientDh.rawPublicKey),
       senderVerifyKey: null,
-      recipientTransport: transport,
+      recipientTransport: null,
       messages: new Map(),
     };
     this.queues.set(smp.encodeBase64Url(rcvId), queue);

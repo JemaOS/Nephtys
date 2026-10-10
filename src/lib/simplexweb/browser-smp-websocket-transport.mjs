@@ -149,8 +149,7 @@ function createFrameQueue(socket, options = {}) {
     flushError(transportError('SIMPLEX_SMP_WS_SOCKET', 'SMP WebSocket transport error'));
   }));
   cleanups.push(eventTargetOn(socket, 'close', () => {
-    closed = true;
-    flushError(transportError('SIMPLEX_SMP_WS_CLOSED', 'SMP WebSocket transport closed'));
+    closed = true; console.log('[ws] CLOSE EVENT'); flushError(transportError('SIMPLEX_SMP_WS_CLOSED', 'SMP WebSocket transport closed'));
   }));
 
   return {
@@ -158,9 +157,19 @@ function createFrameQueue(socket, options = {}) {
       if (frames.length) return Promise.resolve(frames.shift());
       if (closeError) return Promise.reject(closeError);
       if (closed) return Promise.reject(transportError('SIMPLEX_SMP_WS_CLOSED', 'SMP WebSocket transport closed'));
-      return withTimeout(new Promise((resolve, reject) => {
-        waiters.push({ resolve, reject });
-      }), timeoutMs, 'SIMPLEX_SMP_WS_TIMEOUT', 'timed out waiting for SMP WebSocket frame');
+      var waiter;
+      var pending = new Promise((resolve, reject) => {
+        waiter = { resolve, reject };
+        waiters.push(waiter);
+      });
+      // PATCH Nephtys : en cas de timeout, retirer le waiter resté dans la file,
+      // sinon il "vole" le prochain frame (destiné à un autre appel) et le perd.
+      return withTimeout(pending, timeoutMs, 'SIMPLEX_SMP_WS_TIMEOUT', 'timed out waiting for SMP WebSocket frame')
+        .catch((error) => {
+          var index = waiters.indexOf(waiter);
+          if (index >= 0) waiters.splice(index, 1);
+          throw error;
+        });
     },
     dispose() {
       for (var cleanup of cleanups.splice(0)) cleanup();

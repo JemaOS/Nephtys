@@ -162,14 +162,14 @@ export class SmpRelayWire implements RelayWire {
           } catch {
             return { ok: true, result: [] as StoredEnvelope[] };
           }
-          const body = decryptRcvMessageBody({
+          const decrypted = decryptRcvMessageBody({
             serverDhSecret: R.serverDhSecret,
             msgId: message.msgId,
             encryptedBody: message.body,
           });
           const env: StoredEnvelope = {
             id: b64(message.msgId),
-            ciphertext: utf8Text(body),
+            ciphertext: utf8Text(decrypted.body),
             ts: Date.now(),
             expiresAt: Date.now() + TTL_MS,
           };

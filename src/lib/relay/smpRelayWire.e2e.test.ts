@@ -11,16 +11,16 @@ import { RelayTransport } from './relayTransport';
 import { SmpRelayWire } from './smpRelayWire';
 
 let broker: ChildProcess | null = null;
-const PORT = 8793;
+const PORT = 20000 + Math.floor(Math.random() * 20000);
 const URL = `ws://127.0.0.1:${PORT}/`;
 
 beforeAll(async () => {
   const script = path.resolve(process.cwd(), 'server', 'smp-broker', 'index.mjs');
   broker = spawn(process.execPath, [script], {
     env: { ...process.env, PORT: String(PORT) },
-    stdio: 'inherit',
+    stdio: 'ignore',
   });
-  await new Promise(r => setTimeout(r, 1500));
+  await new Promise(r => setTimeout(r, 2500));
 });
 
 afterAll(() => {
@@ -38,10 +38,9 @@ async function waitFor(cond: () => boolean, ms = 6000): Promise<void> {
   }
 }
 
-// WIP : le flux « file » SMP fonctionne (NEW/KEY/SEND OK) mais le transport
-// navigateur s'interrompt sous cet usage (cycle de vie/corrélation). Test
-// désactivé tant que non vert ; SmpRelayWire reste OPT-IN (pas par défaut).
-describe.skip('mode privé via SMP (queue-level, browser-profile) — WIP', () => {
+// E2E réel (lance un broker SMP). Lourd/sensible au timing → hors suite par
+// défaut. Lancer explicitement : `SMP_E2E=1 npx vitest run <ce fichier>`.
+describe.skipIf(!process.env.SMP_E2E)('mode privé via SMP (queue-level, browser-profile)', () => {
   it('createConnection -> acceptInvite -> send -> receive (2 sens)', async () => {
     const alice = new RelayTransport(new SmpRelayWire({ url: URL }), 150);
     const bob = new RelayTransport(new SmpRelayWire({ url: URL }), 150);
