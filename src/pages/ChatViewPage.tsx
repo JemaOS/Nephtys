@@ -18,6 +18,7 @@ import {
   serializeTextPayload,
   buildSenderSealed,
   UNDECRYPTABLE_PLACEHOLDER,
+  getCachedDecryptedText,
   type EncryptedTextPayload,
 } from '@/lib/textEncryption'
 import { tryEncryptWithRatchet } from '@/lib/ratchet/chatIntegration'
@@ -513,7 +514,14 @@ export function ChatViewPage() {
 // sinon → placeholder 🔒 (jamais de base64 à l'écran, quel que soit le chemin).
   const displayedMessages = useMemo(() => {
     const base = filteredMessages.length > 0 ? filteredMessages : messages
-    return base.map(m => (m as any).is_text_encrypted ? { ...m, content: UNDECRYPTABLE_PLACEHOLDER } : m)
+    return base.map(m => {
+      if (!(m as any).is_text_encrypted) return m
+      // Si on a déjà déchiffré ce message (cache par id), on affiche le clair
+      // même si l'état a été ré-écrit par la version ciphertext (race d'état).
+      const cached = getCachedDecryptedText(m.id)
+      if (cached !== undefined) return { ...m, content: cached, is_text_encrypted: false }
+      return { ...m, content: UNDECRYPTABLE_PLACEHOLDER }
+    })
   }, [filteredMessages, messages])
 
   // Helper function to get sender info for a message (works for both direct and group conversations)

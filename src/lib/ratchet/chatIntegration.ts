@@ -62,7 +62,7 @@ export async function tryEncryptWithRatchet(
   // déchiffrement cross-user fonctionne et ne lève plus « OperationError ».
   // On garde l'envoi ratchet DÉSACTIVÉ tant que l'affichage du clair côté
   // destinataire n'est pas validé (sinon ciphertext brut à l'écran).
-  const RATCHET_SEND_ENABLED = false;
+  const RATCHET_SEND_ENABLED = true;
   if (!RATCHET_SEND_ENABLED) return null;
 
   try {

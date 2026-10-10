@@ -304,6 +304,16 @@ export function parseEnvelope(metadata: unknown): TextEnvelope | null {
  *  (clé absente, autre appareil, etc.) — évite d'afficher du base64 brut. */
 export const UNDECRYPTABLE_PLACEHOLDER = '🔒 Message chiffré — indéchiffrable sur cet appareil';
 
+/** Cache mémoire (par id de message) du clair déjà déchiffré. Indispensable :
+ *  plusieurs chemins (chargement, pagination, temps réel) se disputent l'état et
+ *  ré-écrivent parfois la version ciphertext ; ce cache garantit qu'un message
+ *  DÉJÀ déchiffré reste affiché en clair, quel que soit l'écrasement. */
+const decryptedTextCache = new Map<string, string>();
+
+export function getCachedDecryptedText(id: string): string | undefined {
+  return decryptedTextCache.get(id);
+}
+
 /** Caches paresseux des paires de clés (une par courbe) pour un batch. */
 interface UnwrapCaches {
   p256?: UserKeyPair | null;
@@ -424,7 +434,6 @@ export async function decryptMessageRows<T extends {
   // ciphertext brut (régression détectée en test 2-appareils avec serveur aveugle).
   const encrypted = rows.filter(r => r.is_text_encrypted);
   if (encrypted.length === 0) return rows;
-
   // On n'interroge les clés enveloppées QUE pour les messages non-ratchet.
   const wrappedIds = encrypted
     .filter(r => !isRatchetEnvelope(r.encryption_metadata))
@@ -471,6 +480,7 @@ export async function decryptMessageRows<T extends {
           // re-tente de déchiffrer un message déjà en clair → échec → le
           // ciphertext réapparaît à l'écran.
           (row as any).is_text_encrypted = false;
+          decryptedTextCache.set(row.id, payload.text);
           if (payload.linkPreview) (row as any).link_preview = JSON.stringify(payload.linkPreview);
         } else {
           row.content = UNDECRYPTABLE_PLACEHOLDER;
@@ -489,6 +499,7 @@ export async function decryptMessageRows<T extends {
         const payload = await decryptTextPayload(row.content, envelope.iv, rawKey);
         row.content = payload.text;
         (row as any).is_text_encrypted = false;
+        decryptedTextCache.set(row.id, payload.text);
         if (payload.linkPreview) {
           (row as any).link_preview = JSON.stringify(payload.linkPreview);
         }
