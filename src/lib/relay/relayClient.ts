@@ -276,6 +276,7 @@ export function isTorAvailable(): boolean {
 
 const DECENTRALIZED_KEY = 'nephtys_decentralized_relays';
 const RELAY_POOL_KEY = 'nephtys_relay_pool';
+const RELAY_MODE_KEY = 'nephtys_relay_mode';
 
 function defaultRelayUrl(): string {
   return (import.meta.env.VITE_SMP_RELAY_URL as string | undefined) ?? 'wss://78-232-3-78.sslip.io/';
@@ -304,8 +305,63 @@ export function setRelayPool(input: string): void {
   instance = null;
 }
 
-/** Liste effective des relais : pool saisi/env, sinon le relais par defaut. */
+/** Mode du réseau décentralisé : automatique (aucune saisie) ou manuel. */
+export type RelayMode = 'auto' | 'manual';
+
+/** Mode mémorisé (défaut : 'auto' → aucune saisie requise). */
+export function getRelayMode(): RelayMode {
+  try {
+    return localStorage.getItem(RELAY_MODE_KEY) === 'manual' ? 'manual' : 'auto';
+  } catch {
+    return 'auto';
+  }
+}
+
+/** Mémorise le mode du réseau décentralisé. Prend effet a la prochaine connexion. */
+export function setRelayMode(mode: RelayMode): void {
+  try {
+    if (mode === 'manual') localStorage.setItem(RELAY_MODE_KEY, 'manual');
+    else localStorage.removeItem(RELAY_MODE_KEY);
+  } catch {
+    // localStorage indisponible
+  }
+  instance = null;
+}
+
+/**
+ * Relais disponibles connus (union dedupliquee, uniquement `wss://`) : relais
+ * par defaut, `VITE_SMP_RELAY_URLS`, et le pool actuellement stocke. Base de la
+ * liste « relais existants » proposee dans l'UI (data-driven : ajouter des
+ * relais via env ne demande aucun changement de code).
+ */
+export function getAvailableRelays(): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const push = (raw: string): void => {
+    const url = raw.trim();
+    if (!/^wss:\/\//i.test(url) || seen.has(url)) return;
+    seen.add(url);
+    out.push(url);
+  };
+  push(defaultRelayUrl());
+  const envUrls = import.meta.env.VITE_SMP_RELAY_URLS as string | undefined;
+  if (envUrls) envUrls.split(/[\s,]+/).forEach(push);
+  try {
+    const stored = localStorage.getItem(RELAY_POOL_KEY);
+    if (stored) stored.split(/[\s,]+/).forEach(push);
+  } catch {
+    // localStorage indisponible
+  }
+  return out;
+}
+
+/**
+ * Liste effective des relais. En mode 'auto' : tous les relais disponibles
+ * (aucune saisie requise). En mode 'manual' : le pool saisi/env, sinon le
+ * relais par defaut.
+ */
 export function getRelayPool(): string[] {
+  if (getRelayMode() === 'auto') return getAvailableRelays();
   const raw = getRelayPoolInput() || defaultRelayUrl();
   return raw
     .split(/[\s,]+/)
