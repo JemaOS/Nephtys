@@ -1537,18 +1537,27 @@ const VirtualizedTimeline: React.FC<VirtualizedTimelineProps> = ({
   ...itemProps
 }) => {
   const virtuosoRef = useRef<VirtuosoHandle>(null)
+  const atBottomRef = useRef(true)
+  const countRef = useRef(timelineItems.length)
+  countRef.current = timelineItems.length
 
-  // Au mount + à chaque ajout de message en bas, scroll vers le bas (sauf
-  // si l'utilisateur a remonté manuellement — Virtuoso gère ça via
+  const scrollToLatest = (behavior: 'auto' | 'smooth' = 'auto') => {
+    const count = countRef.current
+    if (count === 0) return
+    virtuosoRef.current?.scrollToIndex({
+      index: count - 1,
+      align: 'end',
+      behavior,
+    })
+  }
+
+  // Atterrissage sur le message le plus récent à l'ouverture, et à chaque
+  // ajout de message tant qu'on est en bas (Virtuoso gère le suivi via
   // followOutput='auto').
   useEffect(() => {
-    if (timelineItems.length > 0) {
-      virtuosoRef.current?.scrollToIndex({
-        index: timelineItems.length - 1,
-        align: 'end',
-        behavior: 'auto',
-      })
-    }
+    atBottomRef.current = true
+    scrollToLatest('auto')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timelineItems.length])
 
   return (
@@ -1557,6 +1566,16 @@ const VirtualizedTimeline: React.FC<VirtualizedTimelineProps> = ({
       data={timelineItems}
       style={{ height: '100%', width: '100%' }}
       followOutput="auto"
+      atBottomThreshold={120}
+      atBottomStateChange={(atBottom) => {
+        atBottomRef.current = atBottom
+      }}
+      // Les médias (images/vidéos) se chargent en différé et agrandissent les
+      // items APRÈS le scroll initial : tant qu'on est en bas, on recolle au
+      // dernier message pour ne pas dériver vers les anciens messages.
+      totalListHeightChanged={() => {
+        if (atBottomRef.current) scrollToLatest('auto')
+      }}
       initialTopMostItemIndex={Math.max(0, timelineItems.length - 1)}
       // overscan : rendre 600px en plus de chaque côté du viewport pour
       // que le scroll soit fluide sans flash de skeleton.

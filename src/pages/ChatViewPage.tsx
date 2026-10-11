@@ -1164,12 +1164,21 @@ export function ChatViewPage() {
   const messagesContentRef = useRef<HTMLDivElement>(null)
   const [isInitialScrollDone, setIsInitialScrollDone] = useState(false)
   const scrollAttemptsRef = useRef(0)
+  // « Suivre le bas » : à l'ouverture d'une conversation on doit atterrir sur le
+  // message le plus récent et y RESTER. Les médias (images/vidéos) se chargent
+  // en différé et agrandissent la liste APRÈS le scroll initial → l'ancien code
+  // ne recollait en bas que si on était à <150px, donc la vue dérivait vers les
+  // anciens messages (surtout en responsive/mobile où les médias sont plus
+  // grands). Tant que l'utilisateur reste en bas, on re-colle à chaque
+  // changement de taille ; dès qu'il remonte, on arrête de le ramener.
+  const stickToBottomRef = useRef(true)
   
   // Reset initial scroll flag when conversation changes - MUST run before scroll effect
   useLayoutEffect(() => {
     hasScrolledInitially.current = false
     prevMessageCountRef.current = 0
     scrollAttemptsRef.current = 0
+    stickToBottomRef.current = true
     setIsInitialScrollDone(false)
   }, [conversationId])
 
@@ -1267,15 +1276,22 @@ export function ChatViewPage() {
 
     // Function to handle resize
     const handleResize = () => {
-      if (!hasScrolledInitially.current) return
+      const el = messagesContainerRef.current
+      if (!el) return
 
-      // Check if we were near the bottom before the resize
-      // We use a generous threshold (e.g., 150px) to account for minor shifts
-      const isNearBottom = scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight < 150
-      
+      // Suivi du bas : tant que l'utilisateur est en bas (ouverture de la
+      // conversation, nouveau message), on re-colle en bas à CHAQUE changement
+      // de taille du contenu — c'est ce qui rattrape l'agrandissement des médias
+      // chargés en différé. S'il a remonté, on ne corrige que s'il est proche
+      // du bas (comportement « rester en bas » classique).
+      if (stickToBottomRef.current) {
+        el.scrollTop = el.scrollHeight
+        return
+      }
+
+      const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150
       if (isNearBottom) {
-        // Maintain scroll at bottom
-        scrollContainer.scrollTop = scrollContainer.scrollHeight
+        el.scrollTop = el.scrollHeight
       }
     }
 
@@ -1294,6 +1310,7 @@ export function ChatViewPage() {
       if (timelineItems.length > prevMessageCountRef.current) {
         // New message added - scroll smoothly
         const behavior = getScrollBehavior()
+        stickToBottomRef.current = true
         messagesEndRef.current?.scrollIntoView({ behavior })
         prevMessageCountRef.current = timelineItems.length
       }
@@ -1828,6 +1845,14 @@ await decryptMessageRows(validData as any[], user.id)
     
     // Save scroll position for restoration
     scrollPositionRef.current = scrollTop
+
+    // Suivre le bas : on n'évalue le flag qu'APRÈS le scroll initial, sinon un
+    // simple event transitoire (changement de conversation, remise à zéro de
+    // scrollTop) le remettrait à faux avant qu'on ait atteint le bas.
+    if (hasScrolledInitially.current) {
+      const distanceFromBottom = target.scrollHeight - scrollTop - target.clientHeight
+      stickToBottomRef.current = distanceFromBottom < 80
+    }
     
     // Load more when scrolled within 200px of the top
     if (scrollTop < 200 && hasMoreMessages && !isLoadingMore) {
