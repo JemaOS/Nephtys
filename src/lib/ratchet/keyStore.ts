@@ -155,9 +155,22 @@ export async function loadPeerBundle(peerId: string): Promise<PeerBundle | null>
 }
 
 export async function markOneTimePreKeyUsed(peerId: string, oneTimePreKey: string): Promise<void> {
-  await supabase
+  // Depuis le durcissement RLS, la consommation d'une one-time prekey passe par
+  // un RPC atomique (l'UPDATE direct n'est plus autorisé et échouait en
+  // silence). On résout l'id puis on consomme — une seule ligne, jamais de
+  // réécriture de `public_key`.
+  const { data } = await supabase
     .from('one_time_prekeys')
-    .update({ is_used: true })
+    .select('id')
     .eq('user_id', peerId)
-    .eq('public_key', oneTimePreKey);
+    .eq('public_key', oneTimePreKey)
+    .eq('is_used', false)
+    .maybeSingle();
+
+  if (!data?.id) return;
+
+  const { error } = await supabase.rpc('consume_one_time_prekey', { p_prekey_id: data.id });
+  if (error) {
+    console.warn('[ratchet] consume_one_time_prekey failed:', error.message);
+  }
 }

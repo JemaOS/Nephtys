@@ -148,6 +148,18 @@ class RateLimitError extends Error {
     }
 }
 
+/** Erreur d'auth « propre » : code + message FIXE (aucune fuite interne). */
+class AuthError extends Error {
+    code: string;
+    status: number;
+    constructor(code: string, message: string, status = 400) {
+        super(message);
+        this.name = 'AuthError';
+        this.code = code;
+        this.status = status;
+    }
+}
+
 /**
  * Vérifie ET enregistre une tentative en une seule requête atomique côté DB.
  * Lance RateLimitError si la limite est dépassée.
@@ -239,10 +251,15 @@ Deno.serve(async (req) => {
         const clientIp = extractClientIp(req);
         const ipKey = await sha256(clientIp);
         const usernameKey = username.toLowerCase();
+        // Canonicalisation : les variantes qui produisent le MÊME email interne
+        // (johndoe / john-doe / john_doe) doivent partager le même quota, sinon
+        // la limite par pseudo est contournable en multipliant les formats.
+        const canonicalUsernameKey = `canon:${username.toLowerCase().replaceAll(/[^a-z0-9]/g, '')}`;
 
         const limits = RATE_LIMITS[action];
         await enforceRateLimit(supabaseUrl, serviceRoleKey, 'ip', ipKey, action, limits.ip.max, limits.ip.windowSec);
         await enforceRateLimit(supabaseUrl, serviceRoleKey, 'username', usernameKey, action, limits.username.max, limits.username.windowSec);
+        await enforceRateLimit(supabaseUrl, serviceRoleKey, 'username', canonicalUsernameKey, action, limits.username.max, limits.username.windowSec);
 
         // ── Génération email interne
         const sanitizedUsername = username.toLowerCase().replaceAll(/[^a-z0-9]/g, '');
@@ -267,7 +284,9 @@ Deno.serve(async (req) => {
 
             if (!createUserResponse.ok) {
                 const errorData = await createUserResponse.json().catch(() => ({}));
-                throw new Error(errorData.msg || errorData.error_description || 'Erreur création utilisateur');
+                console.error('[Auth] createUser failed', createUserResponse.status, errorData);
+                const alreadyExists = createUserResponse.status === 422 || /exist/i.test(JSON.stringify(errorData));
+                throw new ValidationError(alreadyExists ? 'Ce pseudo est déjà utilisé.' : 'Création du compte impossible.');
             }
 
             const userData = await createUserResponse.json();
@@ -301,7 +320,8 @@ Deno.serve(async (req) => {
                         'apikey': serviceRoleKey
                     }
                 }).catch(() => { /* best effort */ });
-                throw new Error(`Erreur création profil: ${errorText}`);
+                console.error('[Auth] profile insert failed', errorText);
+                throw new AuthError('AUTH_ERROR', 'Erreur lors de la création du compte.', 400);
             }
 
             // Connexion immédiate pour obtenir une session
@@ -315,8 +335,8 @@ Deno.serve(async (req) => {
             });
 
             if (!signInResponse.ok) {
-                const errorData = await signInResponse.json().catch(() => ({}));
-                throw new Error(errorData.msg || 'Erreur connexion après inscription');
+                await signInResponse.json().catch(() => ({}));
+                throw new AuthError('AUTH_ERROR', 'Erreur lors de la création du compte.', 400);
             }
 
             const sessionData = await signInResponse.json();
@@ -338,8 +358,10 @@ Deno.serve(async (req) => {
         });
 
         if (!signInResponse.ok) {
-            const errorData = await signInResponse.json().catch(() => ({}));
-            throw new Error(errorData.error_description || errorData.msg || 'Identifiants invalides');
+            // Message FIXE (pas de fuite GoTrue) : le client mappe « Invalid
+            // credentials » sur « identifiants invalides ».
+            await signInResponse.json().catch(() => ({}));
+            throw new AuthError('INVALID_CREDENTIALS', 'Invalid credentials', 401);
         }
 
         const sessionData = await signInResponse.json();
@@ -370,12 +392,21 @@ Deno.serve(async (req) => {
             );
         }
 
+        if (error instanceof AuthError) {
+            return jsonResponse(
+                { error: { code: error.code, message: error.message } },
+                error.status,
+                corsHeaders
+            );
+        }
+
         console.error('[Auth] Erreur:', error);
+        // On ne renvoie JAMAIS le message interne (GoTrue/Postgres) au client.
         return jsonResponse(
             {
                 error: {
                     code: 'AUTH_ERROR',
-                    message: (error as Error)?.message ?? 'Erreur inconnue.'
+                    message: 'Erreur d\'authentification. Réessayez.'
                 }
             },
             400,

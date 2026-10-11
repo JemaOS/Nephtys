@@ -28,6 +28,8 @@ import {
 
 /** Nombre max de clés sautées conservées (borne anti-DoS). */
 const MAX_SKIP = 1000;
+/** Borne GLOBALE du dictionnaire de clés sautées (évite la croissance mémoire). */
+const MAX_SKIPPED_STORED = 2000;
 
 export interface RatchetHeader {
   /** Clé publique de ratchet de l'expéditeur. */
@@ -170,6 +172,14 @@ export async function ratchetDecrypt(
     await dhRatchet(state, header.dh);
   }
 
+  // 2b) Index déjà consommé ET aucune clé sautée stockée (testée en 1) → message
+  // rejoué ou index obsolète. On refuse SANS toucher à l'état : sinon on
+  // dériverait une clé depuis la chaîne courante et on la corromprait
+  // (les messages suivants légitimes ne se déchiffreraient plus).
+  if (header.n < state.receiveCount) {
+    throw new Error('Ratchet: message rejoué ou index obsolète');
+  }
+
   // 3) Sauter jusqu'au message courant puis le déchiffrer.
   await skipMessageKeys(state, header.n);
   if (!state.receivingChainKey) {
@@ -226,6 +236,13 @@ async function skipMessageKeys(state: SessionState, until: number): Promise<void
     state.skipped[`${state.remoteRatchetPublicKey}|${state.receiveCount}`] = bytesToBase64(messageKey);
     state.receivingChainKey = bytesToBase64(nextChainKey);
     state.receiveCount++;
+  }
+  // Borne globale : évince les plus anciennes clés sautées si on dépasse.
+  const skippedKeys = Object.keys(state.skipped);
+  if (skippedKeys.length > MAX_SKIPPED_STORED) {
+    for (let i = 0; i < skippedKeys.length - MAX_SKIPPED_STORED; i++) {
+      delete state.skipped[skippedKeys[i]];
+    }
   }
 }
 

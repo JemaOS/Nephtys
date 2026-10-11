@@ -267,26 +267,21 @@ const PLAINTEXT_CACHE_KEY = 'nephtys_plaintext_cache_v1';
 const PLAINTEXT_CACHE_MAX = 500;
 const decryptedTextCache = new Map<string, string>();
 
-// Chargement initial depuis localStorage (best-effort).
+// Le clair n'est PLUS persisté (ni localStorage ni IndexedDB) : il ne vit
+// qu'en mémoire de session et disparaît au rechargement / à la déconnexion.
+// On purge toute trace laissée par les anciennes versions.
 try {
-  const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(PLAINTEXT_CACHE_KEY) : null;
-  if (raw) for (const [k, v] of Object.entries(JSON.parse(raw) as Record<string, string>)) decryptedTextCache.set(k, v);
+  if (typeof localStorage !== 'undefined') localStorage.removeItem(PLAINTEXT_CACHE_KEY);
 } catch {
   // ignore
 }
 
 function persistPlaintextCache(): void {
-  try {
-    if (typeof localStorage === 'undefined') return;
-    // Borne la taille (FIFO) pour ne pas gonfler le stockage.
-    while (decryptedTextCache.size > PLAINTEXT_CACHE_MAX) {
-      const first = decryptedTextCache.keys().next().value as string | undefined;
-      if (first === undefined) break;
-      decryptedTextCache.delete(first);
-    }
-    localStorage.setItem(PLAINTEXT_CACHE_KEY, JSON.stringify(Object.fromEntries(decryptedTextCache)));
-  } catch {
-    // ignore (quota / localStorage indisponible)
+  // Borne uniquement le cache MÉMOIRE (aucune écriture disque).
+  while (decryptedTextCache.size > PLAINTEXT_CACHE_MAX) {
+    const first = decryptedTextCache.keys().next().value as string | undefined;
+    if (first === undefined) break;
+    decryptedTextCache.delete(first);
   }
 }
 
