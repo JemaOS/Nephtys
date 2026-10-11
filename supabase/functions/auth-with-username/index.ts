@@ -285,8 +285,17 @@ Deno.serve(async (req) => {
             if (!createUserResponse.ok) {
                 const errorData = await createUserResponse.json().catch(() => ({}));
                 console.error('[Auth] createUser failed', createUserResponse.status, errorData);
-                const alreadyExists = createUserResponse.status === 422 || /exist/i.test(JSON.stringify(errorData));
-                throw new ValidationError(alreadyExists ? 'Ce pseudo est déjà utilisé.' : 'Création du compte impossible.');
+                const code = String((errorData as { error_code?: string }).error_code ?? '');
+                const msg = String((errorData as { msg?: string }).msg ?? '');
+                // GoTrue renvoie 422 pour plusieurs cas : ne PAS confondre
+                // « mot de passe faible » avec « pseudo déjà pris ».
+                if (code === 'weak_password' || /weak|pwned/i.test(msg)) {
+                    throw new ValidationError('Mot de passe trop faible : choisissez un mot de passe unique.');
+                }
+                if (code === 'email_exists' || code === 'user_already_exists' || /already (registered|exists)/i.test(msg)) {
+                    throw new ValidationError('Ce pseudo est déjà utilisé.');
+                }
+                throw new AuthError('AUTH_ERROR', 'Création du compte impossible.', 400);
             }
 
             const userData = await createUserResponse.json();
