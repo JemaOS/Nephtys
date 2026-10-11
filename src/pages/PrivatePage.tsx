@@ -28,9 +28,10 @@ import {
   getRelayLabel,
   setRelayUrl,
   isTorRelayEnabled,
-  hasExternalRelayConfigured,
+  isDecentralizedRelayEnabled,
+  getRelayPool,
 } from '@/lib/relay/relayClient'
-import { getGroupMessenger, isGroupUsingSupabaseRelay } from '@/lib/relay/groupClient'
+import { getGroupMessenger } from '@/lib/relay/groupClient'
 import type { GroupRecord } from '@/lib/relay/groupMessenger'
 import { parseFileMessage } from '@/lib/relay/privateMessenger'
 import { parseStatus, encodeStatus, toRecord, type StatusPayload, type StatusRecord } from '@/lib/relay/statusStore'
@@ -108,7 +109,20 @@ export function PrivatePage() {
   const [callConv, setCallConv] = useState<string | null>(null)
   const [mediaError, setMediaError] = useState<string | null>(null)
 
-  const groupUsesSupabase = useMemo(() => isGroupUsingSupabaseRelay(), [])
+  // Bandeau relais COHÉRENT (Connexions + Groupes) : indique toujours quel
+  // relais est utilisé (défaut automatique / personnalisé / décentralisé).
+  const relayBanner = useMemo(() => {
+    if (isDecentralizedRelayEnabled()) {
+      return `réseau décentralisé (${getRelayPool().length} relais)`;
+    }
+    const custom = getRelayUrl();
+    return custom ? `relais personnalisé ${custom}` : 'relais par défaut (automatique)';
+  }, [])
+  const relayBannerNode = (
+    <div className="rounded-xl bg-amber-500/10 border border-amber-500/30 p-3 text-xs text-amber-300">
+      Relais : <b>{relayBanner}</b> — modifiable dans Paramètres → Serveurs et réseaux.
+    </div>
+  )
 
   // Onglets : une seule section à la fois (écran plus lisible, moins chargé).
   const [tab, setTab] = useState<'connections' | 'groups' | 'status'>('connections')
@@ -596,12 +610,7 @@ export function PrivatePage() {
           )}
           {tab === 'connections' && (
             <>
-              {!hasExternalRelayConfigured() && (
-                <div className="rounded-xl bg-amber-500/10 border border-amber-500/30 p-3 text-xs text-amber-300">
-                  Transport : relais par défaut (aucun relais externe configuré). Vous pouvez en
-                  définir un dans Paramètres → Serveurs et réseaux.
-                </div>
-              )}
+              {relayBannerNode}
               {invite && (
                 <div className="rounded-2xl bg-bg-surface p-4 flex flex-col items-center gap-3">
                   <div className="w-full flex items-center justify-between">
@@ -744,12 +753,7 @@ export function PrivatePage() {
 
           {tab === 'groups' && (
             <>
-              {groupUsesSupabase && (
-                <div className="rounded-xl bg-amber-500/10 border border-amber-500/30 p-3 text-xs text-amber-300">
-                  Mode groupe : aucun relais externe configuré → transport assuré par le
-                  relais par défaut (moins anonyme qu'un relais externe).
-                </div>
-              )}
+              {relayBannerNode}
               <button
                 type="button"
                 onClick={handleCreateGroup}
