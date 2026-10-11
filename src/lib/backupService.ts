@@ -23,6 +23,14 @@ export interface BackupData {
   profile: any
   settings: BackupSettings
   mediaFiles?: MediaFile[] // Optional: actual media files encoded in base64
+  // Clés E2EE enveloppées destinées à CET utilisateur. Sans elles, un message
+  // chiffré restauré reste indéchiffrable (ou, si les flags manquent, le
+  // ciphertext est affiché comme du texte). Best-effort : la RLS ne laisse
+  // lire que les clés dont `recipient_id = auth.uid()`.
+  messageKeys?: {
+    text: any[]
+    media: any[]
+  }
 }
 
 export interface BackupSettings {
@@ -258,9 +266,47 @@ async function downloadFileAsBase64(url: string): Promise<{ data: string; mimeTy
   }
 }
 
-// Helper function to delay execution (for memory management)
+// Helper to delay execution (for memory management)
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+// Récupère les clés E2EE enveloppées destinées à l'utilisateur pour une liste de
+// messages. Chunké pour éviter des URLs `.in(...)` trop longues. Best-effort :
+// toute erreur (RLS, table absente) est ignorée → le backup reste créé.
+async function fetchMyWrappedKeys(
+  messageIds: string[],
+  userId: string
+): Promise<{ text: any[]; media: any[] }> {
+  const CHUNK = 200
+  const text: any[] = []
+  const media: any[] = []
+
+  for (let i = 0; i < messageIds.length; i += CHUNK) {
+    const ids = messageIds.slice(i, i + CHUNK)
+    try {
+      const { data } = await supabase
+        .from('message_text_keys')
+        .select('message_id, recipient_id, encrypted_key, iv, sender_public_key')
+        .in('message_id', ids)
+        .eq('recipient_id', userId)
+      if (data) text.push(...data)
+    } catch (e) {
+      console.warn('[backup] fetch message_text_keys failed (ignoré):', e)
+    }
+    try {
+      const { data } = await supabase
+        .from('message_media_keys')
+        .select('message_id, recipient_id, encrypted_key, iv, sender_public_key, media_iv')
+        .in('message_id', ids)
+        .eq('recipient_id', userId)
+      if (data) media.push(...data)
+    } catch (e) {
+      console.warn('[backup] fetch message_media_keys failed (ignoré):', e)
+    }
+  }
+
+  return { text, media }
 }
 
 // Process media files one at a time to minimize memory usage
@@ -427,6 +473,21 @@ export async function createBackup(
 
   onProgress?.(85, 'Finalisation de la sauvegarde...')
 
+  // Clés E2EE enveloppées (best-effort) : nécessaires pour que les messages
+  // chiffrés restent déchiffrables après restauration.
+  onProgress?.(82, 'Sauvegarde des clés de chiffrement...')
+  let messageKeys: BackupData['messageKeys']
+  if (messages && messages.length > 0) {
+    try {
+      const keys = await fetchMyWrappedKeys(messages.map(m => m.id as string), userId)
+      if (keys.text.length > 0 || keys.media.length > 0) {
+        messageKeys = keys
+      }
+    } catch (e) {
+      console.warn('[backup] clés E2EE non sauvegardées (ignoré):', e)
+    }
+  }
+
   const backupData: BackupData = {
     version: BACKUP_VERSION,
     createdAt: new Date().toISOString(),
@@ -436,7 +497,8 @@ export async function createBackup(
     contacts: contacts || [],
     profile,
     settings,
-    mediaFiles: mediaFiles.length > 0 ? mediaFiles : undefined
+    mediaFiles: mediaFiles.length > 0 ? mediaFiles : undefined,
+    messageKeys
   }
 
   // Calculate size
@@ -603,6 +665,9 @@ export async function restoreBackup(
       onProgress,
       stats
     )
+
+    // Restore E2EE wrapped keys (best-effort, after messages exist for the FK)
+    await restoreMessageKeys(backupData, onProgress)
 
     onProgress?.(95, 'Finalisation...')
 
@@ -831,6 +896,7 @@ async function restoreMessagesToConversations(
           sender_id: m.sender_id,
           content: m.content,
           type: m.type,
+          status: m.status ?? undefined,
           media_url: restoredUrl || m.media_url,
           media_type: m.media_type,
           file_name: m.file_name,
@@ -838,7 +904,23 @@ async function restoreMessagesToConversations(
           file_url: restoredUrl || m.file_url,
           reply_to_id: m.reply_to_id,
           is_edited: m.is_edited,
-          is_deleted: m.is_deleted,
+          // ⚠️ La colonne réelle est `deleted_at` (timestamptz), pas `is_deleted`
+          // (qui n'existe pas) : sans ce champ, une suppression « pour tout le
+          // monde » ressuscitait, et `is_deleted` était silencieusement ignoré.
+          deleted_at: m.deleted_at ?? null,
+          // ── E2EE : INDISPENSABLE ─────────────────────────────────────────
+          // Sans ces flags, un message chiffré restauré était relu comme un
+          // texte normal → le base64 du ciphertext s'affichait à l'écran
+          // (corruption E2EE). On restaure donc les flags et l'enveloppe.
+          is_text_encrypted: m.is_text_encrypted ?? false,
+          is_media_encrypted: m.is_media_encrypted ?? false,
+          encryption_metadata: m.encryption_metadata ?? null,
+          link_preview: m.link_preview ?? null,
+          is_ephemeral: m.is_ephemeral ?? false,
+          ephemeral_duration: m.ephemeral_duration ?? null,
+          ephemeral_expires_at: m.ephemeral_expires_at ?? null,
+          is_starred: m.is_starred ?? false,
+          is_pinned: m.is_pinned ?? false,
           created_at: m.created_at
         }
       }), {
@@ -854,6 +936,55 @@ async function restoreMessagesToConversations(
 
     const progress = 65 + Math.floor((i / messagesToRestore.length) * 30)
     onProgress?.(progress, `Restauration des messages (${Math.min(i + batchSize, messagesToRestore.length)}/${messagesToRestore.length})...`)
+  }
+}
+
+// Restaure les clés E2EE enveloppées (best-effort, APRÈS les messages pour
+// satisfaire la FK). Sans elles, un message chiffré restauré affichera le
+// placeholder 🔒 — jamais le ciphertext en clair.
+async function restoreMessageKeys(
+  backupData: BackupData,
+  onProgress?: (progress: number, status: string) => void,
+): Promise<void> {
+  const keys = backupData.messageKeys
+  if (!keys || ((keys.text?.length ?? 0) === 0 && (keys.media?.length ?? 0) === 0)) return
+
+  onProgress?.(82, 'Restauration des clés de chiffrement...')
+
+  const CHUNK = 100
+  const textRows = (keys.text ?? []).map(k => ({
+    message_id: k.message_id,
+    recipient_id: k.recipient_id,
+    encrypted_key: k.encrypted_key,
+    iv: k.iv,
+    sender_public_key: k.sender_public_key,
+  }))
+  const mediaRows = (keys.media ?? []).map(k => ({
+    message_id: k.message_id,
+    recipient_id: k.recipient_id,
+    encrypted_key: k.encrypted_key,
+    iv: k.iv,
+    sender_public_key: k.sender_public_key,
+    media_iv: k.media_iv,
+  }))
+
+  for (let i = 0; i < textRows.length; i += CHUNK) {
+    const { error } = await supabase
+      .from('message_text_keys')
+      .upsert(textRows.slice(i, i + CHUNK), {
+        onConflict: 'message_id,recipient_id',
+        ignoreDuplicates: true
+      })
+    if (error) console.warn('[Restore] message_text_keys restore failed (ignoré):', error)
+  }
+  for (let i = 0; i < mediaRows.length; i += CHUNK) {
+    const { error } = await supabase
+      .from('message_media_keys')
+      .upsert(mediaRows.slice(i, i + CHUNK), {
+        onConflict: 'message_id,recipient_id',
+        ignoreDuplicates: true
+      })
+    if (error) console.warn('[Restore] message_media_keys restore failed (ignoré):', error)
   }
 }
 

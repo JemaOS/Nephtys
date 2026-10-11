@@ -44,10 +44,10 @@ export const MessageReactions: React.FC<MessageReactionsProps> = ({
     return acc;
   }, [] as Reaction[]);
 
-  // WHATSAPP-STYLE: Only show the current user's reaction if they have one
-  // Filter to show only the reaction from the current user (single reaction per user)
-  const userReaction = groupedReactions.find(r => r.users?.includes(currentUserId));
-  const displayReactions = userReaction ? [userReaction] : groupedReactions.slice(0, 1);
+  // Afficher TOUS les groupes de réactions (WhatsApp/Telegram style) : avant,
+  // dès qu'un utilisateur avait réagi on n'affichait QUE son propre badge et on
+  // masquait les autres emojis. On affiche désormais chaque emoji distinct.
+  const displayReactions = groupedReactions;
 
   const handleReactionClick = (emoji: string, users: string[] = []) => {
     // Si l'utilisateur a déjà réagi avec cet emoji, on le retire
@@ -66,7 +66,7 @@ export const MessageReactions: React.FC<MessageReactionsProps> = ({
         
         return (
           <button
-            key={reaction.id}
+            key={reaction.emoji}
             onClick={() => handleReactionClick(reaction.emoji, reaction.users)}
             className={`
               inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-sm

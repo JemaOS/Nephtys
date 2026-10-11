@@ -16,7 +16,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getPeerConnectionConfig } from '@/lib/iceServers'
+import { getPeerConnectionConfig, hasTurnServer, isRelayOnlyCallsEnabled } from '@/lib/iceServers'
 import { isCoverTrafficEnabled } from '@/lib/privacyPrefs'
 import { SafeQrCode } from '@/components/SafeQrCode'
 import { ArrowLeft, Copy, Lock, Paperclip, Plus, Send, ShieldCheck, SlidersHorizontal, Trash2, X } from 'lucide-react'
@@ -78,7 +78,7 @@ export function PrivatePage() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState(false)
-  const [relayInput, setRelayInput] = useState('')
+  const [relayInput, setRelayInput] = useState(() => getRelayUrl())
 
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [uploading, setUploading] = useState(false)
@@ -149,6 +149,9 @@ export function PrivatePage() {
       new PrivateCall({
         createPeer: () => {
           if (typeof RTCPeerConnection === 'undefined') return null
+          // Fail-closed IP : sans TURN disponible, un PeerConnection replierait
+          // en P2P direct (fuite d'IP) → on n'en crée aucun.
+          if (isRelayOnlyCallsEnabled() && !hasTurnServer()) return null
           const pc = new RTCPeerConnection(getPeerConnectionConfig())
           const stream = localMediaRef.current
           if (stream) for (const track of stream.getTracks()) pc.addTrack(track, stream)
@@ -175,6 +178,11 @@ export function PrivatePage() {
       setMediaError('Appels désactivés en mode Tor : WebRTC exposerait votre IP réelle.')
       return
     }
+    // Fail-closed IP : sans cred TURN, l'appel replierait en P2P direct → refus.
+    if (isRelayOnlyCallsEnabled() && !hasTurnServer()) {
+      setMediaError('Appel refusé : aucun relais TURN disponible (votre IP serait exposée en P2P).')
+      return
+    }
     setMediaError(null)
     await acquireMedia()
     await privateCall.start(active)
@@ -183,6 +191,12 @@ export function PrivatePage() {
   /** Accepte un appel entrant : n'ouvre micro/caméra QU'après consentement. */
   const acceptCall = useCallback(async () => {
     if (!callConv) return
+    // Fail-closed IP : si aucun TURN n'est disponible, accepter exposerait l'IP.
+    if (isRelayOnlyCallsEnabled() && !hasTurnServer()) {
+      setMediaError('Appel refusé : aucun relais TURN disponible (votre IP serait exposée en P2P).')
+      await privateCall.reject(callConv)
+      return
+    }
     setMediaError(null)
     await acquireMedia()
     await privateCall.accept(callConv)
@@ -737,8 +751,13 @@ export function PrivatePage() {
                       <button
                         type="button"
                         onClick={() => {
-                          setRelayUrl(relayInput)
-                          globalThis.location.reload()
+                          // Ne recharger QUE si l'URL a été acceptée (wss:// requis
+                          // hors loopback/.onion) — sinon on affiche un message.
+                          if (setRelayUrl(relayInput)) {
+                            globalThis.location.reload()
+                          } else {
+                            setError('URL de relais refusée : wss:// requis (hors loopback/.onion).')
+                          }
                         }}
                         className="px-2 py-1 rounded-lg bg-bg-hover text-[11px] text-text-primary shrink-0"
                       >

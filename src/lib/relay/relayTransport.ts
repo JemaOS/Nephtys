@@ -62,6 +62,15 @@ interface ConnectionState {
  */
 const INVITE_PREFIX = 'nP';
 
+/**
+ * Bornes anti-bombe de décompression pour `decodeInvite` : la longueur du lien
+ * encodé ET la longueur décodée sont plafonnées. Le ratio maximal du DEFLATE
+ * étant borné (~1032:1), borner l'entrée borne aussi la sortie ; on vérifie
+ * néanmoins explicitement la taille décompressée (defense in depth).
+ */
+export const MAX_INVITE_LINK_LEN = 4096;
+export const MAX_INVITE_DECODED_BYTES = 4096;
+
 function toB64Url(bytes: Uint8Array): string {
   let bin = '';
   for (const b of bytes) bin += String.fromCharCode(b);
@@ -122,18 +131,33 @@ export function encodeInvite(invite: Invite): string {
 
 export function decodeInvite(link: string): Invite {
   const trimmed = link.trim();
+  // Anti-bombe : borne dure en entrée (voir MAX_INVITE_*).
+  if (trimmed.length > MAX_INVITE_LINK_LEN) throw new Error('invitation trop longue');
   if (trimmed.startsWith(INVITE_PREFIX)) {
+    let inflated: Uint8Array | null = null;
     try {
-      const inflated = inflate(fromB64Url(trimmed.slice(INVITE_PREFIX.length)));
-      return parseInvitePayload(new TextDecoder().decode(inflated));
+      inflated = inflate(fromB64Url(trimmed.slice(INVITE_PREFIX.length)));
     } catch {
       // format invalide → tentative legacy ci-dessous
+      inflated = null;
+    }
+    if (inflated) {
+      if (inflated.length > MAX_INVITE_DECODED_BYTES) {
+        throw new Error('invitation décompressée trop volumineuse');
+      }
+      const payload = new TextDecoder().decode(inflated);
+      if (payload.length > MAX_INVITE_DECODED_BYTES) {
+        throw new Error('invitation décompressée trop volumineuse');
+      }
+      return parseInvitePayload(payload);
     }
   }
   // Rétro-compatibilité : ancien format base64(JSON).
   let b64 = trimmed.replaceAll('-', '+').replaceAll('_', '/');
   while (b64.length % 4) b64 += '=';
-  return JSON.parse(atob(b64)) as Invite;
+  const decoded = atob(b64);
+  if (decoded.length > MAX_INVITE_DECODED_BYTES) throw new Error('invitation trop volumineuse');
+  return JSON.parse(decoded) as Invite;
 }
 
 export class RelayTransport implements MessagingTransport {
@@ -161,7 +185,11 @@ export class RelayTransport implements MessagingTransport {
 
   private async createQueue(): Promise<QueueCredentials> {
     const resp = await this.wire.request({ op: 'createQueue' });
-    if (!resp.ok || !resp.result) throw new Error('Relay: création de file échouée');
+    if (!resp.ok || !resp.result) {
+      // Remonte la cause (ex. repli Supabase en échec : CHECK de migration
+      // manquante) au lieu d'un message générique → diagnostic exploitable.
+      throw new Error(`Relay: création de file échouée${resp.error ? ` — ${resp.error}` : ''}`);
+    }
     return resp.result as QueueCredentials;
   }
 

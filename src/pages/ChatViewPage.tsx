@@ -15,6 +15,7 @@ import {
   createTextKeysForMessage,
   decryptMessageRow,
   decryptMessageRows,
+  resolveSealedSenders,
   serializeTextPayload,
   buildSenderSealed,
   UNDECRYPTABLE_PLACEHOLDER,
@@ -379,6 +380,13 @@ export function ChatViewPage() {
   const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null)
   const [replyToMessage, setReplyToMessage] = useState<Message | null>(null)
   const [isSearching, setIsSearching] = useState(false)
+  // Miroir ref de `isSearching` : `loadMessages` est rappelé par le poll
+  // (via `debouncedLoadData`, `useCallback([])` → closure périmée) et ne doit
+  // PAS effacer les résultats de recherche tant qu'une recherche est active.
+  const isSearchingRef = useRef(false)
+  useEffect(() => {
+    isSearchingRef.current = isSearching
+  }, [isSearching])
   const [ephemeralDuration, setEphemeralDuration] = useState<number | null>(null)
   const [showMediaUploader, setShowMediaUploader] = useState(false)
   const [showVoiceRecorder, setShowVoiceRecorder] = useState(false)
@@ -530,7 +538,11 @@ export function ChatViewPage() {
 // `decryptMessageRows` passe is_text_encrypted à false → le clair s'affiche ;
 // sinon → placeholder 🔒 (jamais de base64 à l'écran, quel que soit le chemin).
   const displayedMessages = useMemo(() => {
-    const base = filteredMessages.length > 0 ? filteredMessages : messages
+    // Recherche : quand la barre est ouverte, on affiche UNIQUEMENT les
+    // résultats — même vides. Avant, `filteredMessages.length > 0 ? ... :
+    // messages` faisait réapparaître TOUT le fil dès qu'une recherche ne
+    // renvoyait rien (et le poll écrasait `filteredMessages` par []).
+    const base = isSearching ? filteredMessages : messages
     return base.map(m => {
       if (!(m as any).is_text_encrypted) return m
       // Si on a déjà déchiffré ce message (cache par id), on affiche le clair
@@ -539,7 +551,7 @@ export function ChatViewPage() {
       if (cached !== undefined) return { ...m, content: cached, is_text_encrypted: false }
       return { ...m, content: UNDECRYPTABLE_PLACEHOLDER }
     })
-  }, [filteredMessages, messages])
+  }, [filteredMessages, messages, isSearching])
 
   // Helper function to get sender info for a message (works for both direct and group conversations)
   const getSenderInfo = useCallback((senderId: string): { name: string; avatar?: string } => {
@@ -886,6 +898,19 @@ export function ChatViewPage() {
     // ⚠️ Ne JAMAIS laisser un échec de déchiffrement bloquer l'injection
     // du message temps réel (sinon le message n'apparaît jamais → « pas de
     // temps réel »). On encapsule donc strictement.
+    //
+    // Sealed sender (Phase 1c) : résolution de l'expéditeur RÉEL pour TOUT
+    // message temps réel, pas seulement le texte chiffré. `sender_id` est NULL
+    // côté serveur ; sans résolution, les médias (albums regroupés par
+    // sender_id) fusionnent entre expéditeurs et l'alignement « mes messages »
+    // est faux. `decryptMessageRow` ne le fait que pour les messages chiffrés.
+    if (user) {
+      try {
+        await resolveSealedSenders([newMsg as any], user.id)
+      } catch (e) {
+        console.warn('[sealedSender] résolution temps réel échouée (sender_id conservé):', e)
+      }
+    }
     if ((newMsg as any).is_text_encrypted && user) {
       try {
         await decryptMessageRow(newMsg as any, user.id)
@@ -957,9 +982,13 @@ export function ChatViewPage() {
       return [...prev, newMsg]
     })
     
-    // Handle notification if not own message
-    if (user && newMsg.sender_id !== user.id) {
-      handleNewMessageNotification(newMsg, newMsg.sender_id)
+    // Handle notification if not own message.
+    // Sealed sender : mes propres messages ont `sender_id` NULL → l'ancien test
+    // `sender_id !== user.id` était VRAI et déclenchait une auto-notification
+    // (+ marquage lu) de mes propres messages. On exclut explicitement les ids
+    // que l'on a envoyés via le registre local `isOwnMessage`.
+    if (user && !isOwnMessage(newMsg.id) && newMsg.sender_id !== user.id) {
+      handleNewMessageNotification(newMsg, newMsg.sender_id ?? '')
     }
   }, [user, handleNewMessageNotification])
 
@@ -970,6 +999,81 @@ export function ChatViewPage() {
   useEffect(() => {
     handleNewMessageRef.current = handleNewMessage
   }, [handleNewMessage])
+
+  // Handler UPDATE Realtime : la ligne serveur est BRUTE (ciphertext, sender_id
+  // NULL, media paths non signés). Avant, elle était injectée telle quelle →
+  // ciphertext affiché en base64, aperçus de lien/médias locaux écrasés, bulle
+  // décalée (sender NULL). On déchiffre, on résout le scellé, on signe les
+  // médias ET on préserve les champs purement locaux (link_preview, media_url
+  // déjà résolu).
+  const handleMessageUpdate = useCallback(async (payload: any) => {
+    const updatedMsg = payload.new as Message
+    if (!updatedMsg?.id) return
+    if (updatedMsg.deleted_at) {
+      setMessages(prev => removeMessageFromList(prev, updatedMsg.id))
+      return
+    }
+
+    if (user) {
+      try {
+        await resolveSealedSenders([updatedMsg as any], user.id)
+      } catch (e) {
+        console.warn('[sealedSender] résolution UPDATE échouée (sender_id conservé):', e)
+      }
+      if ((updatedMsg as any).is_text_encrypted) {
+        try {
+          await decryptMessageRow(updatedMsg as any, user.id)
+        } catch (e) {
+          console.warn('[E2EE] decrypt UPDATE échoué, message conservé:', e)
+        }
+      }
+    }
+
+    // Signe les paths storage (médias non chiffrés) comme à l'injection INSERT.
+    const rawMediaUrl = (updatedMsg as any).media_url
+    const rawFileUrl = (updatedMsg as any).file_url
+    if (!(updatedMsg as any).is_media_encrypted) {
+      try {
+        await signFieldsBatch([updatedMsg as any], ['media_url', 'file_url', 'media_thumbnail'])
+      } catch (e) {
+        console.warn('[realtime] signature média UPDATE échouée (paths conservés):', e)
+      }
+    }
+
+    setMessages(prev => {
+      const existing = prev.find(m => m.id === updatedMsg.id)
+      if (existing) {
+        const local = existing as any
+        // Ne JAMAIS écraser un aperçu de lien / média local par une version
+        // serveur qui ne les porte pas (le link_preview est replié dans le
+        // payload chiffré, absent de la ligne brute).
+        if (!(updatedMsg as any).link_preview && local.link_preview) {
+          (updatedMsg as any).link_preview = local.link_preview
+        }
+        if (!rawMediaUrl && local.media_url) {
+          (updatedMsg as any).media_url = local.media_url
+        }
+        if (!rawFileUrl && local.file_url) {
+          (updatedMsg as any).file_url = local.file_url
+        }
+        // Si le déchiffrement a échoué mais qu'on connaît déjà le clair, on
+        // conserve le clair au lieu d'écraser par le placeholder/ciphertext.
+        if ((updatedMsg as any).is_text_encrypted) {
+          const cached = getCachedDecryptedText(updatedMsg.id)
+          if (cached !== undefined) {
+            (updatedMsg as any).content = cached
+            ;(updatedMsg as any).is_text_encrypted = false
+          }
+        }
+      }
+      return updateMessageInList(prev, updatedMsg)
+    })
+  }, [user])
+
+  const handleMessageUpdateRef = useRef(handleMessageUpdate)
+  useEffect(() => {
+    handleMessageUpdateRef.current = handleMessageUpdate
+  }, [handleMessageUpdate])
 
   // CRITICAL STABILITY FIX: Prevent multiple simultaneous data loads
   const isLoadingDataRef = useRef(false)
@@ -1093,12 +1197,9 @@ export function ChatViewPage() {
         event: 'UPDATE', schema: 'public', table: 'messages',
         filter: `conversation_id=eq.${conversationId}`
       }, (payload) => {
-        const updatedMsg = payload.new as Message
-        if (updatedMsg.deleted_at) {
-          setMessages(prev => removeMessageFromList(prev, updatedMsg.id))
-        } else {
-          setMessages(prev => updateMessageInList(prev, updatedMsg))
-        }
+        // Délègue au handler asynchrone (déchiffrement + sealed sender +
+        // préservation des champs locaux). Ne JAMAIS injecter la ligne brute.
+        handleMessageUpdateRef.current(payload)
       })
       // Messages DELETE
       .on('postgres_changes', {
@@ -1660,7 +1761,12 @@ export function ChatViewPage() {
   }
 
   async function markMessagesAsRead(messages: Message[], currentUserId: string) {
-    const unreadMessages = messages.filter(msg => msg.sender_id !== currentUserId && msg.status !== 'read')
+    // Sealed sender : mes propres messages ont un `sender_id` NULL → l'ancien
+    // test `sender_id !== currentUserId` les considérait comme reçus et les
+    // marquait « lus ». On exclut explicitement mes envois via `isOwnMessage`.
+    const unreadMessages = messages.filter(
+      msg => !isOwnMessage(msg.id) && msg.sender_id !== currentUserId && msg.status !== 'read'
+    )
     if (unreadMessages.length === 0) return
 
     const conversationIdRef = unreadMessages[0]?.conversation_id
@@ -1688,7 +1794,7 @@ export function ChatViewPage() {
     // Mise \u00e0 jour optimiste de l'\u00e9tat local
     setMessages(prev =>
       prev.map(m =>
-        m.sender_id !== currentUserId && m.status !== 'read'
+        !isOwnMessage(m.id) && m.sender_id !== currentUserId && m.status !== 'read'
           ? { ...m, status: 'read' as const }
           : m
       )
@@ -1857,7 +1963,9 @@ await decryptMessageRows(validData as any[], user.id)
       // Cache profiles for offline access
       await cacheMessageProfiles(validData)
       
-      setFilteredMessages([])
+      // Ne pas écraser les résultats de recherche actifs (le poll tourne
+      // toutes les ~4 s ; sans ce garde-fou les résultats disparaissaient).
+      if (!isSearchingRef.current) setFilteredMessages([])
       
       // Track oldest message for infinite scroll
       if (validData.length > 0) {
@@ -2959,7 +3067,10 @@ await decryptMessageRows(validData as any[], user.id)
         continue
       }
 
-      // Chiffrer le texte des messages transférés (type 'text' uniquement).
+      // Chiffrer la LÉGENDE des messages transférés : pas seulement le type
+      // 'text'. Un média/doc transféré porte sa légende dans `content`
+      // (`[Transféré] …`) — l'ancien garde `type === 'text'` la laissait
+      // partir EN CLAIR vers le serveur. Toute légende non vide est chiffrée.
       const forwardPlaintext = typeof messageData.content === 'string' ? messageData.content : ''
       let forwardLinkPreview: unknown | null = null
       try {
@@ -2968,21 +3079,29 @@ await decryptMessageRows(validData as any[], user.id)
         forwardLinkPreview = null
       }
       let encryptedText: EncryptedTextPayload | null = null
-      if (messageData.type === 'text' && forwardPlaintext) {
+      if (forwardPlaintext) {
         try {
-          const ratchet = ENABLE_RATCHET_ON_SEND
-            ? await tryEncryptWithRatchet(userId, targetConversationId, serializeTextPayload(forwardPlaintext, forwardLinkPreview))
-            : null
-          if (ratchet) {
-            messageData.content = ratchet.content
-            messageData.is_text_encrypted = true
-            messageData.encryption_metadata = ratchet.encryptionMetadata
-          } else {
-            encryptedText = await encryptText(forwardPlaintext, forwardLinkPreview)
-            messageData.content = encryptedText.ciphertextB64
-            messageData.is_text_encrypted = true
-            messageData.encryption_metadata = { v: 1, iv: encryptedText.ivB64 }
+          // 1) X25519 TOUJOURS (repli garanti : tout destinataire déchiffre,
+          // même sans clés ratchet). Les clés sont persistées plus bas.
+          encryptedText = await encryptText(forwardPlaintext, forwardLinkPreview)
+          messageData.content = encryptedText.ciphertextB64
+          messageData.is_text_encrypted = true
+          const meta: Record<string, unknown> = { v: 1, iv: encryptedText.ivB64 }
+
+          // 2) Double Ratchet en SURCOUCHE (forward secrecy) quand disponible.
+          try {
+            const ratchet = ENABLE_RATCHET_ON_SEND
+              ? await tryEncryptWithRatchet(userId, targetConversationId, serializeTextPayload(forwardPlaintext, forwardLinkPreview))
+              : null
+            if (ratchet) {
+              meta.ratchet = ratchet.encryptionMetadata
+              meta.ratchetContent = ratchet.content
+            }
+          } catch (rErr) {
+            console.warn('[forward][E2EE] ratchet indisponible, X25519 seul:', rErr)
           }
+
+          messageData.encryption_metadata = meta
           if (forwardLinkPreview) delete messageData.link_preview
         } catch (encErr) {
           // FAIL-CLOSED : jamais de transfert en clair.
@@ -3560,6 +3679,7 @@ await decryptMessageRows(validData as any[], user.id)
           getWallpaperStyle={getWallpaperStyle}
           handleBackgroundContextMenu={handleBackgroundContextMenu}
           onScroll={handleScroll}
+          onLoadMore={loadMoreMessages}
           isLoadingMore={isLoadingMore}
           hasMoreMessages={hasMoreMessages}
           linkPreview={linkPreview}

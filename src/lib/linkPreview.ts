@@ -2,6 +2,7 @@
 // Distributed under the license specified in the root directory of this project.
 
 import { safeHttpUrl } from '@/lib/safeUrl';
+import { supabase } from '@/lib/supabase';
 
 /**
  * Link Preview Service
@@ -146,9 +147,16 @@ async function fetchFromEdgeFunction(url: string): Promise<LinkPreviewData | nul
   const timer = setTimeout(() => controller.abort(), CLIENT_TIMEOUT_MS);
   try {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (SUPABASE_ANON_KEY) {
-      headers.apikey = SUPABASE_ANON_KEY;
-      headers.Authorization = `Bearer ${SUPABASE_ANON_KEY}`;
+    if (SUPABASE_ANON_KEY) headers.apikey = SUPABASE_ANON_KEY;
+    // La fonction edge exige un JWT UTILISATEUR (anti-abus/SSRF) : on envoie
+    // le jeton de session. Repli sur la clé anon si non connecté (la fonction
+    // renvoie alors 401 → on retombe sur le fallback client, YouTube oEmbed).
+    try {
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token ?? SUPABASE_ANON_KEY;
+      if (token) headers.Authorization = `Bearer ${token}`;
+    } catch {
+      if (SUPABASE_ANON_KEY) headers.Authorization = `Bearer ${SUPABASE_ANON_KEY}`;
     }
     const res = await fetch(EDGE_FUNCTION_URL, {
       method: 'POST',

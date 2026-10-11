@@ -1,7 +1,7 @@
 import React from 'react';
 import { X, Forward, Star, Pin, Smile, Download, Play, Pause, Volume2, VolumeX, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
 import { MediaImg } from './MediaImg';
-import { useI18n, tStatic } from '@/i18n';
+import { useI18n, tStatic, getLocale } from '@/i18n';
 
 // Format timestamp helper
 export const formatTimestamp = (ts: string): string => {
@@ -10,9 +10,9 @@ export const formatTimestamp = (ts: string): string => {
   const isToday = date.toDateString() === today.toDateString();
   
   if (isToday) {
-    return `${tStatic('todayAt')} ${date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`;
+    return `${tStatic('todayAt')} ${date.toLocaleTimeString(getLocale(), { hour: '2-digit', minute: '2-digit' })}`;
   }
-  return date.toLocaleDateString('fr-FR', { 
+  return date.toLocaleDateString(getLocale(), { 
     day: 'numeric', 
     month: 'long',
     hour: '2-digit',

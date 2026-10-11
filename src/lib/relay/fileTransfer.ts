@@ -17,6 +17,7 @@
  */
 
 import { supabase } from '../supabase';
+import { isAnonRelayConsentGranted } from './supabaseRelayWire';
 import { bytesToBase64, base64ToBytes, randomBytes } from '../ratchet/primitives';
 
 export const FILE_BUCKET = 'anon_files';
@@ -41,6 +42,41 @@ const SIGN_BATCH_SIZE = 64;
 
 interface SignedChunksResponse {
   chunks: { index: number; url: string }[];
+}
+
+/**
+ * Message fail-closed remonté quand le transfert de fichier tenterait d'utiliser
+ * la session Supabase CONNECTÉE alors que l'utilisateur est en mode privé anonyme
+ * et n'a pas donné son consentement explicite (`isAnonRelayConsentGranted`).
+ */
+const FILE_AUTH_DENIED =
+  'transfert de fichiers refusé : une session connectée est active. Le mode privé ' +
+  'anonyme n’utilise pas la session du compte sans consentement explicite.';
+
+interface SupabaseAuthLike {
+  auth?: { getSession?: () => Promise<{ data?: { session?: unknown } }> };
+}
+
+/**
+ * Garde d'accès alignée sur `SupabaseRelayWire` : si une session Supabase est
+ * active et que le consentement n'a pas été accordé, on refuse (fail-closed)
+ * au lieu d'écrire des fichiers sous l'identité du compte. Sans session (mode
+ * strictement anonyme) ou sans client d'auth (tests), on laisse passer.
+ */
+async function ensureAnonymousFileAccess(): Promise<void> {
+  if (isAnonRelayConsentGranted()) return;
+  const auth = (supabase as SupabaseAuthLike).auth;
+  if (typeof auth?.getSession !== 'function') return;
+  let session: unknown;
+  try {
+    const { data } = await auth.getSession();
+    session = data?.session;
+  } catch {
+    // En cas de doute, on considère la session absente (best-effort), comme
+    // `SupabaseRelayWire.ensureAnonymous`.
+    return;
+  }
+  if (session) throw new Error(FILE_AUTH_DENIED);
 }
 
 interface FileDescriptor {
@@ -152,6 +188,7 @@ export async function encryptAndUploadFile(
   file: Blob,
   onProgress?: (fraction: number) => void,
 ): Promise<FileDescriptor> {
+  await ensureAnonymousFileAccess();
   const total = file.size;
   if (total > FILE_MAX_BYTES) throw new Error('fichier trop volumineux');
   const chunks = Math.max(1, Math.ceil(total / FILE_CHUNK_SIZE));
@@ -220,6 +257,7 @@ async function fetchSignedChunkUrls(prefix: string, indices: number[]): Promise<
 }
 
 export async function downloadAndDecryptFile(desc: FileDescriptor): Promise<Blob> {
+  await ensureAnonymousFileAccess();
   const { key, ivBase } = validateDescriptor(desc);
   const parts: BlobPart[] = [];
 

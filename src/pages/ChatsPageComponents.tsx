@@ -394,6 +394,9 @@ const renderConversationItem = (
   isSelectionMode: boolean,
   handleConversationClick: (id: string) => void,
   handleContextMenu: (e: React.MouseEvent, id: string) => void,
+  handleTouchStart: (id: string) => void,
+  handleTouchEnd: () => void,
+  handleTouchMove: () => void,
   formatDate: (date: string) => string
 ) => {
   const displayName = getDisplayName(conversation)
@@ -414,6 +417,9 @@ const renderConversationItem = (
       selectedConversations={selectedConversations}
       handleConversationClick={handleConversationClick}
       handleContextMenu={handleContextMenu}
+      handleTouchStart={handleTouchStart}
+      handleTouchEnd={handleTouchEnd}
+      handleTouchMove={handleTouchMove}
       formatDate={formatDate}
       rowClass={rowClass}
     />
@@ -430,6 +436,9 @@ const ConversationItem = ({
   selectedConversations,
   handleConversationClick,
   handleContextMenu,
+  handleTouchStart,
+  handleTouchEnd,
+  handleTouchMove,
   formatDate,
   rowClass
 }: {
@@ -442,6 +451,9 @@ const ConversationItem = ({
   selectedConversations: Set<string>;
   handleConversationClick: (id: string) => void;
   handleContextMenu: (e: React.MouseEvent, id: string) => void;
+  handleTouchStart: (id: string) => void;
+  handleTouchEnd: () => void;
+  handleTouchMove: () => void;
   formatDate: (date: string) => string;
   rowClass: string;
 }) => {
@@ -451,7 +463,12 @@ const ConversationItem = ({
       className={`w-full px-4 py-3 cursor-pointer transition-colors text-left ${rowClass}`}
       onClick={() => handleConversationClick(conversation.id)}
       onMouseEnter={prefetchChatView}
-      onTouchStart={prefetchChatView}
+      onTouchStart={() => {
+        prefetchChatView()
+        handleTouchStart(conversation.id)
+      }}
+      onTouchEnd={handleTouchEnd}
+      onTouchMove={handleTouchMove}
       onContextMenu={(e) => {
         if (!isSelectionMode) {
           handleContextMenu(e, conversation.id)
@@ -595,6 +612,9 @@ export const ChatsList = ({
               isSelectionMode,
               handleConversationClick,
               handleContextMenu,
+              handleTouchStart,
+              handleTouchEnd,
+              handleTouchMove,
               formatDate
             )
           }
@@ -611,6 +631,9 @@ export const ChatsList = ({
           isSelectionMode,
           handleConversationClick,
           handleContextMenu,
+          handleTouchStart,
+          handleTouchEnd,
+          handleTouchMove,
           formatDate
         )
       )}

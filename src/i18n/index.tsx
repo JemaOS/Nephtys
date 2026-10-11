@@ -9,9 +9,41 @@ import { translations, type Lang } from './translations';
 export { LANGUAGES } from './translations';
 export type { Lang } from './translations';
 
-// French by default for JemaOS PWAs; the LanguageSelector is a
-// session-only override (never persisted).
-let currentLang: Lang = 'fr';
+// Clé localStorage : la langue choisie est persistée et restaurée au reload.
+const LANG_KEY = 'nephtys_lang';
+
+/**
+ * Langue par défaut : préférence persistée si présente, sinon détection via
+ * `navigator.language` (anglais si le navigateur est en anglais, français
+ * sinon).
+ */
+function detectDefaultLang(): Lang {
+  try {
+    const stored = localStorage.getItem(LANG_KEY);
+    if (stored === 'en' || stored === 'fr') return stored;
+  } catch {
+    // localStorage indisponible → détection navigateur.
+  }
+  try {
+    const nav = (navigator.language || '').toLowerCase();
+    if (nav.startsWith('en')) return 'en';
+  } catch {
+    // navigator indisponible → repli français.
+  }
+  return 'fr';
+}
+
+let currentLang: Lang = detectDefaultLang();
+
+/** Locale BCP-47 correspondant à la langue courante (dates/heures). */
+export function getLocale(): string {
+  return currentLang === 'en' ? 'en-US' : 'fr-FR';
+}
+
+/** Langue courante (accès hors React). */
+export function getCurrentLang(): Lang {
+  return currentLang;
+}
 
 function translate(lang: Lang, key: string, params?: Record<string, string | number>): string {
   let text = translations[lang][key] ?? translations.en[key] ?? key;
@@ -42,7 +74,7 @@ interface I18nProviderProps {
 }
 
 export function I18nProvider({ children }: I18nProviderProps) {
-  const [lang, setLangState] = useState<Lang>('fr');
+  const [lang, setLangState] = useState<Lang>(() => detectDefaultLang());
 
   // Keep the document language attribute and the static helper in sync.
   useEffect(() => {
@@ -52,6 +84,11 @@ export function I18nProvider({ children }: I18nProviderProps) {
 
   const setLang = (newLang: Lang) => {
     setLangState(newLang);
+    try {
+      localStorage.setItem(LANG_KEY, newLang);
+    } catch {
+      // localStorage indisponible : la sélection reste valable en session.
+    }
   };
 
   const t = (key: string, params?: Record<string, string | number>): string => {

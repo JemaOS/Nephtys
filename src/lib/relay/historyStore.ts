@@ -12,6 +12,8 @@
  * multi-appareil (qui exigerait une synchro chiffrée de clés/état).
  */
 
+import { sealAtRest, openAtRest, isAtRestBox } from '../atRestCrypto';
+
 export interface PrivateMessageRecord {
   conversationId: string;
   id: string;
@@ -66,23 +68,34 @@ export class IdbHistoryStore implements PrivateHistoryStore {
 
   async load(conversationId: string): Promise<PrivateMessageRecord[]> {
     const db = await this.open();
-    return await new Promise((resolve, reject) => {
+    const rows = await new Promise<unknown[]>((resolve, reject) => {
       const tx = db.transaction(this.storeName, 'readonly');
       const index = tx.objectStore(this.storeName).index('conversationId');
       const req = index.getAll(conversationId);
-      req.onsuccess = () => {
-        const rows = (req.result as PrivateMessageRecord[]) ?? [];
-        resolve(rows.sort((a, b) => a.ts - b.ts));
-      };
+      req.onsuccess = () => resolve((req.result as unknown[]) ?? []);
       req.onerror = () => reject(req.error);
     });
+    const out: PrivateMessageRecord[] = [];
+    for (const row of rows) {
+      // `openAtRest` déchiffre le nouveau format ; l'ancien (clair) est rendu
+      // tel quel → rétrocompatible.
+      const rec = (await openAtRest(row)) as PrivateMessageRecord | undefined;
+      if (rec && typeof rec === 'object' && typeof rec.text === 'string') out.push(rec);
+    }
+    return out.sort((a, b) => a.ts - b.ts);
   }
 
   async append(record: PrivateMessageRecord): Promise<void> {
     const db = await this.open();
+    const sealed = await sealAtRest(record);
+    // `id`/`conversationId` restent en clair : requis par le keyPath et l'index
+    // IndexedDB. Le reste (dont le TEXTE) est chiffré au repos.
+    const stored = isAtRestBox(sealed)
+      ? { ...sealed, id: record.id, conversationId: record.conversationId }
+      : record;
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(this.storeName, 'readwrite');
-      tx.objectStore(this.storeName).put(record);
+      tx.objectStore(this.storeName).put(stored);
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
     });

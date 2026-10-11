@@ -4,6 +4,7 @@
 import { ReactNode } from 'react'
 import { Sidebar } from './Sidebar'
 import { MobileBottomNav } from './MobileBottomNav'
+import { OfflineIndicator } from './OfflineIndicator'
 
 interface MainLayoutProps {
   readonly children: ReactNode
@@ -13,6 +14,9 @@ interface MainLayoutProps {
 export function MainLayout({ children, showSidebar = true }: MainLayoutProps) {
   return (
     <div className="h-screen-safe flex bg-bg-secondary overflow-hidden">
+      {/* Bandeau hors-ligne / synchronisation (jamais monté auparavant). */}
+      <OfflineIndicator />
+
       {/* Sidebar - Desktop only */}
       {showSidebar && <div className="hidden md:block"><Sidebar /></div>}
       

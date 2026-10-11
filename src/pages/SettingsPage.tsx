@@ -12,7 +12,9 @@ import { MediaImg } from '@/components/MediaImg'
 import { invalidateMediaUrl } from '@/lib/mediaUrl'
 import { deleteMyMessages } from '@/lib/conversationService'
 import { LanguageSelector } from '@/components/LanguageSelector'
-import { useI18n } from '@/i18n'
+import { useI18n, getLocale } from '@/i18n'
+import { offlineStorage } from '@/lib/offlineStorage'
+import { usePersistentPref } from '@/lib/prefs'
 import {
   check2FAStatus,
   enroll2FA,
@@ -39,8 +41,6 @@ import {
 import { isRelayOnlyCallsEnabled, setRelayOnlyCallsEnabled, getIceServers } from '@/lib/iceServers'
 import { isCoverTrafficEnabled, setCoverTrafficEnabled } from '@/lib/privacyPrefs'
 
-// Type for storage/media type filter
-type StorageType = 'all' | 'photos' | 'videos' | 'files' | 'audio';
 import {
   ArrowLeft, User, Lock, Bell, MessageSquare, Video, Palette,
   Globe, Database, HelpCircle, Info, LogOut, ChevronRight,
@@ -89,20 +89,12 @@ const formatBytes = (bytes: number): string => {
 
 const formatBackupDate = (date: Date | null, neverLabel: string): string => {
   if (!date) return neverLabel
-  return date.toLocaleDateString('fr-FR', {
+  return date.toLocaleDateString(getLocale(), {
     day: 'numeric',
     month: 'long',
     hour: '2-digit',
     minute: '2-digit'
   })
-}
-
-const getMediaTypeFilter = (type: StorageType): string | null => {
-  if (type === 'all') return null
-  if (type === 'photos') return 'image'
-  if (type === 'videos') return 'video'
-  if (type === 'audio') return 'audio'
-  return 'file'
 }
 
 const getViewTitle = (view: SettingsView, t: (key: string) => string): string => {
@@ -153,14 +145,15 @@ export function SettingsPage() {
   const { t } = useI18n()
   const navigate = useNavigate()
   const [currentView, setCurrentView] = useState<SettingsView>('main')
-  const [notificationsEnabled, setNotificationsEnabled] = useState(true)
-  const [soundEnabled, setSoundEnabled] = useState(true)
-  const [vibrationEnabled, setVibrationEnabled] = useState(true)
-  const [messagePreviewEnabled, setMessagePreviewEnabled] = useState(true)
-  const [callNotificationsEnabled, setCallNotificationsEnabled] = useState(true)
-  const [ringtoneEnabled, setRingtoneEnabled] = useState(true)
-  const [callVibrationEnabled, setCallVibrationEnabled] = useState(true)
-  const [showCallerName, setShowCallerName] = useState(true)
+  // Interrupteurs persistés (survivent au reload) — voir src/lib/prefs.ts.
+  const [notificationsEnabled, setNotificationsEnabled] = usePersistentPref('notifications_enabled')
+  const [soundEnabled, setSoundEnabled] = usePersistentPref('sound_enabled')
+  const [vibrationEnabled, setVibrationEnabled] = usePersistentPref('vibration_enabled')
+  const [messagePreviewEnabled, setMessagePreviewEnabled] = usePersistentPref('message_preview_enabled')
+  const [callNotificationsEnabled, setCallNotificationsEnabled] = usePersistentPref('call_notifications_enabled')
+  const [ringtoneEnabled, setRingtoneEnabled] = usePersistentPref('ringtone_enabled')
+  const [callVibrationEnabled, setCallVibrationEnabled] = usePersistentPref('call_vibration_enabled')
+  const [showCallerName, setShowCallerName] = usePersistentPref('show_caller_name')
   const [editingName, setEditingName] = useState(false)
   const [newDisplayName, setNewDisplayName] = useState(profile?.display_name || '')
   const [editingBio, setEditingBio] = useState(false)
@@ -170,13 +163,14 @@ export function SettingsPage() {
   const [showLastSeen, setShowLastSeen] = useState(true)
   const [showProfilePhoto, setShowProfilePhoto] = useState(true)
   const [torEnabled, setTorEnabled] = useState<boolean>(() => isTorRelayEnabled())
-  const [torAvailable] = useState<boolean>(() => isTorAvailable())
+  const [torAvailable, setTorAvailable] = useState<boolean>(() => isTorAvailable())
   const [relayInput, setRelayInput] = useState<string>(() => getRelayUrl() ?? '')
   const [relayOnlyCalls, setRelayOnlyCalls] = useState<boolean>(() => isRelayOnlyCallsEnabled())
   const [decentralized, setDecentralized] = useState<boolean>(() => isDecentralizedRelayEnabled())
   const [relayPoolInput, setRelayPoolInput] = useState<string>(() => getRelayPoolInput())
   const [relayMode, setRelayMode] = useState<RelayMode>(() => getRelayMode())
-  const [availableRelays] = useState<string[]>(() => getAvailableRelays())
+  const [availableRelays, setAvailableRelays] = useState<string[]>(() => getAvailableRelays())
+  const [iceServerCount, setIceServerCount] = useState<number>(() => getIceServers().length)
   const [selectedRelays, setSelectedRelays] = useState<string[]>(() => {
     if (getRelayMode() !== 'manual') return []
     return getRelayPoolInput()
@@ -200,13 +194,12 @@ export function SettingsPage() {
   const [recoveryPhraseInput, setRecoveryPhraseInput] = useState('')
   const [recoveryBusy, setRecoveryBusy] = useState(false)
   const [recoveryError, setRecoveryError] = useState('')
-  const [enterToSend, setEnterToSend] = useState(true)
-  const [autoDownloadWifi, setAutoDownloadWifi] = useState(true)
-  const [autoDownloadMobile, setAutoDownloadMobile] = useState(false)
-  const [autoDownloadPhotos, setAutoDownloadPhotos] = useState(true)
-  const [autoDownloadVideos, setAutoDownloadVideos] = useState(false)
-  const [autoDownloadFiles, setAutoDownloadFiles] = useState(true)
-  const [autoDownloadAudio, setAutoDownloadAudio] = useState(true)
+  const [autoDownloadWifi, setAutoDownloadWifi] = usePersistentPref('auto_download_wifi')
+  const [autoDownloadMobile, setAutoDownloadMobile] = usePersistentPref('auto_download_mobile')
+  const [autoDownloadPhotos, setAutoDownloadPhotos] = usePersistentPref('auto_download_photos')
+  const [autoDownloadVideos, setAutoDownloadVideos] = usePersistentPref('auto_download_videos')
+  const [autoDownloadFiles, setAutoDownloadFiles] = usePersistentPref('auto_download_files')
+  const [autoDownloadAudio, setAutoDownloadAudio] = usePersistentPref('auto_download_audio')
   
   const [storageStats, setStorageStats] = useState({
     total: 0,
@@ -244,6 +237,18 @@ export function SettingsPage() {
       load2FAStatus()
     }
   }, [user])
+
+  // Valeurs « réseau / appels » recalculées à l'ouverture de la vue (au lieu
+  // d'être figées au montage) : la disponibilité Tor, la liste des relais et
+  // le nombre de serveurs ICE peuvent changer pendant la session.
+  useEffect(() => {
+    if (currentView === 'network') {
+      setTorAvailable(isTorAvailable())
+      setAvailableRelays(getAvailableRelays())
+    } else if (currentView === 'calls') {
+      setIceServerCount(getIceServers().length)
+    }
+  }, [currentView])
 
   const load2FAStatus = async () => {
     setTwoFactorLoading(true)
@@ -457,7 +462,7 @@ export function SettingsPage() {
 
   const handleClearStorage = async (type: 'all' | 'photos' | 'videos' | 'files' | 'audio') => {
     if (!user) return
-    
+
     const typeLabels: Record<string, string> = {
       all: t('storageTypeAll'),
       photos: t('storageTypePhotos'),
@@ -466,34 +471,40 @@ export function SettingsPage() {
       audio: t('storageTypeVoice'),
     }
     if (!confirm(t('clearCacheConfirm', { type: typeLabels[type] }))) return
-    
+
     setClearingStorage(true)
     try {
-      const { data: memberData } = await supabase
-        .from('conversation_members')
-        .select('conversation_id')
-        .eq('user_id', user.id)
-      
-      if (!memberData) return
-      
-      const conversationIds = memberData.map(m => m.conversation_id)
-      
-      let query = supabase
-        .from('messages')
-        .update({ media_url: null, file_url: null, file_size: null })
-        .in('conversation_id', conversationIds)
-      
-      const mediaTypeFilter = getMediaTypeFilter(type)
-      if (mediaTypeFilter) {
-        query = query.or(`media_type.eq.${mediaTypeFilter},type.eq.${mediaTypeFilter}`)
+      // IMPORTANT : on ne touche JAMAIS à la base (messages.media_url…).
+      // L'ancien code faisait un UPDATE global → perte des médias pour TOUS
+      // les participants. On purge uniquement le cache LOCAL de cet appareil.
+      //
+      // 1. IndexedDB locale (messages, conversations, médias déchiffrés).
+      await offlineStorage.clearAll()
+
+      // 2. Caches média du Service Worker (nephtys-media-*).
+      if ('caches' in globalThis) {
+        const keys = await caches.keys()
+        await Promise.all(
+          keys.filter(k => k.startsWith('nephtys-media')).map(k => caches.delete(k))
+        )
       }
-      
-      await query
-      
+
+      // 3. Caches applicatifs localStorage (anu_cache_*).
+      try {
+        const stale: string[] = []
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i)
+          if (key && key.startsWith('anu_cache_')) stale.push(key)
+        }
+        stale.forEach(key => localStorage.removeItem(key))
+      } catch {
+        // localStorage indisponible : ignoré (best-effort).
+      }
+
       alert(t('cacheCleared'))
       loadStorageStats()
     } catch (e) {
-      console.error('Error clearing storage:', e)
+      console.error('Error clearing local cache:', e)
       alert(t('cacheClearError'))
     } finally {
       setClearingStorage(false)
@@ -534,6 +545,9 @@ export function SettingsPage() {
     if (!error) {
       setEditingName(false)
       updateLocalProfile({ display_name: trimmed })
+    } else {
+      console.error('[settings] update display name failed:', error)
+      alert(t('profileUpdateError'))
     }
   }
 
@@ -544,6 +558,9 @@ export function SettingsPage() {
     if (!error) {
       setEditingBio(false)
       updateLocalProfile({ bio: trimmed })
+    } else {
+      console.error('[settings] update bio failed:', error)
+      alert(t('profileUpdateError'))
     }
   }
 
@@ -607,19 +624,21 @@ export function SettingsPage() {
     )
   }
 
-  /** Selection vide = tous les relais disponibles. */
+  /** Sélection vide = tous les relais disponibles. */
   const handleSaveSelectedRelays = () => {
     const pool = (selectedRelays.length ? selectedRelays : availableRelays).join(' ')
     setRelayPool(pool)
     setRelayPoolInput(pool)
     saveRelayMode('manual')
     setRelayMode('manual')
+    setAvailableRelays(getAvailableRelays())
   }
 
   const handleSaveRelayPool = () => {
     setRelayPool(relayPoolInput)
     saveRelayMode('manual')
     setRelayMode('manual')
+    setAvailableRelays(getAvailableRelays())
   }
 
   const handleToggleCover = () => {
@@ -628,15 +647,30 @@ export function SettingsPage() {
     setCoverTrafficEnabled(next)
   }
 
+  /**
+   * Applique l'URL de relais saisie. `setRelayUrl` refuse silencieusement les
+   * URL invalides (wss:// requis) ; on détecte ce refus et on le remonte à
+   * l'utilisateur au lieu de recharger sur un réglage non pris en compte.
+   */
+  const applyRelayUrl = (): boolean => {
+    setRelayUrl(relayInput)
+    const trimmed = relayInput.trim()
+    if (trimmed && getRelayUrl() !== trimmed) {
+      alert(t('relayInvalidUrl'))
+      return false
+    }
+    return true
+  }
+
   /** Applique relais + politique de routage Tor puis relance la connexion. */
   const handleSaveAndReconnect = () => {
-    setRelayUrl(relayInput)
+    if (!applyRelayUrl()) return
     setTorRelayEnabled(torEnabled)
     globalThis.location.reload()
   }
 
   const handleSaveRelay = () => {
-    setRelayUrl(relayInput)
+    if (!applyRelayUrl()) return
     globalThis.location.reload()
   }
 
@@ -706,13 +740,34 @@ export function SettingsPage() {
     const confirmation = prompt(t('deleteAccountPrompt', { word: t('deleteConfirmWord') }))
     if (confirmation !== t('deleteConfirmWord')) return
     try {
+      // 1. Données applicatives de l'utilisateur (RLS-scoped).
       await deleteMyMessages(user.id)
       await supabase.from('conversation_members').delete().eq('user_id', user.id)
       await supabase.from('contacts').delete().eq('user_id', user.id)
       await supabase.from('profiles').delete().eq('id', user.id)
-      await signOut()
+
+      // 2. Le compte d'authentification NE peut PAS être supprimé depuis le
+      //    client (il faut le service role via une Edge Function). On tente
+      //    `delete-account` ; si elle n'existe pas / échoue, on NE prétend PAS
+      //    avoir supprimé le compte : l'utilisateur auth subsisterait.
+      const { error: authDeleteError } = await supabase.functions.invoke('delete-account', {
+        body: {},
+      })
+      if (authDeleteError) {
+        console.error('[settings] auth account deletion failed:', authDeleteError)
+        alert(t('deleteAccountAuthError'))
+        return
+      }
+
+      // 3. Compte auth supprimé : on efface le local et on déconnecte.
+      try {
+        await signOutAndWipeLocal()
+      } catch {
+        await signOut()
+      }
       navigate('/auth')
-    } catch {
+    } catch (e) {
+      console.error('[settings] delete account failed:', e)
       alert(t('deleteAccountError'))
     }
   }
@@ -1196,18 +1251,6 @@ export function SettingsPage() {
           </div>
           <ChevronRight size={20} className="text-text-secondary" />
         </button>
-        <div className="px-6 py-4">
-          <h3 className="text-sm text-accent mb-4">{t('chatOptions')}</h3>
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-text-primary">{t('enterToSendLabel')}</div>
-              <div className="text-sm text-text-secondary">{t('enterToSendDesc')}</div>
-            </div>
-            <button onClick={() => setEnterToSend(!enterToSend)} className={`w-12 h-6 rounded-full relative transition-colors ${enterToSend ? 'bg-accent' : 'bg-[#8696a0]'}`}>
-              <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${enterToSend ? 'right-1' : 'left-1'}`}></div>
-            </button>
-          </div>
-        </div>
       </div>
     </div>
   )
@@ -1686,7 +1729,7 @@ export function SettingsPage() {
           <div className="space-y-4">
             <div>
               <div className="text-text-primary">Serveurs WebRTC ICE</div>
-              <div className="text-sm text-text-secondary">{getIceServers().length} serveur(s) STUN/TURN configuré(s).</div>
+              <div className="text-sm text-text-secondary">{iceServerCount} serveur(s) STUN/TURN configuré(s).</div>
             </div>
             <div className="flex items-center justify-between">
               <div className="pr-4">
@@ -1837,7 +1880,7 @@ export function SettingsPage() {
       
       const confirmRestore = confirm(
         t('restoreConfirm', {
-          date: new Date(backupData.createdAt).toLocaleDateString('fr-FR'),
+          date: new Date(backupData.createdAt).toLocaleDateString(getLocale()),
           messages: backupData.messages.length,
           conversations: backupData.conversations.length,
         })

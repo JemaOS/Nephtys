@@ -5,8 +5,8 @@ import { useState, useEffect } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { LANGUAGES, useI18n } from '@/i18n';
 
-// Language selector dropdown (EN/FR toggle). Runtime override only:
-// the JemaOS system language always wins on reload / languagechange.
+// Language selector dropdown (EN/FR toggle). The choice is persisted and
+// restored on reload; `navigator.language` provides the initial default.
 export function LanguageSelector() {
   const { lang, setLang } = useI18n();
   const [isOpen, setIsOpen] = useState(false);

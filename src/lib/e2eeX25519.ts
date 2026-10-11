@@ -27,7 +27,7 @@ import {
 } from './x25519';
 import { getLocalRatchetKeys } from './ratchet/keyStore';
 import type { SigningKeyPair } from './ratchet/x3dh';
-import { sealAtRest, openAtRest } from './atRestCrypto';
+import { openAtRest, sealAtRestStrict } from './atRestCrypto';
 
 const IDB_NAME = 'nephtys-e2ee';
 const IDB_STORE = 'private-keys';
@@ -62,7 +62,9 @@ async function idbGet(key: string): Promise<X25519KeyPair | undefined> {
 
 async function idbSet(key: string, value: X25519KeyPair): Promise<void> {
   const db = await openIdb();
-  const stored = await sealAtRest(value);
+  // Matériel de CLÉS → chiffrement STRICT : si le chiffrement au repos est
+  // indisponible, on échoue plutôt que d'écrire la clé privée en clair.
+  const stored = await sealAtRestStrict(value);
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(IDB_STORE, 'readwrite');
     tx.objectStore(IDB_STORE).put(stored, key);
@@ -105,7 +107,22 @@ export async function getLocalX25519KeyPair(userId: string): Promise<X25519KeyPa
 
 const PIN_PREFIX = 'nephtys_x25519_pin_';
 
-interface KeyPin { signer: string; key: string }
+/** Raison d'un changement de clé refusé, en attente de vérification hors-bande. */
+export type PendingKeyChangeReason = 'signer-change' | 'key-change' | 'unsigned-downgrade';
+
+export interface PendingKeyChange {
+  signer: string;
+  key: string;
+  reason: PendingKeyChangeReason;
+  at: string;
+}
+
+interface KeyPin {
+  signer: string;
+  key: string;
+  /** Clé refusée, conservée pour confirmation/rejet explicite (hors-bande). */
+  pending?: PendingKeyChange;
+}
 
 function readPin(peerId: string): KeyPin | null {
   try {
@@ -124,6 +141,37 @@ function writePin(peerId: string, pin: KeyPin): void {
   }
 }
 
+/** Marque une clé refusée comme « à vérifier », SANS écraser la clé de confiance. */
+function flagPending(peerId: string, pin: KeyPin, change: PendingKeyChange): void {
+  writePin(peerId, { signer: pin.signer, key: pin.key, pending: change });
+}
+
+/**
+ * État de vérification d'un pair : expose une éventuelle clé refusée en attente
+ * de confirmation (à afficher côté UI, ex. via le safety number).
+ */
+export function getX25519PendingKeyChange(peerId: string): PendingKeyChange | null {
+  return readPin(peerId)?.pending ?? null;
+}
+
+/**
+ * Confirme un changement de clé après vérification hors-bande : la clé en
+ * attente devient la clé de confiance (pin mis à jour).
+ */
+export function confirmX25519KeyChange(peerId: string): boolean {
+  const pin = readPin(peerId);
+  if (!pin?.pending) return false;
+  writePin(peerId, { signer: pin.pending.signer, key: pin.pending.key });
+  return true;
+}
+
+/** Rejette un changement en attente : la clé de confiance reste inchangée. */
+export function rejectX25519KeyChange(peerId: string): void {
+  const pin = readPin(peerId);
+  if (!pin) return;
+  writePin(peerId, { signer: pin.signer, key: pin.key });
+}
+
 function notify(event: string, detail: unknown): void {
   try {
     window.dispatchEvent(new CustomEvent(event, { detail }));
@@ -137,10 +185,17 @@ function notify(event: string, detail: unknown): void {
  * en les AUTHENTIFIANT :
  *   • si une signature Ed25519 est publiée → elle DOIT vérifier (sinon la clé
  *     est rejetée : un serveur qui la substituerait serait détecté) ;
- *   • sinon (clé historique non signée) → TOFU (confiance à la 1re vue) avec
- *     détection de changement (event `nephtys:x25519-key-change`).
- * La clé de signature est elle-même pinnée (TOFU) : un changement d'émetteur
- * déclenche `nephtys:x25519-signer-change`.
+ *   • sinon (clé historique non signée) → TOFU (confiance à la 1re vue).
+ *
+ * FAIL-CLOSED (durci) : un **changement** de clé au regard du pin n'est plus
+ * accepté silencieusement. On conserve le pin de confiance et on REFUSE la
+ * nouvelle clé pour la session (elle n'est pas renvoyée dans la map) :
+ *   • signataire pinné qui change → `nephtys:x25519-signer-change` ;
+ *   • clé non signée qui change → `nephtys:x25519-key-change` ;
+ *   • clé authentifiée remplacée par une clé NON signée (downgrade) → refus.
+ * Un événement `nephtys:x25519-key-pending-verification` est émis et la clé
+ * refusée est exposée via `getX25519PendingKeyChange` / `confirmX25519KeyChange`.
+ * Le PREMIER contact (aucun pin) reste autorisé (TOFU initial).
  */
 export async function fetchX25519PublicKeys(userIds: string[]): Promise<Map<string, string>> {
   const map = new Map<string, string>();
@@ -161,6 +216,10 @@ export async function fetchX25519PublicKeys(userIds: string[]): Promise<Map<stri
     const sig: string | undefined = p.x25519_public_key_sig ?? undefined;
     const signer: string | undefined = p.x25519_signing_key || p.ratchet_signing_key || undefined;
 
+    const pin = readPin(p.id);
+    const trustedSigner = pin?.signer ?? '';
+    const keyChanged = !!pin && pin.key !== key;
+
     if (sig && signer) {
       if (!verifyX25519PublicKeySignature(signer, key!, sig)) {
         // Signature invalide → clé possiblement substituée : on REJETTE.
@@ -168,21 +227,52 @@ export async function fetchX25519PublicKeys(userIds: string[]): Promise<Map<stri
         notify('nephtys:x25519-sig-invalid', { peerId: p.id });
         return;
       }
-      const pin = readPin(p.id);
-      if (pin && pin.signer && pin.signer !== signer) {
+      // Signataire pinné qui change, OU rotation d'une clé jusque-là non signée
+      // par un signataire inconnu → non vérifié → on REFUSE (fail-closed).
+      if (trustedSigner && trustedSigner !== signer) {
         console.warn('[e2ee] clé de signature X25519 changée pour', p.id);
-        notify('nephtys:x25519-signer-change', { peerId: p.id, oldSigner: pin.signer, newSigner: signer });
+        flagPending(p.id, pin!, { signer, key: key!, reason: 'signer-change', at: new Date().toISOString() });
+        notify('nephtys:x25519-signer-change', { peerId: p.id, oldSigner: trustedSigner, newSigner: signer });
+        notify('nephtys:x25519-key-pending-verification', { peerId: p.id, reason: 'signer-change' });
+        return;
       }
+      if (keyChanged && trustedSigner !== signer) {
+        console.warn('[e2ee] clé X25519 changée (signataire non pinné) pour', p.id);
+        flagPending(p.id, pin!, { signer, key: key!, reason: 'key-change', at: new Date().toISOString() });
+        notify('nephtys:x25519-key-change', { peerId: p.id, oldKey: pin!.key, newKey: key });
+        notify('nephtys:x25519-key-pending-verification', { peerId: p.id, reason: 'key-change' });
+        return;
+      }
+      // Signataire de confiance identique → rotation légitime autorisée par le
+      // signataire pinné, ou premier contact TOFU → on accepte (et on pinne).
       writePin(p.id, { signer, key: key! });
       map.set(p.id, key!);
     } else {
-      // Clé historique non signée → TOFU.
-      const pin = readPin(p.id);
-      if (pin && pin.key !== key) {
-        console.warn('[e2ee] clé X25519 (non signée) changée pour', p.id);
-        notify('nephtys:x25519-key-change', { peerId: p.id, oldKey: pin.key, newKey: key });
+      // Clé non signée (ou partie signature absente).
+      if (trustedSigner && !signer) {
+        // Downgrade : un pair authentifié publie désormais une clé non signée.
+        // Si la clé est identique, l'identité n'a pas changé : on conserve le
+        // pin signé et on renvoie la clé (pas de régression). Sinon on REFUSE.
+        if (!keyChanged) {
+          map.set(p.id, pin!.key);
+          return;
+        }
+        console.warn('[e2ee] clé X25519 non signée après authentification pour', p.id);
+        flagPending(p.id, pin!, { signer: '', key: key!, reason: 'unsigned-downgrade', at: new Date().toISOString() });
+        notify('nephtys:x25519-key-change', { peerId: p.id, oldKey: pin!.key, newKey: key });
+        notify('nephtys:x25519-key-pending-verification', { peerId: p.id, reason: 'unsigned-downgrade' });
+        return;
       }
-      writePin(p.id, { signer: pin?.signer ?? '', key: key! });
+      if (keyChanged) {
+        // Clé non signée qui change sans authentification → refus, pin conservé.
+        console.warn('[e2ee] clé X25519 (non signée) changée pour', p.id);
+        flagPending(p.id, pin!, { signer: pin!.signer ?? '', key: key!, reason: 'key-change', at: new Date().toISOString() });
+        notify('nephtys:x25519-key-change', { peerId: p.id, oldKey: pin!.key, newKey: key });
+        notify('nephtys:x25519-key-pending-verification', { peerId: p.id, reason: 'key-change' });
+        return;
+      }
+      // Premier contact (TOFU) autorisé.
+      writePin(p.id, { signer: trustedSigner, key: key! });
       map.set(p.id, key!);
     }
   });
@@ -213,9 +303,11 @@ export async function installX25519KeyPair(
     update.x25519_public_key_sig = signX25519PublicKey(signing.privateKey, keyPair.publicKey);
     update.x25519_signing_key = signing.publicKey;
   }
+  // Stockage local D'ABORD (chiffrement au repos strict : échec explicite) pour
+  // ne jamais publier une clé publique sans la clé privée correspondante.
+  await idbSet(idbKeyFor(userId), keyPair);
   const { error } = await supabase.from('profiles').update(update).eq('id', userId);
   if (error) throw error;
-  await idbSet(idbKeyFor(userId), keyPair);
 }
 
 /**

@@ -15,7 +15,7 @@ import { supabase } from '../supabase';
 import { signPreKey } from './x3dh';
 import type { LocalRatchetKeys, PeerBundle } from './service';
 import { clearUserSessions } from './sessionStore';
-import { sealAtRest, openAtRest } from '../atRestCrypto';
+import { openAtRest, sealAtRestStrict } from '../atRestCrypto';
 
 const DB_NAME = 'nephtys-ratchet-keys';
 const STORE = 'keys';
@@ -49,7 +49,9 @@ async function idbGet(userId: string): Promise<LocalRatchetKeys | undefined> {
 
 async function idbSet(userId: string, keys: LocalRatchetKeys): Promise<void> {
   const db = await openDb();
-  const stored = await sealAtRest(keys);
+  // Matériel de CLÉS → chiffrement STRICT : échec explicite plutôt qu'écriture
+  // en clair si le chiffrement au repos est indisponible.
+  const stored = await sealAtRestStrict(keys);
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(STORE, 'readwrite');
     tx.objectStore(STORE).put(stored, `${IDB_KEY_PREFIX}:${userId}`);
@@ -139,22 +141,67 @@ export async function loadPeerBundle(peerId: string): Promise<PeerBundle | null>
     .maybeSingle();
   if (error || !profile?.ratchet_identity_key) return null;
 
-  const { data: opk } = await supabase
-    .from('one_time_prekeys')
-    .select('public_key')
-    .eq('user_id', peerId)
-    .eq('is_used', false)
-    .limit(1)
-    .maybeSingle();
+  // Revendication ATOMIQUE de la one-time prekey (cf. claimOneTimePreKeyForPeer).
+  const oneTimePreKey = await claimOneTimePreKeyForPeer(peerId);
 
   return {
     identityKey: profile.ratchet_identity_key,
     signingKey: profile.ratchet_signing_key,
     signedPreKey: profile.ratchet_signed_prekey,
     signedPreKeySignature: profile.ratchet_signed_prekey_sig,
-    oneTimePreKey: opk?.public_key ?? null,
+    oneTimePreKey,
     mlKemPublicKey: (profile as { ml_kem_public_key?: string | null }).ml_kem_public_key ?? null,
   };
+}
+
+let opkClaimWarned = false;
+
+/**
+ * Revendique une one-time prekey disponible du pair de façon ATOMIQUE.
+ *
+ * L'ancien schéma (`.limit(1).maybeSingle()` puis marquage plus tard) laissait
+ * une fenêtre où DEUX initiateurs pouvaient utiliser la MÊME prekey. On lit
+ * maintenant des candidats puis on les CONSOMME un par un via le RPC atomique
+ * `consume_one_time_prekey(p_prekey_id)` : seul le premier à committer obtient
+ * le `public_key`, les autres reçoivent `NULL` et passent au candidat suivant.
+ *
+ * La consommation ne cible QUE des lignes `user_id = peerId` (pas les prekeys
+ * d'autrui). Persistance/appel atomique côté serveur à durcir davantage (voir
+ * rapport) : un RPC `claim_one_time_prekey(p_user_id)` qui sélectionne ET
+ * consomme en une seule requête éviterait même le pré-SELECT.
+ */
+async function claimOneTimePreKeyForPeer(peerId: string): Promise<string | null> {
+  const { data: candidates, error } = await supabase
+    .from('one_time_prekeys')
+    .select('id, public_key')
+    .eq('user_id', peerId)
+    .eq('is_used', false)
+    .order('created_at', { ascending: true })
+    .limit(10);
+  if (error || !candidates || candidates.length === 0) return null;
+
+  for (const c of candidates as Array<{ id: string; public_key: string }>) {
+    const { data, error: rpcError } = await supabase.rpc('consume_one_time_prekey', {
+      p_prekey_id: c.id,
+    });
+    if (rpcError) {
+      // RPC indisponible (migration non appliquée) : repli best-effort sur le
+      // premier candidat. Le marquage différé (`markOneTimePreKeyUsed`) reste
+      // tenté, mais la garantie d'atomicité est alors perdue → on le signale.
+      if (!opkClaimWarned) {
+        opkClaimWarned = true;
+        console.warn(
+          '[ratchet] RPC consume_one_time_prekey indisponible : revendication OPK non atomique. ' +
+            'Applique la migration 20261012_rls_otpk_consume_rpc.sql (et idéalement un RPC claim_one_time_prekey).',
+        );
+      }
+      return c.public_key;
+    }
+    // `data` = public_key si la consommation a gagné, `null` si un autre client
+    // a gagné la course entre-temps → on essaie le candidat suivant.
+    if (data === c.public_key) return c.public_key;
+  }
+  return null;
 }
 
 export async function markOneTimePreKeyUsed(peerId: string, oneTimePreKey: string): Promise<void> {

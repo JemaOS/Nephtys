@@ -131,23 +131,26 @@ export function getRelayLabel(): string {
 /**
  * Change le relais à chaud (ex. `wss://xxxx.onion`). Vide = revenir au relais
  * Supabase par défaut. Prend effet au prochain rechargement.
+ *
+ * Renvoie `true` si l'URL a été acceptée (ou vidée), `false` si elle a été
+ * REFUSÉE (hôte distant en clair) — l'appelant ne doit pas recharger dans ce cas.
  */
-export function setRelayUrl(url: string): void {
+export function setRelayUrl(url: string): boolean {
+  const trimmed = url.trim();
+  if (trimmed && !isAllowedRelayUrl(trimmed)) {
+    // Refuse le clair vers un hôte distant (wss:// requis hors loopback/.onion).
+    console.warn('[relay] URL refusée (wss:// requis) :', trimmed);
+    return false;
+  }
   try {
-    const trimmed = url.trim();
-    if (trimmed) {
-      // Refuse le clair vers un hôte distant (wss:// requis hors loopback/.onion).
-      if (!isAllowedRelayUrl(trimmed)) {
-        console.warn('[relay] URL refusée (wss:// requis) :', trimmed);
-        return;
-      }
-      localStorage.setItem(RELAY_OVERRIDE_KEY, trimmed);
-    } else localStorage.removeItem(RELAY_OVERRIDE_KEY);
+    if (trimmed) localStorage.setItem(RELAY_OVERRIDE_KEY, trimmed);
+    else localStorage.removeItem(RELAY_OVERRIDE_KEY);
   } catch {
     // localStorage indisponible
   }
   instance = null;
   failoverWire = null;
+  return true;
 }
 
 const TOR_ENABLED_KEY = 'nephtys_tor_enabled';
@@ -297,9 +300,15 @@ export function getRelayPoolInput(): string {
 
 /** Enregistre le pool de relais (liste separee par virgules / espaces / retours). */
 export function setRelayPool(input: string): void {
+  // Filtre STRICT : seuls les relais autorisés (wss://, ou ws:// loopback/.onion)
+  // sont conservés — jamais un `ws://` en clair vers un hôte distant.
+  const allowed = input
+    .split(/[\s,]+/)
+    .map(s => s.trim())
+    .filter(Boolean)
+    .filter(isAllowedRelayUrl);
   try {
-    const value = input.trim();
-    if (value) localStorage.setItem(RELAY_POOL_KEY, value);
+    if (allowed.length) localStorage.setItem(RELAY_POOL_KEY, allowed.join(','));
     else localStorage.removeItem(RELAY_POOL_KEY);
   } catch {
     // localStorage indisponible
@@ -363,12 +372,15 @@ export function getAvailableRelays(): string[] {
  * relais par defaut.
  */
 export function getRelayPool(): string[] {
-  if (getRelayMode() === 'auto') return getAvailableRelays();
-  const raw = getRelayPoolInput() || defaultRelayUrl();
-  return raw
-    .split(/[\s,]+/)
-    .map(s => s.trim())
-    .filter(Boolean);
+  const raw =
+    getRelayMode() === 'auto'
+      ? getAvailableRelays()
+      : (getRelayPoolInput() || defaultRelayUrl())
+          .split(/[\s,]+/)
+          .map(s => s.trim())
+          .filter(Boolean);
+  // Filtre défensif (auto ET manuel) : jamais de relais en clair non autorisé.
+  return raw.filter(isAllowedRelayUrl);
 }
 
 /** Vrai si le reseau decentralise (pool de relais) est active. */

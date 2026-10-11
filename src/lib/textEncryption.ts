@@ -312,6 +312,105 @@ interface UnwrapCaches {
   x25519?: Awaited<ReturnType<typeof getLocalX25519KeyPair>> | null;
 }
 
+// ─── Re-tentative (ordre message → clés) ──────────────────────────────
+//
+// Quand un message chiffré arrive AVANT ses clés enveloppées (message_text_keys),
+// le déchiffrement échoue et on affiche le placeholder 🔒. On NE perd plus le
+// ciphertext pour autant : on le conserve ici, indexé par id, pour pouvoir
+// RE-TENTER le déchiffrement dès que la clé arrive, sans jamais réécrire le
+// ciphertext de façon durable par le placeholder.
+
+interface PendingDecryption {
+  id: string;
+  content: string;
+  is_text_encrypted: boolean;
+  encryption_metadata: unknown;
+  sender_id?: string;
+  sender_sealed?: unknown;
+  conversation_id?: string;
+}
+
+const pendingDecryptions = new Map<string, PendingDecryption>();
+
+function rememberPendingDecryption(row: {
+  id?: unknown;
+  content?: unknown;
+  is_text_encrypted?: unknown;
+  encryption_metadata?: unknown;
+  sender_id?: unknown;
+  sender_sealed?: unknown;
+  conversation_id?: unknown;
+}): void {
+  if (!row || typeof row.id !== 'string' || typeof row.content !== 'string') return;
+  pendingDecryptions.set(row.id, {
+    id: row.id,
+    content: row.content,
+    is_text_encrypted: !!row.is_text_encrypted,
+    encryption_metadata: row.encryption_metadata,
+    sender_id: typeof row.sender_id === 'string' ? row.sender_id : undefined,
+    sender_sealed: row.sender_sealed,
+    conversation_id: typeof row.conversation_id === 'string' ? row.conversation_id : undefined,
+  });
+}
+
+/**
+ * Affiche le placeholder SANS perdre le ciphertext : on mémorise d'abord la
+ * version chiffrée (jamais écrasée par un placeholder déjà posé).
+ */
+function markUndecryptable(row: any): void {
+  if (row.content !== UNDECRYPTABLE_PLACEHOLDER) rememberPendingDecryption(row);
+  row.content = UNDECRYPTABLE_PLACEHOLDER;
+}
+
+/** Identifiants des messages en attente de (re)déchiffrement. */
+export function getPendingDecryptionIds(): string[] {
+  return [...pendingDecryptions.keys()];
+}
+
+/** Purge l'état « en attente » d'un message (ex. après suppression). */
+export function clearPendingDecryption(id: string): void {
+  pendingDecryptions.delete(id);
+}
+
+/**
+ * Re-tente le déchiffrement d'un message précédemment marqué indéchiffrable, à
+ * partir du ciphertext conservé. À appeler quand les clés du message arrivent.
+ * Retourne le texte déchiffré, ou `null` si toujours indéchiffrable (le message
+ * reste en attente, jamais remplacé durablement par le placeholder).
+ */
+export async function retryPendingDecryption(id: string, userId: string): Promise<string | null> {
+  const pending = pendingDecryptions.get(id);
+  if (!pending) return null;
+  const row = {
+    id: pending.id,
+    content: pending.content,
+    is_text_encrypted: pending.is_text_encrypted,
+    encryption_metadata: pending.encryption_metadata,
+    sender_id: pending.sender_id,
+    sender_sealed: pending.sender_sealed,
+    conversation_id: pending.conversation_id,
+  };
+  const [decrypted] = await decryptMessageRows([row], userId);
+  if (decrypted && decrypted.content !== UNDECRYPTABLE_PLACEHOLDER) {
+    decryptedTextCache.set(id, decrypted.content);
+    pendingDecryptions.delete(id);
+    return decrypted.content;
+  }
+  return null;
+}
+
+/** Re-tente tous les messages en attente ; retourne ceux qui ont été déchiffrés. */
+export async function retryAllPendingDecryptions(
+  userId: string,
+): Promise<Array<{ id: string; text: string }>> {
+  const out: Array<{ id: string; text: string }> = [];
+  for (const id of [...pendingDecryptions.keys()]) {
+    const text = await retryPendingDecryption(id, userId);
+    if (text !== null) out.push({ id, text });
+  }
+  return out;
+}
+
 /** Déchiffre une clé AES enveloppée (X25519). */
 async function unwrapKeyRowForUser(
   keyRow: { encrypted_key: string; iv: string; sender_public_key: string },
@@ -354,13 +453,19 @@ export async function decryptMessageContent(
         // Session indexée par CONVERSATION (insensible au sealed sender).
         message.conversation_id ?? message.sender_id ?? '',
       );
-      if (raw !== null) return parseTextPayload(raw).text;
+      if (raw !== null) {
+        clearPendingDecryption(message.id);
+        return parseTextPayload(raw).text;
+      }
     }
     // échec ratchet (ou message à soi) → repli X25519 ci-dessous.
   }
 
   const envelope = parseEnvelope(message.encryption_metadata);
-  if (!envelope) return UNDECRYPTABLE_PLACEHOLDER;
+  if (!envelope) {
+    markUndecryptable(message);
+    return UNDECRYPTABLE_PLACEHOLDER;
+  }
 
   let keyRow: { encrypted_key: string; iv: string; sender_public_key: string } | null = null;
   try {
@@ -370,20 +475,30 @@ export async function decryptMessageContent(
       .eq('message_id', message.id)
       .eq('recipient_id', userId)
       .maybeSingle();
-    if (error) return UNDECRYPTABLE_PLACEHOLDER;
+    if (error) {
+      markUndecryptable(message);
+      return UNDECRYPTABLE_PLACEHOLDER;
+    }
     keyRow = data;
   } catch (e) {
     console.warn('[textEncryption] key fetch failed for message', message.id, e);
+    markUndecryptable(message);
     return UNDECRYPTABLE_PLACEHOLDER;
   }
 
-  if (!keyRow) return UNDECRYPTABLE_PLACEHOLDER;
+  if (!keyRow) {
+    markUndecryptable(message);
+    return UNDECRYPTABLE_PLACEHOLDER;
+  }
 
   try {
     const rawKey = await unwrapKeyRowForUser(keyRow, userId, {});
-    return await decryptText(message.content, envelope.iv, rawKey);
+    const text = await decryptText(message.content, envelope.iv, rawKey);
+    clearPendingDecryption(message.id);
+    return text;
   } catch (e) {
     console.warn('[textEncryption] decrypt failed for message', message.id, e);
+    markUndecryptable(message);
     return UNDECRYPTABLE_PLACEHOLDER;
   }
 }
@@ -446,7 +561,7 @@ export async function decryptMessageRows<T extends {
       if (ratchetEnv) {
         if ((row as any).sender_id && (row as any).sender_id === userId) {
           const mine = decryptedTextCache.get(row.id);
-          if (mine !== undefined) { row.content = mine; (row as any).is_text_encrypted = false; return; }
+          if (mine !== undefined) { row.content = mine; (row as any).is_text_encrypted = false; clearPendingDecryption(row.id); return; }
           // ses propres messages : pas de re-déchiffrement ratchet → on tente X25519 ci-dessous
         } else {
           const raw = await tryDecryptWithRatchet(
@@ -460,6 +575,7 @@ export async function decryptMessageRows<T extends {
             row.content = payload.text;
             (row as any).is_text_encrypted = false;
             cacheDecryptedText(row.id, payload.text);
+            clearPendingDecryption(row.id);
             if (payload.linkPreview) (row as any).link_preview = JSON.stringify(payload.linkPreview);
             return;
           }
@@ -472,7 +588,7 @@ export async function decryptMessageRows<T extends {
       const envelope = parseEnvelope(row.encryption_metadata);
       const keyRow = keyByMessage.get(row.id);
       if (!envelope || !keyRow) {
-        row.content = UNDECRYPTABLE_PLACEHOLDER;
+        markUndecryptable(row);
         return;
       }
       try {
@@ -481,12 +597,13 @@ export async function decryptMessageRows<T extends {
         row.content = payload.text;
         (row as any).is_text_encrypted = false;
         cacheDecryptedText(row.id, payload.text);
+        clearPendingDecryption(row.id);
         if (payload.linkPreview) {
           (row as any).link_preview = JSON.stringify(payload.linkPreview);
         }
       } catch (e) {
         console.warn('[textEncryption] batch decrypt failed for message', row.id, e);
-        row.content = UNDECRYPTABLE_PLACEHOLDER;
+        markUndecryptable(row);
       }
     }),
   );

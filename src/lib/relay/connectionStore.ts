@@ -12,6 +12,7 @@
 import type { LocalRatchetKeys } from '../ratchet/service';
 import type { SessionState } from '../ratchet/doubleRatchet';
 import type { RelayConnection } from './relayTransport';
+import { sealAtRest, openAtRest } from '../atRestCrypto';
 
 export interface PendingInit {
   identityKey: string;
@@ -78,19 +79,23 @@ export class IdbConnectionStore implements PrivateConnectionStore {
 
   async load(conversationId: string): Promise<PrivateConnectionRecord | null> {
     const db = await this.open();
-    return await new Promise((resolve, reject) => {
+    const raw = await new Promise<unknown>((resolve, reject) => {
       const tx = db.transaction(this.storeName, 'readonly');
       const req = tx.objectStore(this.storeName).get(conversationId);
-      req.onsuccess = () => resolve((req.result as PrivateConnectionRecord) ?? null);
+      req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
     });
+    // `openAtRest` lit aussi l'ancien format en clair (rétrocompatible).
+    const record = (await openAtRest(raw)) as PrivateConnectionRecord | undefined;
+    return record ?? null;
   }
 
   async save(record: PrivateConnectionRecord): Promise<void> {
     const db = await this.open();
+    const stored = await sealAtRest(record);
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(this.storeName, 'readwrite');
-      tx.objectStore(this.storeName).put(record, record.conversationId);
+      tx.objectStore(this.storeName).put(stored, record.conversationId);
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
     });
@@ -108,11 +113,17 @@ export class IdbConnectionStore implements PrivateConnectionStore {
 
   async list(): Promise<PrivateConnectionRecord[]> {
     const db = await this.open();
-    return await new Promise((resolve, reject) => {
+    const rows = await new Promise<unknown[]>((resolve, reject) => {
       const tx = db.transaction(this.storeName, 'readonly');
       const req = tx.objectStore(this.storeName).getAll();
-      req.onsuccess = () => resolve((req.result as PrivateConnectionRecord[]) ?? []);
+      req.onsuccess = () => resolve((req.result as unknown[]) ?? []);
       req.onerror = () => reject(req.error);
     });
+    const out: PrivateConnectionRecord[] = [];
+    for (const row of rows) {
+      const record = (await openAtRest(row)) as PrivateConnectionRecord | undefined;
+      if (record && typeof record === 'object' && 'conversationId' in record) out.push(record);
+    }
+    return out;
   }
 }

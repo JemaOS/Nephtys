@@ -34,6 +34,7 @@ import {
 } from '../ratchet/index';
 import {
   generateLocalRatchetKeys,
+  assertPqNotDowngraded,
   type LocalRatchetKeys,
   type PeerBundle,
 } from '../ratchet/service';
@@ -41,6 +42,8 @@ import { base64ToBytes, bytesToBase64, utf8 } from '../ratchet/primitives';
 import { deflate, inflate } from 'pako';
 import { RelayTransport, type RelayQueueRef } from './relayTransport';
 import type { RelayWire } from './wire';
+import { CALL_MARKER } from './callSignaling';
+import { STATUS_MARKER } from './statusStore';
 import type {
   PendingInit,
   PrivateConnectionRecord,
@@ -68,6 +71,21 @@ export function parseFileMessage(text: string): unknown | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Vrai pour un message de CONTRÔLE ÉPHÉMÈRE (couverture, rotation de file,
+ * signalisation d'appel, statut) : jamais persisté dans l'historique local, et
+ * filtré au chargement (après un rechargement l'UI ne doit pas réafficher les
+ * marqueurs bruts `CALL`/`STATUS`).
+ */
+function isTransientMessage(text: string): boolean {
+  return (
+    text === COVER_MARKER ||
+    text.startsWith(CONTROL_PREFIX) ||
+    text.startsWith(CALL_MARKER) ||
+    text.startsWith(STATUS_MARKER)
+  );
 }
 
 /** Message tel qu'il circule dans le relais (opaque, base64). */
@@ -140,7 +158,10 @@ export class PrivateMessenger {
 
   /** Historique local des messages d'une connexion (persistant). */
   async history(conversationId: string): Promise<PrivateMessageRecord[]> {
-    return this.historyStore ? this.historyStore.load(conversationId) : [];
+    const rows = this.historyStore ? await this.historyStore.load(conversationId) : [];
+    // Filtre défensif : aucun marqueur de contrôle (appel/statut/rotation) ne
+    // doit être affiché, même si une version antérieure les a persistés.
+    return rows.filter(r => !isTransientMessage(r.text));
   }
 
   /** Supprime l'historique local d'une connexion. */
@@ -320,8 +341,9 @@ export class PrivateMessenger {
     });
     await this.store.save(record);
 
-    // Persiste l'historique local (jamais les messages de couverture).
-    if (this.historyStore && plaintext !== COVER_MARKER) {
+    // Persiste l'historique local (jamais les messages de contrôle éphémères :
+    // couverture, appels, statuts).
+    if (this.historyStore && !isTransientMessage(plaintext)) {
       await this.historyStore.append({
         conversationId,
         id: `out-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -369,6 +391,18 @@ export class PrivateMessenger {
             let session: SessionState | null = record.session;
             if (!session) {
               if (!wire.init) return; // pas de session et pas d'init → indéchiffrable
+              // Fail-closed anti-downgrade post-quantique : identique au chemin
+              // `ratchet/service.ts`. Si nous avons publié une clé ML-KEM, tout
+              // `ratchet-init` doit transporter la partie PQ — sinon on REFUSE
+              // plutôt que d'établir une session en mode dégradé silencieux.
+              assertPqNotDowngraded(record.localKeys, {
+                type: 'ratchet-init',
+                v: 1,
+                header: wire.header,
+                iv: wire.iv,
+                pq: !!wire.init.mlKemCiphertext,
+                mlKemCiphertext: wire.init.mlKemCiphertext ?? null,
+              });
               const opkPublic = wire.init.usedOneTimePreKey;
               const opkPrivate = opkPublic ? record.localKeys.oneTimePreKeys[opkPublic] : null;
               const response = await x3dhRespond(
@@ -396,9 +430,10 @@ export class PrivateMessenger {
               await this.handleControl(conversationId, text.slice(CONTROL_PREFIX.length));
               return;
             }
-            // Ignore le trafic de couverture ; persiste le reste localement.
+            // Ignore le trafic de couverture ; ne persiste jamais les marqueurs
+            // de contrôle (appels/statuts) mais les transmet quand même à l'UI.
             if (text === COVER_MARKER) return;
-            if (this.historyStore) {
+            if (this.historyStore && !isTransientMessage(text)) {
               await this.historyStore.append({
                 conversationId,
                 id: `in-${incoming.id}`,

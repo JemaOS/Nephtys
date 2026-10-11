@@ -2,7 +2,7 @@
 // Distributed under the license specified in the root directory of this project.
 
 import { Phone, Video, PhoneIncoming, PhoneOutgoing, PhoneMissed, Users } from 'lucide-react'
-import { useI18n } from '@/i18n';
+import { useI18n, getLocale } from '@/i18n';
 
 interface CallMessageProps {
   readonly type: 'audio' | 'video'
@@ -45,7 +45,7 @@ export function CallMessage({
   // Format time
   const formatTime = (dateStr: string) => {
     const date = new Date(dateStr)
-    return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+    return date.toLocaleTimeString(getLocale(), { hour: '2-digit', minute: '2-digit' })
   }
   
   // Get call label

@@ -926,7 +926,12 @@ const TextMessageDisplay = ({ message, hoveredMessageId, isOwn, setContextMenu, 
         message.file_name?.startsWith('voice-') ? (
           <VoiceMessage
             url={message.media_url || message.file_url || ''}
-            duration={message.ephemeral_duration || 0}
+            // ⚠️ La durée réelle est lue depuis l'élément <audio> (métadonnées du
+            // blob). La table `messages` n'a PAS de colonne `duration` :
+            // `ephemeral_duration` (durée d'auto-destruction) était utilisée à
+            // tort et affichait une durée fausse. On passe 0 → « 0:00 » tant que
+            // la durée n'est pas connue.
+            duration={0}
             isOwn={isOwn}
             isEncrypted={!!(message as any).is_media_encrypted}
             messageId={message.id}
@@ -936,7 +941,8 @@ const TextMessageDisplay = ({ message, hoveredMessageId, isOwn, setContextMenu, 
           <AudioFilePlayer
             url={message.media_url || message.file_url || ''}
             fileName={message.file_name || undefined}
-            duration={message.ephemeral_duration || undefined}
+            // Idem : pas de colonne `duration`, on laisse le player lire les
+            // métadonnées (undefined → « 0:00 » jusqu'au chargement).
             isOwn={isOwn}
             isEncrypted={!!(message as any).is_media_encrypted}
             messageId={message.id}
@@ -1331,6 +1337,7 @@ interface MessageListProps {
   otherUser: Profile | null
   // Infinite scroll props
   onScroll?: (e: React.UIEvent<HTMLDivElement>) => void
+  onLoadMore?: () => void
   isLoadingMore?: boolean
   hasMoreMessages?: boolean
   messagesContentRef?: React.RefObject<HTMLDivElement>
@@ -1378,6 +1385,7 @@ export const MessageList: React.FC<MessageListProps> = React.memo(({
   isLoadingPreview,
   otherUser,
   onScroll,
+  onLoadMore,
   isLoadingMore,
   hasMoreMessages,
   messagesContentRef
@@ -1470,6 +1478,9 @@ export const MessageList: React.FC<MessageListProps> = React.memo(({
               otherUser={otherUser}
               messages={messages}
               messagesEndRef={messagesEndRef}
+              onLoadMore={onLoadMore}
+              isLoadingMore={isLoadingMore}
+              hasMoreMessages={hasMoreMessages}
             />
           )
         }
@@ -1533,14 +1544,18 @@ type VirtualizedTimelineProps = Omit<MessageListProps,
   | 'loading' | 'messages' | 'messagesContainerRef'
   | 'messagesContentRef' | 'getWallpaperStyle'
   | 'handleBackgroundContextMenu' | 'linkPreview' | 'replyToMessage'
-  | 'isLoadingPreview' | 'onScroll' | 'isLoadingMore' | 'hasMoreMessages'
+  | 'isLoadingPreview' | 'onScroll'
 > & { messages: Message[] }
 
 const VirtualizedTimeline: React.FC<VirtualizedTimelineProps> = ({
   timelineItems,
   messagesEndRef,
+  isLoadingMore,
+  hasMoreMessages,
+  onLoadMore,
   ...itemProps
 }) => {
+  const { t } = useI18n()
   const virtuosoRef = useRef<VirtuosoHandle>(null)
   const atBottomRef = useRef(true)
   const countRef = useRef(timelineItems.length)
@@ -1559,11 +1574,24 @@ const VirtualizedTimeline: React.FC<VirtualizedTimelineProps> = ({
   // Atterrissage sur le message le plus récent à l'ouverture, et à chaque
   // ajout de message tant qu'on est en bas (Virtuoso gère le suivi via
   // followOutput='auto').
+  //
+  // ⚠️ Pagination : `loadMoreMessages` PRÉPEND l'historique → `timelineItems`
+  // change aussi. Sans distinction append/préprend, on replongeait en bas à
+  // chaque chargement d'anciens messages (le scroll « sautait »). On ne
+  // recolle donc que si le DERNIER item a changé (ajout/édition), pas si seul
+  // le début a bougé.
+  const lastItemKeyRef = useRef<string | null>(null)
   useEffect(() => {
+    const last = timelineItems[timelineItems.length - 1]
+    const lastKey = last
+      ? (last.type === 'call' ? `call-${last.data.id}` : `message-${last.data.id}`)
+      : null
+    const isAppend = lastKey !== lastItemKeyRef.current
+    lastItemKeyRef.current = lastKey
+    if (!isAppend) return
     atBottomRef.current = true
     scrollToLatest('auto')
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [timelineItems.length])
+  }, [timelineItems])
 
   return (
     <Virtuoso
@@ -1574,6 +1602,13 @@ const VirtualizedTimeline: React.FC<VirtualizedTimelineProps> = ({
       atBottomThreshold={120}
       atBottomStateChange={(atBottom) => {
         atBottomRef.current = atBottom
+      }}
+      // Pagination : Virtuoso possède son propre scroller, l'`onScroll` de la
+      // <section> (chemin non virtualisé) ne se déclenche donc jamais ici.
+      // `startReached` est émis quand l'utilisateur atteint le HAUT du fil →
+      // c'est notre unique déclencheur de chargement de l'historique.
+      startReached={() => {
+        if (hasMoreMessages && !isLoadingMore) onLoadMore?.()
       }}
       // Les médias (images/vidéos) se chargent en différé et agrandissent les
       // items APRÈS le scroll initial : tant qu'on est en bas, on recolle au
@@ -1595,6 +1630,17 @@ const VirtualizedTimeline: React.FC<VirtualizedTimelineProps> = ({
         />
       )}
       components={{
+        // En-tête : spinner pendant le chargement de l'historique, puis indice
+        // « remonter pour charger » tant qu'il reste des messages côté serveur.
+        Header: () => (
+          <div className="flex justify-center py-2 min-h-[24px]">
+            {isLoadingMore ? (
+              <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+            ) : hasMoreMessages ? (
+              <span className="text-xs text-text-secondary opacity-50">{t('scrollUpToLoadMore')}</span>
+            ) : null}
+          </div>
+        ),
         Footer: () => <div ref={messagesEndRef} className="h-1 md:h-4" />,
       }}
     />

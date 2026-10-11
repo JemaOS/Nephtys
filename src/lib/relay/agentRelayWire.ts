@@ -46,6 +46,21 @@ function chatRefOf(info: any): string | null {
   return null;
 }
 
+/**
+ * Grammaire STRICTE d'une référence de chat avant toute composition de
+ * commande agent (`/_send <ref> …`). Empêche l'injection de commandes via un
+ * `queueId` forgé (espaces, retours ligne, `;`, autres flags…).
+ */
+const DIRECT_CHAT_REF_RE = /^@\d+$/;
+const GROUP_CHAT_REF_RE = /^#[A-Za-z0-9_-]+$/;
+
+function isValidChatRef(ref: unknown): ref is string {
+  return (
+    typeof ref === 'string' &&
+    (DIRECT_CHAT_REF_RE.test(ref) || GROUP_CHAT_REF_RE.test(ref))
+  );
+}
+
 export class AgentRelayWire implements RelayWire {
   private socket: WebSocket | null = null;
   private connecting: Promise<void> | null = null;
@@ -155,6 +170,9 @@ export class AgentRelayWire implements RelayWire {
           return { ok: true, result: creds };
         }
         case 'send': {
+          if (!isValidChatRef(op.queueId)) {
+            return { ok: false, error: 'agent: référence de chat invalide' };
+          }
           const composed = [{ msgContent: { type: 'text', text: op.ciphertext }, mentions: {} }];
           const resp = await this.cmd(`/_send ${op.queueId} json ${JSON.stringify(composed)}`);
           if (resp?.type === 'chatCmdError') return { ok: false, error: JSON.stringify(resp.chatError) };
@@ -170,6 +188,9 @@ export class AgentRelayWire implements RelayWire {
           // L'agent acquitte lui-même côté SMP.
           return { ok: true, result: true };
         case 'delete': {
+          if (!isValidChatRef(op.queueId)) {
+            return { ok: false, error: 'agent: référence de chat invalide' };
+          }
           await this.cmd(`/_delete ${op.queueId}`).catch(() => undefined);
           return { ok: true, result: true };
         }

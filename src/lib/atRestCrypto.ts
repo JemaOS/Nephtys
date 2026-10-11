@@ -81,6 +81,35 @@ export async function decryptWithKey(
   return new TextDecoder().decode(pt);
 }
 
+/**
+ * Variante binaire (Blobs média) : chiffre des octets bruts sans passer par
+ * JSON (`sealAtRest(JSON)` corromprait un Blob). Même enveloppe `AtRestBox`.
+ */
+export async function encryptBytesWithKey(
+  key: CryptoKey,
+  bytes: BufferSource,
+): Promise<{ iv: string; ct: string }> {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv: iv as BufferSource },
+    key,
+    bytes,
+  );
+  return { iv: toB64(iv), ct: toB64(new Uint8Array(ct as ArrayBuffer)) };
+}
+
+export async function decryptBytesWithKey(
+  key: CryptoKey,
+  box: { iv: string; ct: string },
+): Promise<ArrayBuffer> {
+  const pt = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: fromB64(box.iv) as BufferSource },
+    key,
+    fromB64(box.ct) as BufferSource,
+  );
+  return pt as ArrayBuffer;
+}
+
 // ─── Clé + persistance IndexedDB ──────────────────────────────────────
 
 function openDb(): Promise<IDBDatabase> {
@@ -94,48 +123,101 @@ function openDb(): Promise<IDBDatabase> {
   });
 }
 
-function idbGet(db: IDBDatabase, key: string): Promise<unknown> {
-  return new Promise((resolve, reject) => {
-    const req = db.transaction(STORE, 'readonly').objectStore(STORE).get(key);
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-
-function idbPut(db: IDBDatabase, key: string, value: unknown): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE, 'readwrite');
-    tx.objectStore(STORE).put(value, key);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-}
-
 let cachedKey: CryptoKey | null = null;
 
+async function generateAtRestKey(): Promise<CryptoKey> {
+  return crypto.subtle.generateKey(
+    { name: 'AES-GCM', length: 256 },
+    false, // NON extractible
+    ['encrypt', 'decrypt'],
+  );
+}
+
+/**
+ * Récupère (ou crée) la clé au repos dans une transaction `readwrite` ATOMIQUE.
+ *
+ * La course multi-onglets venait du schéma read → generate → re-read → put (hors
+ * transaction) : deux onglets pouvaient générer deux clés différentes et le
+ * dernier `put` écrasait celle de l'autre, rendant indéchiffrables les données
+ * déjà chiffrées par le premier.
+ *
+ * Correction : la clé candidate est générée AVANT d'ouvrir la transaction
+ * (`generateKey` est asynchrone et refermerait une transaction IDB). La lecture
+ * ET l'écriture se font ensuite dans UNE SEULE transaction `readwrite`, que le
+ * moteur IndexedDB sérialise entre onglets : le premier onglet qui committe
+ * gagne, le second lit sa clé au lieu d'en créer une autre.
+ */
 async function getAtRestKey(): Promise<CryptoKey> {
   if (cachedKey) return cachedKey;
   const db = await openDb();
-  let key = (await idbGet(db, KEY_ID)) as CryptoKey | undefined;
-  if (!key) {
-    const generated = await crypto.subtle.generateKey(
-      { name: 'AES-GCM', length: 256 },
-      false, // NON extractible
-      ['encrypt', 'decrypt'],
-    );
-    // Re-lecture pour éviter une course entre onglets (si un autre onglet a
-    // créé la clé entre-temps, on garde la sienne).
-    const existing = (await idbGet(db, KEY_ID)) as CryptoKey | undefined;
-    key = existing ?? generated;
-    if (!existing) await idbPut(db, KEY_ID, key);
-  }
+  const candidate = await generateAtRestKey();
+  const key = await new Promise<CryptoKey>((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readwrite');
+    const store = tx.objectStore(STORE);
+    let chosen: CryptoKey | null = null;
+    const getReq = store.get(KEY_ID);
+    getReq.onsuccess = () => {
+      const existing = getReq.result as CryptoKey | undefined;
+      if (existing) {
+        chosen = existing;
+      } else {
+        // Aucune clé : on pose la nôtre dans la MÊME transaction.
+        store.put(candidate, KEY_ID);
+        chosen = candidate;
+      }
+    };
+    getReq.onerror = () => reject(getReq.error);
+    tx.oncomplete = () => resolve(chosen ?? candidate);
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
   cachedKey = key;
   return key;
 }
 
 /**
+ * Emballage STRICT d'une valeur à stocker : renvoie un `AtRestBox` chiffré et
+ * **échoue explicitement** si le chiffrement au repos est indisponible.
+ *
+ * À utiliser pour du MATÉRIEL DE CLÉS (clés privées X25519 / ratchet) : on ne
+ * doit JAMAIS retomber silencieusement en clair pour une clé privée.
+ */
+export async function sealAtRestStrict(value: unknown): Promise<AtRestBox> {
+  const key = await getAtRestKey();
+  const { iv, ct } = await encryptWithKey(key, JSON.stringify(value));
+  return { v: 2, iv, ct };
+}
+
+/**
+ * Variante binaire best-effort pour les blobs média : renvoie un `AtRestBox`
+ * chiffré, ou `null` si le chiffrement au repos est indisponible (l'appelant
+ * peut alors conserver l'ancien comportement non chiffré, sans régression).
+ */
+export async function sealBytesAtRest(bytes: BufferSource): Promise<AtRestBox | null> {
+  try {
+    const key = await getAtRestKey();
+    const { iv, ct } = await encryptBytesWithKey(key, bytes);
+    return { v: 2, iv, ct };
+  } catch {
+    return null;
+  }
+}
+
+/** Ouvre un blob binaire chiffré ; `undefined` si indéchiffrable (clé perdue). */
+export async function openBytesAtRest(box: AtRestBox): Promise<ArrayBuffer | undefined> {
+  try {
+    const key = await getAtRestKey();
+    return await decryptBytesWithKey(key, box);
+  } catch {
+    console.warn('[atrest] déchiffrement binaire impossible (clé au repos indisponible)');
+    return undefined;
+  }
+}
+
+/**
  * Emballage best-effort d'une valeur à stocker : renvoie un `AtRestBox` chiffré,
  * ou la valeur d'origine si le chiffrement est indisponible (jamais d'échec).
+ * NE PAS utiliser pour du matériel de clés → voir `sealAtRestStrict`.
  */
 export async function sealAtRest(value: unknown): Promise<unknown> {
   try {

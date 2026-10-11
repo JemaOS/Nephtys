@@ -1,6 +1,6 @@
 import React, { useRef, useEffect } from 'react';
 import { File, Play, Copy, FileText, FileSpreadsheet, FileImage, FileArchive, Star } from 'lucide-react';
-import { useI18n } from '@/i18n';
+import { useI18n, getLocale } from '@/i18n';
 import { MessageHoverActions } from './MessageHoverActions';
 
 // Custom hook to preload next images in viewport
@@ -143,7 +143,7 @@ export const formatVideoDuration = (seconds: number): string => {
 
 // Helper function to format timestamp
 export const formatMessageTimestamp = (ts: string): string => {
-  return new Date(ts).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  return new Date(ts).toLocaleTimeString(getLocale(), { hour: '2-digit', minute: '2-digit' });
 };
 
 // Type for message status
@@ -215,7 +215,7 @@ export const MediaTimestampOverlay: React.FC<{
   const { t } = useI18n();
   const formatTime = (ts: string) => {
     const date = new Date(ts);
-    return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    return date.toLocaleTimeString(getLocale(), { hour: '2-digit', minute: '2-digit' });
   };
 
   return (

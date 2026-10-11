@@ -9,6 +9,7 @@ import {
   type GroupRecord,
   type GroupStore,
 } from './groupMessenger';
+import { sealAtRest, openAtRest } from '../atRestCrypto';
 
 const DB_NAME = 'nephtys-private-groups';
 const STORE = 'groups';
@@ -29,20 +30,23 @@ function openDb(): Promise<IDBDatabase> {
 export class IdbGroupStore implements GroupStore {
   async load(groupId: string): Promise<GroupRecord | null> {
     const db = await openDb();
-    const value = await new Promise<string | undefined>((resolve, reject) => {
+    const raw = await new Promise<unknown>((resolve, reject) => {
       const tx = db.transaction(STORE, 'readonly');
       const req = tx.objectStore(STORE).get(groupId);
-      req.onsuccess = () => resolve(req.result as string | undefined);
+      req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
     });
-    return value ? deserializeGroupRecord(value) : null;
+    // Rétrocompatible : l'ancien format (chaîne en clair) est rendu tel quel.
+    const value = await openAtRest(raw);
+    return typeof value === 'string' && value ? deserializeGroupRecord(value) : null;
   }
 
   async save(record: GroupRecord): Promise<void> {
     const db = await openDb();
+    const stored = await sealAtRest(serializeGroupRecord(record));
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(STORE, 'readwrite');
-      tx.objectStore(STORE).put(serializeGroupRecord(record), record.groupId);
+      tx.objectStore(STORE).put(stored, record.groupId);
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
     });
@@ -50,13 +54,18 @@ export class IdbGroupStore implements GroupStore {
 
   async list(): Promise<GroupRecord[]> {
     const db = await openDb();
-    const values = await new Promise<string[]>((resolve, reject) => {
+    const rows = await new Promise<unknown[]>((resolve, reject) => {
       const tx = db.transaction(STORE, 'readonly');
       const req = tx.objectStore(STORE).getAll();
-      req.onsuccess = () => resolve((req.result as string[]) ?? []);
+      req.onsuccess = () => resolve((req.result as unknown[]) ?? []);
       req.onerror = () => reject(req.error);
     });
-    return values.map(deserializeGroupRecord);
+    const out: GroupRecord[] = [];
+    for (const row of rows) {
+      const value = await openAtRest(row);
+      if (typeof value === 'string' && value) out.push(deserializeGroupRecord(value));
+    }
+    return out;
   }
 
   async remove(groupId: string): Promise<void> {

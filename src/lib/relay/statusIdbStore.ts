@@ -4,6 +4,7 @@
 /** Persistance locale (IndexedDB) des statuts privés (éphémères). */
 
 import { activeStatuses, isExpired, type StatusRecord } from './statusStore';
+import { sealAtRest, openAtRest } from '../atRestCrypto';
 
 const DB_NAME = 'nephtys-private-statuses';
 const STORE = 'statuses';
@@ -24,9 +25,10 @@ function openDb(): Promise<IDBDatabase> {
 export class IdbStatusStore {
   async save(record: StatusRecord): Promise<void> {
     const db = await openDb();
+    const stored = await sealAtRest(record);
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(STORE, 'readwrite');
-      tx.objectStore(STORE).put(record, record.id);
+      tx.objectStore(STORE).put(stored, record.id);
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
     });
@@ -34,12 +36,19 @@ export class IdbStatusStore {
 
   async all(): Promise<StatusRecord[]> {
     const db = await openDb();
-    return await new Promise((resolve, reject) => {
+    const rows = await new Promise<unknown[]>((resolve, reject) => {
       const tx = db.transaction(STORE, 'readonly');
       const req = tx.objectStore(STORE).getAll();
-      req.onsuccess = () => resolve((req.result as StatusRecord[]) ?? []);
+      req.onsuccess = () => resolve((req.result as unknown[]) ?? []);
       req.onerror = () => reject(req.error);
     });
+    const out: StatusRecord[] = [];
+    for (const row of rows) {
+      // Rétrocompatible : l'ancien format (objet en clair) est rendu tel quel.
+      const rec = (await openAtRest(row)) as StatusRecord | undefined;
+      if (rec && typeof rec === 'object' && typeof rec.id === 'string') out.push(rec);
+    }
+    return out;
   }
 
   /** Statuts encore valides (non expirés), du plus récent au plus ancien. */

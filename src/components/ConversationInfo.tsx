@@ -2,7 +2,7 @@
 // Distributed under the license specified in the root directory of this project.
 
 import React, { useState, useEffect } from 'react';
-import { useI18n, tStatic } from '@/i18n';
+import { useI18n, tStatic, getLocale } from '@/i18n';
 import {
   X, Camera, Video, Phone,
 } from 'lucide-react';
@@ -28,7 +28,7 @@ export const formatFileSize = (bytes: number | null): string => {
 // Format date helper
 export const formatDate = (dateString: string): string => {
   const date = new Date(dateString);
-  return date.toLocaleDateString('fr-FR', {
+  return date.toLocaleDateString(getLocale(), {
     day: 'numeric',
     month: 'short',
     year: 'numeric'

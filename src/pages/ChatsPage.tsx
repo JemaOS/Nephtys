@@ -12,7 +12,8 @@ import { useIsMobile } from '@/hooks/use-mobile'
 
 import { fetchAllConversationData } from '@/lib/conversationService'
 import { decryptMessageContent } from '@/lib/textEncryption'
-import { useI18n } from '@/i18n'
+import { isOwnMessage } from '@/lib/ownMessages'
+import { useI18n, getLocale } from '@/i18n'
 import { ChatsSelectionHeader, ChatsHeader, ChatsList, ConversationWithDetails } from './ChatsPageComponents'
 
 // Memoized formatDate function outside component to prevent recreation on every render
@@ -20,15 +21,16 @@ const formatDate = (dateStr: string, yesterdayLabel: string = 'Hier'): string =>
   const date = new Date(dateStr)
   const now = new Date()
   const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24))
-  
+  const locale = getLocale()
+
   if (diffDays === 0) {
-    return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+    return date.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })
   } else if (diffDays === 1) {
     return yesterdayLabel
   } else if (diffDays < 7) {
-    return date.toLocaleDateString('fr-FR', { weekday: 'short' })
+    return date.toLocaleDateString(locale, { weekday: 'short' })
   } else {
-    return date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })
+    return date.toLocaleDateString(locale, { day: '2-digit', month: '2-digit' })
   }
 }
 
@@ -252,15 +254,31 @@ export function ChatsPage() {
       // This mimics WhatsApp behavior where messages are delivered as soon as the app is open
       const conversationIds = enrichedConversations.map(c => c.id);
       if (conversationIds.length > 0) {
-        supabase
-          .from('messages')
-          .update({ status: 'delivered' })
-          .in('conversation_id', conversationIds)
-          .neq('sender_id', user.id)
-          .eq('status', 'sent')
-          .then(({ error }) => {
-            if (error) console.error('Error marking messages as delivered:', error);
-          });
+        // Serveur aveugle : `sender_id` est NULL → `.neq('sender_id', …)` ne
+        // matche jamais. On cible par ids en EXCLUANT mes propres messages
+        // (registre local ownMessages), ce qui marque bien les messages REÇUS.
+        void (async () => {
+          try {
+            const { data: rows, error } = await supabase
+              .from('messages')
+              .select('id')
+              .in('conversation_id', conversationIds)
+              .eq('status', 'sent');
+            if (error) {
+              console.error('Error marking messages as delivered:', error);
+              return;
+            }
+            const ids = (rows ?? []).map(r => r.id).filter(id => !isOwnMessage(id));
+            for (let i = 0; i < ids.length; i += 100) {
+              await supabase
+                .from('messages')
+                .update({ status: 'delivered' })
+                .in('id', ids.slice(i, i + 100));
+            }
+          } catch (err) {
+            console.error('Error marking messages as delivered:', err);
+          }
+        })();
       }
 
       // Sort: pinned first, then by last_message_at
@@ -510,7 +528,9 @@ export function ChatsPage() {
     longPressTriggeredRef.current = false
     longPressTimerRef.current = setTimeout(() => {
       longPressTriggeredRef.current = true
-      if (isSelectionMode) {
+      // Appui long : hors mode sélection → on ENTRE en sélection ; en mode
+      // sélection → on bascule l'item (avant, la logique était inversée).
+      if (!isSelectionMode) {
         enterSelectionMode(conversationId)
       } else {
         toggleConversationSelection(conversationId)
@@ -883,14 +903,16 @@ export function ChatsPage() {
       .from('messages')
       .select('id')
       .eq('conversation_id', conversationId)
-      .neq('sender_id', user!.id)
       .eq('status', 'read')
 
-    if (messages && messages.length > 0) {
+    // `sender_id` est NULL (sealed sender) : on exclut mes propres messages
+    // via le registre local plutôt qu'un filtre SQL inopérant.
+    const receivedIds = (messages ?? []).map(m => m.id).filter(id => !isOwnMessage(id))
+    if (receivedIds.length > 0) {
       const { error } = await supabase
         .from('messages')
         .update({ status: 'delivered' })
-        .in('id', messages.map(m => m.id))
+        .in('id', receivedIds)
       
       if (error) {
         // Revert on error

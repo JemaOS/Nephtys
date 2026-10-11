@@ -163,6 +163,47 @@ export function createBroadcastChannel(conversationId: string, userId: string) {
   })
 }
 
+// Canaux d'ÉMISSION persistants, un par conversation. Avant, chaque envoi
+// créait un canal puis `subscribe()`/`unsubscribe()` : à raison d'un canal
+// éphémère par message, on générait une tempête de (re)souscriptions Realtime
+// (churn), des coupures CLOSED en boucle et des messages instantanés perdus.
+// On réutilise désormais un canal déjà SUBSCRIBED pendant toute la session.
+interface BroadcastEmitter {
+  channel: ReturnType<typeof supabase.channel>
+  ready: Promise<void>
+}
+
+const broadcastEmitters = new Map<string, BroadcastEmitter>()
+
+function getBroadcastEmitter(conversationId: string): BroadcastEmitter {
+  const existing = broadcastEmitters.get(conversationId)
+  if (existing) return existing
+
+  const channel = supabase.channel(`msg:${conversationId}`, {
+    config: { broadcast: { self: false } },
+  })
+  let resolveReady: () => void = () => {}
+  let rejectReady: (e: unknown) => void = () => {}
+  const ready = new Promise<void>((resolve, reject) => {
+    resolveReady = resolve
+    rejectReady = reject
+  })
+  // Évite un « unhandled rejection » si l'envoi n'attend pas encore `ready`.
+  ready.catch(() => {})
+
+  channel.subscribe((status) => {
+    if (status === 'SUBSCRIBED') {
+      resolveReady()
+    } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+      rejectReady(new Error(`broadcast channel ${status}`))
+    }
+  })
+
+  const entry: BroadcastEmitter = { channel, ready }
+  broadcastEmitters.set(conversationId, entry)
+  return entry
+}
+
 export async function sendBroadcastMessage(
   conversationId: string,
   message: Message
@@ -179,19 +220,30 @@ export async function sendBroadcastMessage(
   // Le récepteur écoute l'évènement `message` sur le canal `msg:${conversationId}`
   // (voir ChatViewPage). Émettre sur un autre topic (ex. `broadcast:`) ne
   // délivrait RIEN : la latence instantanée était morte, et les médias
-  // n'apparaissaient qu'après rechargement. On diffuse donc sur le MÊME topic.
-  const channel = supabase.channel(`msg:${conversationId}`)
-  
-  await channel.subscribe((status) => {
-    if (status === 'SUBSCRIBED') {
-      channel.send({
-        type: 'broadcast',
-        event: 'message',
-        payload: { message }
-      })
-      channel.unsubscribe()
+  // n'apparaissaient qu'après rechargement. On diffuse donc sur le MÊME topic,
+  // via un canal PERSISTANT réutilisé entre les envois (cf. getBroadcastEmitter).
+  const entry = getBroadcastEmitter(conversationId)
+  try {
+    await entry.ready
+    const result = await entry.channel.send({
+      type: 'broadcast',
+      event: 'message',
+      payload: { message }
+    })
+    if (result !== 'ok') {
+      console.warn('[broadcast] send non-ok:', result)
     }
-  })
+  } catch (e) {
+    // Canal mort → on le purge pour qu'un prochain envoi en recrée un propre.
+    // Le message reste délivré via postgres_changes : pas de perte.
+    broadcastEmitters.delete(conversationId)
+    try {
+      supabase.removeChannel(entry.channel)
+    } catch {
+      // ignore
+    }
+    console.warn('[broadcast] canal en échec, purgé (repli postgres_changes):', e)
+  }
 }
 
 export function onBroadcastMessage(

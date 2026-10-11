@@ -78,6 +78,10 @@ export class PrivateCall {
   }
 
   private reset(conversationId: string, callId: string | null = null): void {
+    // Ferme le pair précédent AVANT de l'écraser (sinon fuite de PeerConnection
+    // et de ses médias/ICE).
+    this.peer?.close();
+    this.peer = null;
     this.conversationId = conversationId;
     this.callId = callId ?? newCallId();
     this.outSeq = 0;
@@ -85,7 +89,6 @@ export class PrivateCall {
     this.seenSeqs.clear();
     this.pendingOffer = null;
     this.pendingIce = [];
-    this.peer = null;
   }
 
   private async sendSignal(conversationId: string, signal: CallSignal): Promise<void> {
@@ -203,12 +206,17 @@ export class PrivateCall {
     }
 
     if (signal.kind === 'offer') {
-      // Offre rejouée ou appel déjà en cours sur cette conversation → ignorée.
+      // Offre rejouée, appel déjà en cours/fini, ou NOUS sommes déjà en train
+      // d'appeler (`calling`) → on est « occupé » : on ignore l'offre entrante
+      // (aucun droit d'écraser un appel sortant en cours).
       if (
         this.pendingOffer !== null ||
         (signal.callId != null && this.seenCallIds.has(signal.callId)) ||
         (this.conversationId === conversationId &&
-          (this.state === 'ringing' || this.state === 'connecting' || this.state === 'connected'))
+          (this.state === 'calling' ||
+            this.state === 'ringing' ||
+            this.state === 'connecting' ||
+            this.state === 'connected'))
       ) {
         return;
       }

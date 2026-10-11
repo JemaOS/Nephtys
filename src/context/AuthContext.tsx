@@ -1,7 +1,7 @@
 // Copyright (c) 2025 Jema Technology.
 // Distributed under the license specified in the root directory of this project.
 
-import { createContext, useContext, useEffect, useState, useMemo, useRef, ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, useMemo, useRef, useCallback, ReactNode } from 'react'
 import { tStatic } from '@/i18n';
 import { User } from '@supabase/supabase-js'
 import { supabase, Profile } from '@/lib/supabase'
@@ -242,6 +242,30 @@ const generateSecureRandomString = (length: number = 12): string => {
   return result;
 }
 
+// Compteur de tentatives de code 2FA au login, persisté en sessionStorage pour
+// ne pas être réinitialisable par un simple rechargement (F5). Un attaquant qui
+// atteint la limite doit se reconnecter (ce qui repart d'un nouveau compteur).
+const MFA_ATTEMPTS_KEY = 'anu_mfa_attempts';
+
+function readMfaAttempts(): number {
+  try {
+    const raw = sessionStorage.getItem(MFA_ATTEMPTS_KEY);
+    const n = raw ? Number.parseInt(raw, 10) : 0;
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function writeMfaAttempts(count: number): void {
+  try {
+    if (count > 0) sessionStorage.setItem(MFA_ATTEMPTS_KEY, String(count));
+    else sessionStorage.removeItem(MFA_ATTEMPTS_KEY);
+  } catch {
+    // Ignore storage errors
+  }
+}
+
 export function AuthProvider({ children }: { readonly children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
@@ -256,7 +280,23 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
   // 2FA au login : tant que ce facteur est en attente, l'app n'est pas
   // considérée comme pleinement accessible (voir App.tsx → MfaGate).
   const [mfaPending, setMfaPending] = useState<MfaPendingState | null>(null)
-  const mfaAttemptsRef = useRef(0)
+  // Compteur de tentatives persisté (sessionStorage) : survit au F5.
+  const mfaAttemptsRef = useRef(readMfaAttempts())
+  // Miroirs non-réactifs : évitent les résolutions concurrentes (initAuth +
+  // événements Supabase) et la régénération en boucle de challenges.
+  const mfaPendingRef = useRef<MfaPendingState | null>(null)
+  const mfaResolvingRef = useRef(false)
+  // Passe à true une fois la restauration initiale terminée : évite que
+  // `onAuthStateChange` (INITIAL_SESSION) ne double la résolution du gate.
+  const authInitDoneRef = useRef(false)
+  // Vrai pendant le flux de connexion explicite (signIn), qui gère le gate
+  // lui-même : `onAuthStateChange` ne doit pas résoudre en parallèle.
+  const mfaLoginFlowRef = useRef(false)
+
+  // Garde le miroir synchrone en phase avec l'état React (tous les setters).
+  useEffect(() => {
+    mfaPendingRef.current = mfaPending
+  }, [mfaPending])
 
 
   // Monitor online/offline status
@@ -273,21 +313,61 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
     };
   }, []);
 
+  // Applique un état de gate 2FA (état React + miroir synchrone).
+  const applyMfaPending = useCallback((gate: MfaPendingState | null) => {
+    mfaPendingRef.current = gate
+    setMfaPending(gate)
+  }, [])
+
+  /**
+   * Réévalue le gate 2FA à partir de l'état SERVEUR (niveau d'assurance +
+   * facteurs listés), JAMAIS d'un état mémoire qui ne survit pas au
+   * rechargement. Utilisé à la restauration de session (initAuth) et sur les
+   * événements d'auth, afin qu'un simple F5 ne contourne pas le second facteur.
+   *
+   * @param failClosed  `true`  → un état « vérification indisponible » bloque
+   *                    l'accès (restauration / connexion : fail-closed).
+   *                    `false` → sur un simple rafraîchissement de jeton, ne pas
+   *                    bloquer un utilisateur déjà admis sur une erreur
+   *                    transitoire ; un challenge définitif est toujours
+   *                    appliqué.
+   */
+  const evaluateMfaGate = useCallback(async (failClosed = true): Promise<MfaPendingState | null> => {
+    // Résolution déjà en cours, ou challenge déjà en attente : on ne régénère
+    // pas de challenge (évite les appels concurrents et les boucles).
+    if (mfaResolvingRef.current) return mfaPendingRef.current
+    if (mfaPendingRef.current) return mfaPendingRef.current
+
+    mfaResolvingRef.current = true
+    try {
+      const gate = await resolveMfaGate()
+      if (gate && gate.status === 'unavailable' && !failClosed) {
+        // Événement de fond (TOKEN_REFRESHED) : erreur transitoire, on ne
+        // bloque pas une session déjà admise.
+        return mfaPendingRef.current
+      }
+      applyMfaPending(gate)
+      return gate
+    } catch (err) {
+      // resolveMfaGate ne lève pas, mais on reste fail-closed par sécurité.
+      console.warn('[Auth] MFA gate resolution failed:', err)
+      if (failClosed) {
+        const gate: MfaPendingState = { status: 'unavailable' }
+        applyMfaPending(gate)
+        return gate
+      }
+      return mfaPendingRef.current
+    } finally {
+      mfaResolvingRef.current = false
+    }
+  }, [applyMfaPending])
+
   useEffect(() => {
     // Get initial session with timeout and offline fallback
     const initAuth = async () => {
-      // First, try to load cached data for immediate display
+      // Cache local pour affichage immédiat / hors-ligne.
       const cachedUser = getCachedUser();
       const cachedProfile = getCachedProfile();
-      
-      if (cachedUser) {
-        setUser(cachedUser);
-        if (cachedProfile) {
-          setProfile(cachedProfile);
-        }
-        // Don't block on loading if we have cached data
-        setLoading(false);
-      }
 
       // Then try to get fresh session from network
       try {
@@ -297,8 +377,31 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
           AUTH_TIMEOUT,
           { data: { session: null } } as any
         );
-        
+
         if (session?.user) {
+          // Anti-bypass F5 : on résout le gate 2FA AVANT d'exposer
+          // l'utilisateur, afin qu'aucune route protégée ne puisse être montée
+          // sans que le second facteur soit exigé. Seule la session Supabase
+          // persistée fait foi (aucun état mémoire ne survit au rechargement).
+          //
+          // La résolution (création de challenge) peut nécessiter le réseau :
+          // on la borne pour ne pas bloquer indéfiniment l'écran de chargement.
+          // Au-delà du délai, on reste fail-closed (« indisponible », avec
+          // bouton Réessayer) ; la résolution se poursuit et corrigera l'état
+          // dès qu'elle aboutit (challenge réel, ou accès si aucun 2FA).
+          const MFA_TIMEOUT = Symbol('mfa-timeout');
+          const outcome = await Promise.race([
+            evaluateMfaGate(true),
+            new Promise<typeof MFA_TIMEOUT>((resolve) =>
+              setTimeout(() => resolve(MFA_TIMEOUT), AUTH_TIMEOUT)
+            ),
+          ]).catch(() => MFA_TIMEOUT);
+          if (outcome === MFA_TIMEOUT && mfaResolvingRef.current && mfaPendingRef.current === null) {
+            // Résolution encore en vol : fail-closed temporaire (elle corrigera
+            // l'état dès qu'elle aboutit).
+            applyMfaPending({ status: 'unavailable' });
+          }
+
           setUser(session.user);
           cacheUser(session.user);
           // Load profile in background, don't block
@@ -310,40 +413,37 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
           void hasLocalKeys(session.user.id)
             .then(ok => { if (!ok) setRecoveryRequired(true); })
             .catch(() => {});
-        } else if (!cachedUser) {
-          // No session and no cache - check for ephemeral recovery
-          const ephemeralUser = localStorage.getItem('anu_ephemeral_user');
-          const ephemeralPassword = localStorage.getItem('anu_ephemeral_password');
-          
-          if (ephemeralUser && ephemeralPassword) {
-            console.log('[Auth] Attempting to recover ephemeral session...');
-            try {
-              await signIn(ephemeralUser, ephemeralPassword);
-              // signIn sets the user state, so we don't need to do it here
-            } catch (err) {
-              console.warn('[Auth] Ephemeral recovery failed:', err);
-              setUser(null);
-              setProfile(null);
-            }
-          } else {
-            // No session, no cache, no ephemeral credentials
-            setUser(null);
-            setProfile(null);
-          }
+        } else if (cachedUser) {
+          // Pas de session fraîche (hors-ligne / jeton expiré) : on affiche le
+          // cache local. Aucun jeton valide n'est présent → pas de gate MFA.
+          setUser(cachedUser);
+          if (cachedProfile) setProfile(cachedProfile);
+        } else {
+          // Plus de mot de passe invité au repos : la reconnexion invité
+          // repose désormais sur la session Supabase persistée (getSession
+          // ci-dessus). On purge toute ancienne clé héritée pour ne laisser
+          // aucun secret en clair sur l'appareil.
+          try { localStorage.removeItem('anu_ephemeral_password'); } catch { /* ignore */ }
+          setUser(null);
+          setProfile(null);
         }
       } catch (error) {
         // Session fetch failed - use cached data if available
         console.warn('[Auth] Session fetch timed out or failed, using cached data', error);
-        // Keep using cached data if available
+        if (cachedUser) {
+          setUser(cachedUser);
+          if (cachedProfile) setProfile(cachedProfile);
+        }
       } finally {
         setLoading(false);
+        authInitDoneRef.current = true;
       }
     };
 
     initAuth();
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       const newUser = session?.user ?? null;
       setUser(newUser);
       cacheUser(newUser);
@@ -355,11 +455,29 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
         void hasLocalKeys(session.user.id)
           .then(ok => { if (!ok) setRecoveryRequired(true); })
           .catch(() => {});
+
+        // Réévalue le gate 2FA sur les événements de (re)connexion. Sans cela,
+        // un rechargement (INITIAL_SESSION) ou un rafraîchissement de jeton
+        // (TOKEN_REFRESHED) laisserait passer une session de niveau aal1 sans
+        // le second facteur. Le flux `signIn` gère déjà le gate : on l'ignore
+        // ici pour éviter une double création de challenge.
+        if (
+          !mfaLoginFlowRef.current &&
+          authInitDoneRef.current &&
+          (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION')
+        ) {
+          // TOKEN_REFRESHED = événement de fond → pas de blocage sur erreur
+          // transitoire (failClosed = false).
+          void evaluateMfaGate(event !== 'TOKEN_REFRESHED')
+        }
       } else {
         setProfile(null);
         cacheProfile(null);
         // Cleanup presence when user logs out
         cleanupPresence();
+        applyMfaPending(null);
+        mfaAttemptsRef.current = 0;
+        writeMfaAttempts(0);
       }
     })
 
@@ -453,25 +571,33 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
 
       // Définir la session manuellement
       if (data?.data?.session) {
-        const { error: sessionError } = await supabase.auth.setSession({
-          access_token: data.data.session.access_token,
-          refresh_token: data.data.session.refresh_token
-        })
-        if (sessionError) {
-          console.error('Session error:', sessionError)
-          throw new Error('❌ Erreur de session\n\nImpossible de vous connecter.')
-        }
-        // 2FA (fail-closed) : si un second facteur est requis (aal1 → aal2), on
-        // bloque l'accès à l'app derrière MfaGate tant que le code n'est pas
-        // vérifié. Si le niveau d'assurance ne peut PAS être vérifié, on
-        // n'accorde jamais la session en silence : un compte avec 2FA vérifié
-        // est maintenu derrière un gate « vérification indisponible »
-        // (Réessayer / Annuler), tandis qu'un compte sans 2FA passe normalement.
-        mfaAttemptsRef.current = 0
-        const gate = await resolveMfaGate()
-        if (gate) {
-          setMfaPending(gate)
-          return
+        // Le flux de connexion gère explicitement le gate 2FA ci-dessous : on
+        // empêche `onAuthStateChange` de le résoudre en parallèle (sinon double
+        // création de challenge).
+        mfaLoginFlowRef.current = true
+        try {
+          const { error: sessionError } = await supabase.auth.setSession({
+            access_token: data.data.session.access_token,
+            refresh_token: data.data.session.refresh_token
+          })
+          if (sessionError) {
+            console.error('Session error:', sessionError)
+            throw new Error('❌ Erreur de session\n\nImpossible de vous connecter.')
+          }
+          // 2FA (fail-closed) : si un second facteur est requis (aal1 → aal2),
+          // on bloque l'accès à l'app derrière MfaGate tant que le code n'est
+          // pas vérifié. Une évaluation impossible ne laisse jamais passer la
+          // session en silence (voir resolveMfaGate) : un compte avec 2FA est
+          // maintenu derrière « vérification indisponible », un compte sans
+          // 2FA passe normalement.
+          mfaAttemptsRef.current = 0
+          writeMfaAttempts(0)
+          const gate = await evaluateMfaGate(true)
+          if (gate) {
+            return
+          }
+        } finally {
+          mfaLoginFlowRef.current = false
         }
         // Pas de gate 2FA → on poursuit la restauration des clés E2EE ci-dessous.
         // Restaurer (ou créer) la clé E2EE AVEC le password. On ATTEND la
@@ -563,19 +689,21 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
     try {
       // Check if we can reuse an existing ephemeral account
       const storedUser = localStorage.getItem('anu_ephemeral_user');
-      const storedPassword = localStorage.getItem('anu_ephemeral_password');
       const sanitizedInput = username.toLowerCase().replaceAll(/[^a-z0-9]/g, '') || 'user';
-      
-      // If we have stored credentials and the username prefix matches, try to reuse
-      if (storedUser && storedPassword && storedUser.startsWith(sanitizedInput)) {
-        console.log('[Auth] Found existing ephemeral credentials, attempting reuse...');
+
+      // Réutilisation SANS secret au repos : on ne stocke plus le mot de passe
+      // invité (auparavant en clair dans localStorage — vulnérabilité). Si une
+      // session Supabase valide existe déjà pour cet invité, on la réutilise
+      // telle quelle (aucun re-login par mot de passe nécessaire).
+      if (storedUser && storedUser.startsWith(sanitizedInput)) {
         try {
-          await signIn(storedUser, storedPassword);
-          console.log('[Auth] Successfully reused ephemeral account');
-          return; // Success!
-        } catch (err) {
-          console.warn('[Auth] Failed to reuse ephemeral account, creating new one:', err);
-          // Fall through to create new account
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.user) {
+            console.log('[Auth] Successfully reused ephemeral session');
+            return; // Session valide réutilisée, aucun mot de passe requis.
+          }
+        } catch {
+          // Pas de session réutilisable → créer un nouveau compte invité.
         }
       }
 
@@ -630,11 +758,13 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
         throw new Error(tStatic('creationErrorNoSession'))
       }
 
-      // Stocker en local que c'est un mode éphémère
+      // Stocker en local que c'est un mode éphémère.
+      // NOTE : le mot de passe invité n'est VOLONTAIREMENT PAS persisté (aucun
+      // secret au repos). La reconnexion invité repose sur la session Supabase
+      // persistée par supabase-js ; on purge toute ancienne clé héritée.
       localStorage.setItem('anu_ephemeral_mode', 'true')
       localStorage.setItem('anu_ephemeral_user', uniqueUsername)
-      // CRITICAL: Store password to allow session recovery if token becomes invalid
-      localStorage.setItem('anu_ephemeral_password', randomPassword)
+      localStorage.removeItem('anu_ephemeral_password')
     } catch (err: any) {
       // Si c'est déjà notre erreur formatée, la relancer
       if (err.message.startsWith('❌')) {
@@ -649,8 +779,9 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
   const signOut = async () => {
     setPendingPhrase(null)
     setRecoveryRequired(false)
-    setMfaPending(null)
+    applyMfaPending(null)
     mfaAttemptsRef.current = 0
+    writeMfaAttempts(0)
     // Si mode éphémère, supprimer toutes les données
     const isEphemeral = localStorage.getItem('anu_ephemeral_mode') === 'true'
     
@@ -710,8 +841,9 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
     const uid = user?.id
     setPendingPhrase(null)
     setRecoveryRequired(false)
-    setMfaPending(null)
+    applyMfaPending(null)
     mfaAttemptsRef.current = 0
+    writeMfaAttempts(0)
 
     if (uid) {
       // 1. Clés E2EE locales (X25519).
@@ -731,6 +863,11 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
     try {
       localStorage.removeItem('nephtys_own_messages_v1')
       localStorage.removeItem('nephtys_plaintext_cache_v1')
+      // Invité : aucune donnée d'identification locale (dont l'ancien mot de
+      // passe en clair) ne doit survivre à un effacement de l'appareil.
+      localStorage.removeItem('anu_ephemeral_mode')
+      localStorage.removeItem('anu_ephemeral_user')
+      localStorage.removeItem('anu_ephemeral_password')
       const toRemove: string[] = []
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i)
@@ -776,10 +913,14 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
     const result = await verifyMFAChallenge(pending.factorId, pending.challengeId, code)
     if (result.success) {
       mfaAttemptsRef.current = 0
-      setMfaPending(null)
+      writeMfaAttempts(0)
+      applyMfaPending(null)
       return { success: true }
     }
+    // Compteur persisté (sessionStorage) : un rechargement (F5) ne le
+    // réinitialise pas, ce qui empêche le contournement par rechargement.
     mfaAttemptsRef.current += 1
+    writeMfaAttempts(mfaAttemptsRef.current)
     return { success: false, error: result.error ?? tStatic('twoFaInvalidCode') }
   }
 
@@ -792,8 +933,9 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
     const gate = await resolveMfaGate()
     if (gate === null) {
       mfaAttemptsRef.current = 0
+      writeMfaAttempts(0)
     }
-    setMfaPending(gate)
+    applyMfaPending(gate)
   }
 
   const updateLocalProfile = (patch: Partial<Profile>) => {

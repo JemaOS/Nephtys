@@ -88,8 +88,15 @@ export const useMessageReactions = (conversationId: string): UseMessageReactions
 
   const handleRealtimeEvent = useCallback(async (payload: any) => {
     // Silent realtime event handling
-    
-    // For INSERT: add the new reaction if it's for a message in this conversation
+    //
+    // FILTRE CONVERSATION : `message_reactions` ne possède PAS de colonne
+    // `conversation_id` (cf. migration 1764470000), il est donc impossible de
+    // filtrer côté serveur avec `filter: conversation_id=eq...`. On filtre donc
+    // côté client : une réaction UPDATE/DELETE n'est appliquée que si son id
+    // appartient déjà à l'état chargé — état qui ne contient QUE les réactions
+    // des messages de cette conversation (cf. fetchReactions). Sans ce garde-fou,
+    // les évènements `event:'*'` (sans filtre) de TOUTES les conversations
+    // polluaient le fil.
     if (payload.eventType === 'INSERT') {
       const newReaction = payload.new as Reaction;
       // Check if this reaction belongs to a message in this conversation
@@ -103,14 +110,21 @@ export const useMessageReactions = (conversationId: string): UseMessageReactions
         setReactions(prev => addReactionIfNotExists(prev, newReaction));
       }
     } else if (payload.eventType === 'DELETE') {
-      // Handle DELETE - remove the reaction
-      setReactions(prev => removeReactionById(prev, payload.old.id));
+      // Ne retire que les réactions effectivement rattachées à cette conversation.
+      const deletedId = payload.old?.id;
+      if (!deletedId) return;
+      setReactions(prev => {
+        if (!prev.some(r => r.id === deletedId)) return prev;
+        return removeReactionById(prev, deletedId);
+      });
     } else if (payload.eventType === 'UPDATE') {
       // Handle UPDATE - when user changes their reaction emoji
       const updatedReaction = payload.new as Reaction;
-      // Remove old reaction and add new one
+      const oldId = payload.old?.id;
+      // Ne traite que les réactions déjà présentes (donc de cette conversation).
       setReactions(prev => {
-        const filtered = prev.filter(r => r.id !== payload.old.id);
+        if (!prev.some(r => r.id === oldId)) return prev;
+        const filtered = prev.filter(r => r.id !== oldId);
         return addReactionIfNotExists(filtered, updatedReaction);
       });
     }

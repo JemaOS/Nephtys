@@ -11,7 +11,7 @@
 // lecture (voir atRestCrypto.ts). Les entrées historiques non chiffrées
 // restent lisibles telles quelles (rétrocompatibilité).
 
-import { sealAtRest, openAtRest, isAtRestBox } from './atRestCrypto';
+import { sealAtRest, openAtRest, isAtRestBox, sealBytesAtRest, openBytesAtRest, type AtRestBox } from './atRestCrypto';
 
 const DB_NAME = 'nephtys-offline-db';
 const DB_VERSION = 3; // v3: store `media` (blobs média déchiffrés, cache durable)
@@ -511,21 +511,31 @@ class OfflineStorage {
   }
 
   // ── Cache durable des médias déchiffrés (local-first) ────────────────
-  // Une fois un média E2EE déchiffré, on stocke le blob en clair localement.
-  // Il reste lisible même après purge de l'objet côté serveur (rétention).
+  // Une fois un média E2EE déchiffré, on stocke le Blob localement pour qu'il
+  // reste disponible même après purge de l'objet côté serveur (rétention).
+  // Le Blob est chiffré AU REPOS via AES-GCM sur son ArrayBuffer (pas
+  // `sealAtRest(JSON)` qui corromprait un Blob). Les anciennes entrées en clair
+  // restent lisibles (rétrocompatibilité).
   async saveMediaBlob(messageId: string, blob: Blob, mimeType?: string): Promise<void> {
     const ready = await this.ensureReady();
     if (!ready) return;
 
+    const type = mimeType || blob.type || 'application/octet-stream';
+    let sealed: AtRestBox | null = null;
+    try {
+      sealed = await sealBytesAtRest(await blob.arrayBuffer());
+    } catch {
+      sealed = null;
+    }
+
     return new Promise((resolve) => {
       const transaction = this.db!.transaction([MEDIA_STORE], 'readwrite');
       const store = transaction.objectStore(MEDIA_STORE);
-      store.put({
-        messageId,
-        blob,
-        mimeType: mimeType || blob.type || 'application/octet-stream',
-        updatedAt: new Date().toISOString(),
-      });
+      store.put(
+        sealed
+          ? { messageId, sealed, mimeType: type, updatedAt: new Date().toISOString() }
+          : { messageId, blob, mimeType: type, updatedAt: new Date().toISOString() },
+      );
       transaction.oncomplete = () => resolve();
       transaction.onerror = () => resolve();
     });
@@ -539,9 +549,26 @@ class OfflineStorage {
       const transaction = this.db!.transaction([MEDIA_STORE], 'readonly');
       const store = transaction.objectStore(MEDIA_STORE);
       const request = store.get(messageId);
-      request.onsuccess = () => {
+      request.onsuccess = async () => {
         const r = request.result;
-        if (r && r.blob) resolve({ blob: r.blob as Blob, mimeType: r.mimeType || 'application/octet-stream' });
+        if (!r) {
+          resolve(null);
+          return;
+        }
+        const mimeType = r.mimeType || 'application/octet-stream';
+        // Entrée chiffrée au repos : déchiffre le binaire puis reconstruit le Blob.
+        if (isAtRestBox(r.sealed)) {
+          const buf = await openBytesAtRest(r.sealed as AtRestBox);
+          if (!buf) {
+            // Clé au repos indisponible → on laisse l'appelant retomber sur le réseau.
+            resolve(null);
+            return;
+          }
+          resolve({ blob: new Blob([buf], { type: mimeType }), mimeType });
+          return;
+        }
+        // Entrée historique en clair.
+        if (r.blob) resolve({ blob: r.blob as Blob, mimeType });
         else resolve(null);
       };
       request.onerror = () => resolve(null);

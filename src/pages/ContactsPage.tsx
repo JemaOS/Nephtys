@@ -1077,15 +1077,30 @@ const getContactsToDelete = (
             return (
               <>
                 {filteredContacts.map((contact) => (
-                  <button
-                    type="button"
+                  <div
                     key={contact.id}
-                    className={`w-full px-4 py-3 hover:bg-bg-surface transition-colors cursor-pointer text-left ${
+                    role="button"
+                    tabIndex={0}
+                    className={`w-full px-4 py-3 hover:bg-bg-surface transition-colors cursor-pointer text-left outline-none focus-visible:ring-2 focus-visible:ring-accent ${
                       selectedContacts.has(contact.id) ? 'bg-accent/10' : ''
                     }`}
                     onClick={() => {
+                      // Taper la ligne ouvre la conversation (hors mode
+                      // sélection) ; en mode sélection, bascule la sélection.
                       if (isSelectionMode) {
                         toggleContactSelection(contact.id)
+                      } else {
+                        createConversation(contact.contact_user_id)
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        if (isSelectionMode) {
+                          toggleContactSelection(contact.id)
+                        } else {
+                          createConversation(contact.contact_user_id)
+                        }
                       }
                     }}
                   >
@@ -1140,7 +1155,7 @@ const getContactsToDelete = (
                         </button>
                       )}
                     </div>
-                  </button>
+                  </div>
                 ))}
               </>
             )

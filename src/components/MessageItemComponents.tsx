@@ -1,5 +1,5 @@
 import React from 'react'
-import { useI18n } from '@/i18n';
+import { useI18n, getLocale } from '@/i18n';
 import { Message } from '@/lib/supabase'
 import { cleanLinkPreviewContent } from '@/lib/utils'
 import { splitTextByUrls } from '@/lib/linkPreview'
@@ -44,7 +44,7 @@ export const LinkifiedText: React.FC<{
 // Helper to format time
 export const formatTime = (timestamp: string): string => {
   const date = new Date(timestamp)
-  return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+  return date.toLocaleTimeString(getLocale(), { hour: '2-digit', minute: '2-digit' })
 }
 
 // Helper component for rendering message status icons

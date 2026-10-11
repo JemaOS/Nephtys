@@ -91,6 +91,20 @@ export function setRelayOnlyCallsEnabled(enabled: boolean): void {
 }
 
 /**
+ * Vrai si au moins un serveur TURN est disponible dans la config courante.
+ *
+ * Sans TURN, un appel privé/anon ne peut PAS être relayé : il basculerait en
+ * P2P direct, exposant l'adresse IP réelle de l'appareil. Les appels privés
+ * doivent donc REFUSER l'appel plutôt que de retomber en P2P (fail-closed IP).
+ */
+export function hasTurnServer(): boolean {
+  return getIceServers().some(server => {
+    const urls = Array.isArray(server.urls) ? server.urls : [server.urls];
+    return urls.some(u => typeof u === 'string' && u.startsWith('turn'));
+  });
+}
+
+/**
  * Config RTCConfiguration pour un PeerConnection. Force le relais (TURN) par
  * défaut (masque l'IP) ; passer `{ relayOnly: false }` pour l'autoriser en P2P
  * direct (déconseillé : fuite d'IP).
@@ -103,10 +117,6 @@ export function getPeerConnectionConfig(options?: { relayOnly?: boolean }): RTCC
   // Sinon (creds pas encore chargées, endpoint /turn indisponible, ou repli
   // STUN seul) forcer `iceTransportPolicy: 'relay'` donnerait ZÉRO candidature
   // → l'appel échouerait. Priorité : ne jamais casser l'appel.
-  const hasTurn = iceServers.some(server => {
-    const urls = Array.isArray(server.urls) ? server.urls : [server.urls];
-    return urls.some(u => typeof u === 'string' && u.startsWith('turn'));
-  });
-  if (wantsRelay && hasTurn) config.iceTransportPolicy = 'relay';
+  if (wantsRelay && hasTurnServer()) config.iceTransportPolicy = 'relay';
   return config;
 }
