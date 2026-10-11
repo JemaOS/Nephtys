@@ -20,7 +20,7 @@
  * chiffré par passphrase (cf. `e2eeX25519.ts`) l'est.
  */
 
-import { x25519 } from '@noble/curves/ed25519.js';
+import { x25519, ed25519 } from '@noble/curves/ed25519.js';
 
 export const X25519_PREFIX = 'x25519:';
 const HKDF_INFO = 'nephtys-x25519-v1';
@@ -77,6 +77,41 @@ export function generateX25519KeyPair(): X25519KeyPair {
 export function deriveX25519PublicKey(privateKeyB64: string): string {
   const publicKey = x25519.getPublicKey(fromBase64(privateKeyB64));
   return tagX25519(toBase64(publicKey));
+}
+
+// ─── Signature de la clé publique X25519 (anti-MITM) ──────────────────
+
+const X25519_KEY_SIG_CONTEXT = 'nephtys-x25519-key-v1';
+
+function sigData(x25519PublicKey: string): Uint8Array {
+  const ctx = new TextEncoder().encode(X25519_KEY_SIG_CONTEXT);
+  const key = new TextEncoder().encode(x25519PublicKey);
+  const out = new Uint8Array(ctx.length + key.length);
+  out.set(ctx, 0);
+  out.set(key, ctx.length);
+  return out;
+}
+
+/**
+ * Signe la clé publique X25519 (taguée) avec une clé privée Ed25519 (seed 32 o
+ * base64). La signature lie la clé X25519 au porteur de la clé de signature.
+ */
+export function signX25519PublicKey(signingPrivateKeyB64: string, x25519PublicKey: string): string {
+  const signature = ed25519.sign(sigData(x25519PublicKey), fromBase64(signingPrivateKeyB64));
+  return toBase64(signature);
+}
+
+/** Vérifie la signature Ed25519 d'une clé publique X25519. */
+export function verifyX25519PublicKeySignature(
+  signingPublicKeyB64: string,
+  x25519PublicKey: string,
+  signatureB64: string,
+): boolean {
+  try {
+    return ed25519.verify(fromBase64(signatureB64), sigData(x25519PublicKey), fromBase64(signingPublicKeyB64));
+  } catch {
+    return false;
+  }
 }
 
 // ─── Dérivation de la clé AES partagée ────────────────────────────────

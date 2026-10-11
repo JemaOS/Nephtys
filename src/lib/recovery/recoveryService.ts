@@ -33,7 +33,8 @@ export async function installKeysFromPhrase(userId: string, phrase: string): Pro
   const ratchet = await deriveLocalRatchetKeys(phrase);
   await installRatchetKeys(userId, ratchet);
   const x25519 = await deriveUserX25519KeyPair(phrase);
-  await installX25519KeyPair(userId, x25519);
+  // On publie la signature Ed25519 de la clé X25519 (authentification anti-MITM).
+  await installX25519KeyPair(userId, x25519, ratchet.signingKeyPair);
 }
 
 /**

@@ -406,6 +406,12 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
         const userId = data.data.session.user?.id
         if (userId && !(await hasLocalKeys(userId))) {
           setRecoveryRequired(true)
+        } else if (userId) {
+          // Best-effort : publier la signature Ed25519 de la clé X25519 déjà
+          // installée (authentifie les clés existantes sans rotation).
+          void import('@/lib/e2eeX25519')
+            .then(m => m.publishX25519Signature(userId))
+            .catch(() => {})
         }
       } else {
         throw new Error(tStatic('authNoSession'))

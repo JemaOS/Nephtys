@@ -8,7 +8,16 @@ import {
   wrapKeyForRecipientX25519,
   unwrapKeyFromSenderX25519,
   keyWrapAad,
+  signX25519PublicKey,
+  verifyX25519PublicKeySignature,
 } from './x25519';
+import { ed25519 } from '@noble/curves/ed25519.js';
+
+function b64(bytes: Uint8Array): string {
+  let s = '';
+  for (const b of bytes) s += String.fromCharCode(b);
+  return btoa(s);
+}
 
 describe('x25519', () => {
   it('generates a tagged keypair whose public key derives from the private key', () => {
@@ -84,5 +93,20 @@ describe('x25519', () => {
     const legacy = await wrapKeyForRecipientX25519(rawKey, alice.privateKey, alice.publicKey, bob.publicKey);
     const unwrapped = await unwrapKeyFromSenderX25519(legacy, bob.privateKey, keyWrapAad(alice.publicKey));
     expect(Array.from(unwrapped)).toEqual(Array.from(rawKey));
+  });
+
+  it('signe et vérifie la clé publique X25519 (Ed25519)', () => {
+    const kp = generateX25519KeyPair();
+    const seed = crypto.getRandomValues(new Uint8Array(32));
+    const signerPriv = b64(seed);
+    const signerPub = b64(ed25519.getPublicKey(seed));
+
+    const sig = signX25519PublicKey(signerPriv, kp.publicKey);
+    expect(verifyX25519PublicKeySignature(signerPub, kp.publicKey, sig)).toBe(true);
+    // Mauvaise clé → signature invalide.
+    expect(verifyX25519PublicKeySignature(signerPub, 'x25519:autre', sig)).toBe(false);
+    // Mauvais signataire → invalide.
+    const otherSeed = crypto.getRandomValues(new Uint8Array(32));
+    expect(verifyX25519PublicKeySignature(b64(ed25519.getPublicKey(otherSeed)), kp.publicKey, sig)).toBe(false);
   });
 });
