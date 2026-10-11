@@ -60,3 +60,36 @@ export function initIceServers(): void {
     if (Date.now() >= expiresAt) void refreshIceServers();
   }, 60 * 1000);
 }
+
+// ─── Appels via relais (TURN force) ───────────────────────────────────
+
+const RELAY_ONLY_KEY = 'nephtys_calls_relay_only';
+
+/** Vrai si les appels doivent forcer le relais TURN (iceTransportPolicy: relay). */
+export function isRelayOnlyCallsEnabled(): boolean {
+  try {
+    return localStorage.getItem(RELAY_ONLY_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+/** Active/desactive le passage force par relais TURN pour les appels. */
+export function setRelayOnlyCallsEnabled(enabled: boolean): void {
+  try {
+    if (enabled) localStorage.setItem(RELAY_ONLY_KEY, '1');
+    else localStorage.removeItem(RELAY_ONLY_KEY);
+  } catch {
+    // localStorage indisponible
+  }
+}
+
+/**
+ * Config RTCConfiguration pour un PeerConnection. Force le relais (TURN) si
+ * l'option « se connecter via relais » est active -> masque l'IP en P2P.
+ */
+export function getPeerConnectionConfig(): RTCConfiguration {
+  const config: RTCConfiguration = { iceServers: getIceServers() };
+  if (isRelayOnlyCallsEnabled()) config.iceTransportPolicy = 'relay';
+  return config;
+}

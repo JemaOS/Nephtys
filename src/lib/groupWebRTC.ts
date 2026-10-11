@@ -5,7 +5,7 @@
 // Uses mesh topology where each participant connects to every other participant
 
 import { supabase } from './supabase';
-import { getIceServers } from './iceServers';
+import { getPeerConnectionConfig } from './iceServers';
 
 export interface GroupCallConfig {
   audio: boolean;
@@ -445,9 +445,7 @@ export class GroupCallManager {
   private async createPeerConnection(participantId: string): Promise<RTCPeerConnection> {
     console.log('🎥 GroupWebRTC: Creating peer connection for:', participantId);
 
-    const peerConnection = new RTCPeerConnection({
-      iceServers: getIceServers(),
-    });
+    const peerConnection = new RTCPeerConnection(getPeerConnectionConfig());
 
     // Add local tracks to the connection
     if (this.localStream) {

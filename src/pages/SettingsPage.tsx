@@ -23,8 +23,11 @@ import {
 import {
   isTorRelayEnabled,
   setTorRelayEnabled,
-  isTorAvailable
+  isTorAvailable,
+  getRelayUrl,
+  setRelayUrl
 } from '@/lib/relay/relayClient'
+import { isRelayOnlyCallsEnabled, setRelayOnlyCallsEnabled, getIceServers } from '@/lib/iceServers'
 
 // Type for storage/media type filter
 type StorageType = 'all' | 'photos' | 'videos' | 'files' | 'audio';
@@ -153,6 +156,8 @@ export function SettingsPage() {
   const [showProfilePhoto, setShowProfilePhoto] = useState(true)
   const [torEnabled, setTorEnabled] = useState<boolean>(() => isTorRelayEnabled())
   const [torAvailable] = useState<boolean>(() => isTorAvailable())
+  const [relayInput, setRelayInput] = useState<string>(() => getRelayUrl() ?? '')
+  const [relayOnlyCalls, setRelayOnlyCalls] = useState<boolean>(() => isRelayOnlyCallsEnabled())
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false)
   const [twoFactorFactors, setTwoFactorFactors] = useState<TOTPFactor[]>([])
   const [twoFactorLoading, setTwoFactorLoading] = useState(false)
@@ -489,6 +494,17 @@ export function SettingsPage() {
     const next = !torEnabled
     setTorEnabled(next)
     setTorRelayEnabled(next)
+  }
+
+  const handleSaveRelay = () => {
+    setRelayUrl(relayInput)
+    globalThis.location.reload()
+  }
+
+  const handleToggleRelayOnly = () => {
+    const next = !relayOnlyCalls
+    setRelayOnlyCalls(next)
+    setRelayOnlyCallsEnabled(next)
   }
 
   const handleUploadPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1222,6 +1238,57 @@ export function SettingsPage() {
   const renderNetworkView = () => (
     <div className="flex-1 overflow-y-auto pb-4">
       <div className="py-2">
+        <div className="px-6 py-4 border-b border-bg-hover">
+          <h3 className="text-sm text-accent mb-4 flex items-center gap-2"><Globe size={16} />Serveurs</h3>
+          <div className="space-y-4">
+            <div>
+              <div className="text-text-primary text-sm">Relais (mode privé)</div>
+              <div className="text-xs text-text-secondary mb-2">URL du relais chiffré utilisé par le mode privé. Vide = réseau par défaut.</div>
+              <div className="flex items-center gap-2">
+                <input
+                  value={relayInput}
+                  onChange={e => setRelayInput(e.target.value)}
+                  placeholder="wss://relais.exemple/"
+                  className="flex-1 min-w-0 px-2 py-1 rounded-lg bg-bg-surface text-[11px] font-mono text-text-secondary"
+                />
+                <button onClick={handleSaveRelay} className="px-2 py-1 rounded-lg bg-bg-hover text-xs text-text-primary shrink-0">Enregistrer</button>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <div className="pr-4">
+                <div className="text-text-primary text-sm">Se connecter via Tor</div>
+                <div className="text-xs text-text-secondary">Masque votre IP via le réseau Tor (passerelle).</div>
+              </div>
+              <button
+                onClick={handleToggleTor}
+                disabled={!torAvailable}
+                aria-pressed={torEnabled}
+                className={`w-12 h-6 rounded-full relative shrink-0 transition-colors ${torEnabled ? 'bg-accent' : 'bg-[#8696a0]'} ${torAvailable ? '' : 'opacity-50'}`}
+              >
+                <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${torEnabled ? 'right-1' : 'left-1'}`}></div>
+              </button>
+            </div>
+
+            <div className="pt-3 border-t border-bg-hover">
+              <div className="text-text-primary text-sm">Serveurs WebRTC ICE</div>
+              <div className="text-xs text-text-secondary mb-2">{getIceServers().length} serveur(s) STUN/TURN configuré(s).</div>
+              <div className="flex items-center justify-between">
+                <div className="pr-4">
+                  <div className="text-text-primary text-sm">Se connecter via relais</div>
+                  <div className="text-xs text-text-secondary">Force le média via TURN (protège l'IP ; le relais voit la durée de l'appel).</div>
+                </div>
+                <button
+                  onClick={handleToggleRelayOnly}
+                  aria-pressed={relayOnlyCalls}
+                  className={`w-12 h-6 rounded-full relative shrink-0 transition-colors ${relayOnlyCalls ? 'bg-accent' : 'bg-[#8696a0]'}`}
+                >
+                  <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${relayOnlyCalls ? 'right-1' : 'left-1'}`}></div>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
         <div className="px-6 py-4">
           <h3 className="text-sm text-accent mb-4 flex items-center gap-2"><Wifi size={16} />{t('wifiConnection')}</h3>
           <div className="space-y-4">
