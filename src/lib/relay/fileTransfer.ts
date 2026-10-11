@@ -21,8 +21,15 @@ import { bytesToBase64, base64ToBytes, randomBytes } from '../ratchet/primitives
 
 export const FILE_BUCKET = 'anon_files';
 export const FILE_CHUNK_SIZE = 256 * 1024; // 256 KiB
+/** Borne dure du nombre de chunks d'un fichier (anti-DoS descripteur). */
+export const FILE_MAX_CHUNKS = 100_000;
+/** Borne dure de la taille totale d'un fichier (anti-DoS upload/download). */
+export const FILE_MAX_BYTES = 4 * 1024 * 1024 * 1024; // 4 GiB
 
-export interface FileDescriptor {
+/** Préfixe de dossier autorisé : `[A-Za-z0-9_-]{8,}` (opaque, non devinable). */
+const PREFIX_RE = /^[A-Za-z0-9_-]{8,}$/;
+
+interface FileDescriptor {
   v: 1;
   name: string;
   mime: string;
@@ -35,6 +42,46 @@ export interface FileDescriptor {
   prefix: string;
   /** Nombre de chunks */
   chunks: number;
+}
+
+export type { FileDescriptor };
+
+/** Nettoie un nom de fichier téléchargé (retire séparateurs de chemin/contrôle). */
+export function sanitizeFileName(name: unknown): string {
+  if (typeof name !== 'string' || !name) return 'fichier';
+  const base = name.split(/[\\/]+/).pop() ?? '';
+  const cleaned = base.replace(/[\u0000-\u001f\u007f]/g, '').replace(/^\.+/, '').trim();
+  return cleaned.slice(0, 200) || 'fichier';
+}
+
+/**
+ * Valide un descripteur reçu (données non fiables) AVANT tout téléchargement :
+ * clé = 32 octets, ivBase = 8 octets, préfixe whitelisté, chunks bornés et
+ * cohérents avec la taille annoncée.
+ */
+function validateDescriptor(desc: FileDescriptor): { key: Uint8Array; ivBase: Uint8Array } {
+  if (!desc || typeof desc !== 'object') throw new Error('descripteur de fichier invalide');
+  if (PREFIX_RE.test(desc.prefix) === false) throw new Error('préfixe de fichier invalide');
+  if (!Number.isInteger(desc.chunks) || desc.chunks < 1 || desc.chunks > FILE_MAX_CHUNKS) {
+    throw new Error('nombre de chunks invalide');
+  }
+  if (!Number.isFinite(desc.size) || desc.size < 0 || desc.size > FILE_MAX_BYTES) {
+    throw new Error('taille de fichier invalide');
+  }
+  const expectedChunks = Math.max(1, Math.ceil(desc.size / FILE_CHUNK_SIZE));
+  if (expectedChunks !== desc.chunks) throw new Error('descripteur incohérent (taille/chunks)');
+
+  let key: Uint8Array;
+  let ivBase: Uint8Array;
+  try {
+    key = base64ToBytes(desc.key);
+    ivBase = base64ToBytes(desc.ivBase);
+  } catch {
+    throw new Error('encodage de clé invalide');
+  }
+  if (key.length !== 32) throw new Error('clé invalide (32 octets attendus)');
+  if (ivBase.length !== 8) throw new Error('ivBase invalide (8 octets attendus)');
+  return { key, ivBase };
 }
 
 // ─── Crypto (chunk) ───────────────────────────────────────────────────
@@ -90,15 +137,21 @@ export async function encryptAndUploadFile(
   file: Blob,
   onProgress?: (fraction: number) => void,
 ): Promise<FileDescriptor> {
+  const total = file.size;
+  if (total > FILE_MAX_BYTES) throw new Error('fichier trop volumineux');
+  const chunks = Math.max(1, Math.ceil(total / FILE_CHUNK_SIZE));
+  if (chunks > FILE_MAX_CHUNKS) throw new Error('fichier découpé en trop de chunks');
+
   const key = randomBytes(32);
   const ivBase = randomBytes(8);
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  const chunks = Math.max(1, Math.ceil(bytes.length / FILE_CHUNK_SIZE));
   const prefix = randomPrefix();
 
+  // Lecture en flux : on ne charge qu'un chunk à la fois (pas d'arrayBuffer()
+  // sur l'ensemble du fichier → mémoire bornée).
   for (let i = 0; i < chunks; i++) {
-    const slice = bytes.subarray(i * FILE_CHUNK_SIZE, (i + 1) * FILE_CHUNK_SIZE);
-    const ct = await encryptChunk(key, ivBase, i, slice);
+    const slice = file.slice(i * FILE_CHUNK_SIZE, Math.min((i + 1) * FILE_CHUNK_SIZE, total));
+    const data = new Uint8Array(await slice.arrayBuffer());
+    const ct = await encryptChunk(key, ivBase, i, data);
     const { error } = await supabase.storage
       .from(FILE_BUCKET)
       .upload(`${prefix}/${i}`, ct, { upsert: false, contentType: 'application/octet-stream' });
@@ -109,9 +162,9 @@ export async function encryptAndUploadFile(
   const named = file as File;
   return {
     v: 1,
-    name: named.name ?? 'fichier',
-    mime: named.type || 'application/octet-stream',
-    size: bytes.length,
+    name: sanitizeFileName(named.name),
+    mime: typeof named.type === 'string' && named.type ? named.type : 'application/octet-stream',
+    size: total,
     key: bytesToBase64(key),
     ivBase: bytesToBase64(ivBase),
     prefix,
@@ -120,8 +173,7 @@ export async function encryptAndUploadFile(
 }
 
 export async function downloadAndDecryptFile(desc: FileDescriptor): Promise<Blob> {
-  const key = base64ToBytes(desc.key);
-  const ivBase = base64ToBytes(desc.ivBase);
+  const { key, ivBase } = validateDescriptor(desc);
   const parts: BlobPart[] = [];
 
   for (let i = 0; i < desc.chunks; i++) {

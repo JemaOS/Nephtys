@@ -67,13 +67,15 @@ const RELAY_ONLY_KEY = 'nephtys_calls_relay_only';
 
 /**
  * Vrai si les appels doivent forcer le relais TURN (iceTransportPolicy: relay).
- * **Active par defaut** (le media ne revele pas l'IP en P2P) ; l'utilisateur
- * peut le desactiver explicitement (valeur '0').
+ *
+ * **Relais forcé par défaut** (fail-safe IP) : un appel WebRTC en P2P direct
+ * échange des candidats ICE contenant l'adresse IP réelle de l'appareil. Pour
+ * les appels privés/anon il ne faut donc PAS fuiter l'IP → on force le relais
+ * TURN sauf désactivation explicite (valeur '0').
  */
 export function isRelayOnlyCallsEnabled(): boolean {
   try {
-    const value = localStorage.getItem(RELAY_ONLY_KEY);
-    return value === null ? true : value === '1';
+    return localStorage.getItem(RELAY_ONLY_KEY) !== '0';
   } catch {
     return true;
   }
@@ -89,11 +91,22 @@ export function setRelayOnlyCallsEnabled(enabled: boolean): void {
 }
 
 /**
- * Config RTCConfiguration pour un PeerConnection. Force le relais (TURN) si
- * l'option « se connecter via relais » est active -> masque l'IP en P2P.
+ * Config RTCConfiguration pour un PeerConnection. Force le relais (TURN) par
+ * défaut (masque l'IP) ; passer `{ relayOnly: false }` pour l'autoriser en P2P
+ * direct (déconseillé : fuite d'IP).
  */
-export function getPeerConnectionConfig(): RTCConfiguration {
-  const config: RTCConfiguration = { iceServers: getIceServers() };
-  if (isRelayOnlyCallsEnabled()) config.iceTransportPolicy = 'relay';
+export function getPeerConnectionConfig(options?: { relayOnly?: boolean }): RTCConfiguration {
+  const iceServers = getIceServers();
+  const config: RTCConfiguration = { iceServers };
+  const wantsRelay = options?.relayOnly ?? isRelayOnlyCallsEnabled();
+  // On ne force le relais QUE si des serveurs TURN sont réellement disponibles.
+  // Sinon (creds pas encore chargées, endpoint /turn indisponible, ou repli
+  // STUN seul) forcer `iceTransportPolicy: 'relay'` donnerait ZÉRO candidature
+  // → l'appel échouerait. Priorité : ne jamais casser l'appel.
+  const hasTurn = iceServers.some(server => {
+    const urls = Array.isArray(server.urls) ? server.urls : [server.urls];
+    return urls.some(u => typeof u === 'string' && u.startsWith('turn'));
+  });
+  if (wantsRelay && hasTurn) config.iceTransportPolicy = 'relay';
   return config;
 }

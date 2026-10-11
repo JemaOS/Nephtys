@@ -25,10 +25,15 @@ describe('callSignaling (codec)', () => {
     expect(parseCallSignal(s)).toEqual({ kind: 'offer', sdp: 'x' });
     expect(parseCallSignal('texte')).toBeNull();
   });
+
+  it('joint les métadonnées anti-rejeu (callId/seq) quand fournies', () => {
+    const s = encodeCallSignal({ kind: 'end' }, { callId: 'c1', seq: 3 });
+    expect(parseCallSignal(s)).toMatchObject({ kind: 'end', callId: 'c1', seq: 3 });
+  });
 });
 
 describe('PrivateCall (signalisation via canal chiffré)', () => {
-  it('offer → answer → ICE → connected → end', async () => {
+  it('offer → sonnerie (pas de réponse) → accept → answer → ICE → connected → end', async () => {
     const statesA: CallState[] = [];
     const statesB: CallState[] = [];
     let peerA: FakePeer | null = null;
@@ -47,9 +52,18 @@ describe('PrivateCall (signalisation via canal chiffré)', () => {
 
     await A.start('c');
     expect(statesA).toContain('calling');
+    // B sonne mais ne répond PAS automatiquement : aucun média, aucune answer.
     expect(statesB).toContain('ringing');
-    expect(statesA).toContain('connecting');
+    expect(B.isRinging).toBe(true);
+    expect(peerB).toBeNull();
+    expect(statesB).not.toContain('connecting');
+    expect(statesA).not.toContain('connecting');
+
+    // Acceptation explicite → réponse + mise en connexion.
+    await B.accept('c');
+    expect(peerB).not.toBeNull();
     expect(statesB).toContain('connecting');
+    expect(statesA).toContain('connecting');
 
     // ICE : A → B
     peerA!.emitIce({ candidate: 'candA' });
@@ -64,6 +78,43 @@ describe('PrivateCall (signalisation via canal chiffré)', () => {
     await B.end('c');
     expect(statesA).toContain('ended');
     expect(peerA!.closed).toBe(true);
+  });
+
+  it('refuse un appel entrant sans acquérir de média (reject)', async () => {
+    const statesB: CallState[] = [];
+    let peerB: FakePeer | null = null;
+    const sent: string[] = [];
+    const B = new PrivateCall({
+      createPeer: () => (peerB = new FakePeer()),
+      send: async (_c, text) => { sent.push(text); },
+      onState: (_c, s) => statesB.push(s),
+    });
+
+    await B.handleSignal('c', encodeCallSignal({ kind: 'offer', sdp: 'OFFER' }, { callId: 'x1', seq: 1 }));
+    expect(statesB).toContain('ringing');
+    expect(peerB).toBeNull();
+
+    await B.reject('c');
+    expect(peerB).toBeNull();
+    expect(sent.some(t => t.includes('"kind":"end"'))).toBe(true);
+  });
+
+  it('ignore les signaux rejoués et ceux d’une autre conversation', async () => {
+    const statesB: CallState[] = [];
+    const B = new PrivateCall({
+      createPeer: () => new FakePeer(),
+      send: async () => {},
+      onState: (_c, s) => statesB.push(s),
+    });
+    const offer = encodeCallSignal({ kind: 'offer', sdp: 'O' }, { callId: 'k', seq: 1 });
+    await B.handleSignal('c', offer);
+    await B.handleSignal('c', offer); // rejoué → ignoré (toujours une seule sonnerie)
+    expect(statesB.filter(s => s === 'ringing').length).toBe(1);
+
+    // Un « end » d'un AUTRE appel/conversation pendant l'activité est ignoré.
+    const ended = statesB.length;
+    await B.handleSignal('autre', encodeCallSignal({ kind: 'end' }, { callId: 'k', seq: 9 }));
+    expect(statesB.length).toBe(ended);
   });
 
   it('WebRTC indisponible → repli gracieux (unsupported)', async () => {

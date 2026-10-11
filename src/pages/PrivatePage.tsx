@@ -21,15 +21,24 @@ import QRCode from 'react-qr-code'
 import { ArrowLeft, Copy, Lock, Paperclip, Plus, Send, ShieldCheck, SlidersHorizontal, Trash2, X } from 'lucide-react'
 import { MainLayout } from '@/components/MainLayout'
 import { useAuth } from '@/context/AuthContext'
-import { getPrivateMessenger, getRelayUrl, getRelayLabel, setRelayUrl, isTorRelayEnabled } from '@/lib/relay/relayClient'
-import { getGroupMessenger } from '@/lib/relay/groupClient'
+import {
+  getPrivateMessenger,
+  getRelayUrl,
+  getRelayLabel,
+  setRelayUrl,
+  isTorRelayEnabled,
+  isRelayFallbackActive,
+  onRelayTransportChange,
+} from '@/lib/relay/relayClient'
+import { getGroupMessenger, isGroupUsingSupabaseRelay } from '@/lib/relay/groupClient'
 import type { GroupRecord } from '@/lib/relay/groupMessenger'
 import { parseFileMessage } from '@/lib/relay/privateMessenger'
 import { parseStatus, encodeStatus, toRecord, type StatusPayload, type StatusRecord } from '@/lib/relay/statusStore'
 import { PrivateCall, type CallState, type PeerLike } from '@/lib/relay/privateCall'
-import { isCallSignal, parseCallSignal } from '@/lib/relay/callSignaling'
+import { isCallSignal } from '@/lib/relay/callSignaling'
 import { IdbStatusStore } from '@/lib/relay/statusIdbStore'
-import { encryptAndUploadFile, downloadAndDecryptFile, type FileDescriptor } from '@/lib/relay/fileTransfer'
+import { encryptAndUploadFile, downloadAndDecryptFile, sanitizeFileName, type FileDescriptor } from '@/lib/relay/fileTransfer'
+import { isAnonRelayConsentGranted, setAnonRelayConsent } from '@/lib/relay/supabaseRelayWire'
 import type { PrivateConnectionRecord } from '@/lib/relay/connectionStore'
 
 interface ChatItem {
@@ -101,6 +110,11 @@ export function PrivatePage() {
   const [callConv, setCallConv] = useState<string | null>(null)
   const [mediaError, setMediaError] = useState<string | null>(null)
 
+  // Dégradation de transport (repli SMP → Supabase) et consentement relais anon.
+  const [transportDegraded, setTransportDegraded] = useState<boolean>(() => isRelayFallbackActive())
+  const [anonConsent, setAnonConsent] = useState<boolean>(() => isAnonRelayConsentGranted())
+  const groupUsesSupabase = useMemo(() => isGroupUsingSupabaseRelay(), [])
+
   // Onglets : une seule section à la fois (écran plus lisible, moins chargé).
   const [tab, setTab] = useState<'connections' | 'groups' | 'status'>('connections')
   const [showAdvanced, setShowAdvanced] = useState(false)
@@ -156,6 +170,26 @@ export function PrivatePage() {
     await acquireMedia()
     await privateCall.start(active)
   }, [active, acquireMedia, privateCall])
+
+  /** Accepte un appel entrant : n'ouvre micro/caméra QU'après consentement. */
+  const acceptCall = useCallback(async () => {
+    if (!callConv) return
+    setMediaError(null)
+    await acquireMedia()
+    await privateCall.accept(callConv)
+  }, [callConv, acquireMedia, privateCall])
+
+  /** Refuse un appel entrant (aucun média n'est acquis). */
+  const rejectCall = useCallback(async () => {
+    if (!callConv) return
+    await privateCall.reject(callConv)
+  }, [callConv, privateCall])
+
+  // Reflète la bascule de transport (repli SMP → Supabase) dans l'UI.
+  useEffect(() => {
+    setTransportDegraded(isRelayFallbackActive())
+    return onRelayTransportChange(setTransportDegraded)
+  }, [])
 
   const refresh = useCallback(async () => {
     try {
@@ -230,17 +264,12 @@ export function PrivatePage() {
       const convId = c.conversationId
       const unsubMsg = messenger.subscribe(convId, text => {
         if (isCallSignal(text)) {
-          // Mode Tor : on n'établit aucun média WebRTC (ICE exposarait l'IP réelle).
+          // Mode Tor : on n'établit aucun média WebRTC (ICE exposerait l'IP réelle).
           if (isTorRelayEnabled()) return
-          const sig = parseCallSignal(text)
-          if (sig?.kind === 'offer' && !localMediaRef.current) {
-            void (async () => {
-              await acquireMedia()
-              await privateCall.handleSignal(convId, text)
-            })()
-          } else {
-            void privateCall.handleSignal(convId, text)
-          }
+          // IMPORTANT (sécurité) : on ne fait que TRAITER le signal. Une offre
+          // entrante passe en « sonnerie » ; aucun micro/caméra n'est ouvert et
+          // aucune réponse n'est envoyée sans acceptation explicite (acceptCall).
+          void privateCall.handleSignal(convId, text)
           return
         }
         const status = parseStatus(text)
@@ -350,7 +379,9 @@ export function PrivatePage() {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = descriptor.name || 'fichier'
+      // Nom assaini : un descripteur malveillant ne doit pas pouvoir écrire
+      // hors du dossier de téléchargement (séparateurs de chemin retirés).
+      a.download = sanitizeFileName(descriptor.name)
       document.body.appendChild(a)
       a.click()
       a.remove()
@@ -532,7 +563,51 @@ export function PrivatePage() {
         </div>
 
         <div className="flex-1 overflow-auto p-4 space-y-5">
-          {callState !== 'idle' && callState !== 'ended' && (
+          {transportDegraded && (
+            <div className="rounded-xl bg-amber-500/10 border border-amber-500/30 p-3 text-xs text-amber-300">
+              Transport dégradé : le relais prioritaire (SMP) est injoignable — bascule
+              automatique sur le relais de repli. La confidentialité est moindre qu'en mode SMP.
+            </div>
+          )}
+          {!isAnonymous && !anonConsent && (
+            <div className="rounded-xl bg-amber-500/10 border border-amber-500/30 p-3 text-xs text-amber-300 space-y-2">
+              <p>
+                Session Supabase connectée détectée : le relais de repli Supabase est
+                bloqué pour le mode privé anonyme (aucune requête sous votre compte).
+              </p>
+              <button
+                type="button"
+                onClick={() => { setAnonRelayConsent(true); setAnonConsent(true) }}
+                className="px-2 py-1 rounded-lg bg-amber-500/20 text-amber-200 hover:bg-amber-500/30"
+              >
+                Autoriser le relais Supabase
+              </button>
+            </div>
+          )}
+          {callState === 'ringing' ? (
+            <div className="rounded-xl bg-[#7578db]/20 border border-[#7578db]/40 p-3 space-y-2">
+              <div className="text-sm text-text-primary">
+                Appel entrant{callConv ? ` (${callConv})` : ''} — sonnerie
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={acceptCall}
+                  className="flex-1 px-3 py-2 rounded-lg bg-green-500/20 text-green-300 text-sm font-medium"
+                >
+                  Accepter
+                </button>
+                <button
+                  type="button"
+                  onClick={rejectCall}
+                  className="flex-1 px-3 py-2 rounded-lg bg-red-500/20 text-red-300 text-sm font-medium"
+                >
+                  Refuser
+                </button>
+              </div>
+              {mediaError && <p className="text-xs text-red-400">{mediaError}</p>}
+            </div>
+          ) : callState !== 'idle' && callState !== 'ended' && (
             <div className="rounded-xl bg-[#7578db]/20 border border-[#7578db]/40 p-3 space-y-2">
               <div className="flex items-center justify-between text-sm text-text-primary">
                 <span>Appel — {callState}{callConv ? ` (${callConv})` : ''}</span>
@@ -697,6 +772,12 @@ export function PrivatePage() {
 
           {tab === 'groups' && (
             <>
+              {groupUsesSupabase && (
+                <div className="rounded-xl bg-amber-500/10 border border-amber-500/30 p-3 text-xs text-amber-300">
+                  Mode groupe : aucun relais externe configuré → transport assuré par le
+                  relais Supabase par défaut (moins anonyme qu'un relais externe/SMP).
+                </div>
+              )}
               <button
                 type="button"
                 onClick={handleCreateGroup}

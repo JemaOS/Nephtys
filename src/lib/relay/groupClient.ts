@@ -18,3 +18,11 @@ export function getGroupMessenger(): GroupMessenger {
   }
   return instance;
 }
+
+/**
+ * Vrai si le mode groupe s'appuie par défaut sur le relais Supabase (aucun
+ * relais externe configuré) : transport dégradé à signaler dans l'UI.
+ */
+export function isGroupUsingSupabaseRelay(): boolean {
+  return !hasCustomRelay();
+}

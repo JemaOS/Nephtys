@@ -23,6 +23,8 @@ export class FailoverRelayWire implements RelayWire {
   constructor(
     private readonly primary: RelayWire,
     private readonly secondary: RelayWire,
+    /** Notifié quand on bascule sur le relais de repli (état dégradé). */
+    private readonly onFallbackChange?: (active: boolean) => void,
   ) {
     this.active = primary;
   }
@@ -45,6 +47,7 @@ export class FailoverRelayWire implements RelayWire {
     console.warn('[relay] relais prioritaire indisponible → repli:', resp.error);
     this.primaryFailed = true;
     this.active = this.secondary;
+    this.onFallbackChange?.(true);
     return this.secondary.request(op);
   }
 

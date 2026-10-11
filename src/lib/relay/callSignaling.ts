@@ -19,14 +19,29 @@ export type CallSignal =
   | { kind: 'ice'; candidate: RTCIceCandidateInit | null }
   | { kind: 'end' };
 
-export function encodeCallSignal(signal: CallSignal): string {
-  return CALL_MARKER + JSON.stringify(signal);
+/**
+ * Métadonnées anti-rejeu/horodatage jointes à chaque signal. `callId` rattache
+ * le signal à UN appel précis et `seq` est monotone par appel → un `end`/`ice`/
+ * `answer` rejoué (même seq) ou un signal d'un autre appel est rejeté côté
+ * contrôleur (`PrivateCall.handleSignal`).
+ */
+export interface CallSignalMeta {
+  callId?: string;
+  seq?: number;
+  ts?: number;
 }
 
-export function parseCallSignal(text: string): CallSignal | null {
+export type ParsedCallSignal = CallSignal & CallSignalMeta;
+
+export function encodeCallSignal(signal: CallSignal, meta?: CallSignalMeta): string {
+  const payload = meta ? { ...signal, ...meta } : signal;
+  return CALL_MARKER + JSON.stringify(payload);
+}
+
+export function parseCallSignal(text: string): ParsedCallSignal | null {
   if (!text.startsWith(CALL_MARKER)) return null;
   try {
-    const s = JSON.parse(text.slice(CALL_MARKER.length)) as CallSignal;
+    const s = JSON.parse(text.slice(CALL_MARKER.length)) as ParsedCallSignal;
     if (s && typeof s.kind === 'string') return s;
     return null;
   } catch {

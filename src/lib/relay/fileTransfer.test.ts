@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from 'vitest';
 // Évite d'instancier le client Supabase (Storage non utilisé dans ces tests).
 vi.mock('@/lib/supabase', () => ({ supabase: { storage: { from: () => ({}) } } }));
 
-import { encryptChunk, decryptChunk, FILE_CHUNK_SIZE } from './fileTransfer';
+import { encryptChunk, decryptChunk, FILE_CHUNK_SIZE, sanitizeFileName, downloadAndDecryptFile, type FileDescriptor } from './fileTransfer';
 import { encodeFileMessage, parseFileMessage, FILE_MARKER } from './privateMessenger';
 
 describe('fileTransfer (P3)', () => {
@@ -38,5 +38,27 @@ describe('fileTransfer (P3)', () => {
     expect(encoded.startsWith(FILE_MARKER)).toBe(true);
     expect(parseFileMessage(encoded)).toEqual(desc);
     expect(parseFileMessage('texte normal')).toBeNull();
+  });
+
+  it('assainit le nom de fichier (séparateurs de chemin retirés)', () => {
+    expect(sanitizeFileName('../../etc/passwd')).toBe('passwd');
+    expect(sanitizeFileName('a\\b\\c.png')).toBe('c.png');
+    expect(sanitizeFileName('..')).toBe('fichier');
+    expect(sanitizeFileName('\u0000evil')).toBe('evil');
+    expect(sanitizeFileName(undefined)).toBe('fichier');
+  });
+
+  it('rejette un descripteur invalide avant tout téléchargement', async () => {
+    const good = { v: 1, name: 'a', mime: 'x', size: 3, key: btoa('\0'.repeat(32)), ivBase: btoa('\0'.repeat(8)), prefix: 'abcdefgh', chunks: 1 } as FileDescriptor;
+    // Préfixe hors whitelist.
+    await expect(downloadAndDecryptFile({ ...good, prefix: '../x' })).rejects.toThrow(/préfixe/);
+    // Clé de mauvaise taille.
+    await expect(downloadAndDecryptFile({ ...good, key: btoa('short') })).rejects.toThrow(/clé/);
+    // ivBase de mauvaise taille.
+    await expect(downloadAndDecryptFile({ ...good, ivBase: btoa('tiny') })).rejects.toThrow(/ivBase/);
+    // Trop de chunks.
+    await expect(downloadAndDecryptFile({ ...good, chunks: 1_000_000 })).rejects.toThrow(/chunks/);
+    // Incohérence taille/chunks.
+    await expect(downloadAndDecryptFile({ ...good, size: 10 * FILE_CHUNK_SIZE, chunks: 1 })).rejects.toThrow(/incoh/);
   });
 });

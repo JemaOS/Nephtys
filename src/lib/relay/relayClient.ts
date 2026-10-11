@@ -20,6 +20,24 @@ import { IdbHistoryStore } from './historyStore';
 
 let instance: PrivateMessenger | null = null;
 
+/**
+ * Instance de repli (SMP → Supabase) éventuellement active, pour remonter la
+ * dégradation de transport dans l'UI (avertissement explicite à l'utilisateur).
+ */
+let failoverWire: FailoverRelayWire | null = null;
+const transportListeners = new Set<(active: boolean) => void>();
+
+/** Vrai si le transport privé a basculé sur le relais de repli (état dégradé). */
+export function isRelayFallbackActive(): boolean {
+  return failoverWire?.onFallback ?? false;
+}
+
+/** S'abonne aux changements d'état du transport (repli SMP→Supabase). */
+export function onRelayTransportChange(cb: (active: boolean) => void): () => void {
+  transportListeners.add(cb);
+  return () => { transportListeners.delete(cb); };
+}
+
 /** Vrai si un agent SimpleX local a été détecté (mode privé → SMP SimpleX). */
 let agentReachable = false;
 
@@ -126,6 +144,7 @@ export function setRelayUrl(url: string): void {
     // localStorage indisponible
   }
   instance = null;
+  failoverWire = null;
 }
 
 const TOR_ENABLED_KEY = 'nephtys_tor_enabled';
@@ -164,6 +183,7 @@ export function setTorRelayEnabled(enabled: boolean): void {
     // localStorage indisponible
   }
   instance = null;
+  failoverWire = null;
 }
 
 /**
@@ -280,10 +300,13 @@ export function getPrivateMessenger(): PrivateMessenger {
       // DÉFAUT : SMP (SimpleX browser-profile) PRIORITAIRE, repli automatique sur
       // le relais aveugle Supabase si le premier est injoignable → le mode privé
       // fonctionne toujours. (Un relais local 127.0.0.1 traînant est ignoré.)
-      wire = new FailoverRelayWire(
+      const fw = new FailoverRelayWire(
         new SmpRelayWire({ url: smpUrl, keyHash: smpKeyHash }),
         new SupabaseRelayWire(),
+        active => { for (const cb of transportListeners) cb(active); },
       );
+      failoverWire = fw;
+      wire = fw;
     }
     instance = new PrivateMessenger(
       wire,
