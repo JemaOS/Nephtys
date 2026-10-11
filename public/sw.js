@@ -2,8 +2,11 @@
 // Distributed under the license specified in the root directory of this project.
 
 // Service Worker for Nephtys PWA
-// Version: 8.0.0 - Network-only for app shell. Cache only media (offline).
+// Version: 8.1.0 - Network-only for app shell. Cache only media (offline).
 // Avoids stale JS/HTML on deploys. App is always fresh from network.
+// Immediate takeover: skipWaiting() on install + clients.claim() on activate,
+// so a new deploy's SW takes control right away; the page then reloads once
+// via the 'controllerchange' handler in main.tsx (guarded against loops).
 
 const MEDIA_CACHE = 'nephtys-media-v8';
 

@@ -50,6 +50,30 @@ const selfHealStaleClient = async () => {
   window.location.reload();
 };
 
+// Anti-boucle : n'autorise qu'un seul rechargement automatique par courte
+// fenêtre de temps. Le rechargement relance le bundle frais ; un second
+// 'controllerchange' (ou une reprise du SW) ne doit pas provoquer de boucle.
+const SW_RELOAD_KEY = 'nephtys_sw_reloaded_at';
+const SW_RELOAD_MIN_INTERVAL_MS = 10 * 1000;
+let swReloadInFlight = false;
+
+const reloadOnceForNewWorker = () => {
+  if (typeof window === 'undefined' || swReloadInFlight) return;
+  swReloadInFlight = true;
+  try {
+    const last = Number(sessionStorage.getItem(SW_RELOAD_KEY) || 0);
+    if (!Number.isNaN(last) && Date.now() - last < SW_RELOAD_MIN_INTERVAL_MS) {
+      // Rechargement déjà déclenché très récemment → on s'abstient.
+      return;
+    }
+    sessionStorage.setItem(SW_RELOAD_KEY, String(Date.now()));
+  } catch {
+    /* sessionStorage indisponible : le flag en mémoire suffit */
+  }
+  console.log('[App] New service worker took control — reloading once');
+  window.location.reload();
+};
+
 // Register service worker for PWA support
 const registerServiceWorker = async () => {
   if ('serviceWorker' in navigator) {
@@ -60,6 +84,19 @@ const registerServiceWorker = async () => {
       });
 
       console.log('[App] Service Worker registered:', registration.scope, 'build', APP_BUILD_ID);
+
+      // La page était-elle déjà contrôlée par un SW au moment de
+      // l'enregistrement ? Si non (tout premier enregistrement), la prise de
+      // contrôle ne doit PAS déclencher de rechargement (rien de périmé).
+      const hadController = !!navigator.serviceWorker.controller;
+
+      // Le SW appelle skipWaiting() à l'install et clients.claim() à l'activate :
+      // il prend donc la main tout de suite. Quand cela arrive sur une page déjà
+      // contrôlée, on recharge UNE seule fois pour servir le nouveau bundle.
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (!hadController) return;
+        reloadOnceForNewWorker();
+      });
 
       // Always check for an updated SW on startup
       registration.update().catch(() => {});
@@ -74,7 +111,11 @@ const registerServiceWorker = async () => {
         if (newWorker) {
           newWorker.addEventListener('statechange', () => {
             if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-              console.log('[App] New SW version available, will activate on next load');
+              // Nouveau SW prêt et une page est déjà contrôlée : on force la
+              // prise de main (idempotent, le SW le fait déjà), le
+              // rechargement suit via 'controllerchange' ci-dessus.
+              console.log('[App] New SW version available, activating now');
+              newWorker.postMessage({ type: 'SKIP_WAITING' });
             }
           });
         }
