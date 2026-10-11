@@ -18,16 +18,9 @@
 
 import { supabase } from './supabase';
 import { extractStoragePath } from './mediaUrl';
-import {
-  ensureUserKeyPair,
-  encryptMedia,
-  decryptMedia,
-  wrapKeyForRecipient,
-  unwrapKeyFromSender,
-  fetchPublicKeys,
-  cryptoB64,
-  type WrappedKey,
-} from './mediaEncryption';
+import { encryptMedia, decryptMedia, cryptoB64, type WrappedKey } from './mediaEncryption';
+import { getLocalX25519KeyPair, fetchX25519PublicKeys } from './e2eeX25519';
+import { wrapKeyForRecipientX25519, unwrapKeyFromSenderX25519 } from './x25519';
 
 // ─── Cache local des blobURL déchiffrés ───────────────────────────────
 
@@ -112,11 +105,12 @@ export async function createMediaKeysForMessage(params: {
     return { inserted: 0, missingKeys: [] };
   }
 
-  // 2. Récupère les clés publiques
-  const publicKeys = await fetchPublicKeys(recipientIds);
+  // 2. Récupère les clés publiques X25519
+  const publicKeys = await fetchX25519PublicKeys(recipientIds);
 
-  // 3. Pour chaque destinataire ayant une clé publique, wrap la clé AES
-  const sender = await ensureUserKeyPair(senderId);
+  // 3. Pour chaque destinataire ayant une clé publique, wrap la clé AES (X25519)
+  const sender = await getLocalX25519KeyPair(senderId);
+  if (!sender) throw new Error('Clés E2EE locales absentes (X25519).');
   const missingKeys: string[] = [];
   const rows: any[] = [];
 
@@ -127,10 +121,10 @@ export async function createMediaKeysForMessage(params: {
       continue;
     }
     try {
-      const wrapped = await wrapKeyForRecipient(
+      const wrapped = await wrapKeyForRecipientX25519(
         rawKey,
         sender.privateKey,
-        sender.publicKeyBase64,
+        sender.publicKey,
         recipientPubB64
       );
       rows.push({
@@ -202,9 +196,10 @@ export async function fetchAndDecryptMedia(
     senderPublicKey: keyRow.sender_public_key,
   };
 
-  // 2. Déchiffre la clé AES
-  const myKeyPair = await ensureUserKeyPair(userId);
-  const rawKey = await unwrapKeyFromSender(wrapped, myKeyPair.privateKey);
+  // 2. Déchiffre la clé AES (X25519)
+  const myKeyPair = await getLocalX25519KeyPair(userId);
+  if (!myKeyPair) throw new Error('Clés E2EE locales absentes (X25519).');
+  const rawKey = await unwrapKeyFromSenderX25519(wrapped, myKeyPair.privateKey);
 
   // 3. Télécharge le binaire chiffré (signed URL).
   // mediaPath peut être déjà une URL signée (le helper de loadMessages aura
@@ -284,9 +279,10 @@ export async function fetchMediaRawKey(
     senderPublicKey: keyRow.sender_public_key,
   };
 
-  // 2. Déchiffre la clé AES
-  const myKeyPair = await ensureUserKeyPair(userId);
-  const rawKey = await unwrapKeyFromSender(wrapped, myKeyPair.privateKey);
+  // 2. Déchiffre la clé AES (X25519)
+  const myKeyPair = await getLocalX25519KeyPair(userId);
+  if (!myKeyPair) return null;
+  const rawKey = await unwrapKeyFromSenderX25519(wrapped, myKeyPair.privateKey);
 
   return { rawKey, mediaIvBase64: keyRow.media_iv };
 }
