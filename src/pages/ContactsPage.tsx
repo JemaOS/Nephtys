@@ -42,6 +42,22 @@ const setCache = <T,>(key: string, data: T) => {
   }
 }
 
+// Self-healing : s'assure que l'utilisateur courant est bien membre de la
+// conversation avant d'y naviguer. Sinon (ex. « supprimer la discussion »
+// puis ré-ajouter), la RLS bloque SELECT/INSERT → fil vide + envoi impossible.
+const ensureMyMembership = async (supabase: any, userId: string, conversationId: string): Promise<void> => {
+  try {
+    await supabase
+      .from('conversation_members')
+      .upsert(
+        { conversation_id: conversationId, user_id: userId, role: 'member' },
+        { onConflict: 'conversation_id,user_id', ignoreDuplicates: true },
+      )
+  } catch {
+    // best-effort
+  }
+}
+
 // Helper to find existing Saved Messages conversation (for self-contact)
 const findSavedMessagesConversation = async (supabase: any, userId: string): Promise<{ exists: boolean; conversationId: string | null }> => {
   const { data: myConversations } = await supabase
@@ -622,6 +638,7 @@ export function ContactsPage() {
       
       if (cachedConvId) {
         console.log('Found conversation in cache, navigating immediately:', cachedConvId)
+        if (user?.id) await ensureMyMembership(supabase, user.id, cachedConvId)
         navigate(`/chat/${cachedConvId}`)
         return
       }
@@ -635,6 +652,7 @@ export function ContactsPage() {
       if (existingConvId) {
         console.log('Existing conversation found:', existingConvId)
         creatingConversationRef.current.delete(contactId)
+        if (user?.id) await ensureMyMembership(supabase, user.id, existingConvId)
         navigate(`/chat/${existingConvId}`)
         return
       }

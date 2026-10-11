@@ -945,6 +945,16 @@ export function ChatViewPage() {
   useEffect(() => {
     if (!conversationId || !user) return
 
+    // Self-healing membership : s'assure d'être membre (sinon RLS bloque
+    // SELECT/INSERT → fil vide + envoi impossible après suppr./ré-ajout).
+    supabase
+      .from('conversation_members')
+      .upsert(
+        { conversation_id: conversationId, user_id: user.id, role: 'member' },
+        { onConflict: 'conversation_id,user_id', ignoreDuplicates: true },
+      )
+      .then(() => undefined, () => undefined)
+
     // Reset du garde-fou quand on CHANGE de conversation : sinon la nouvelle
     // conversation ne charge jamais ses messages → fil vide.
     if (lastLoadedConvRef.current !== conversationId) {
