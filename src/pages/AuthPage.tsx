@@ -264,13 +264,6 @@ export function AuthPage() {
           >
             Utiliser en mode privé (sans compte)
           </button>
-          <button
-            type="button"
-            onClick={() => navigate('/link-device')}
-            className="text-[10px] lg:text-xs text-text-secondary hover:underline block w-full"
-          >
-            Lier un appareil (QR code)
-          </button>
         </div>
 
         {/* Footer */}

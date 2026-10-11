@@ -7,8 +7,6 @@ import { MainLayout } from '@/components/MainLayout'
 import { useAuth } from '@/context/AuthContext'
 import { useTheme } from '@/context/ThemeContext'
 import { supabase } from '@/lib/supabase'
-import { createDeviceLink, redeemDeviceLink } from '@/lib/deviceLink'
-import QRCode from 'react-qr-code'
 import { MediaImg } from '@/components/MediaImg'
 import { invalidateMediaUrl } from '@/lib/mediaUrl'
 import { deleteMyMessages } from '@/lib/conversationService'
@@ -132,7 +130,7 @@ const getParentView = (view: SettingsView): SettingsView => {
 // ============ COMPONENT ============
 
 export function SettingsPage() {
-  const { profile, signOut, user, updateLocalProfile, regenerateRecovery } = useAuth()
+  const { profile, signOut, user, updateLocalProfile } = useAuth()
   const { theme, wallpaper, setTheme, setWallpaper } = useTheme()
   const { t } = useI18n()
   const navigate = useNavigate()
@@ -150,13 +148,6 @@ export function SettingsPage() {
   const [editingBio, setEditingBio] = useState(false)
   const [newBio, setNewBio] = useState(profile?.bio || '')
   const [discoverable, setDiscoverable] = useState<boolean>((profile as any)?.discoverable ?? true)
-  const [deviceLink, setDeviceLink] = useState<string | null>(null)
-  const [deviceLinkInput, setDeviceLinkInput] = useState('')
-  const [deviceMsg, setDeviceMsg] = useState<string | null>(null)
-  const [deviceBusy, setDeviceBusy] = useState(false)
-  const [resetPwd, setResetPwd] = useState('')
-  const [resetBusy, setResetBusy] = useState(false)
-  const [resetMsg, setResetMsg] = useState<string | null>(null)
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const [showLastSeen, setShowLastSeen] = useState(true)
   const [showProfilePhoto, setShowProfilePhoto] = useState(true)
@@ -498,49 +489,6 @@ export function SettingsPage() {
     const next = !torEnabled
     setTorEnabled(next)
     setTorRelayEnabled(next)
-  }
-
-  const handleCreateDeviceLink = async () => {
-    if (!user) return
-    setDeviceBusy(true)
-    setDeviceMsg(null)
-    try {
-      setDeviceLink(await createDeviceLink(user.id))
-    } catch (e) {
-      setDeviceMsg((e as Error).message)
-    } finally {
-      setDeviceBusy(false)
-    }
-  }
-
-  const handleResetEncryption = async () => {
-    if (!user) return
-    setResetBusy(true)
-    setResetMsg(null)
-    try {
-      await regenerateRecovery()
-      setResetMsg('Chiffrement réinitialisé. Note ta NOUVELLE phrase de récupération ; les anciens messages restent illisibles.')
-      setResetPwd('')
-    } catch (e) {
-      setResetMsg(`Échec : ${(e as Error).message}`)
-    } finally {
-      setResetBusy(false)
-    }
-  }
-
-  const handleRedeemDeviceLink = async () => {
-    if (!user || !deviceLinkInput.trim()) return
-    setDeviceBusy(true)
-    setDeviceMsg(null)
-    try {
-      const { installed } = await redeemDeviceLink(user.id, deviceLinkInput.trim())
-      setDeviceMsg(`Appareil lié (${installed.join(', ') || 'aucune clé'}). Recharge l’app.`)
-      setDeviceLinkInput('')
-    } catch (e) {
-      setDeviceMsg((e as Error).message)
-    } finally {
-      setDeviceBusy(false)
-    }
   }
 
   const handleUploadPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -901,92 +849,6 @@ export function SettingsPage() {
               className="w-5 h-5 accent-[#7578db] shrink-0"
               aria-label="Apparaître dans l'annuaire"
             />
-          </div>
-        </div>
-        <div className="space-y-2">
-          <p className="text-sm text-accent">Appareils</p>
-          <div className="p-4 bg-bg-surface rounded-2xl space-y-3">
-            <p className="text-xs text-text-secondary">
-              Lier un 2e appareil : génère un lien à utiliser sur l'autre appareil (déjà connecté au
-              même compte). Tes clés E2EE y sont transférées, chiffrées par un secret local — le
-              serveur ne les voit jamais.
-            </p>
-            <button
-              type="button"
-              onClick={handleCreateDeviceLink}
-              disabled={deviceBusy}
-              className="px-3 py-2 rounded-xl bg-[#7578db] text-white text-sm font-medium disabled:opacity-50"
-            >
-              Générer un lien d'appareil
-            </button>
-            {deviceLink && (
-              <div className="flex flex-col items-center gap-2">
-                <div className="bg-white p-3 rounded-xl">
-                  <QRCode value={deviceLink} size={168} />
-                </div>
-                <div className="w-full flex items-center gap-2">
-                  <input
-                    readOnly
-                    value={deviceLink}
-                    className="flex-1 min-w-0 px-2 py-1 rounded-lg bg-bg-primary text-[11px] font-mono text-text-secondary"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => navigator.clipboard?.writeText(deviceLink)}
-                    className="px-2 py-1 rounded-lg bg-bg-hover text-xs text-text-primary"
-                  >
-                    Copier
-                  </button>
-                </div>
-                <p className="text-[11px] text-text-tertiary text-center">
-                  Scanne ce QR code depuis l'autre appareil (ou colle le lien ci-dessous).
-                </p>
-              </div>
-            )}
-            <div className="flex items-center gap-2">
-              <input
-                value={deviceLinkInput}
-                onChange={e => setDeviceLinkInput(e.target.value)}
-                placeholder="Coller un lien d'appareil…"
-                className="flex-1 min-w-0 px-2 py-1 rounded-lg bg-bg-primary text-[11px] font-mono text-text-secondary"
-              />
-              <button
-                type="button"
-                onClick={handleRedeemDeviceLink}
-                disabled={deviceBusy || !deviceLinkInput.trim()}
-                className="px-2 py-1 rounded-lg bg-bg-hover text-xs text-text-primary disabled:opacity-50"
-              >
-                Lier
-              </button>
-            </div>
-            {deviceMsg && <p className="text-xs text-text-secondary">{deviceMsg}</p>}
-            <div className="border-t border-bg-hover pt-3 space-y-2">
-              <p className="text-xs text-red-400 font-medium">Réinitialiser le chiffrement</p>
-              <p className="text-[11px] text-text-tertiary">
-                À utiliser si tu ne vois plus tes messages en clair sur cet appareil (clés
-                incohérentes). Régénère tes clés E2EE : les NOUVEAUX messages fonctionneront, les
-                anciens resteront illisibles. Saisis ton mot de passe pour re-chiffrer tes clés (le
-                serveur ne le voit jamais).
-              </p>
-              <div className="flex items-center gap-2">
-                <input
-                  type="password"
-                  value={resetPwd}
-                  onChange={e => setResetPwd(e.target.value)}
-                  placeholder="Mot de passe"
-                  className="flex-1 min-w-0 px-2 py-1 rounded-lg bg-bg-primary text-[11px] text-text-secondary"
-                />
-                <button
-                  type="button"
-                  onClick={handleResetEncryption}
-                  disabled={resetBusy || !resetPwd.trim()}
-                  className="px-2 py-1 rounded-lg bg-red-500/20 text-red-300 text-xs disabled:opacity-50"
-                >
-                  Réinitialiser
-                </button>
-              </div>
-              {resetMsg && <p className="text-xs text-text-secondary">{resetMsg}</p>}
-            </div>
           </div>
         </div>
       </div>
