@@ -22,6 +22,43 @@ import { installX25519KeyPair, getLocalX25519KeyPair, clearLocalX25519 } from '.
 
 export { generateRecoveryPhrase, validateRecoveryPhrase };
 
+// ─── Lien d'appareil (multi-appareil façon WhatsApp) ──────────────────
+// La phrase de récupération EST la clé maîtresse : la transmettre via QR
+// (de proximité) lie un 2e appareil en lui donnant les mêmes clés.
+
+const DEVICE_PREFIX = 'NEPHTYS-DEVICE:';
+const PHRASE_KEY = 'nephtys_recovery_phrase';
+
+/** Mémorise la phrase localement (pour pouvoir ré-afficher « mon code »). */
+export function storeRecoveryPhrase(phrase: string): void {
+  try {
+    localStorage.setItem(PHRASE_KEY, phrase.trim());
+  } catch {
+    // localStorage indisponible
+  }
+}
+
+/** Phrase mémorisée localement (ou null si absente). */
+export function getStoredRecoveryPhrase(): string | null {
+  try {
+    return localStorage.getItem(PHRASE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/** Encode la phrase en lien d'appareil (contenu du QR « mon code »). */
+export function encodeDeviceLink(phrase: string): string {
+  return DEVICE_PREFIX + phrase.trim();
+}
+
+/** Extrait la phrase d'un contenu de QR scanné (null si ce n'est pas un lien Nephtys). */
+export function parseDeviceLink(scanned: string): string | null {
+  const value = scanned.trim();
+  const phrase = value.startsWith(DEVICE_PREFIX) ? value.slice(DEVICE_PREFIX.length).trim() : value;
+  return validateRecoveryPhrase(phrase) ? phrase : null;
+}
+
 /**
  * Installe les clés dérivées de la phrase : local + public uniquement.
  * Lève si la phrase est invalide.
@@ -30,6 +67,7 @@ export async function installKeysFromPhrase(userId: string, phrase: string): Pro
   if (!validateRecoveryPhrase(phrase)) {
     throw new Error('Phrase de récupération invalide.');
   }
+  storeRecoveryPhrase(phrase);
   const ratchet = await deriveLocalRatchetKeys(phrase);
   await installRatchetKeys(userId, ratchet);
   const x25519 = await deriveUserX25519KeyPair(phrase);

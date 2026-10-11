@@ -46,8 +46,11 @@ import {
   Globe, Database, HelpCircle, Info, LogOut, ChevronRight,
   Moon, Sun, Check, Camera, Edit2, Shield, Key, Trash2,
   Eye, EyeOff, Wifi, WifiOff, Mail, Image, FileText, Mic, Loader2,
-  Cloud, CloudUpload, DownloadCloud, Smartphone, Copy, X
+  Cloud, CloudUpload, DownloadCloud, Smartphone, Copy, X, QrCode
 } from 'lucide-react'
+import { SafeQrCode } from '@/components/SafeQrCode'
+import { QrScanner } from '@/components/QrScanner'
+import { encodeDeviceLink, parseDeviceLink, getStoredRecoveryPhrase } from '@/lib/recovery/recoveryService'
 import {
   createBackup,
   createLightBackup,
@@ -72,7 +75,7 @@ import {
 
 type SettingsView = 'main' | 'profile' | 'account' | 'privacy' | 'security' | '2fa' | 'delete' |
                      'discussions' | 'wallpaper' | 'notifications' | 'message-notif' | 'call-notif' |
-                     'storage' | 'network' | 'calls' | 'downloads' | 'help' | 'faq' | 'contact' | 'terms' | 'backup' | 'language'
+                     'storage' | 'network' | 'calls' | 'downloads' | 'devices' | 'help' | 'faq' | 'contact' | 'terms' | 'backup' | 'language'
 
 // ============ HELPER FUNCTIONS ============
 
@@ -120,6 +123,7 @@ const getViewTitle = (view: SettingsView, t: (key: string) => string): string =>
     'network': t('settingsNetwork'),
     'calls': t('settingsCalls'),
     'downloads': t('settingsDownloads'),
+    'devices': 'Appareils liés',
     'backup': t('settingsBackup'),
     'faq': t('settingsFaq'),
     'contact': t('settingsContact'),
@@ -144,7 +148,7 @@ const getParentView = (view: SettingsView): SettingsView => {
 // ============ COMPONENT ============
 
 export function SettingsPage() {
-  const { profile, signOut, signOutAndWipeLocal, user, updateLocalProfile, regenerateRecovery } = useAuth()
+  const { profile, signOut, signOutAndWipeLocal, user, updateLocalProfile, regenerateRecovery, completeRecovery } = useAuth()
   const { theme, wallpaper, setTheme, setWallpaper } = useTheme()
   const { t } = useI18n()
   const navigate = useNavigate()
@@ -182,6 +186,9 @@ export function SettingsPage() {
   })
   const [showAdvancedRelays, setShowAdvancedRelays] = useState(false)
   const [coverTraffic, setCoverTraffic] = useState<boolean>(() => isCoverTrafficEnabled())
+  // Multi-appareil (QR) : code à afficher + scanner.
+  const [showScanner, setShowScanner] = useState(false)
+  const [deviceMsg, setDeviceMsg] = useState<string | null>(null)
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false)
   const [twoFactorFactors, setTwoFactorFactors] = useState<TOTPFactor[]>([])
   const [twoFactorLoading, setTwoFactorLoading] = useState(false)
@@ -879,6 +886,7 @@ export function SettingsPage() {
     { icon: Wifi, label: t('settingsNetwork'), subtitle: 'Relais, Tor, proxy', view: 'network' as SettingsView },
     { icon: Video, label: t('settingsCalls'), subtitle: 'Relais et médias des appels', view: 'calls' as SettingsView },
     { icon: FileText, label: t('settingsDownloads'), subtitle: 'Téléchargement automatique', view: 'downloads' as SettingsView },
+    { icon: QrCode, label: 'Appareils liés', subtitle: 'Multi-appareil (QR)', view: 'devices' as SettingsView },
     { icon: Cloud, label: t('mainBackupShort'), subtitle: t('mainSubtitleBackup'), view: 'backup' as SettingsView },
     { icon: Globe, label: t('settingsLanguage'), subtitle: t('languageLabel'), view: 'language' as SettingsView },
     { icon: HelpCircle, label: t('settingsHelp'), subtitle: t('mainSubtitleHelp'), view: 'help' as SettingsView },
@@ -915,6 +923,18 @@ export function SettingsPage() {
           </div>
           <ChevronRight size={20} className="text-text-secondary" />
         </div>
+      </button>
+      <button
+        type="button"
+        onClick={() => setCurrentView('devices')}
+        className="w-full bg-bg-surface px-6 py-4 flex items-center gap-4 hover:bg-bg-hover transition-colors border-t border-bg-hover"
+      >
+        <QrCode size={22} className="text-accent" />
+        <div className="flex-1 text-left">
+          <div className="text-text-primary">Appareils liés</div>
+          <div className="text-xs text-text-secondary">Mon code / scanner un QR code</div>
+        </div>
+        <ChevronRight size={18} className="text-text-secondary" />
       </button>
       <div className="py-2">
         {mainSettings.map((setting) => (
@@ -1565,6 +1585,50 @@ export function SettingsPage() {
     </div>
   )
 
+  const renderDevicesView = () => (
+    <div className="flex-1 overflow-y-auto pb-4">
+      <div className="py-2">
+        <div className="px-6 py-4 space-y-4">
+          <h3 className="text-sm text-accent flex items-center gap-2"><QrCode size={16} />Appareils liés</h3>
+          <p className="text-sm text-text-secondary">
+            Connectez un 2e appareil : depuis l'autre appareil, ouvrez Paramètres → Appareils liés →
+            « Scanner un QR code », puis scannez ce code. Vos messages et contacts y seront
+            accessibles (mêmes clés E2EE).
+          </p>
+          {getStoredRecoveryPhrase() ? (
+            <div className="flex flex-col items-center gap-3 p-4 bg-bg-surface rounded-2xl">
+              <p className="text-xs text-text-tertiary">Mon code (à scanner par l'autre appareil)</p>
+              <SafeQrCode value={encodeDeviceLink(getStoredRecoveryPhrase() as string)} size={200} />
+              <button
+                type="button"
+                onClick={() => navigator.clipboard?.writeText(encodeDeviceLink(getStoredRecoveryPhrase() as string))}
+                className="px-3 py-2 rounded-xl bg-bg-hover text-text-primary text-sm"
+              >
+                Copier le code
+              </button>
+              <p className="text-[11px] text-[#e0a800] text-center">
+                Ce code donne accès à vos messages : ne le partagez qu'avec un appareil de confiance.
+              </p>
+            </div>
+          ) : (
+            <p className="text-xs text-[#e0a800]">
+              Aucun code disponible sur cet appareil. Reconnectez-vous (la phrase sera alors mémorisée
+              localement) pour pouvoir afficher votre code.
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={() => { setDeviceMsg(null); setShowScanner(true) }}
+            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-[#7578db] text-white text-sm font-medium"
+          >
+            <Camera size={16} /> Scanner un QR code
+          </button>
+          {deviceMsg && <p className="text-xs text-text-secondary">{deviceMsg}</p>}
+        </div>
+      </div>
+    </div>
+  )
+
   const renderDownloadsView = () => (
     <div className="flex-1 overflow-y-auto pb-4">
       <div className="py-2">
@@ -1978,6 +2042,7 @@ export function SettingsPage() {
     network: renderNetworkView,
     calls: renderCallsView,
     downloads: renderDownloadsView,
+    devices: renderDevicesView,
     help: renderHelpView,
     faq: renderFAQView,
     contact: renderContactView,
@@ -2003,6 +2068,22 @@ export function SettingsPage() {
         </div>
         {views[currentView]()}
       </div>
+      {showScanner && (
+        <QrScanner
+          onClose={() => setShowScanner(false)}
+          onResult={(text) => {
+            setShowScanner(false)
+            const phrase = parseDeviceLink(text)
+            if (!phrase) {
+              setDeviceMsg('QR code non reconnu.')
+              return
+            }
+            void completeRecovery(phrase)
+              .then(() => setDeviceMsg('Appareil lié ✅ — vos messages sont de nouveau lisibles.'))
+              .catch((e: unknown) => setDeviceMsg(`Échec : ${(e as Error).message}`))
+          }}
+        />
+      )}
     </MainLayout>
   )
 }

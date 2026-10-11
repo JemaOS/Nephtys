@@ -11,7 +11,8 @@
 
 import { useState, type ReactNode } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { validateRecoveryPhrase } from '@/lib/recovery/recoveryService';
+import { validateRecoveryPhrase, parseDeviceLink } from '@/lib/recovery/recoveryService';
+import { QrScanner } from '@/components/QrScanner';
 
 function ShowPhraseScreen({ phrase, onConfirm }: { readonly phrase: string; readonly onConfirm: () => void }) {
   const [copied, setCopied] = useState(false);
@@ -59,6 +60,7 @@ function EnterPhraseScreen() {
   const [phrase, setPhrase] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [scanning, setScanning] = useState(false);
   const valid = validateRecoveryPhrase(phrase);
 
   const submit = async () => {
@@ -97,10 +99,32 @@ function EnterPhraseScreen() {
         >
           {busy ? 'Restauration…' : 'Restaurer'}
         </button>
+        <button
+          type="button"
+          onClick={() => setScanning(true)}
+          className="w-full px-4 py-3 rounded-2xl bg-bg-surface text-text-primary text-sm"
+        >
+          Scanner le QR code d'un appareil
+        </button>
         <button type="button" onClick={() => signOut()} className="w-full text-xs text-text-tertiary">
           Se déconnecter
         </button>
       </div>
+      {scanning && (
+        <QrScanner
+          onClose={() => setScanning(false)}
+          onResult={(text) => {
+            setScanning(false);
+            const scanned = parseDeviceLink(text);
+            if (scanned) {
+              setPhrase(scanned);
+              setError(null);
+            } else {
+              setError('QR code non reconnu.');
+            }
+          }}
+        />
+      )}
     </div>
   );
 }
