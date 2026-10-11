@@ -28,8 +28,6 @@ import {
   getRelayLabel,
   setRelayUrl,
   isTorRelayEnabled,
-  isRelayFallbackActive,
-  onRelayTransportChange,
 } from '@/lib/relay/relayClient'
 import { getGroupMessenger, isGroupUsingSupabaseRelay } from '@/lib/relay/groupClient'
 import type { GroupRecord } from '@/lib/relay/groupMessenger'
@@ -39,9 +37,7 @@ import { PrivateCall, type CallState, type PeerLike } from '@/lib/relay/privateC
 import { isCallSignal } from '@/lib/relay/callSignaling'
 import { IdbStatusStore } from '@/lib/relay/statusIdbStore'
 import { encryptAndUploadFile, downloadAndDecryptFile, sanitizeFileName, type FileDescriptor } from '@/lib/relay/fileTransfer'
-import { isAnonRelayConsentGranted, setAnonRelayConsent } from '@/lib/relay/supabaseRelayWire'
 import type { PrivateConnectionRecord } from '@/lib/relay/connectionStore'
-
 interface ChatItem {
   id: string
   text: string
@@ -111,9 +107,6 @@ export function PrivatePage() {
   const [callConv, setCallConv] = useState<string | null>(null)
   const [mediaError, setMediaError] = useState<string | null>(null)
 
-  // Dégradation de transport (repli SMP → Supabase) et consentement relais anon.
-  const [transportDegraded, setTransportDegraded] = useState<boolean>(() => isRelayFallbackActive())
-  const [anonConsent, setAnonConsent] = useState<boolean>(() => isAnonRelayConsentGranted())
   const groupUsesSupabase = useMemo(() => isGroupUsingSupabaseRelay(), [])
 
   // Onglets : une seule section à la fois (écran plus lisible, moins chargé).
@@ -185,12 +178,6 @@ export function PrivatePage() {
     if (!callConv) return
     await privateCall.reject(callConv)
   }, [callConv, privateCall])
-
-  // Reflète la bascule de transport (repli SMP → Supabase) dans l'UI.
-  useEffect(() => {
-    setTransportDegraded(isRelayFallbackActive())
-    return onRelayTransportChange(setTransportDegraded)
-  }, [])
 
   const refresh = useCallback(async () => {
     try {
@@ -564,27 +551,6 @@ export function PrivatePage() {
         </div>
 
         <div className="flex-1 overflow-auto p-4 space-y-5">
-          {transportDegraded && (
-            <div className="rounded-xl bg-amber-500/10 border border-amber-500/30 p-3 text-xs text-amber-300">
-              Transport dégradé : le relais prioritaire (SMP) est injoignable — bascule
-              automatique sur le relais de repli. La confidentialité est moindre qu'en mode SMP.
-            </div>
-          )}
-          {!isAnonymous && !anonConsent && (
-            <div className="rounded-xl bg-amber-500/10 border border-amber-500/30 p-3 text-xs text-amber-300 space-y-2">
-              <p>
-                Session Supabase connectée détectée : le relais de repli Supabase est
-                bloqué pour le mode privé anonyme (aucune requête sous votre compte).
-              </p>
-              <button
-                type="button"
-                onClick={() => { setAnonRelayConsent(true); setAnonConsent(true) }}
-                className="px-2 py-1 rounded-lg bg-amber-500/20 text-amber-200 hover:bg-amber-500/30"
-              >
-                Autoriser le relais Supabase
-              </button>
-            </div>
-          )}
           {callState === 'ringing' ? (
             <div className="rounded-xl bg-[#7578db]/20 border border-[#7578db]/40 p-3 space-y-2">
               <div className="text-sm text-text-primary">
