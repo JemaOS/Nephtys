@@ -28,6 +28,7 @@ import {
   setRelayUrl
 } from '@/lib/relay/relayClient'
 import { isRelayOnlyCallsEnabled, setRelayOnlyCallsEnabled, getIceServers } from '@/lib/iceServers'
+import { isSocksEnabled, setSocksEnabled, getSocksProxy, setSocksProxy, SOCKS_BROWSER_NOTE } from '@/lib/socksProxy'
 
 // Type for storage/media type filter
 type StorageType = 'all' | 'photos' | 'videos' | 'files' | 'audio';
@@ -158,6 +159,8 @@ export function SettingsPage() {
   const [torAvailable] = useState<boolean>(() => isTorAvailable())
   const [relayInput, setRelayInput] = useState<string>(() => getRelayUrl() ?? '')
   const [relayOnlyCalls, setRelayOnlyCalls] = useState<boolean>(() => isRelayOnlyCallsEnabled())
+  const [socksEnabled, setSocksEnabledState] = useState<boolean>(() => isSocksEnabled())
+  const [socksInput, setSocksInput] = useState<string>(() => getSocksProxy())
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false)
   const [twoFactorFactors, setTwoFactorFactors] = useState<TOTPFactor[]>([])
   const [twoFactorLoading, setTwoFactorLoading] = useState(false)
@@ -507,6 +510,16 @@ export function SettingsPage() {
     setRelayOnlyCallsEnabled(next)
   }
 
+  const handleToggleSocks = () => {
+    const next = !socksEnabled
+    setSocksEnabledState(next)
+    setSocksEnabled(next)
+  }
+
+  const handleSaveSocks = () => {
+    setSocksProxy(socksInput)
+  }
+
   const handleUploadPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file || !user) return
@@ -744,6 +757,7 @@ export function SettingsPage() {
     { icon: MessageSquare, label: t('settingsDiscussions'), subtitle: t('mainSubtitleDiscussions'), view: 'discussions' as SettingsView },
     { icon: Bell, label: t('settingsNotifications'), subtitle: t('mainSubtitleNotifications'), view: 'notifications' as SettingsView },
     { icon: Database, label: t('settingsStorage'), subtitle: t('mainSubtitleStorage'), view: 'storage' as SettingsView },
+    { icon: Wifi, label: t('settingsNetwork'), subtitle: 'Relais, proxy, appels', view: 'network' as SettingsView },
     { icon: Cloud, label: t('mainBackupShort'), subtitle: t('mainSubtitleBackup'), view: 'backup' as SettingsView },
     { icon: Globe, label: t('settingsLanguage'), subtitle: t('languageLabel'), view: 'language' as SettingsView },
     { icon: HelpCircle, label: t('settingsHelp'), subtitle: t('mainSubtitleHelp'), view: 'help' as SettingsView },
@@ -1268,6 +1282,36 @@ export function SettingsPage() {
               >
                 <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${torEnabled ? 'right-1' : 'left-1'}`}></div>
               </button>
+            </div>
+
+            <div className="pt-3 border-t border-bg-hover">
+              <div className="flex items-center justify-between">
+                <div className="pr-4">
+                  <div className="text-text-primary text-sm">Utiliser un proxy SOCKS</div>
+                  <div className="text-xs text-text-secondary">Routage via un proxy SOCKS (socks5://hôte:port).</div>
+                </div>
+                <button
+                  onClick={handleToggleSocks}
+                  aria-pressed={socksEnabled}
+                  className={`w-12 h-6 rounded-full relative shrink-0 transition-colors ${socksEnabled ? 'bg-accent' : 'bg-[#8696a0]'}`}
+                >
+                  <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${socksEnabled ? 'right-1' : 'left-1'}`}></div>
+                </button>
+              </div>
+              {socksEnabled && (
+                <div className="mt-2 space-y-1">
+                  <div className="flex items-center gap-2">
+                    <input
+                      value={socksInput}
+                      onChange={e => setSocksInput(e.target.value)}
+                      placeholder="socks5://127.0.0.1:9050"
+                      className="flex-1 min-w-0 px-2 py-1 rounded-lg bg-bg-surface text-[11px] font-mono text-text-secondary"
+                    />
+                    <button onClick={handleSaveSocks} className="px-2 py-1 rounded-lg bg-bg-hover text-xs text-text-primary shrink-0">Enregistrer</button>
+                  </div>
+                  <p className="text-[11px] text-[#e0a800]">{SOCKS_BROWSER_NOTE}</p>
+                </div>
+              )}
             </div>
 
             <div className="pt-3 border-t border-bg-hover">
