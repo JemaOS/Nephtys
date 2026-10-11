@@ -16,9 +16,23 @@ const BATCH = 200
 const MAX_BATCHES = 25 // borne : max 5000 messages par exécution
 
 // Jeton partagé avec le job pg_cron. Sans lui, n'importe quel porteur de la clé
-// anon (publique) pouvait déclencher une purge destructive. À surcharger via
-// l'env PURGE_CRON_TOKEN.
-const CRON_TOKEN = Deno.env.get('PURGE_CRON_TOKEN') ?? 'npt_purge_7f3c9a1b5e2d4c8f'
+// anon (publique) pouvait déclencher une purge destructive.
+//
+// ⚠️ Le jeton est DÉSORMAIS OBLIGATOIRE (via l'env PURGE_CRON_TOKEN) : il n'y a
+// PLUS de valeur de repli codée en dur (l'ancien fallback rendait le secret
+// public et inopérant). Si l'env est absent, la fonction refuse de s'exécuter
+// (fail closed, 500) au lieu d'accepter un jeton connu de tous.
+const CRON_TOKEN = Deno.env.get('PURGE_CRON_TOKEN')
+
+/** Comparaison à temps constant (évite les fuites par timing sur le jeton). */
+function timingSafeEqual(a: string, b: string): boolean {
+  const ab = new TextEncoder().encode(a)
+  const bb = new TextEncoder().encode(b)
+  if (ab.length !== bb.length) return false
+  let diff = 0
+  for (let i = 0; i < ab.length; i++) diff |= ab[i] ^ bb[i]
+  return diff === 0
+}
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -28,7 +42,13 @@ function json(body: unknown, status = 200): Response {
 }
 
 Deno.serve(async (req) => {
-  if (req.headers.get('x-purge-token') !== CRON_TOKEN) {
+  // Fail closed si le secret partagé n'est pas configuré côté environnement.
+  if (!CRON_TOKEN) {
+    console.error('[purge-relayed] PURGE_CRON_TOKEN manquant : refus (fail closed)')
+    return json({ ok: false, error: 'server misconfigured' }, 500)
+  }
+  const provided = req.headers.get('x-purge-token') ?? ''
+  if (!timingSafeEqual(provided, CRON_TOKEN)) {
     return json({ ok: false, error: 'forbidden' }, 403)
   }
 

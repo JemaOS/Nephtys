@@ -5,10 +5,11 @@
  * anti-DDoS / anti-flood multi-couches :
  *
  *   1. Validation stricte des entrées (longueur, regex)
- *   2. Rate limiting par IP (3 signups / heure, 10 signins / 5 min)
- *   3. Rate limiting par username (5 signins / 15 min)
- *   4. CORS restreint aux origines autorisées
- *   5. Hash des IPs avant stockage (RGPD)
+ *   2. Rate limiting par IP NON falsifiable (dernier hop de x-forwarded-for)
+ *   3. Rate limiting par username (et variante canonique) — non spoofable
+ *   4. Rate limiting GLOBAL (toutes IP confondues) — borne l'abus distribué
+ *   5. CORS restreint aux origines autorisées
+ *   6. Hash des IPs avant stockage (RGPD)
  *
  * Toutes les vérifications sont effectuées AVANT tout appel à
  * l'API admin Supabase, ce qui évite la création massive de comptes
@@ -34,11 +35,17 @@ const ALLOWED_ORIGINS = [
 const RATE_LIMITS = {
     signup: {
         ip: { max: 3, windowSec: 3600 },        // 3 inscriptions / IP / heure
-        username: { max: 1, windowSec: 60 }      // 1 tentative / username / minute
+        username: { max: 1, windowSec: 60 },     // 1 tentative / username / minute
+        // Plafond GLOBAL (toutes IP/username confondus) : borne un flood
+        // distribué qui contournerait les quotas par IP. Volontairement LARGE
+        // pour ne pas se transformer en auto-DoS (cf. note dans le rapport) :
+        // à ajuster selon la volumétrie réelle.
+        global: { max: 300, windowSec: 3600 }    // 300 inscriptions / heure au total
     },
     signin: {
         ip: { max: 10, windowSec: 300 },         // 10 connexions / IP / 5 min
-        username: { max: 5, windowSec: 900 }     // 5 tentatives / username / 15 min
+        username: { max: 5, windowSec: 900 },    // 5 tentatives / username / 15 min
+        global: { max: 3000, windowSec: 300 }    // 3000 connexions / 5 min au total
     }
 } as const;
 
@@ -71,17 +78,28 @@ function buildCorsHeaders(origin: string | null): Record<string, string> {
     };
 }
 
-/** Récupère l'IP du client via les headers Vercel/Supabase. */
+/**
+ * Récupère l'IP du client de façon NON FALSIFIABLE.
+ *
+ * ⚠️ Sécurité : `cf-connecting-ip`, `x-real-ip`, `x-client-ip` et les premières
+ * entrées de `x-forwarded-for` sont directement contrôlables par le client (il
+ * peut injecter ces en-têtes dans sa requête HTTP). On ne s'y fie donc PAS :
+ * un attaquant les ferait varier à chaque requête pour contourner le quota IP.
+ *
+ * Sur Supabase Edge Functions, la requête traverse le proxy de la plateforme,
+ * qui AJOUTE l'adresse du pair qu'il observe à la FIN de `x-forwarded-for`.
+ * Les valeurs éventuellement forgées par le client restent donc en tête de la
+ * liste : le DERNIER hop est la source la plus fiable disponible.
+ *
+ * Si aucun `x-forwarded-for` exploitable n'est présent, on retourne 'unknown'
+ * (bucket commun : ces appelants partagent un même quota, jamais l'illimité).
+ */
 function extractClientIp(req: Request): string {
-    const headers = req.headers;
-    const candidates = [
-        headers.get('cf-connecting-ip'),
-        headers.get('x-real-ip'),
-        headers.get('x-forwarded-for')?.split(',')[0]?.trim(),
-        headers.get('x-client-ip')
-    ];
-    for (const candidate of candidates) {
-        if (candidate && candidate.length > 0) return candidate;
+    const xff = req.headers.get('x-forwarded-for');
+    if (xff) {
+        const hops = xff.split(',').map((hop) => hop.trim()).filter((hop) => hop.length > 0);
+        const last = hops.length > 0 ? hops[hops.length - 1] : '';
+        if (last) return last;
     }
     return 'unknown';
 }
@@ -260,6 +278,10 @@ Deno.serve(async (req) => {
         await enforceRateLimit(supabaseUrl, serviceRoleKey, 'ip', ipKey, action, limits.ip.max, limits.ip.windowSec);
         await enforceRateLimit(supabaseUrl, serviceRoleKey, 'username', usernameKey, action, limits.username.max, limits.username.windowSec);
         await enforceRateLimit(supabaseUrl, serviceRoleKey, 'username', canonicalUsernameKey, action, limits.username.max, limits.username.windowSec);
+        // Quota global (clé fixe 'global', action distinguée en base) : borne un
+        // flood distribué multi-IP. Vérifié EN DERNIER pour ne pas consommer le
+        // quota global sur des tentatives déjà bloquées par IP/username.
+        await enforceRateLimit(supabaseUrl, serviceRoleKey, 'ip', 'global', action, limits.global.max, limits.global.windowSec);
 
         // ── Génération email interne
         const sanitizedUsername = username.toLowerCase().replaceAll(/[^a-z0-9]/g, '');

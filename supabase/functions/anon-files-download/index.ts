@@ -15,19 +15,24 @@
  * EXACT fourni par l'appelant. Sans le préfixe, aucune découverte n'est possible.
  *
  * Route      : POST /functions/v1/anon-files-download
- * Auth       : JWT Supabase requis (rôle `authenticated`) — le destinataire est
- *              un utilisateur connecté. La clé anon (publique) est refusée.
+ * Auth       : JWT Supabase requis — rôles `authenticated` (utilisateur
+ *              connecté) OU `anon` (mode privé anonyme, clé publique). Le rôle
+ *              `service_role` et tout rôle inconnu sont refusés. La
+ *              confidentialité NE repose PAS sur le rôle mais sur le préfixe
+ *              aléatoire (capacité) : sans le préfixe exact, rien n'est
+ *              découvrable.
  * Body JSON  : { "prefix": string, "chunks": number[] }
  *              ou { "prefix": string, "chunk": number } (un seul chunk).
  * Réponse    : 200 { "chunks": [{ "index": n, "url": "<signed-url>" }] }
- *              400 préfixe/index/corps invalide ; 401 non authentifié ;
+ *              400 préfixe/index/corps invalide ; 401 rôle absent/invalide ;
  *              404 objet absent ; 405 méthode ; 429 rate-limit.
  *
  * SÉCURITÉ :
  *   • service_role UNIQUEMENT côté serveur (env SUPABASE_SERVICE_ROLE_KEY) pour
  *     `createSignedUrl(\`${prefix}/${i}\`, 60)` — la clé n'est jamais renvoyée ;
  *   • validation stricte (PREFIX_RE, index entiers bornés, ≤ 64 par appel) ;
- *   • rate-limit glissant par utilisateur (anti brute-force de préfixe) ;
+ *   • rate-limit glissant : par utilisateur (role authenticated, vérifié via
+ *     GoTrue) ou par IP non falsifiable (role anon, clé publique partagée) ;
  *   • FAIL CLOSED : le moindre chunk absent ⇒ 404, aucune URL partielle.
  * ----------------------------------------------------------------------
  */
@@ -108,20 +113,48 @@ function bearerToken(req: Request): string {
   return header.toLowerCase().startsWith('bearer ') ? header.slice(7).trim() : ''
 }
 
+/**
+ * Rôle attendu : `authenticated` (utilisateur vérifié via GoTrue) OU `anon`
+ * (mode privé anonyme). `service_role` et tout rôle inconnu sont refusés.
+ */
+const ALLOWED_ROLES = new Set(['authenticated', 'anon'])
+
+/**
+ * IP du client NON falsifiable (dernier hop de `x-forwarded-for`). Les en-têtes
+ * `cf-connecting-ip` / `x-real-ip` / le premier hop de XFF sont contrôlables par
+ * le client : on les ignore. Sert uniquement de clé de rate-limit pour le rôle
+ * `anon` (pas d'utilisateur à qui se rattacher).
+ */
+function extractClientIp(req: Request): string {
+  const xff = req.headers.get('x-forwarded-for')
+  if (xff) {
+    const hops = xff.split(',').map((h) => h.trim()).filter((h) => h.length > 0)
+    const last = hops.length > 0 ? hops[hops.length - 1] : ''
+    if (last) return last
+  }
+  return 'unknown'
+}
+
+/** Hash SHA-256 (anonymise l'IP utilisée comme clé de rate-limit en mémoire). */
+async function sha256(input: string): Promise<string> {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input))
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, '0')).join('')
+}
+
 // ─── Rate limit (glissant, en mémoire, best effort par instance) ───────
 
 const hits = new Map<string, number[]>()
 
-function rateLimitExceeded(userId: string): boolean {
+function rateLimitExceeded(key: string): boolean {
   const now = Date.now()
   const cutoff = now - RATE_LIMIT_WINDOW_MS
-  const recent = (hits.get(userId) ?? []).filter((t) => t > cutoff)
+  const recent = (hits.get(key) ?? []).filter((t) => t > cutoff)
   if (recent.length >= RATE_LIMIT_MAX) {
-    hits.set(userId, recent)
+    hits.set(key, recent)
     return true
   }
   recent.push(now)
-  hits.set(userId, recent)
+  hits.set(key, recent)
   // Nettoyage opportuniste : évite la croissance non bornée sur instance longue.
   if (hits.size > 10_000) {
     for (const [k, v] of hits) {
@@ -203,15 +236,17 @@ Deno.serve(async (req) => {
     return json({ error: { code: 'CONFIG_ERROR', message: 'Service indisponible.' } }, 500, cors)
   }
 
-  // ── Authentification (JWT utilisateur, rôle `authenticated`) ──────────
+  // ── Authentification (JWT `authenticated` OU `anon`) ──────────────────
   const token = bearerToken(req)
   if (!token) {
     return json({ error: { code: 'UNAUTHORIZED', message: 'Authentification requise.' } }, 401, cors)
   }
-  // Refus explicite de la clé anon / service (rôle ≠ authenticated) avant même
-  // d'interroger GoTrue : évite tout appel réseau inutile et verrouille le rôle.
+  // Contrôle du rôle AVANT tout appel réseau : refuse `service_role` et tout
+  // rôle inconnu. `anon` (mode privé anonyme) est autorisé car la
+  // confidentialité repose sur la capacité = préfixe, pas sur le rôle.
   const claims = decodeJwtPayload(token)
-  if (!claims || claims.role !== 'authenticated') {
+  const role = claims && typeof claims.role === 'string' ? claims.role : ''
+  if (!role || !ALLOWED_ROLES.has(role)) {
     return json({ error: { code: 'UNAUTHORIZED', message: 'Authentification requise.' } }, 401, cors)
   }
 
@@ -219,19 +254,26 @@ Deno.serve(async (req) => {
     auth: { persistSession: false, autoRefreshToken: false },
   })
 
-  let userId: string
-  try {
-    const { data, error } = await admin.auth.getUser(token)
-    if (error || !data?.user) {
+  // ── Clé de rate-limit ─────────────────────────────────────────────────
+  // authenticated → utilisateur vérifié via GoTrue (quota par compte).
+  // anon          → clé publique partagée : quota par IP non falsifiable.
+  let rateLimitKey: string
+  if (role === 'authenticated') {
+    try {
+      const { data, error } = await admin.auth.getUser(token)
+      if (error || !data?.user) {
+        return json({ error: { code: 'UNAUTHORIZED', message: 'Session invalide.' } }, 401, cors)
+      }
+      rateLimitKey = `user:${data.user.id}`
+    } catch {
       return json({ error: { code: 'UNAUTHORIZED', message: 'Session invalide.' } }, 401, cors)
     }
-    userId = data.user.id
-  } catch {
-    return json({ error: { code: 'UNAUTHORIZED', message: 'Session invalide.' } }, 401, cors)
+  } else {
+    rateLimitKey = `anon:${await sha256(extractClientIp(req))}`
   }
 
-  // ── Rate-limit par utilisateur ────────────────────────────────────────
-  if (rateLimitExceeded(userId)) {
+  // ── Rate-limit ────────────────────────────────────────────────────────
+  if (rateLimitExceeded(rateLimitKey)) {
     return json(
       { error: { code: 'RATE_LIMITED', message: 'Trop de requêtes.' } },
       429,
