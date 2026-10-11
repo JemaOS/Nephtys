@@ -608,9 +608,15 @@ export function PrivatePage() {
                       <X size={16} />
                     </button>
                   </div>
-                  <div className="bg-white p-3 rounded-xl">
-                    <QRCode value={invite} size={180} />
-                  </div>
+                  {invite.length <= 1200 ? (
+                    <div className="bg-white p-3 rounded-xl">
+                      <QRCode value={invite} size={180} />
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-text-tertiary text-center">
+                      Invitation trop longue pour un QR code — partagez le <b>lien</b> ci-dessous.
+                    </p>
+                  )}
                   <div className="w-full flex items-center gap-2">
                     <input
                       readOnly
@@ -756,7 +762,13 @@ export function PrivatePage() {
 
               {groupInvite && (
                 <div className="rounded-2xl bg-bg-surface p-4 flex flex-col items-center gap-3">
-                  <div className="bg-white p-3 rounded-xl"><QRCode value={groupInvite} size={160} /></div>
+                  {groupInvite.length <= 1200 ? (
+                    <div className="bg-white p-3 rounded-xl"><QRCode value={groupInvite} size={160} /></div>
+                  ) : (
+                    <p className="text-[11px] text-text-tertiary text-center">
+                      Invitation trop longue pour un QR code — partagez le <b>lien</b> ci-dessous.
+                    </p>
+                  )}
                   <div className="w-full flex items-center gap-2">
                     <input readOnly value={groupInvite} className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-bg-primary text-[11px] font-mono text-text-secondary truncate" />
                     <button type="button" onClick={() => navigator.clipboard?.writeText(groupInvite)} className="px-3 py-2 rounded-lg bg-bg-hover text-xs text-text-primary">Copier</button>
