@@ -59,3 +59,73 @@ ORDER BY policyname;
 --        -H "apikey: <ANON_KEY>" -H "Authorization: Bearer <ANON_KEY>"
 --    → DOIT renvoyer 401 "permission denied for table profiles".
 -- ============================================================================
+
+-- ============================================================================
+-- 7) Vérifications des correctifs 20261012_rls_* (à exécuter après application)
+-- ============================================================================
+
+-- 7a) one_time_prekeys : plus de policy UPDATE large + RPC de consommation.
+--     Attendu : PAS de ligne `otpk_update_consume` ; une policy owner
+--     (`otpk_update_own`) peut subsister.
+SELECT policyname, cmd, qual, with_check
+FROM pg_policies
+WHERE schemaname = 'public' AND tablename = 'one_time_prekeys'
+ORDER BY policyname;
+
+-- RPC atomique : SECURITY DEFINER, search_path défini, non exécutable par anon.
+SELECT p.proname,
+       p.prosecdef                                   AS security_definer,
+       p.proconfig                                    AS settings,
+       has_function_privilege('anon', p.oid, 'EXECUTE')          AS anon_can_execute,
+       has_function_privilege('authenticated', p.oid, 'EXECUTE') AS auth_can_execute
+FROM pg_proc p
+JOIN pg_namespace n ON n.oid = p.pronamespace
+WHERE n.nspname = 'public' AND p.proname = 'consume_one_time_prekey';
+
+-- 7b) conversations / conversation_members : policies UPDATE resserrées.
+--     Attendu : conversations = créateur/admin uniquement ;
+--               conversation_members = self/admin/créateur uniquement.
+SELECT tablename, policyname, cmd, qual, with_check
+FROM pg_policies
+WHERE schemaname = 'public'
+  AND tablename IN ('conversations', 'conversation_members')
+  AND cmd = 'UPDATE'
+ORDER BY tablename, policyname;
+
+-- 7c) profiles SELECT : doit référencer `discoverable`.
+SELECT policyname, cmd, qual
+FROM pg_policies
+WHERE schemaname = 'public' AND tablename = 'profiles' AND cmd = 'SELECT';
+
+-- 7d) documents (si présent) : RLS activée et 0 policy large.
+SELECT c.relname AS table_name, c.relrowsecurity AS rls_enabled
+FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE n.nspname = 'public' AND c.relname = 'documents';
+
+SELECT policyname, cmd, roles::text AS roles, qual
+FROM pg_policies
+WHERE schemaname = 'public' AND tablename = 'documents';
+
+-- 7e) can_access_media : SECURITY INVOKER (prosecdef=false), plus d'EXECUTE
+--     pour anon ni authenticated.
+SELECT p.proname,
+       p.prosecdef AS security_definer,
+       has_function_privilege('anon', p.oid, 'EXECUTE')          AS anon_can_execute,
+       has_function_privilege('authenticated', p.oid, 'EXECUTE') AS auth_can_execute
+FROM pg_proc p
+JOIN pg_namespace n ON n.oid = p.pronamespace
+WHERE n.nspname = 'public' AND p.proname = 'can_access_media';
+
+-- 7f) Hygiène SECURITY DEFINER : fonctions DEFINER sans search_path.
+--     Attendu : 0 ligne (hors éventuelles fonctions d'extensions).
+SELECT n.nspname AS schema, p.proname
+FROM pg_proc p
+JOIN pg_namespace n ON n.oid = p.pronamespace
+WHERE n.nspname IN ('public', 'private')
+  AND p.prosecdef = true
+  AND NOT EXISTS (
+      SELECT 1 FROM unnest(COALESCE(p.proconfig, ARRAY[]::text[])) AS cfg
+      WHERE cfg LIKE 'search_path=%'
+  )
+ORDER BY n.nspname, p.proname;
+-- ============================================================================
