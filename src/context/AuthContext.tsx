@@ -10,6 +10,9 @@ import { resolveMediaUrl } from '@/lib/mediaUrl'
 import { deleteMyMessages } from '@/lib/conversationService'
 import { setupRecoveryKeys, installKeysFromPhrase, hasLocalKeys, regenerateRecoveryKeys, verifyCurrentPhrase } from '@/lib/recovery/recoveryService'
 import { getMFAChallenge, verifyMFAChallenge } from '@/lib/twoFactorAuth'
+import { clearLocalRatchetKeys } from '@/lib/ratchet/keyStore'
+import { clearUserSessions } from '@/lib/ratchet/sessionStore'
+import { offlineStorage } from '@/lib/offlineStorage'
 
 // Timeout for auth operations (in milliseconds)
 const AUTH_TIMEOUT = 5000;
@@ -98,6 +101,10 @@ interface AuthContextType {
   signUp: (username: string, password: string) => Promise<void>
   signInAsGuest: (username: string) => Promise<void>
   signOut: () => Promise<void>
+  /** Purge les données locales de CET appareil (clés E2EE + ratchet, stockage
+   *  hors-ligne, caches localStorage) PUIS déconnecte. Différent de `signOut`,
+   *  qui ne purge RIEN (modèle local-first). */
+  signOutAndWipeLocal: () => Promise<void>
   /** Met à jour le profil local immédiatement (sans attendre Realtime) */
   updateLocalProfile: (patch: Partial<Profile>) => void
   /** Phrase de récupération fraîchement générée (signup), à sauvegarder. */
@@ -687,6 +694,56 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
     if (error) throw error
   }
 
+  /**
+   * « Effacer les données de cet appareil » : purge explicitement demandée par
+   * l'utilisateur, PUIS déconnexion. À ne pas confondre avec `signOut` qui, en
+   * mode local-first, conserve volontairement les clés et l'historique.
+   *
+   * Purge : clés E2EE X25519, matériel ratchet (clés + sessions), stockage
+   * hors-ligne (IndexedDB + cache conversations) et caches localStorage
+   * (messages propres, cache clair, caches `anu_cache_*`). On NE touche PAS la
+   * config réseau (relais/Tor/décentralisé) : ce sont des préférences de
+   * l'appareil, pas des données personnelles, et les conserver évite de
+   * reconfigurer le transport à la reconnexion.
+   */
+  const signOutAndWipeLocal = async (): Promise<void> => {
+    const uid = user?.id
+    setPendingPhrase(null)
+    setRecoveryRequired(false)
+    setMfaPending(null)
+    mfaAttemptsRef.current = 0
+
+    if (uid) {
+      // 1. Clés E2EE locales (X25519).
+      try {
+        const { clearLocalX25519 } = await import('@/lib/e2eeX25519')
+        await clearLocalX25519(uid)
+      } catch { /* best effort */ }
+      // 2. Matériel ratchet (IndexedDB + sessions par conversation).
+      try { await clearLocalRatchetKeys(uid) } catch { /* best effort */ }
+      try { await clearUserSessions(uid) } catch { /* best effort */ }
+    }
+
+    // 3. Stockage hors-ligne (messages, conversations, médias, file d'attente).
+    try { await offlineStorage.clearAll() } catch { /* best effort */ }
+
+    // 4. Caches localStorage locaux à cet appareil.
+    try {
+      localStorage.removeItem('nephtys_own_messages_v1')
+      localStorage.removeItem('nephtys_plaintext_cache_v1')
+      const toRemove: string[] = []
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i)
+        if (key?.startsWith('anu_cache_')) toRemove.push(key)
+      }
+      for (const key of toRemove) localStorage.removeItem(key)
+    } catch { /* best effort */ }
+
+    // 5. Déconnexion.
+    const { error } = await supabase.auth.signOut()
+    if (error) throw error
+  }
+
   const confirmPhraseSaved = () => setPendingPhrase(null)
 
   const completeRecovery = async (phrase: string) => {
@@ -757,6 +814,7 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
     signUp,
     signInAsGuest,
     signOut,
+    signOutAndWipeLocal,
     updateLocalProfile,
     pendingPhrase,
     recoveryRequired,

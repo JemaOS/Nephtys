@@ -144,7 +144,7 @@ const getParentView = (view: SettingsView): SettingsView => {
 // ============ COMPONENT ============
 
 export function SettingsPage() {
-  const { profile, signOut, user, updateLocalProfile, regenerateRecovery } = useAuth()
+  const { profile, signOut, signOutAndWipeLocal, user, updateLocalProfile, regenerateRecovery } = useAuth()
   const { theme, wallpaper, setTheme, setWallpaper } = useTheme()
   const { t } = useI18n()
   const navigate = useNavigate()
@@ -210,6 +210,7 @@ export function SettingsPage() {
     loading: true
   })
   const [clearingStorage, setClearingStorage] = useState(false)
+  const [wipingLocalData, setWipingLocalData] = useState(false)
   
   const [backupSettings, setBackupSettings] = useState<BackupSettings>(getBackupSettings())
   const [lastBackupDate, setLastBackupDate] = useState<Date | null>(null)
@@ -496,6 +497,26 @@ export function SettingsPage() {
     if (confirm(t('signOutConfirm'))) {
       await signOut()
       navigate('/auth')
+    }
+  }
+
+  // Efface les clés/le stockage LOCAL de cet appareil puis déconnecte.
+  // Différent de la déconnexion simple (qui conserve tout, mode local-first).
+  const handleWipeLocalData = async () => {
+    if (wipingLocalData) return
+    const message =
+      'Effacer les clés et l\'historique de cet appareil ? ' +
+      'Vous devrez saisir votre phrase de récupération à la prochaine connexion.'
+    if (!confirm(message)) return
+    setWipingLocalData(true)
+    try {
+      await signOutAndWipeLocal()
+      navigate('/auth')
+    } catch (e) {
+      console.error('[settings] wipe local data failed:', e)
+      alert(t('unexpectedError'))
+    } finally {
+      setWipingLocalData(false)
     }
   }
 
@@ -1019,6 +1040,23 @@ export function SettingsPage() {
             <div className="text-sm text-text-secondary">{t('accountDeleteDesc')}</div>
           </div>
           <ChevronRight size={20} className="text-text-secondary" />
+        </button>
+        <button
+          onClick={handleWipeLocalData}
+          disabled={wipingLocalData}
+          className="w-full px-6 py-4 flex items-center gap-4 hover:bg-bg-surface transition-colors disabled:opacity-50"
+        >
+          <Smartphone size={24} className="text-[#ea4335]" />
+          <div className="flex-1 text-left">
+            <div className="text-[#ea4335]">Effacer les données de cet appareil</div>
+            <div className="text-sm text-text-secondary">
+              Supprime les clés de chiffrement et l'historique local, puis vous déconnecte. Votre
+              phrase de récupération sera requise à la prochaine connexion.
+            </div>
+          </div>
+          {wipingLocalData
+            ? <Loader2 size={18} className="animate-spin text-text-secondary" />
+            : <ChevronRight size={20} className="text-text-secondary" />}
         </button>
       </div>
     </div>
