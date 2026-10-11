@@ -38,6 +38,7 @@ import {
   type PeerBundle,
 } from '../ratchet/service';
 import { base64ToBytes, bytesToBase64, utf8 } from '../ratchet/primitives';
+import { deflate, inflate } from 'pako';
 import { RelayTransport, type RelayQueueRef } from './relayTransport';
 import type { RelayWire } from './wire';
 import type {
@@ -83,6 +84,41 @@ function pack(message: WireMessage): string {
 
 function unpack(raw: string): WireMessage {
   return JSON.parse(new TextDecoder().decode(base64ToBytes(raw))) as WireMessage;
+}
+
+/**
+ * Lien d'invitation **compressé** (deflate) : la clé ML-KEM (1184 o) rendait le
+ * base64(JSON) trop long pour un QR code. On compresse → le QR tient.
+ * Rétro-compatibilité avec l'ancien format base64(JSON).
+ */
+function toB64Url(bytes: Uint8Array): string {
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
+}
+function fromB64Url(value: string): Uint8Array {
+  let b64 = value.replaceAll('-', '+').replaceAll('_', '/');
+  while (b64.length % 4) b64 += '=';
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+interface PrivateLinkPayload {
+  r: string;
+  b: PeerBundle;
+}
+function encodePrivateLink(payload: PrivateLinkPayload): string {
+  const json = utf8(JSON.stringify(payload));
+  return 'n1' + toB64Url(deflate(json, { level: 9 }));
+}
+function decodePrivateLink(link: string): PrivateLinkPayload {
+  const trimmed = link.trim();
+  if (trimmed.startsWith('n1')) {
+    const out = inflate(fromB64Url(trimmed.slice(2)));
+    return JSON.parse(new TextDecoder().decode(out)) as PrivateLinkPayload;
+  }
+  return JSON.parse(new TextDecoder().decode(base64ToBytes(trimmed))) as PrivateLinkPayload;
 }
 
 export interface PrivateInvite {
@@ -223,7 +259,7 @@ export class PrivateMessenger {
       mlKemPublicKey: localKeys.mlKemKeyPair?.publicKey ?? null,
     };
 
-    const link = bytesToBase64(utf8(JSON.stringify({ r: relayInvite, b: bundle })));
+    const link = encodePrivateLink({ r: relayInvite, b: bundle });
     await this.store.save({
       conversationId,
       relay: connection,
@@ -236,10 +272,7 @@ export class PrivateMessenger {
 
   /** Rejoint une connexion privée à partir d'un lien d'invitation (initiateur). */
   async accept(conversationId: string, link: string): Promise<void> {
-    const parsed = JSON.parse(new TextDecoder().decode(base64ToBytes(link))) as {
-      r: string;
-      b: PeerBundle;
-    };
+    const parsed = decodePrivateLink(link);
     const connection = this.relay.acceptInvite(conversationId, parsed.r);
     const localKeys = generateLocalRatchetKeys();
 

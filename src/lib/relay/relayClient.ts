@@ -81,7 +81,9 @@ export async function probeLocalAgent(url: string = AGENT_URL): Promise<boolean>
 }
 
 // Détection en tâche de fond au chargement (n'affecte pas le mode par défaut).
-void probeLocalAgent();
+// Uniquement si un agent local est explicitement configuré, sinon le probe par
+// défaut (ws://127.0.0.1:5225) est bloqué par la CSP → erreur console inutile.
+if (import.meta.env.VITE_SMP_AGENT_URL) void probeLocalAgent();
 
 const RELAY_OVERRIDE_KEY = 'nephtys_relay_url';
 
