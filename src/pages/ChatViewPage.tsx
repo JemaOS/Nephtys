@@ -414,6 +414,11 @@ export function ChatViewPage() {
       return next
     })
   }, [])
+  // IDs supprimés « pour tout le monde » de façon optimiste, le temps que la
+  // mise à jour serveur (`deleted_at`) soit commitée. Filtre les reloads
+  // concurrents (poll 4 s, reconnexion) qui, sans cela, feraient réapparaître
+  // un message déjà retiré de l'UI — cause du « je suis obligé de faire F5 ».
+  const pendingDeletedIdsRef = useRef<Set<string>>(new Set())
   const [showForwardModal, setShowForwardModal] = useState(false)
   const [messageToForward, setMessageToForward] = useState<Message | null>(null)
   const [quickReactionBar, setQuickReactionBar] = useState<{
@@ -1662,9 +1667,13 @@ export function ChatViewPage() {
     // UI never flashes a message the user already removed locally.
     let deletedForMeSet = deletedForMeIdsRef.current
     if (!deletedForMeRes.error && deletedForMeRes.data) {
-      deletedForMeSet = new Set<string>(
-        (deletedForMeRes.data as { message_id: string }[]).map(r => r.message_id)
-      )
+      // UNION (et non remplacement) : un « supprimer pour moi » optimiste dont
+      // l'INSERT est encore en vol ne doit pas être annulé par un reload qui a
+      // interrogé la table avant le commit — sinon le message ressuscite.
+      deletedForMeSet = new Set<string>([
+        ...deletedForMeIdsRef.current,
+        ...(deletedForMeRes.data as { message_id: string }[]).map(r => r.message_id),
+      ])
       setDeletedForMeIds(deletedForMeSet)
     }
 
@@ -1678,6 +1687,7 @@ export function ChatViewPage() {
       const now = Date.now();
       const validData = data.filter(msg => {
         if (deletedForMeSet.has(msg.id)) return false;
+        if (pendingDeletedIdsRef.current.has(msg.id)) return false;
         if (msg.is_ephemeral && msg.ephemeral_expires_at) {
           const expiresAt = new Date(msg.ephemeral_expires_at).getTime();
           return expiresAt > now;
@@ -1765,6 +1775,7 @@ await decryptMessageRows(validData as any[], user.id)
         const deletedForMeSet = deletedForMeIdsRef.current
         const validData = data.filter(msg => {
           if (deletedForMeSet.has(msg.id)) return false;
+          if (pendingDeletedIdsRef.current.has(msg.id)) return false;
           if (msg.is_ephemeral && msg.ephemeral_expires_at) {
             const expiresAt = new Date(msg.ephemeral_expires_at).getTime();
             return expiresAt > now;
@@ -2506,23 +2517,71 @@ await decryptMessageRows(validData as any[], user.id)
     }
   }, [messages])
 
+  // Masque un ou plusieurs messages pour l'utilisateur courant de façon durable
+  // et optimiste : état local immédiat (aucun F5), écriture serveur en tâche de
+  // fond (idempotente). Sert au « supprimer pour moi » et de repli quand un
+  // « supprimer pour tout le monde » est refusé côté serveur (message antérieur
+  // à l'enregistrement de l'auteur) : mieux vaut qu'il reste masqué chez
+  // l'utilisateur que de le voir réapparaître (effet « obligé de faire F5 »).
+  const persistDeleteForMeBatch = useCallback((messageIds: string[]) => {
+    if (messageIds.length === 0) return
+    setDeletedForMeIds(prev => {
+      const next = new Set(prev)
+      messageIds.forEach(id => next.add(id))
+      return next
+    })
+    if (!user) return
+    const records = messageIds.map(id => ({
+      message_id: id,
+      user_id: user.id,
+      deleted_at: new Date().toISOString(),
+    }))
+    void (async () => {
+      try {
+        const { error } = await supabase.from('deleted_messages').insert(records)
+        // 23505 = doublon (déjà supprimé) : ce n'est pas une erreur.
+        if (error && error.code !== '23505') {
+          console.log('Using local state for delete for me:', error.message)
+        }
+      } catch (error) {
+        console.error('Error deleting message for me:', error)
+      }
+    })()
+  }, [user, setDeletedForMeIds])
+
+  const persistDeleteForMe = useCallback(
+    (messageId: string) => persistDeleteForMeBatch([messageId]),
+    [persistDeleteForMeBatch]
+  )
+
   // Delete for everyone - removes from database and storage
   const handleDeleteForEveryone = async () => {
-    if (!messageToDelete) return
+    const target = messageToDelete
+    if (!target) return
+
+    // OPTIMISTE : on ferme le dialogue et on retire le message de l'UI
+    // immédiatement (0 ms), avant tout aller-retour réseau. Sinon l'utilisateur
+    // attendait la suppression storage + l'UPDATE DB avant de voir le message
+    // disparaître (ressenti « ça prend du temps »).
+    pendingDeletedIdsRef.current.add(target.id)
+    setMessageToDelete(null)
+    setShowDeleteDialog(false)
+    setMessages(prev => prev.filter(m => m.id !== target.id))
 
     try {
-      // If message has media, delete from storage first
-      if (messageToDelete.media_url) {
+      // Média : suppression storage en tâche de fond (ne bloque plus l'UI).
+      if (target.media_url) {
         // media_url peut être un path nu ou une URL complète signée.
         // extractStoragePath gère les deux cas.
-        const filePath = extractStoragePath(messageToDelete.media_url)
+        const filePath = extractStoragePath(target.media_url)
         if (filePath) {
-          const { error: storageError } = await supabase.storage
+          supabase.storage
             .from('media')
             .remove([filePath])
-          if (storageError) {
-            console.error('Error deleting file from storage:', storageError)
-          }
+            .then(({ error: storageError }) => {
+              if (storageError) console.error('Error deleting file from storage:', storageError)
+            })
+            .catch(err => console.error('Error deleting file from storage:', err))
         }
       }
 
@@ -2536,52 +2595,32 @@ await decryptMessageRows(validData as any[], user.id)
           file_name: null,
           file_size: null,
         })
-        .eq('id', messageToDelete.id)
+        .eq('id', target.id)
 
-      if (!error) {
-        // Remove from local state
-        setMessages(prev => prev.filter(m => m.id !== messageToDelete.id))
+      if (error) {
+        // Échec serveur : on NE réaffiche PAS le message. Repli « pour moi »
+        // pour qu'il reste masqué durablement (pas de rebond / F5).
+        console.error('Error deleting message for everyone:', error)
+        persistDeleteForMe(target.id)
       }
     } catch (error) {
       console.error('Error deleting message for everyone:', error)
+      persistDeleteForMe(target.id)
     }
-
-    setMessageToDelete(null)
-    setShowDeleteDialog(false)
   }
 
   // Delete for me - only hides locally
   const handleDeleteForMe = async () => {
-    if (!messageToDelete || !user) return
+    const target = messageToDelete
+    if (!target || !user) return
 
-    try {
-      // Try to insert into deleted_messages table
-      // If the table doesn't exist, we'll use local state
-      const { error } = await supabase
-        .from('deleted_messages')
-        .insert({
-          message_id: messageToDelete.id,
-          user_id: user.id,
-          deleted_at: new Date().toISOString(),
-        })
-
-      if (error) {
-        // If table doesn't exist or other error, use local state
-        console.log('Using local state for delete for me:', error.message)
-      }
-
-      // Always update local state to hide the message
-      setDeletedForMeIds(prev => new Set([...prev, messageToDelete.id]))
-      setMessages(prev => prev.filter(m => m.id !== messageToDelete.id))
-    } catch (error) {
-      console.error('Error deleting message for me:', error)
-      // Still hide locally even if database fails
-      setDeletedForMeIds(prev => new Set([...prev, messageToDelete.id]))
-      setMessages(prev => prev.filter(m => m.id !== messageToDelete.id))
-    }
-
+    // OPTIMISTE : masquage local instantané, l'écriture `deleted_messages`
+    // part en tâche de fond. Avant, le message restait visible le temps de
+    // l'INSERT réseau.
+    setMessages(prev => prev.filter(m => m.id !== target.id))
     setMessageToDelete(null)
     setShowDeleteDialog(false)
+    persistDeleteForMe(target.id)
   }
 
   const handleForwardMessage = useCallback((message: Message) => {
@@ -3010,6 +3049,10 @@ await decryptMessageRows(validData as any[], user.id)
     setMessages(prev => prev.filter(m => !selectedMessages.has(m.id)))
     setShowBulkDeleteDialog(false)
     exitSelectionMode()
+
+    // Tombsones locales : empêchent le poll/reload de réafficher ces messages
+    // tant que l'UPDATE serveur n'est pas commité.
+    ids.forEach(id => pendingDeletedIdsRef.current.add(id))
     
     // Collect all media file paths to delete in batch
     const selectedMsgs = messages.filter(m => selectedMessages.has(m.id))
@@ -3043,9 +3086,12 @@ await decryptMessageRows(validData as any[], user.id)
       .then(({ error }) => {
         if (error) {
           console.error('Error deleting messages:', error)
+          // Repli groupé « pour moi » : on garde les messages masqués au lieu
+          // de les faire réapparaître (pas de rebond / F5).
+          persistDeleteForMeBatch(ids)
         }
       })
-  }, [selectedMessages, messages, exitSelectionMode])
+  }, [selectedMessages, messages, exitSelectionMode, persistDeleteForMeBatch])
 
   const handleBulkDeleteForMe = useCallback(async () => {
     const ids = Array.from(selectedMessages)
