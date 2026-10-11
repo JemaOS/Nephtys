@@ -63,7 +63,7 @@ import {
 
 type SettingsView = 'main' | 'profile' | 'account' | 'privacy' | 'security' | '2fa' | 'delete' |
                      'discussions' | 'wallpaper' | 'notifications' | 'message-notif' | 'call-notif' |
-                     'storage' | 'network' | 'help' | 'faq' | 'contact' | 'terms' | 'backup' | 'language'
+                     'storage' | 'network' | 'calls' | 'downloads' | 'help' | 'faq' | 'contact' | 'terms' | 'backup' | 'language'
 
 // ============ HELPER FUNCTIONS ============
 
@@ -109,6 +109,8 @@ const getViewTitle = (view: SettingsView, t: (key: string) => string): string =>
     'call-notif': t('settingsCallNotif'),
     'storage': t('settingsStorage'),
     'network': t('settingsNetwork'),
+    'calls': t('settingsCalls'),
+    'downloads': t('settingsDownloads'),
     'backup': t('settingsBackup'),
     'faq': t('settingsFaq'),
     'contact': t('settingsContact'),
@@ -125,7 +127,6 @@ const getParentView = (view: SettingsView): SettingsView => {
   if (view === 'wallpaper') return 'discussions'
   const notifViews: SettingsView[] = ['message-notif', 'call-notif']
   if (notifViews.includes(view)) return 'notifications'
-  if (view === 'network') return 'storage'
   const helpViews: SettingsView[] = ['faq', 'contact', 'terms']
   if (helpViews.includes(view)) return 'help'
   return 'main'
@@ -757,7 +758,9 @@ export function SettingsPage() {
     { icon: MessageSquare, label: t('settingsDiscussions'), subtitle: t('mainSubtitleDiscussions'), view: 'discussions' as SettingsView },
     { icon: Bell, label: t('settingsNotifications'), subtitle: t('mainSubtitleNotifications'), view: 'notifications' as SettingsView },
     { icon: Database, label: t('settingsStorage'), subtitle: t('mainSubtitleStorage'), view: 'storage' as SettingsView },
-    { icon: Wifi, label: t('settingsNetwork'), subtitle: 'Relais, proxy, appels', view: 'network' as SettingsView },
+    { icon: Wifi, label: t('settingsNetwork'), subtitle: 'Relais, Tor, proxy', view: 'network' as SettingsView },
+    { icon: Video, label: t('settingsCalls'), subtitle: 'Relais et médias des appels', view: 'calls' as SettingsView },
+    { icon: FileText, label: t('settingsDownloads'), subtitle: 'Téléchargement automatique', view: 'downloads' as SettingsView },
     { icon: Cloud, label: t('mainBackupShort'), subtitle: t('mainSubtitleBackup'), view: 'backup' as SettingsView },
     { icon: Globe, label: t('settingsLanguage'), subtitle: t('languageLabel'), view: 'language' as SettingsView },
     { icon: HelpCircle, label: t('settingsHelp'), subtitle: t('mainSubtitleHelp'), view: 'help' as SettingsView },
@@ -945,25 +948,6 @@ export function SettingsPage() {
             <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${showProfilePhoto ? 'right-1' : 'left-1'}`}></div>
           </button>
         </div>
-      </div>
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="pr-4">
-            <div className="text-text-primary">{t('torLabel')}</div>
-            <div className="text-sm text-text-secondary">{t('torDesc')}</div>
-          </div>
-          <button
-            onClick={handleToggleTor}
-            disabled={!torAvailable}
-            className={`w-12 h-6 rounded-full relative shrink-0 transition-colors ${torEnabled ? 'bg-accent' : 'bg-[#8696a0]'} ${torAvailable ? '' : 'opacity-50 cursor-not-allowed'}`}
-            aria-label={t('torLabel')}
-            aria-pressed={torEnabled}
-          >
-            <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${torEnabled ? 'right-1' : 'left-1'}`}></div>
-          </button>
-        </div>
-        {torEnabled && <p className="text-xs text-text-secondary px-1">{t('torActiveHint')}</p>}
-        {!torAvailable && <p className="text-xs text-[#e0a800] px-1">{t('torUnavailableHint')}</p>}
       </div>
     </div>
   )
@@ -1314,25 +1298,15 @@ export function SettingsPage() {
               )}
             </div>
 
-            <div className="pt-3 border-t border-bg-hover">
-              <div className="text-text-primary text-sm">Serveurs WebRTC ICE</div>
-              <div className="text-xs text-text-secondary mb-2">{getIceServers().length} serveur(s) STUN/TURN configuré(s).</div>
-              <div className="flex items-center justify-between">
-                <div className="pr-4">
-                  <div className="text-text-primary text-sm">Se connecter via relais</div>
-                  <div className="text-xs text-text-secondary">Force le média via TURN (protège l'IP ; le relais voit la durée de l'appel).</div>
-                </div>
-                <button
-                  onClick={handleToggleRelayOnly}
-                  aria-pressed={relayOnlyCalls}
-                  className={`w-12 h-6 rounded-full relative shrink-0 transition-colors ${relayOnlyCalls ? 'bg-accent' : 'bg-[#8696a0]'}`}
-                >
-                  <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${relayOnlyCalls ? 'right-1' : 'left-1'}`}></div>
-                </button>
-              </div>
-            </div>
           </div>
         </div>
+      </div>
+    </div>
+  )
+
+  const renderDownloadsView = () => (
+    <div className="flex-1 overflow-y-auto pb-4">
+      <div className="py-2">
         <div className="px-6 py-4">
           <h3 className="text-sm text-accent mb-4 flex items-center gap-2"><Wifi size={16} />{t('wifiConnection')}</h3>
           <div className="space-y-4">
@@ -1374,6 +1348,35 @@ export function SettingsPage() {
         </div>
         <div className="px-6 py-4">
           <p className="text-xs text-text-secondary">{t('autoDownloadNote')}</p>
+        </div>
+      </div>
+    </div>
+  )
+
+  const renderCallsView = () => (
+    <div className="flex-1 overflow-y-auto pb-4">
+      <div className="py-2">
+        <div className="px-6 py-4">
+          <h3 className="text-sm text-accent mb-4 flex items-center gap-2"><Video size={16} />Appels</h3>
+          <div className="space-y-4">
+            <div>
+              <div className="text-text-primary text-sm">Serveurs WebRTC ICE</div>
+              <div className="text-xs text-text-secondary">{getIceServers().length} serveur(s) STUN/TURN configuré(s).</div>
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="pr-4">
+                <div className="text-text-primary text-sm">Se connecter via relais</div>
+                <div className="text-xs text-text-secondary">Force le média via TURN (protège l'IP ; le relais voit la durée de l'appel).</div>
+              </div>
+              <button
+                onClick={handleToggleRelayOnly}
+                aria-pressed={relayOnlyCalls}
+                className={`w-12 h-6 rounded-full relative shrink-0 transition-colors ${relayOnlyCalls ? 'bg-accent' : 'bg-[#8696a0]'}`}
+              >
+                <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${relayOnlyCalls ? 'right-1' : 'left-1'}`}></div>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -1712,6 +1715,8 @@ export function SettingsPage() {
     'call-notif': renderCallNotifView,
     storage: renderStorageView,
     network: renderNetworkView,
+    calls: renderCallsView,
+    downloads: renderDownloadsView,
     help: renderHelpView,
     faq: renderFAQView,
     contact: renderContactView,
