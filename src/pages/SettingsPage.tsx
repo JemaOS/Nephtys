@@ -50,8 +50,7 @@ import {
 } from 'lucide-react'
 import { SafeQrCode } from '@/components/SafeQrCode'
 import { QrScanner } from '@/components/QrScanner'
-import { parseDeviceLink } from '@/lib/recovery/recoveryService'
-import { createDeviceLink } from '@/lib/recovery/deviceLink'
+import { createDeviceLink, isDeviceLink, redeemDeviceLink } from '@/lib/recovery/deviceLink'
 import {
   createBackup,
   createLightBackup,
@@ -116,7 +115,7 @@ const getViewTitle = (view: SettingsView, t: (key: string) => string): string =>
     'network': t('settingsNetwork'),
     'calls': t('settingsCalls'),
     'downloads': t('settingsDownloads'),
-    'devices': 'Appareils liés',
+    'devices': 'Code QR',
     'backup': t('settingsBackup'),
     'faq': t('settingsFaq'),
     'contact': t('settingsContact'),
@@ -141,7 +140,7 @@ const getParentView = (view: SettingsView): SettingsView => {
 // ============ COMPONENT ============
 
 export function SettingsPage() {
-  const { profile, signOut, signOutAndWipeLocal, user, updateLocalProfile, regenerateRecovery, completeRecovery } = useAuth()
+  const { profile, signOut, signOutAndWipeLocal, user, updateLocalProfile, regenerateRecovery } = useAuth()
   const { theme, wallpaper, setTheme, setWallpaper } = useTheme()
   const { t } = useI18n()
   const navigate = useNavigate()
@@ -182,7 +181,7 @@ export function SettingsPage() {
   const [showAdvancedRelays, setShowAdvancedRelays] = useState(false)
   const [coverTraffic, setCoverTraffic] = useState<boolean>(() => isCoverTrafficEnabled())
   // Multi-appareil (QR) : code à afficher + scanner.
-  const [showScanner, setShowScanner] = useState(false)
+  const [deviceTab, setDeviceTab] = useState<'mine' | 'scan'>('mine')
   const [deviceMsg, setDeviceMsg] = useState<string | null>(null)
   const [deviceQr, setDeviceQr] = useState<string | null>(null)
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false)
@@ -943,7 +942,7 @@ export function SettingsPage() {
     { icon: Wifi, label: t('settingsNetwork'), subtitle: 'Relais, Tor, proxy', view: 'network' as SettingsView },
     { icon: Video, label: t('settingsCalls'), subtitle: 'Relais et médias des appels', view: 'calls' as SettingsView },
     { icon: FileText, label: t('settingsDownloads'), subtitle: 'Téléchargement automatique', view: 'downloads' as SettingsView },
-    { icon: QrCode, label: 'Appareils liés', subtitle: 'Multi-appareil (QR)', view: 'devices' as SettingsView },
+    { icon: QrCode, label: 'Code QR', subtitle: 'Mon code / lier un appareil', view: 'devices' as SettingsView },
     { icon: Cloud, label: t('mainBackupShort'), subtitle: t('mainSubtitleBackup'), view: 'backup' as SettingsView },
     { icon: Globe, label: t('settingsLanguage'), subtitle: t('languageLabel'), view: 'language' as SettingsView },
     { icon: HelpCircle, label: t('settingsHelp'), subtitle: t('mainSubtitleHelp'), view: 'help' as SettingsView },
@@ -988,8 +987,8 @@ export function SettingsPage() {
       >
         <QrCode size={22} className="text-accent" />
         <div className="flex-1 text-left">
-          <div className="text-text-primary">Appareils liés</div>
-          <div className="text-xs text-text-secondary">Mon code / scanner un QR code</div>
+          <div className="text-text-primary">Code QR</div>
+          <div className="text-xs text-text-secondary">Mon code / lier un appareil</div>
         </div>
         <ChevronRight size={18} className="text-text-secondary" />
       </button>
@@ -1631,30 +1630,48 @@ export function SettingsPage() {
   )
 
   const renderDevicesView = () => (
-    <div className="flex-1 overflow-y-auto pb-4">
-      <div className="py-2">
-        <div className="px-6 py-4 space-y-4">
-          <h3 className="text-sm text-accent flex items-center gap-2"><QrCode size={16} />Appareils liés</h3>
-          <p className="text-sm text-text-secondary">
-            Connectez un 2e appareil : depuis l'autre appareil, ouvrez Paramètres → Appareils liés →
-            « Scanner un QR code », puis scannez ce code. Vos messages et contacts y seront
-            accessibles (mêmes clés E2EE).
-          </p>
+    <div className="flex-1 flex flex-col overflow-hidden">
+      {/* Onglets « Code QR » (façon WhatsApp) */}
+      <div className="flex border-b border-bg-hover">
+        {([['mine', 'MON CODE'], ['scan', 'SCANNER LE CODE']] as const).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setDeviceTab(id)}
+            className={`flex-1 py-3 text-xs font-semibold tracking-wide transition-colors border-b-2 ${deviceTab === id ? 'text-[#00a884] border-[#00a884]' : 'text-text-secondary border-transparent'}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {deviceTab === 'mine' ? (
+        <div className="flex-1 overflow-y-auto flex flex-col items-center p-6 gap-4">
+          <div className="w-16 h-16 rounded-full overflow-hidden bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-2xl">
+            {profile?.username?.[0]?.toUpperCase()}
+          </div>
+          <div className="text-center">
+            <div className="text-text-primary font-medium">{profile?.display_name || profile?.username}</div>
+            <div className="text-xs text-text-secondary">@{profile?.username}</div>
+          </div>
           {deviceQr ? (
-            <div className="flex flex-col items-center gap-3 p-4 bg-bg-surface rounded-2xl">
-              <p className="text-xs text-text-tertiary">Mon code (à scanner par l'autre appareil)</p>
-              <SafeQrCode value={deviceQr} size={200} />
+            <>
+              <SafeQrCode value={deviceQr} size={220} />
+              <p className="text-xs text-text-secondary text-center max-w-xs">
+                Votre code QR est privé. Faites-le scanner par l'autre appareil (Paramètres → Code QR
+                → Scanner le code) pour le lier et retrouver vos messages.
+              </p>
               <button
                 type="button"
                 onClick={() => navigator.clipboard?.writeText(deviceQr)}
-                className="px-3 py-2 rounded-xl bg-bg-hover text-text-primary text-sm"
+                className="px-4 py-2 rounded-xl bg-bg-hover text-text-primary text-sm"
               >
                 Copier le code
               </button>
-              <p className="text-[11px] text-[#e0a800] text-center">
-                Ce code donne accès à vos messages : ne le partagez qu'avec un appareil de confiance.
+              <p className="text-[11px] text-[#e0a800] text-center max-w-xs">
+                Ne le partagez qu'avec un appareil de confiance : il donne accès à vos messages.
               </p>
-            </div>
+            </>
           ) : (
             <button
               type="button"
@@ -1664,21 +1681,36 @@ export function SettingsPage() {
                   .then(setDeviceQr)
                   .catch((e: unknown) => setDeviceMsg((e as Error).message))
               }}
-              className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-bg-surface text-text-primary text-sm"
+              className="w-full max-w-xs flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-[#7578db] text-white text-sm font-medium"
             >
               <QrCode size={16} /> Afficher mon code
             </button>
           )}
-          <button
-            type="button"
-            onClick={() => { setDeviceMsg(null); setShowScanner(true) }}
-            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-[#7578db] text-white text-sm font-medium"
-          >
-            <Camera size={16} /> Scanner un QR code
-          </button>
-          {deviceMsg && <p className="text-xs text-text-secondary">{deviceMsg}</p>}
+          {deviceMsg && <p className="text-xs text-text-secondary text-center">{deviceMsg}</p>}
         </div>
-      </div>
+      ) : (
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <p className="px-6 py-3 text-xs text-text-secondary">
+            Pointez la caméra vers le code QR de votre autre appareil pour le lier.
+          </p>
+          <div className="flex-1">
+            <QrScanner
+              onClose={() => setDeviceTab('mine')}
+              onResult={(text) => {
+                setDeviceMsg(null)
+                if (isDeviceLink(text)) {
+                  void redeemDeviceLink(text)
+                    .then(() => setDeviceMsg('Appareil lié ✅ — vos messages sont de nouveau lisibles.'))
+                    .catch((e: unknown) => setDeviceMsg(`Échec : ${(e as Error).message}`))
+                } else {
+                  setDeviceMsg('QR code non reconnu.')
+                }
+              }}
+            />
+          </div>
+          {deviceMsg && <p className="px-6 py-3 text-xs text-text-secondary text-center">{deviceMsg}</p>}
+        </div>
+      )}
     </div>
   )
 
@@ -2121,22 +2153,6 @@ export function SettingsPage() {
         </div>
         {views[currentView]()}
       </div>
-      {showScanner && (
-        <QrScanner
-          onClose={() => setShowScanner(false)}
-          onResult={(text) => {
-            setShowScanner(false)
-            const phrase = parseDeviceLink(text)
-            if (!phrase) {
-              setDeviceMsg('QR code non reconnu.')
-              return
-            }
-            void completeRecovery(phrase)
-              .then(() => setDeviceMsg('Appareil lié ✅ — vos messages sont de nouveau lisibles.'))
-              .catch((e: unknown) => setDeviceMsg(`Échec : ${(e as Error).message}`))
-          }}
-        />
-      )}
     </MainLayout>
   )
 }
