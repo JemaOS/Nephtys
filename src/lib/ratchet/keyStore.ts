@@ -249,11 +249,17 @@ export async function initRatchetOnSignin(userId: string, password: string): Pro
       try {
         await unlockRatchetKeys(userId, password);
       } catch {
-        console.warn('[E2EE][ratchet] Déverrouillage échoué → régénération');
-        try {
-          await resetRatchetKeys(userId, password);
-        } catch (e) {
-          console.error('[E2EE][ratchet] régénération échouée', e);
+        // NON DESTRUCTIF : ne régénère que si aucune clé locale n'existe.
+        const local = await idbGet(userId);
+        if (!local) {
+          console.warn('[E2EE][ratchet] Déverrouillage échoué et aucune clé locale → régénération');
+          try {
+            await resetRatchetKeys(userId, password);
+          } catch (e) {
+            console.error('[E2EE][ratchet] régénération échouée', e);
+          }
+        } else {
+          console.warn('[E2EE][ratchet] Déverrouillage DB échoué mais clé locale présente → conservée');
         }
       }
     } else {

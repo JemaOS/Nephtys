@@ -253,15 +253,19 @@ export async function initX25519OnSignin(userId: string, password: string): Prom
       try {
         await unlockX25519KeyPair(userId, password);
       } catch {
-        // Self-healing : si le blob chiffré ne se déchiffre pas (ancien format,
-        // mot de passe, autre appareil), on RÉGÉNÈRE une paire fraîche et on
-        // republie → clé locale et publiée cohérentes. Les anciens messages
-        // restent illisibles, mais les NOUVEAUX fonctionnent.
-        console.warn('[E2EE][x25519] Déverrouillage échoué → régénération');
-        try {
-          await resetX25519KeyPair(userId, password);
-        } catch (e) {
-          console.error('[E2EE][x25519] régénération échouée', e);
+        // NON DESTRUCTIF : si une clé locale existe déjà, on la GARDE
+        // (régénérer effacerait l'historique lisible). On ne régénère que si
+        // AUCUNE clé locale n'existe (device vierge / clé perdue).
+        const local = await getLocalX25519KeyPair(userId);
+        if (!local) {
+          console.warn('[E2EE][x25519] Déverrouillage échoué et aucune clé locale → régénération');
+          try {
+            await resetX25519KeyPair(userId, password);
+          } catch (e) {
+            console.error('[E2EE][x25519] régénération échouée', e);
+          }
+        } else {
+          console.warn('[E2EE][x25519] Déverrouillage DB échoué mais clé locale présente → conservée');
         }
       }
     } else {
