@@ -65,20 +65,24 @@ export function initIceServers(): void {
 
 const RELAY_ONLY_KEY = 'nephtys_calls_relay_only';
 
-/** Vrai si les appels doivent forcer le relais TURN (iceTransportPolicy: relay). */
+/**
+ * Vrai si les appels doivent forcer le relais TURN (iceTransportPolicy: relay).
+ * **Active par defaut** (le media ne revele pas l'IP en P2P) ; l'utilisateur
+ * peut le desactiver explicitement (valeur '0').
+ */
 export function isRelayOnlyCallsEnabled(): boolean {
   try {
-    return localStorage.getItem(RELAY_ONLY_KEY) === '1';
+    const value = localStorage.getItem(RELAY_ONLY_KEY);
+    return value === null ? true : value === '1';
   } catch {
-    return false;
+    return true;
   }
 }
 
 /** Active/desactive le passage force par relais TURN pour les appels. */
 export function setRelayOnlyCallsEnabled(enabled: boolean): void {
   try {
-    if (enabled) localStorage.setItem(RELAY_ONLY_KEY, '1');
-    else localStorage.removeItem(RELAY_ONLY_KEY);
+    localStorage.setItem(RELAY_ONLY_KEY, enabled ? '1' : '0');
   } catch {
     // localStorage indisponible
   }
