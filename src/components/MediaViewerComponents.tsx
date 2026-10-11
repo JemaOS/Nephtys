@@ -608,7 +608,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       }}
       aria-label={t('videoPlayer')}
     >
-      <div className="flex-1 flex items-center justify-center relative w-full h-full">
+      <div className="flex-1 min-h-0 flex items-center justify-center relative w-full">
         <video
           ref={videoRef}
           src={mediaUrl}

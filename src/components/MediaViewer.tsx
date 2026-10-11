@@ -1232,7 +1232,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
       <section
         aria-label={t('mediaView')}
         aria-roledescription="Zone de visualisation"
-        className={`flex-1 flex items-center justify-center overflow-hidden media-content-container ${
+        className={`flex-1 min-h-0 flex items-center justify-center overflow-hidden media-content-container ${
           isLandscape && isMobile ? 'p-0' : 'p-4 md:p-8'
         }`}
         style={{
@@ -1311,7 +1311,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
       {/* Media counter */}
       {allMedia && allMedia.length > 1 && (
         <div 
-          className={`absolute bottom-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full bg-black/50 text-white text-sm transition-opacity ${
+          className={`absolute bottom-16 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full bg-black/50 text-white text-sm transition-opacity ${
             showControls ? 'opacity-100' : 'opacity-0'
           }`}
         >
