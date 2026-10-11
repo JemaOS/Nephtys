@@ -348,6 +348,11 @@ export function ChatViewPage() {
   const [messages, setMessages] = useState<Message[]>(() =>
     conversationId ? getCache<Message[]>(`msgs_${conversationId}`) || [] : []
   )
+  // Miroir ref de l'état `messages`. Les rechargements déclenchés par le poll
+  // (`debouncedLoadData`) capturent une closure potentiellement périmée ; ce
+  // ref permet de retrouver la version locale la plus récente (aperçu de lien
+  // en clair, médias locaux) sans dépendre de la closure React.
+  const messagesRef = useRef<Message[]>([])
   const [callLogs, setCallLogs] = useState<CallLog[]>([])
   const [filteredMessages, setFilteredMessages] = useState<Message[]>([])
   const [newMessage, setNewMessage] = useState<string>(() => {
@@ -461,6 +466,11 @@ export function ChatViewPage() {
   useEffect(() => {
     sendingRef.current = sending
   }, [sending])
+
+  // Tient le miroir `messagesRef` à jour (cf. loadMessages / poll).
+  useEffect(() => {
+    messagesRef.current = messages
+  }, [messages])
 
   // Suppression des messages éphémères : setTimeout adaptatif au lieu de
   // setInterval(1000ms) en boucle. On programme un seul timer jusqu'à la
@@ -809,6 +819,26 @@ export function ChatViewPage() {
     return currentMessages.filter(m => m.id !== deletedId)
   }
 
+  // Remplace le message optimiste (`temp-*`) par la ligne réelle de façon
+  // IDEMPOTENTE. Si la ligne réelle a déjà été injectée par le Realtime
+  // (broadcast ou postgres_changes) pendant l'aller-retour d'insertion, on ne
+  // crée PAS une seconde entrée : sinon DOUBLON (temp + réel, ou 2× le même
+  // id réel). On préserve l'ordre (remplacement en place) et on nettoie le temp.
+  const settleOptimisticMessage = useCallback((tempId: string, realMsg: Message) => {
+    setMessages(prev => {
+      const alreadyHasReal = prev.some(m => m.id === realMsg.id)
+      if (alreadyHasReal) {
+        return prev
+          .map(m => m.id === realMsg.id ? realMsg : m)
+          .filter(m => m.id !== tempId)
+      }
+      if (prev.some(m => m.id === tempId)) {
+        return prev.map(m => m.id === tempId ? realMsg : m)
+      }
+      return prev
+    })
+  }, [])
+
   const otherUserRef = useRef<Profile | null>(null)
   
   useEffect(() => {
@@ -862,33 +892,61 @@ export function ChatViewPage() {
 
     // Signer les paths storage (bucket privé) avant injection dans le state.
     // On skip la signature pour les médias chiffrés E2EE (télécharge auto via fetchAndDecryptMedia).
+    // ⚠️ On capture les valeurs BRUTES AVANT signature : `signFieldsBatch` MUTE
+    // `media_url`/`file_url` en URL signée, ce qui cassait le rapprochement avec
+    // le message optimiste (temp) et créait des DOUBLONS de médias.
+    const rawMediaUrl = (newMsg as any).media_url
+    const rawFileUrl = (newMsg as any).file_url
     if (!(newMsg as any).is_media_encrypted) {
-      await signFieldsBatch([newMsg as any], ['media_url', 'file_url', 'media_thumbnail'])
+      try {
+        await signFieldsBatch([newMsg as any], ['media_url', 'file_url', 'media_thumbnail'])
+      } catch (e) {
+        // Ne JAMAIS bloquer l'injection temps réel sur un échec de signature
+        // (sinon le message n'apparaît qu'après rechargement).
+        console.warn('[realtime] signature média échouée (paths conservés):', e)
+      }
     }
 
     setMessages(prev => {
-      // 1. Check if message already exists (by ID) to prevent duplicates
+      // 1. Message déjà présent (par ID) → ne jamais réinjecter. Dédup broadcast
+      //    + postgres_changes, et on conserve la version locale (qui peut porter
+      //    l'aperçu de lien en clair).
       if (prev.some(m => m.id === newMsg.id)) {
         return prev
       }
 
-      // 2. Check for temp message to replace
-      const tempIndex = prev.findIndex(m =>
-        m.id.startsWith('temp-') &&
-        m.sender_id === newMsg.sender_id &&
-        (
-          // Match by media_url if present (for images/videos/files)
-          (m.media_url && newMsg.media_url && m.media_url === newMsg.media_url) ||
-          // OR match by content if it's a text message (for stickers/GIFs)
-          (m.type === 'text' && m.content === newMsg.content) ||
-          // Fallback for audio/files where media_url might be used
-          (m.type !== 'text' && m.media_url === newMsg.media_url)
-        )
-      )
+      // 2. Rapprochement de l'éventuel message optimiste (`temp-*`) à remplacer.
+      const tempIndex = prev.findIndex(m => {
+        if (!m.id.startsWith('temp-')) return false
+        if (newMsg.sender_id && m.sender_id !== newMsg.sender_id) return false
+        // Texte / GIF / sticker : comparaison sur le contenu (déjà déchiffré).
+        if (m.type === 'text' && newMsg.type === 'text') {
+          return m.content === newMsg.content
+        }
+        // Média / doc / vocal : comparer le PATH BRUT (avant signature) et des
+        // indices stables (file_url, nom de fichier).
+        const tempMedia = (m as any).media_url ?? (m as any).file_url
+        if (tempMedia) {
+          if (rawMediaUrl && tempMedia === rawMediaUrl) return true
+          if (rawFileUrl && tempMedia === rawFileUrl) return true
+        }
+        if ((m as any).file_name && (newMsg as any).file_name && (m as any).file_name === (newMsg as any).file_name) return true
+        return false
+      })
 
       if (tempIndex !== -1) {
+        const temp = prev[tempIndex]
+        const merged: any = { ...newMsg }
+        // Ne jamais perdre la version locale : aperçu de lien en clair et média
+        // local encore non résolu côté serveur.
+        if (!merged.link_preview && (temp as any).link_preview) {
+          merged.link_preview = (temp as any).link_preview
+        }
+        if (!merged.media_url && (temp as any).media_url) {
+          merged.media_url = (temp as any).media_url
+        }
         const newMessages = [...prev]
-        newMessages[tempIndex] = newMsg
+        newMessages[tempIndex] = merged
         return newMessages
       }
 
@@ -1739,7 +1797,19 @@ await decryptMessageRows(validData as any[], user.id)
         // ignore : on retombe sur l'état en mémoire
       }
       const localById = new Map<string, Message>()
-      for (const m of [...localHistory, ...messages]) localById.set(m.id, m)
+      for (const m of [...localHistory, ...messagesRef.current]) localById.set(m.id, m)
+
+      // Report de l'aperçu de lien / des médias locaux depuis la version locale.
+      // Le `link_preview` est replié DANS le payload chiffré et, pour nos propres
+      // messages, le déchiffrement « cache ratchet » (mine) ne le restaure pas →
+      // sans ce report, l'aperçu (carte + miniature) disparaissait au
+      // rechargement (poll toutes les ~4 s) en ne laissant que l'URL en texte.
+      for (const row of validData as any[]) {
+        const local = localById.get(row.id) as any
+        if (!local) continue
+        if (!row.link_preview && local.link_preview) row.link_preview = local.link_preview
+        if (!row.media_url && local.media_url) row.media_url = local.media_url
+      }
 
       const validIds = new Set(validData.map(m => m.id))
       const oldestServerTs = validData.length > 0 ? Date.parse(validData[0].created_at) : Number.POSITIVE_INFINITY
@@ -1930,6 +2000,16 @@ await decryptMessageRows(validData as any[], user.id)
       reply_to_id: replyToMessage?.id || null,
       is_starred: false,
       is_pinned: false,
+      // Aperçu de lien affiché IMMÉDIATEMENT, et conservé jusqu'au remplacement
+      // par la ligne réelle : sinon la carte pouvait disparaître au rechargement.
+      link_preview: linkPreview ? JSON.stringify({
+        url: linkPreview.url,
+        title: linkPreview.title,
+        description: linkPreview.description,
+        image: linkPreview.image,
+        siteName: linkPreview.siteName,
+        domain: linkPreview.domain,
+      }) : null,
       is_ephemeral: !!ephemeralDuration,
       ephemeral_duration: ephemeralDuration,
       ephemeral_expires_at: ephemeralDuration 
@@ -2085,7 +2165,7 @@ await decryptMessageRows(validData as any[], user.id)
         if (!settled.link_preview && linkPreviewPayload) {
           settled.link_preview = JSON.stringify(linkPreviewPayload)
         }
-        setMessages(prev => prev.map(m => m.id === tempId ? settled : m))
+        settleOptimisticMessage(tempId, settled)
         // Diffusion Realtime APRÈS chiffrement : on envoie la ligne CHIFFRÉE
         // (ciphertext + enveloppe), JAMAIS le `settled` en clair. Les clés sont
         // déjà en base → le destinataire déchiffre dès réception (latence conservée).
@@ -2282,7 +2362,12 @@ await decryptMessageRows(validData as any[], user.id)
         // clair côté client (jamais le ciphertext à l'écran).
         const settledMedia: any = { ...data, content: caption, sender_id: data.sender_id ?? user.id }
         if (caption) cacheDecryptedText(data.id, caption)
-        setMessages(prev => prev.map(m => m.id === tempId ? settledMedia : m))
+        settleOptimisticMessage(tempId, settledMedia)
+        // Diffusion Realtime : la ligne RÉELLE (chemins storage + enveloppe
+        // éventuelle), jamais le blob local. Garantit l'arrivée instantanée des
+        // MÉDIAS/FICHIERS (le garde-fou ne bloque que le texte non chiffré).
+        messageQueueRef.current.push({ ...(data as unknown as Message) })
+        processMessageQueue()
         await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conversationId!)
         // Dispatch event to update ChatsPage conversation list in real-time
         globalThis.dispatchEvent(new CustomEvent('message-sent-in-chat', {
@@ -2422,7 +2507,10 @@ await decryptMessageRows(validData as any[], user.id)
             fileErrorCount++
             continue
           }
-          setMessages(prev => prev.map(m => m.id === tempId ? { ...data, sender_id: data.sender_id ?? user.id } : m))
+          const settledFile = { ...data, sender_id: data.sender_id ?? user.id } as unknown as Message
+          settleOptimisticMessage(tempId, settledFile)
+          // Diffusion Realtime de chaque fichier (ligne réelle, chemins storage).
+          messageQueueRef.current.push(settledFile)
         } else {
             // Remove failed message
             setMessages(prev => prev.filter(m => m.id !== tempId))
@@ -2430,6 +2518,8 @@ await decryptMessageRows(validData as any[], user.id)
         }
       }
       
+      // Émet la diffusion en une passe après la boucle (tous les fichiers en file).
+      processMessageQueue()
       await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conversationId!)
       // Dispatch event to update ChatsPage conversation list in real-time
       globalThis.dispatchEvent(new CustomEvent('message-sent-in-chat', {
@@ -2538,7 +2628,10 @@ await decryptMessageRows(validData as any[], user.id)
           return
         }
         // Replace optimistic message with real one
-        setMessages(prev => prev.map(m => m.id === tempId ? { ...insertedMessage, sender_id: insertedMessage.sender_id ?? user.id } : m))
+        settleOptimisticMessage(tempId, { ...insertedMessage, sender_id: insertedMessage.sender_id ?? user.id } as unknown as Message)
+        // Diffusion Realtime du vocal (ligne réelle, chemin storage chiffré).
+        messageQueueRef.current.push({ ...insertedMessage } as unknown as Message)
+        processMessageQueue()
         await supabase.from('conversations').update({ last_message_at: now }).eq('id', conversationId!)
         // Dispatch event to update ChatsPage conversation list in real-time
         globalThis.dispatchEvent(new CustomEvent('message-sent-in-chat', {
@@ -3684,7 +3777,16 @@ await decryptMessageRows(validData as any[], user.id)
                 const settled: any = { ...(data as any), content: content, sender_id: (data as any).sender_id ?? user.id }
                 cacheDecryptedText(data.id, content)
                 markOwnMessage(data.id)
-                setMessages(prev => prev.map(m => m.id === tempId ? settled : m))
+                settleOptimisticMessage(tempId, settled)
+                // Diffusion Realtime (texte chiffré → autorisé par le garde-fou).
+                messageQueueRef.current.push({
+                  ...(data as any),
+                  content: encryptedText.ciphertextB64,
+                  is_text_encrypted: true,
+                  encryption_metadata: messageData.encryption_metadata,
+                  link_preview: null,
+                } as Message)
+                processMessageQueue()
                 await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conversationId!)
                 // Dispatch event to update ChatsPage conversation list in real-time
                 globalThis.dispatchEvent(new CustomEvent('message-sent-in-chat', {

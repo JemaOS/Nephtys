@@ -176,7 +176,11 @@ export async function sendBroadcastMessage(
     console.warn('[broadcast] diffusion refusée : message texte non chiffré (fail-closed)')
     return
   }
-  const channel = supabase.channel(`broadcast:${conversationId}`)
+  // Le récepteur écoute l'évènement `message` sur le canal `msg:${conversationId}`
+  // (voir ChatViewPage). Émettre sur un autre topic (ex. `broadcast:`) ne
+  // délivrait RIEN : la latence instantanée était morte, et les médias
+  // n'apparaissaient qu'après rechargement. On diffuse donc sur le MÊME topic.
+  const channel = supabase.channel(`msg:${conversationId}`)
   
   await channel.subscribe((status) => {
     if (status === 'SUBSCRIBED') {
