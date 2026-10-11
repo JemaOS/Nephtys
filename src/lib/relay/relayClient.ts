@@ -389,6 +389,21 @@ export function setDecentralizedRelayEnabled(enabled: boolean): void {
   instance = null;
 }
 
+/**
+ * Vrai si un relais EXTERNE est réellement configuré : soit un relais unique
+ * (override/env), soit le **réseau décentralisé** activé (mode automatique ou
+ * sélection de relais). Exclut les relais locaux de dev (127.0.0.1/localhost).
+ * Sert à l'affichage (bandeau « relais par défaut ») : il ne doit PAS rester
+ * affiché quand le réseau décentralisé est configuré.
+ */
+export function hasExternalRelayConfigured(): boolean {
+  if (hasCustomRelay()) return true;
+  if (isDecentralizedRelayEnabled()) {
+    return getRelayPool().some(url => !isLocalRelay(url));
+  }
+  return false;
+}
+
 export function getPrivateMessenger(): PrivateMessenger {
   if (!instance) {
     const mode = import.meta.env.VITE_RELAY_MODE as string | undefined;
@@ -425,7 +440,12 @@ export function getPrivateMessenger(): PrivateMessenger {
           ? new MultiRelayWire(
               pool.map(url => ({ url, wire: new SmpRelayWire({ url, keyHash: smpKeyHash }) })),
             )
-          : new SmpRelayWire({ url: smpUrl, keyHash: smpKeyHash });
+          // Relais décentralisé unique sélectionné : on l'utilise (sinon l'env
+          // par défaut était utilisé et la sélection était ignorée).
+          : new SmpRelayWire({
+              url: (isDecentralizedRelayEnabled() && pool[0]) || smpUrl,
+              keyHash: smpKeyHash,
+            });
       const fw = new FailoverRelayWire(
         primaryWire,
         new SupabaseRelayWire(),

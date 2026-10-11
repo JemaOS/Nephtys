@@ -28,6 +28,7 @@ import {
   getRelayLabel,
   setRelayUrl,
   isTorRelayEnabled,
+  hasExternalRelayConfigured,
 } from '@/lib/relay/relayClient'
 import { getGroupMessenger, isGroupUsingSupabaseRelay } from '@/lib/relay/groupClient'
 import type { GroupRecord } from '@/lib/relay/groupMessenger'
@@ -595,7 +596,7 @@ export function PrivatePage() {
           )}
           {tab === 'connections' && (
             <>
-              {!getRelayUrl() && (
+              {!hasExternalRelayConfigured() && (
                 <div className="rounded-xl bg-amber-500/10 border border-amber-500/30 p-3 text-xs text-amber-300">
                   Transport : relais par défaut (aucun relais externe configuré). Vous pouvez en
                   définir un dans Paramètres → Serveurs et réseaux.
