@@ -595,6 +595,12 @@ export function PrivatePage() {
           )}
           {tab === 'connections' && (
             <>
+              {!getRelayUrl() && (
+                <div className="rounded-xl bg-amber-500/10 border border-amber-500/30 p-3 text-xs text-amber-300">
+                  Transport : relais par défaut (aucun relais externe configuré). Vous pouvez en
+                  définir un dans Paramètres → Serveurs et réseaux.
+                </div>
+              )}
               {invite && (
                 <div className="rounded-2xl bg-bg-surface p-4 flex flex-col items-center gap-3">
                   <div className="w-full flex items-center justify-between">
@@ -608,7 +614,7 @@ export function PrivatePage() {
                       <X size={16} />
                     </button>
                   </div>
-                  {invite.length <= 1200 ? (
+                  {invite.length <= 2900 ? (
                     <div className="bg-white p-3 rounded-xl">
                       <QRCode value={invite} size={180} />
                     </div>
@@ -748,7 +754,7 @@ export function PrivatePage() {
               {groupUsesSupabase && (
                 <div className="rounded-xl bg-amber-500/10 border border-amber-500/30 p-3 text-xs text-amber-300">
                   Mode groupe : aucun relais externe configuré → transport assuré par le
-                  relais Supabase par défaut (moins anonyme qu'un relais externe/SMP).
+                  relais par défaut (moins anonyme qu'un relais externe).
                 </div>
               )}
               <button
@@ -762,7 +768,7 @@ export function PrivatePage() {
 
               {groupInvite && (
                 <div className="rounded-2xl bg-bg-surface p-4 flex flex-col items-center gap-3">
-                  {groupInvite.length <= 1200 ? (
+                  {groupInvite.length <= 2900 ? (
                     <div className="bg-white p-3 rounded-xl"><QRCode value={groupInvite} size={160} /></div>
                   ) : (
                     <p className="text-[11px] text-text-tertiary text-center">

@@ -27,6 +27,7 @@ import type {
 } from '../transport/types';
 import type { QueueCredentials, StoredEnvelope } from './relayCore';
 import type { RelayWire } from './wire';
+import { compressToEncodedURIComponent, decompressFromEncodedURIComponent } from 'lz-string';
 
 export interface RelayQueueRef {
   queueId: string;
@@ -50,12 +51,67 @@ interface ConnectionState {
   rcvQueues: RelayQueueRef[];
 }
 
+/**
+ * Invitation COMPACTE : `n1.<relay>.<rcvId>.<rcvKey>.<sndId>.<sndKey>`.
+ *
+ * Les tokens de file sont déjà en base64url (alphabet `A-Za-z0-9-_`, sans `.`).
+ * On les joint par `.` au lieu de les ré-emballer dans un JSON puis un base64 :
+ * cela supprime le **double encodage** qui allongeait l'invitation (et faisait
+ * déborder le QR code). Le relais (URL avec points) est base64url-encodé.
+ * Rétro-compatibilité assurée pour l'ancien format base64(JSON).
+ */
+const INVITE_PREFIX = 'nL';
+
+function encPart(value?: string): string {
+  if (!value) return '';
+  return btoa(value).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
+}
+
+function decPart(value: string): string | undefined {
+  if (!value) return undefined;
+  let b64 = value.replaceAll('-', '+').replaceAll('_', '/');
+  while (b64.length % 4) b64 += '=';
+  return atob(b64);
+}
+
+/** Charge utile compacte : `<relay b64url>.<rcvId>.<rcvKey>.<sndId>.<sndKey>`. */
+function invitePayload(invite: Invite): string {
+  return [
+    encPart(invite.rcvQueue.relay),
+    invite.rcvQueue.queueId,
+    invite.rcvQueue.queueKey,
+    invite.sendQueue.queueId,
+    invite.sendQueue.queueKey,
+  ].join('.');
+}
+
+function parseInvitePayload(payload: string): Invite {
+  const parts = payload.split('.');
+  const relay = decPart(parts[0] ?? '');
+  return {
+    rcvQueue: { queueId: parts[1] ?? '', queueKey: parts[2] ?? '', relay },
+    sendQueue: { queueId: parts[3] ?? '', queueKey: parts[4] ?? '', relay },
+  };
+}
+
+/**
+ * Invitation : charge utile compacte PUIS compression (lz-string), préfixe `nL`.
+ * On supprime le double encodage JSON+base64 et on compresse → l'invitation est
+ * assez courte pour tenir dans un QR code. Rétro-compatibilité ancien
+ * format base64(JSON).
+ */
 export function encodeInvite(invite: Invite): string {
-  return btoa(JSON.stringify(invite)).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
+  return INVITE_PREFIX + compressToEncodedURIComponent(invitePayload(invite));
 }
 
 export function decodeInvite(link: string): Invite {
-  let b64 = link.replaceAll('-', '+').replaceAll('_', '/');
+  const trimmed = link.trim();
+  if (trimmed.startsWith(INVITE_PREFIX)) {
+    const payload = decompressFromEncodedURIComponent(trimmed.slice(INVITE_PREFIX.length));
+    if (payload) return parseInvitePayload(payload);
+  }
+  // Rétro-compatibilité : ancien format base64(JSON).
+  let b64 = trimmed.replaceAll('-', '+').replaceAll('_', '/');
   while (b64.length % 4) b64 += '=';
   return JSON.parse(atob(b64)) as Invite;
 }
