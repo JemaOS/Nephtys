@@ -855,7 +855,7 @@ export function SettingsPage() {
           <p className="text-sm text-accent">Annuaire</p>
           <div className="flex items-center justify-between gap-3 p-4 bg-bg-surface rounded-2xl">
             <div className="flex-1">
-              <p className="text-text-primary text-sm">Apparaître dans l'annuaire</p>
+              <p className="text-text-primary">Apparaître dans l'annuaire</p>
               <p className="text-xs text-text-secondary">
                 Si désactivé, votre pseudo n'est plus trouvable par recherche. Vos contacts et
                 conversations existants ne sont pas affectés. Les autres peuvent encore vous
@@ -1227,8 +1227,8 @@ export function SettingsPage() {
           <h3 className="text-sm text-accent mb-4 flex items-center gap-2"><Globe size={16} />Serveurs</h3>
           <div className="space-y-4">
             <div>
-              <div className="text-text-primary text-sm">Relais (mode privé)</div>
-              <div className="text-xs text-text-secondary mb-2">URL du relais chiffré utilisé par le mode privé. Vide = réseau par défaut.</div>
+              <div className="text-text-primary">Relais (mode privé)</div>
+              <div className="text-sm text-text-secondary mb-2">URL du relais chiffré utilisé par le mode privé. Vide = réseau par défaut.</div>
               <div className="flex items-center gap-2">
                 <input
                   value={relayInput}
@@ -1242,8 +1242,8 @@ export function SettingsPage() {
 
             <div className="flex items-center justify-between">
               <div className="pr-4">
-                <div className="text-text-primary text-sm">Se connecter via Tor</div>
-                <div className="text-xs text-text-secondary">Masque votre IP via le réseau Tor (passerelle).</div>
+                <div className="text-text-primary">Se connecter via Tor</div>
+                <div className="text-sm text-text-secondary">Masque votre IP via le réseau Tor (passerelle).</div>
               </div>
               <button
                 onClick={handleToggleTor}
@@ -1317,13 +1317,13 @@ export function SettingsPage() {
           <h3 className="text-sm text-accent mb-4 flex items-center gap-2"><Video size={16} />Appels</h3>
           <div className="space-y-4">
             <div>
-              <div className="text-text-primary text-sm">Serveurs WebRTC ICE</div>
-              <div className="text-xs text-text-secondary">{getIceServers().length} serveur(s) STUN/TURN configuré(s).</div>
+              <div className="text-text-primary">Serveurs WebRTC ICE</div>
+              <div className="text-sm text-text-secondary">{getIceServers().length} serveur(s) STUN/TURN configuré(s).</div>
             </div>
             <div className="flex items-center justify-between">
               <div className="pr-4">
-                <div className="text-text-primary text-sm">Se connecter via relais</div>
-                <div className="text-xs text-text-secondary">Force le média via TURN (protège l'IP ; le relais voit la durée de l'appel).</div>
+                <div className="text-text-primary">Se connecter via relais</div>
+                <div className="text-sm text-text-secondary">Force le média via TURN (protège l'IP ; le relais voit la durée de l'appel).</div>
               </div>
               <button
                 onClick={handleToggleRelayOnly}
