@@ -121,6 +121,25 @@ export interface SealedSenderContext {
   contentHash: string;
 }
 
+/**
+ * Clés publiques d'IDENTITÉ de l'expéditeur, transportées DANS le payload
+ * scellé (chiffré de bout en bout au destinataire) au lieu d'être stockées en
+ * clair dans `message_*_keys.sender_public_key` / `encryption_metadata.identityKey`.
+ *
+ * Confiance : ces champs voyagent dans un payload AES-GCM que SEUL le
+ * destinataire peut ouvrir (ECDH clé éphémère ↔ clé publique du destinataire),
+ * et dont l'émetteur est authentifié par la signature Ed25519 qui lie `senderId`
+ * au contexte du message. Un tiers ne peut donc ni les lire ni les altérer.
+ * (Ils ne sont volontairement pas couverts par la signature v3 afin de rester
+ * rétrocompatible avec les blobs v3 émis avant cette évolution.)
+ */
+export interface SealedSenderIdentity {
+  /** Clé publique X25519 de l'expéditeur (taguée `x25519:`). */
+  x25519Key?: string | null;
+  /** Clé publique d'identité ratchet (X3DH) de l'expéditeur. */
+  identityKey?: string | null;
+}
+
 /** sha256 hex du contenu stocké (`messages.content`). */
 export async function sealedContentHash(content: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', utf8(content) as BufferSource);
@@ -152,6 +171,8 @@ function sigMessageV3(context: SealedSenderContext): Uint8Array {
  * @param signingPrivateKey  clé privée Ed25519 de l'expéditeur (authentifie le scellé)
  * @param context            contexte du message (v3) → lie la signature au message
  *                           courant et empêche le rejeu. Omis → v2 (rétrocompat).
+ * @param identity           clés publiques d'identité de l'expéditeur transportées
+ *                           dans le payload (au lieu d'être stockées en clair).
  * @returns base64 du blob scellé (opaque pour le serveur)
  */
 export async function sealSenderForRecipient(
@@ -159,18 +180,22 @@ export async function sealSenderForRecipient(
   senderId: string,
   signingPrivateKey: string,
   context?: SealedSenderContext,
+  identity?: SealedSenderIdentity,
 ): Promise<string> {
-  const payload = context
-    ? JSON.stringify({
+  const payloadObj: Record<string, unknown> = context
+    ? {
         v: PAYLOAD_VERSION_V3,
         s: senderId,
         sig: toBase64(ed25519.sign(sigMessageV3(context), fromBase64(signingPrivateKey))),
-      })
-    : JSON.stringify({
+      }
+    : {
         v: PAYLOAD_VERSION_V2,
         s: senderId,
         sig: toBase64(ed25519.sign(sigMessageV2(senderId), fromBase64(signingPrivateKey))),
-      });
+      };
+  if (identity?.x25519Key) payloadObj.xk = identity.x25519Key;
+  if (identity?.identityKey) payloadObj.ik = identity.identityKey;
+  const payload = JSON.stringify(payloadObj);
 
   const ephPriv = crypto.getRandomValues(new Uint8Array(32));
   const ephPub = x25519.getPublicKey(ephPriv);
@@ -219,11 +244,17 @@ export interface SealedSenderPayload {
   signature: string;
   /** Version du payload : 2 (historique) ou 3 (lié au contexte du message). */
   version: number;
+  /** Clé publique X25519 de l'expéditeur transportée dans le payload (v3+). */
+  x25519Key?: string;
+  /** Clé publique d'identité ratchet (X3DH) transportée dans le payload (v3+). */
+  identityKey?: string;
 }
 
 /**
  * Parse un payload signé. Retourne null si legacy/non signé (identifiant en
  * clair). Un payload sans `v` est traité comme **v2** (rétrocompatibilité).
+ * Les clés d'identité (`xk`/`ik`) sont optionnelles : les blobs émis avant leur
+ * introduction restent valides, sans clés transportées.
  */
 export function parseSealedSenderPayload(raw: string): SealedSenderPayload | null {
   try {
@@ -231,7 +262,13 @@ export function parseSealedSenderPayload(raw: string): SealedSenderPayload | nul
     if (o && typeof o.s === 'string' && typeof o.sig === 'string') {
       const v = typeof o.v === 'number' ? o.v : PAYLOAD_VERSION_V2;
       if (v === PAYLOAD_VERSION_V2 || v === PAYLOAD_VERSION_V3) {
-        return { senderId: o.s, signature: o.sig, version: v };
+        return {
+          senderId: o.s,
+          signature: o.sig,
+          version: v,
+          x25519Key: typeof o.xk === 'string' ? o.xk : undefined,
+          identityKey: typeof o.ik === 'string' ? o.ik : undefined,
+        };
       }
     }
   } catch {
@@ -270,6 +307,37 @@ export function verifySealedSender(
 }
 
 /**
+ * Comme `findVerifiedSender`, mais renvoie aussi les clés publiques d'identité
+ * de l'expéditeur éventuellement transportées dans le payload (`xk`/`ik`).
+ * C'est ce qui remplace le stockage en clair de `sender_public_key` et de
+ * `identityKey` : le destinataire récupère la clé EXACTE utilisée à l'émission,
+ * même après une rotation de clé de l'expéditeur.
+ */
+export async function findVerifiedSenderIdentity(
+  myPrivateKeyB64: string,
+  blobs: string[],
+  getSigningKey: (senderId: string) => Promise<string | null>,
+  context?: SealedSenderContext,
+): Promise<{ senderId: string; x25519Key?: string; identityKey?: string } | null> {
+  for (const blob of blobs) {
+    let raw: string;
+    try {
+      raw = await openSealedSender(myPrivateKeyB64, blob);
+    } catch {
+      continue; // pas le bon blob
+    }
+    const payload = parseSealedSenderPayload(raw);
+    if (!payload) continue; // non authentifié → ignoré
+    const signingKey = await getSigningKey(payload.senderId);
+    if (!signingKey) continue;
+    if (verifySealedSender(payload, signingKey, context)) {
+      return { senderId: payload.senderId, x25519Key: payload.x25519Key, identityKey: payload.identityKey };
+    }
+  }
+  return null;
+}
+
+/**
  * Retrouve l'expéditeur **authentifié** parmi des blobs scellés.
  * Pour chaque blob ouvrable, on parse le payload signé puis on **vérifie** la
  * signature avec la clé publique de l'expéditeur revendiqué (`getSigningKey`).
@@ -285,20 +353,8 @@ export async function findVerifiedSender(
   getSigningKey: (senderId: string) => Promise<string | null>,
   context?: SealedSenderContext,
 ): Promise<string | null> {
-  for (const blob of blobs) {
-    let raw: string;
-    try {
-      raw = await openSealedSender(myPrivateKeyB64, blob);
-    } catch {
-      continue; // pas le bon blob
-    }
-    const payload = parseSealedSenderPayload(raw);
-    if (!payload) continue; // non authentifié → ignoré
-    const signingKey = await getSigningKey(payload.senderId);
-    if (!signingKey) continue;
-    if (verifySealedSender(payload, signingKey, context)) return payload.senderId;
-  }
-  return null;
+  const found = await findVerifiedSenderIdentity(myPrivateKeyB64, blobs, getSigningKey, context);
+  return found?.senderId ?? null;
 }
 
 /** Scelle l'identité pour tous les membres (un blob chacun). */
@@ -307,8 +363,9 @@ export async function sealSenderForMembers(
   senderId: string,
   signingPrivateKey: string,
   context?: SealedSenderContext,
+  identity?: SealedSenderIdentity,
 ): Promise<string[]> {
   return Promise.all(
-    memberPublicKeys.map(pk => sealSenderForRecipient(pk, senderId, signingPrivateKey, context)),
+    memberPublicKeys.map(pk => sealSenderForRecipient(pk, senderId, signingPrivateKey, context, identity)),
   );
 }

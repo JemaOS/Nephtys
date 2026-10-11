@@ -64,6 +64,13 @@ export interface LocalRatchetKeys {
 export interface RatchetServiceDeps {
   loadLocalKeys(userId: string): Promise<LocalRatchetKeys | null>;
   loadPeerBundle(peerId: string): Promise<PeerBundle | null>;
+  /**
+   * Clé publique d'identité ratchet (X3DH) d'un pair, SANS consommer de
+   * one-time prekey (contrairement à `loadPeerBundle`). Utilisée à la réception
+   * pour retrouver l'identité de l'initiateur quand elle n'est plus stockée en
+   * clair dans l'enveloppe (sealed sender).
+   */
+  loadPeerIdentityKey(peerId: string): Promise<string | null>;
   markOneTimePreKeyUsed(peerId: string, oneTimePreKey: string): Promise<void>;
   loadSession(userId: string, peerId: string): Promise<SessionState | null>;
   saveSession(userId: string, peerId: string, state: SessionState): Promise<void>;
@@ -208,8 +215,14 @@ export async function encryptForPeer(
     if (usedOneTimePreKey) {
       await deps.markOneTimePreKeyUsed(peerId, usedOneTimePreKey);
     }
+    // Sealed sender : on N'ÉCRIT PLUS la clé publique d'identité STABLE de
+    // l'expéditeur dans `encryption_metadata` (le serveur pouvait la joindre à
+    // `profiles.ratchet_identity_key` pour retrouver QUI écrit). Elle est
+    // transportée par le payload sealed sender v3 (cf.
+    // textEncryption.buildSenderSealed), ou retrouvée côté destinataire via
+    // `deps.loadPeerIdentityKey(senderId)`. Rétrocompat : l'ancien trafic
+    // conserve `identityKey` dans l'enveloppe.
     initFields = {
-      identityKey: localKeys.identityKeyPair.publicKey,
       ephemeralPublicKey: init.ephemeralPublicKey,
       usedOneTimePreKey,
       mlKemCiphertext: init.mlKemCiphertext ?? null,
@@ -240,6 +253,8 @@ export async function decryptFromPeer(
   sessionId: string,
   envelope: RatchetEnvelope,
   content: string,
+  senderId?: string | null,
+  senderIdentityKey?: string | null,
 ): Promise<string> {
   const buildReceiverSession = async (): Promise<SessionState | null> => {
     const localKeys = await deps.loadLocalKeys(userId);
@@ -247,7 +262,18 @@ export async function decryptFromPeer(
     // Fail-closed : on ne construit JAMAIS une session destinataire en mode
     // dégradé (sans ML-KEM) si nous avons publié une clé post-quantique.
     assertPqNotDowngraded(localKeys, envelope);
-    if (!envelope.identityKey || !envelope.ephemeralPublicKey) return null;
+    if (!envelope.ephemeralPublicKey) return null;
+
+    // Identité de l'initiateur, par ordre de priorité :
+    //   1. enveloppe (ancien trafic, stockée en clair) ;
+    //   2. payload sealed sender v3 (`ik` transporté, vérifié — clé EXACTE de
+    //      l'émission, robuste à une rotation) ;
+    //   3. `profiles.ratchet_identity_key(senderId)` (expéditeur AUTHENTIFIÉ).
+    const peerIdentityKey =
+      envelope.identityKey ??
+      senderIdentityKey ??
+      (senderId ? await deps.loadPeerIdentityKey(senderId) : null);
+    if (!peerIdentityKey) return null;
 
     const oneTimePreKeyPublic = envelope.usedOneTimePreKey ?? null;
     let oneTimePreKey: RawKeyPair | null = null;
@@ -263,7 +289,7 @@ export async function decryptFromPeer(
       localKeys.identityKeyPair,
       localKeys.signedPreKey,
       oneTimePreKey,
-      envelope.identityKey,
+      peerIdentityKey,
       envelope.ephemeralPublicKey,
       envelope.pq ? envelope.mlKemCiphertext ?? null : null,
       envelope.pq ? localKeys.mlKemKeyPair?.secretKey ?? null : null,

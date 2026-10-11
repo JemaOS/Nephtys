@@ -1,34 +1,52 @@
 // Copyright (c) 2025 Jema Technology.
 // Distributed under the license specified in the root directory of this project.
 
-import { describe, it, expect, vi } from 'vitest';
-import { generateX25519KeyPair } from './x25519';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { generateX25519KeyPair, wrapKeyForRecipientX25519, keyWrapAad } from './x25519';
 import { generateSigningKeyPair } from './ratchet/x3dh';
 import { sealSenderForRecipient, sealedContentHash } from './messaging/sealedSender';
 
 const h = vi.hoisted(() => ({
   signingKeys: {} as Record<string, string>,
+  x25519Keys: {} as Record<string, string>,
+  textKeyRows: [] as any[],
   recipient: null as { publicKey: string; privateKey: string } | null,
 }));
 
-vi.mock('@/lib/supabase', () => ({
-  supabase: {
-    from: () => ({
-      select: () => ({
-        eq: (_col: string, id: string) => ({
-          maybeSingle: async () => ({ data: { ratchet_signing_key: h.signingKeys[id] ?? null } }),
+vi.mock('@/lib/supabase', () => {
+  const profileRow = (id: string) => ({
+    ratchet_signing_key: h.signingKeys[id] ?? null,
+    x25519_public_key: h.x25519Keys[id] ?? null,
+  });
+  const from = (table: string) => {
+    if (table === 'profiles') {
+      return {
+        select: () => ({
+          eq: (_col: string, id: string) => ({
+            maybeSingle: async () => ({ data: profileRow(id) }),
+          }),
         }),
-      }),
-    }),
-  },
-}));
+      };
+    }
+    // message_text_keys : batch `.in(...)` (thenable) ET single `.eq().eq().maybeSingle()`.
+    const chain: any = {
+      select: () => chain,
+      eq: () => chain,
+      in: () => chain,
+      maybeSingle: async () => ({ data: h.textKeyRows[0] ?? null, error: null }),
+      then: (resolve: (v: unknown) => unknown) => resolve({ data: h.textKeyRows, error: null }),
+    };
+    return chain;
+  };
+  return { supabase: { from } };
+});
 
 vi.mock('@/lib/e2eeX25519', () => ({
   getLocalX25519KeyPair: async () => h.recipient,
   fetchX25519PublicKeys: async () => new Map(),
 }));
 
-import { resolveSealedSenders } from './textEncryption';
+import { resolveSealedSenders, decryptMessageRows, encryptText } from './textEncryption';
 
 describe('resolveSealedSenders — serveur aveugle à l\'expéditeur (Phase 1c)', () => {
   it('résout sender_id NULL via les blobs sealed', async () => {
@@ -121,5 +139,143 @@ describe('resolveSealedSenders — sealed sender v3 (anti-rejeu)', () => {
 
     await resolveSealedSenders(rows, 'alice-id');
     expect(rows[0].sender_id).toBeNull();
+  });
+});
+
+describe('textEncryption — clé d\'expéditeur SANS colonne (sealed sender)', () => {
+  beforeEach(() => {
+    h.x25519Keys = {};
+    h.textKeyRows = [];
+  });
+
+  /**
+   * Nouveau trafic : `message_text_keys.sender_public_key` est NULL. La clé
+   * publique X25519 de l'expéditeur est transportée DANS le payload sealed
+   * sender v3 (vérifié) → le message doit se déchiffrer quand même.
+   */
+  it('déchiffre SANS sender_public_key stocké (clé via payload v3)', async () => {
+    const alice = generateX25519KeyPair();       // expéditeur
+    const bob = generateX25519KeyPair();         // destinataire
+    const aliceSign = generateSigningKeyPair();
+    h.recipient = { publicKey: bob.publicKey, privateKey: bob.privateKey };
+    h.signingKeys['alice-id'] = aliceSign.publicKey;
+
+    const { ciphertextB64, ivB64, rawKey } = await encryptText('message secret');
+    const wrapped = await wrapKeyForRecipientX25519(
+      rawKey,
+      alice.privateKey,
+      alice.publicKey,
+      bob.publicKey,
+      keyWrapAad(alice.publicKey),
+    );
+    const context = {
+      conversationId: 'conv',
+      messageId: 'm-sealed',
+      contentHash: await sealedContentHash(ciphertextB64),
+    };
+    const blob = await sealSenderForRecipient(bob.publicKey, 'alice-id', aliceSign.privateKey, context, {
+      x25519Key: alice.publicKey,
+    });
+
+    h.textKeyRows = [
+      { message_id: 'm-sealed', encrypted_key: wrapped.encryptedKey, iv: wrapped.iv, sender_public_key: null },
+    ];
+    const rows = [
+      {
+        id: 'm-sealed',
+        conversation_id: 'conv',
+        content: ciphertextB64,
+        is_text_encrypted: true,
+        encryption_metadata: { v: 1, iv: ivB64 },
+        sender_id: 'alice-id',
+        sender_sealed: [blob],
+      },
+    ];
+
+    await decryptMessageRows(rows, 'bob-id');
+    expect(rows[0].content).toBe('message secret');
+  });
+
+  /**
+   * Repli : le scellé ne transporte PAS `xk` (ou est absent), mais
+   * `profiles.x25519_public_key(alice)` fournit la clé → déchiffrement OK.
+   */
+  it('déchiffre via profiles.x25519_public_key quand le scellé ne porte pas xk', async () => {
+    const alice = generateX25519KeyPair();
+    const bob = generateX25519KeyPair();
+    const aliceSign = generateSigningKeyPair();
+    h.recipient = { publicKey: bob.publicKey, privateKey: bob.privateKey };
+    h.signingKeys['alice-id'] = aliceSign.publicKey;
+    h.x25519Keys['alice-id'] = alice.publicKey;
+
+    const { ciphertextB64, ivB64, rawKey } = await encryptText('derive');
+    const wrapped = await wrapKeyForRecipientX25519(
+      rawKey,
+      alice.privateKey,
+      alice.publicKey,
+      bob.publicKey,
+      keyWrapAad(alice.publicKey),
+    );
+    const context = {
+      conversationId: 'conv',
+      messageId: 'm-derived',
+      contentHash: await sealedContentHash(ciphertextB64),
+    };
+    // Scellé v3 SANS clés d'identité transportées.
+    const blob = await sealSenderForRecipient(bob.publicKey, 'alice-id', aliceSign.privateKey, context);
+
+    h.textKeyRows = [
+      { message_id: 'm-derived', encrypted_key: wrapped.encryptedKey, iv: wrapped.iv, sender_public_key: null },
+    ];
+    const rows = [
+      {
+        id: 'm-derived',
+        conversation_id: 'conv',
+        content: ciphertextB64,
+        is_text_encrypted: true,
+        encryption_metadata: { v: 1, iv: ivB64 },
+        sender_id: 'alice-id',
+        sender_sealed: [blob],
+      },
+    ];
+
+    await decryptMessageRows(rows, 'bob-id');
+    expect(rows[0].content).toBe('derive');
+  });
+
+  /**
+   * Ancien trafic : la colonne `sender_public_key` est peuplée → le message
+   * historique continue de se déchiffrer (zéro régression).
+   */
+  it('déchiffre un ANCIEN message AVEC sender_public_key (rétrocompat)', async () => {
+    const alice = generateX25519KeyPair();
+    const bob = generateX25519KeyPair();
+    h.recipient = { publicKey: bob.publicKey, privateKey: bob.privateKey };
+
+    const { ciphertextB64, ivB64, rawKey } = await encryptText('ancien message');
+    const wrapped = await wrapKeyForRecipientX25519(
+      rawKey,
+      alice.privateKey,
+      alice.publicKey,
+      bob.publicKey,
+      keyWrapAad(alice.publicKey),
+    );
+
+    h.textKeyRows = [
+      { message_id: 'm-legacy', encrypted_key: wrapped.encryptedKey, iv: wrapped.iv, sender_public_key: alice.publicKey },
+    ];
+    const rows = [
+      {
+        id: 'm-legacy',
+        conversation_id: 'conv',
+        content: ciphertextB64,
+        is_text_encrypted: true,
+        encryption_metadata: { v: 1, iv: ivB64 },
+        sender_id: 'alice-id',
+      },
+    ];
+
+    await decryptMessageRows(rows, 'bob-id');
+    expect(rows[0].content).toBe('ancien message');
   });
 });

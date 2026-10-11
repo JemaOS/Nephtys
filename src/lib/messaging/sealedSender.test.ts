@@ -10,6 +10,7 @@ import {
   parseSealedSenderPayload,
   verifySealedSender,
   findVerifiedSender,
+  findVerifiedSenderIdentity,
   sealedContentHash,
   type SealedSenderContext,
 } from './sealedSender';
@@ -173,5 +174,49 @@ describe('sealed sender v3 — non rejouable (liaison au contexte)', () => {
 
     const getSigningKey = async (id: string) => (id === 'dave' ? dave.publicKey : null);
     expect(await findVerifiedSender(alice.privateKey, [blobV2], getSigningKey)).toBe('dave');
+  });
+});
+
+describe('sealed sender — transport des clés d\'identité (anti-métadonnée)', () => {
+  it('v3 : transporte xk/ik et les restitue APRÈS vérification', async () => {
+    const alice = generateX25519KeyPair();       // destinataire
+    const dave = generateSigningKeyPair();        // expéditeur
+    const ctx: SealedSenderContext = {
+      conversationId: 'conv-1',
+      messageId: 'msg-1',
+      contentHash: await sealedContentHash('ct'),
+    };
+    const xk = generateX25519KeyPair().publicKey;
+    const ik = 'IDENTITY-X3DH-PUB-B64';
+
+    const blob = await sealSenderForRecipient(alice.publicKey, 'dave-id', dave.privateKey, ctx, {
+      x25519Key: xk,
+      identityKey: ik,
+    });
+
+    const getSigningKey = async (id: string) => (id === 'dave-id' ? dave.publicKey : null);
+    const resolved = await findVerifiedSenderIdentity(alice.privateKey, [blob], getSigningKey, ctx);
+    expect(resolved).toEqual({ senderId: 'dave-id', x25519Key: xk, identityKey: ik });
+
+    // La clé publique n'apparaît pas en clair dans le blob (opaque serveur).
+    const raw = atob(blob);
+    expect(raw.includes(xk)).toBe(false);
+    expect(raw.includes(ik)).toBe(false);
+  });
+
+  it('rétrocompat : un blob v3 sans clés transportées reste résoluble', async () => {
+    const alice = generateX25519KeyPair();
+    const dave = generateSigningKeyPair();
+    const ctx: SealedSenderContext = {
+      conversationId: 'conv-1',
+      messageId: 'msg-1',
+      contentHash: await sealedContentHash('ct'),
+    };
+    const blob = await sealSenderForRecipient(alice.publicKey, 'dave', dave.privateKey, ctx);
+    const getSigningKey = async () => dave.publicKey;
+    const resolved = await findVerifiedSenderIdentity(alice.privateKey, [blob], getSigningKey, ctx);
+    expect(resolved?.senderId).toBe('dave');
+    expect(resolved?.x25519Key).toBeUndefined();
+    expect(resolved?.identityKey).toBeUndefined();
   });
 });

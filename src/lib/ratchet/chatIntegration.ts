@@ -26,10 +26,30 @@ import {
 const deps: RatchetServiceDeps = {
   loadLocalKeys: getLocalRatchetKeys,
   loadPeerBundle,
+  loadPeerIdentityKey,
   markOneTimePreKeyUsed,
   loadSession,
   saveSession,
 };
+
+/**
+ * Clé publique d'identité ratchet (X3DH) publiée d'un pair.
+ * Sert à retrouver l'identité de l'initiateur à la réception quand elle n'est
+ * plus stockée en clair dans l'enveloppe (sealed sender). NE consomme PAS de
+ * one-time prekey (contrairement à `loadPeerBundle`).
+ */
+async function loadPeerIdentityKey(peerId: string): Promise<string | null> {
+  try {
+    const { data } = await supabase
+      .from('profiles')
+      .select('ratchet_identity_key')
+      .eq('id', peerId)
+      .maybeSingle();
+    return data?.ratchet_identity_key ?? null;
+  } catch {
+    return null;
+  }
+}
 
 /** Résout l'identifiant de l'unique pair d'une conversation directe, sinon null. */
 async function directPeerId(userId: string, conversationId: string): Promise<string | null> {
@@ -82,12 +102,17 @@ export async function tryEncryptWithRatchet(
 /**
  * Déchiffre un message de ratchet si l'enveloppe en est un.
  * Retourne le payload brut (texte sérialisé) ou `null` si non applicable.
+ * `senderId` (expéditeur AUTHENTIFIÉ, ex. résolu par sealed sender) permet de
+ * retrouver sa clé d'identité ratchet quand l'enveloppe ne la porte plus ;
+ * `senderIdentityKey` est la clé transportée par le payload sealed sender v3.
  */
 export async function tryDecryptWithRatchet(
   metadata: unknown,
   content: string,
   userId: string,
   sessionId: string,
+  senderId?: string | null,
+  senderIdentityKey?: string | null,
 ): Promise<string | null> {
   if (!isRatchetEnvelope(metadata)) return null;
   // Idempotence : un message déjà déchiffré est renvoyé depuis le cache
@@ -95,7 +120,7 @@ export async function tryDecryptWithRatchet(
   const cached = await getCachedPlaintext(userId, content);
   if (cached !== null) return cached;
   try {
-    const text = await decryptFromPeer(deps, userId, sessionId, metadata, content);
+    const text = await decryptFromPeer(deps, userId, sessionId, metadata, content, senderId, senderIdentityKey);
     if (text !== null) await setCachedPlaintext(userId, content, text);
     return text;
   } catch (e) {

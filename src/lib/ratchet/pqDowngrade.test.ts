@@ -75,6 +75,7 @@ function makeDeps(users: Record<string, TestUser>) {
   const deps: RatchetServiceDeps = {
     loadLocalKeys: async u => users[u]?.local ?? null,
     loadPeerBundle: async p => users[p]?.bundle ?? null,
+    loadPeerIdentityKey: async p => users[p]?.bundle.identityKey ?? null,
     markOneTimePreKeyUsed: async p => {
       if (users[p]) users[p].bundle.oneTimePreKey = null;
     },
@@ -105,7 +106,7 @@ describe('anti-downgrade post-quantique (ML-KEM)', () => {
     expect(lacksPqPart(stripped)).toBe(true);
 
     await expect(
-      decryptFromPeer(deps, 'bob', 'conv', stripped, msg.content),
+      decryptFromPeer(deps, 'bob', 'conv', stripped, msg.content, 'alice'),
     ).rejects.toBeInstanceOf(RatchetPqDowngradeError);
 
     // La session dégradée ne doit JAMAIS être établie/stockée.
@@ -121,7 +122,7 @@ describe('anti-downgrade post-quantique (ML-KEM)', () => {
     expect(lacksPqPart(malformed)).toBe(true);
 
     await expect(
-      decryptFromPeer(deps, 'bob', 'conv', malformed, msg.content),
+      decryptFromPeer(deps, 'bob', 'conv', malformed, msg.content, 'alice'),
     ).rejects.toBeInstanceOf(RatchetPqDowngradeError);
     expect(sessions.has('bob|conv')).toBe(false);
   });
@@ -136,7 +137,7 @@ describe('anti-downgrade post-quantique (ML-KEM)', () => {
     // Enveloppe sans PQ, MAIS aucune clé PQ locale → ce n'est PAS un downgrade.
     expect(() => assertPqNotDowngraded(users.bob.local, msg.envelope)).not.toThrow();
 
-    expect(await decryptFromPeer(deps, 'bob', 'conv', msg.envelope, msg.content)).toBe('classique');
+    expect(await decryptFromPeer(deps, 'bob', 'conv', msg.envelope, msg.content, 'alice')).toBe('classique');
   });
 
   it('(c) cas normal PQ (pq=true + ciphertext) → OK de bout en bout', async () => {
@@ -148,7 +149,7 @@ describe('anti-downgrade post-quantique (ML-KEM)', () => {
     expect(msg.envelope.mlKemCiphertext).toBeTruthy();
     expect(lacksPqPart(msg.envelope)).toBe(false);
 
-    expect(await decryptFromPeer(deps, 'bob', 'conv', msg.envelope, msg.content)).toBe('pq-ok');
+    expect(await decryptFromPeer(deps, 'bob', 'conv', msg.envelope, msg.content, 'alice')).toBe('pq-ok');
   });
 
   describe('garde-fou unitaire assertPqNotDowngraded', () => {

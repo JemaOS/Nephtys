@@ -53,6 +53,7 @@ function makeDeps(users: Record<string, TestUser>) {
   const deps: RatchetServiceDeps = {
     loadLocalKeys: async u => users[u]?.local ?? null,
     loadPeerBundle: async p => users[p]?.bundle ?? null,
+    loadPeerIdentityKey: async p => users[p]?.bundle.identityKey ?? null,
     markOneTimePreKeyUsed: async p => {
       if (users[p]) users[p].bundle.oneTimePreKey = null;
     },
@@ -72,14 +73,16 @@ describe('ratchet service (X3DH + Double Ratchet end-to-end)', () => {
 
     const msg = await encryptForPeer(deps, 'alice', 'conv', 'bob', 'bonjour');
     expect(msg.envelope.type).toBe('ratchet-init');
-    expect(msg.envelope.identityKey).toBe(users.alice.local.identityKeyPair.publicKey);
+    // Sealed sender : l'identité de l'expéditeur n'est PLUS dans l'enveloppe.
+    expect(msg.envelope.identityKey).toBeUndefined();
     // One-time prekey utilisée (forward secrecy dès l'init).
     expect(msg.envelope.usedOneTimePreKey).toBe(bobOpk);
     expect(msg.content).not.toContain('bonjour');
     // La one-time prekey de Bob est marquée consommée.
     expect(users.bob.bundle.oneTimePreKey).toBeNull();
 
-    const text = await decryptFromPeer(deps, 'bob', 'conv', msg.envelope, msg.content);
+    // Le destinataire retrouve l'identité via `loadPeerIdentityKey(senderId)`.
+    const text = await decryptFromPeer(deps, 'bob', 'conv', msg.envelope, msg.content, 'alice');
     expect(text).toBe('bonjour');
   });
 
@@ -89,11 +92,11 @@ describe('ratchet service (X3DH + Double Ratchet end-to-end)', () => {
 
     const a = async (t: string) => {
       const m = await encryptForPeer(deps, 'alice', 'conv', 'bob', t);
-      expect(await decryptFromPeer(deps, 'bob', 'conv', m.envelope, m.content)).toBe(t);
+      expect(await decryptFromPeer(deps, 'bob', 'conv', m.envelope, m.content, 'alice')).toBe(t);
     };
     const b = async (t: string) => {
       const m = await encryptForPeer(deps, 'bob', 'conv', 'alice', t);
-      expect(await decryptFromPeer(deps, 'alice', 'conv', m.envelope, m.content)).toBe(t);
+      expect(await decryptFromPeer(deps, 'alice', 'conv', m.envelope, m.content, 'bob')).toBe(t);
     };
 
     await a('a1'); // init
@@ -108,15 +111,15 @@ describe('ratchet service (X3DH + Double Ratchet end-to-end)', () => {
     const { deps } = makeDeps(users);
 
     const init = await encryptForPeer(deps, 'alice', 'conv', 'bob', 'init');
-    await decryptFromPeer(deps, 'bob', 'conv', init.envelope, init.content);
+    await decryptFromPeer(deps, 'bob', 'conv', init.envelope, init.content, 'alice');
 
     const m1 = await encryptForPeer(deps, 'alice', 'conv', 'bob', 'm1');
     const m2 = await encryptForPeer(deps, 'alice', 'conv', 'bob', 'm2');
     const m3 = await encryptForPeer(deps, 'alice', 'conv', 'bob', 'm3');
 
-    expect(await decryptFromPeer(deps, 'bob', 'conv', m3.envelope, m3.content)).toBe('m3');
-    expect(await decryptFromPeer(deps, 'bob', 'conv', m1.envelope, m1.content)).toBe('m1');
-    expect(await decryptFromPeer(deps, 'bob', 'conv', m2.envelope, m2.content)).toBe('m2');
+    expect(await decryptFromPeer(deps, 'bob', 'conv', m3.envelope, m3.content, 'alice')).toBe('m3');
+    expect(await decryptFromPeer(deps, 'bob', 'conv', m1.envelope, m1.content, 'alice')).toBe('m1');
+    expect(await decryptFromPeer(deps, 'bob', 'conv', m2.envelope, m2.content, 'alice')).toBe('m2');
   });
 
   it('round-trip avec hybride post-quantique (ML-KEM actif)', async () => {
@@ -127,7 +130,7 @@ describe('ratchet service (X3DH + Double Ratchet end-to-end)', () => {
     expect(init.envelope.type).toBe('ratchet-init');
     expect(init.envelope.pq).toBe(true);
     expect(init.envelope.mlKemCiphertext).toBeTruthy();
-    expect(await decryptFromPeer(deps, 'bob', 'conv', init.envelope, init.content)).toBe('pq-bonjour');
+    expect(await decryptFromPeer(deps, 'bob', 'conv', init.envelope, init.content, 'alice')).toBe('pq-bonjour');
   });
 
   it('rejects a tampered init (bad signature) and detects envelopes', async () => {
@@ -143,5 +146,38 @@ describe('ratchet service (X3DH + Double Ratchet end-to-end)', () => {
     expect(isRatchetEnvelope({ type: 'ratchet', header: { dh: 'a', pn: 0, n: 0 }, iv: 'x' })).toBe(true);
     expect(isRatchetEnvelope({ type: 'text', iv: 'x' })).toBe(false);
     expect(isRatchetEnvelope(null)).toBe(false);
+  });
+
+  it('rétrocompat : une enveloppe legacy portant identityKey se déchiffre sans lookup', async () => {
+    const users = { alice: makeUser(), bob: makeUser() };
+    const { deps } = makeDeps(users);
+
+    const msg = await encryptForPeer(deps, 'alice', 'conv', 'bob', 'legacy');
+    // Ancien trafic : l'identité était stockée dans l'enveloppe. On la rajoute
+    // et on NE fournit PAS de senderId → elle doit être utilisée.
+    const legacyEnvelope = {
+      ...msg.envelope,
+      identityKey: users.alice.local.identityKeyPair.publicKey,
+    };
+    expect(await decryptFromPeer(deps, 'bob', 'conv', legacyEnvelope, msg.content)).toBe('legacy');
+  });
+
+  it('identité transportée (payload v3) : déchiffre sans lookup profil', async () => {
+    const users = { alice: makeUser(), bob: makeUser() };
+    const { deps } = makeDeps(users);
+
+    const msg = await encryptForPeer(deps, 'alice', 'conv', 'bob', 'via-v3');
+    // Expéditeur inconnu des deps, MAIS sa clé d'identité est fournie (résolue
+    // par le sealed sender v3) → le déchiffrement doit aboutir.
+    const text = await decryptFromPeer(
+      deps,
+      'bob',
+      'conv',
+      msg.envelope,
+      msg.content,
+      'sender-inconnu',
+      users.alice.local.identityKeyPair.publicKey,
+    );
+    expect(text).toBe('via-v3');
   });
 });

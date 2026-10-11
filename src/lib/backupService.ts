@@ -957,14 +957,16 @@ async function restoreMessageKeys(
     recipient_id: k.recipient_id,
     encrypted_key: k.encrypted_key,
     iv: k.iv,
-    sender_public_key: k.sender_public_key,
+    // Sealed sender : `sender_public_key` peut être NULL (nouveau trafic ; la
+    // clé est transportée dans le payload v3). On tolère l'absence.
+    sender_public_key: k.sender_public_key ?? null,
   }))
   const mediaRows = (keys.media ?? []).map(k => ({
     message_id: k.message_id,
     recipient_id: k.recipient_id,
     encrypted_key: k.encrypted_key,
     iv: k.iv,
-    sender_public_key: k.sender_public_key,
+    sender_public_key: k.sender_public_key ?? null,
     media_iv: k.media_iv,
   }))
 
