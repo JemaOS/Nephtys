@@ -105,6 +105,59 @@ export interface EncryptedRatchetMessage {
   envelope: RatchetEnvelope;
 }
 
+// ─── Anti-downgrade post-quantique (ML-KEM) ────────────────────────────
+
+/**
+ * Erreur levée quand un `ratchet-init` reçu tente de faire retomber une session
+ * en mode X3DH **classique** (non PQ) alors que notre clé ML-KEM est publiée.
+ *
+ * Modèle de menace : un serveur ou un MITM peut retirer la partie post-quantique
+ * d'une enveloppe (`pq` / `mlKemCiphertext`) pour « éteindre » silencieusement
+ * la protection ML-KEM. Sans garde-fou, la session s'établissait en mode dégradé
+ * sans que personne ne s'en aperçoive.
+ *
+ * Invariant exploité : l'encapsulation ML-KEM cible TOUJOURS la clé publique du
+ * **destinataire** (`bundle.mlKemPublicKey` → `x3dhInitiate`). Donc si NOUS avons
+ * publié une clé ML-KEM (`localKeys.mlKemKeyPair`, cf. `keyStore.publishKeys`),
+ * tout initiateur conforme DOIT inclure la partie PQ. Une enveloppe
+ * `ratchet-init` sans PQ dans ce cas est anormale → on REFUSE (fail-closed)
+ * plutôt que d'établir une session en downgrade silencieux.
+ *
+ * NB : côté émetteur, la suppression de la clé PQ du bundle est déjà couverte
+ * par `verifyPreKey` — la signature Ed25519 couvre `signedPreKey || mlKemPublicKey`
+ * (`signPreKey`), donc un bundle trafiqué échoue à la vérification.
+ */
+export class RatchetPqDowngradeError extends Error {
+  constructor(
+    message = 'Ratchet: downgrade post-quantique détecté (ratchet-init sans ML-KEM alors que la clé PQ est publiée)',
+  ) {
+    super(message);
+    this.name = 'RatchetPqDowngradeError';
+  }
+}
+
+/**
+ * Vrai si l'enveloppe est un `ratchet-init` qui ne porte PAS de partie PQ
+ * exploitable (flag `pq` absent/faux OU ciphertext ML-KEM manquant).
+ */
+export function lacksPqPart(envelope: RatchetEnvelope): boolean {
+  return envelope.type === 'ratchet-init' && !(envelope.pq === true && !!envelope.mlKemCiphertext);
+}
+
+/**
+ * Fail-closed anti-downgrade : refuse un `ratchet-init` dépourvu de partie PQ
+ * lorsque nous avons publié une clé ML-KEM. Voir `RatchetPqDowngradeError`.
+ * Sans clé ML-KEM locale (comptes pré-PQ / pairs classiques), laisse passer.
+ */
+export function assertPqNotDowngraded(
+  localKeys: LocalRatchetKeys | null,
+  envelope: RatchetEnvelope,
+): void {
+  if (localKeys?.mlKemKeyPair && lacksPqPart(envelope)) {
+    throw new RatchetPqDowngradeError();
+  }
+}
+
 function toBundle(bundle: PeerBundle): PreKeyBundle {
   return {
     identityKey: bundle.identityKey,
@@ -191,6 +244,9 @@ export async function decryptFromPeer(
   const buildReceiverSession = async (): Promise<SessionState | null> => {
     const localKeys = await deps.loadLocalKeys(userId);
     if (!localKeys) return null;
+    // Fail-closed : on ne construit JAMAIS une session destinataire en mode
+    // dégradé (sans ML-KEM) si nous avons publié une clé post-quantique.
+    assertPqNotDowngraded(localKeys, envelope);
     if (!envelope.identityKey || !envelope.ephemeralPublicKey) return null;
 
     const oneTimePreKeyPublic = envelope.usedOneTimePreKey ?? null;

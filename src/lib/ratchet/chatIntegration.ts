@@ -19,6 +19,7 @@ import {
   decryptFromPeer,
   encryptForPeer,
   isRatchetEnvelope,
+  RatchetPqDowngradeError,
   type RatchetServiceDeps,
 } from './service';
 
@@ -97,7 +98,15 @@ export async function tryDecryptWithRatchet(
     const text = await decryptFromPeer(deps, userId, sessionId, metadata, content);
     if (text !== null) await setCachedPlaintext(userId, content, text);
     return text;
-  } catch {
+  } catch (e) {
+    // Signal de sécurité FORT : une tentative de downgrade post-quantique ne
+    // doit jamais passer inaperçue. On refuse la session ratchet en mode
+    // dégradé ; l'appelant retombe sur la pile X25519 (pas de clair à l'écran,
+    // et surtout PAS de session ratchet non-PQ établie silencieusement).
+    if (e instanceof RatchetPqDowngradeError) {
+      console.warn('[ratchet] DOWNGRADE post-quantique refusé :', e.message);
+      return null;
+    }
     // Repli silencieux : message ratchet indéchiffrable (clé/session divergente)
     // → on retombe sur X25519. Pas de log (évite de spammer la console en boucle).
     return null;
