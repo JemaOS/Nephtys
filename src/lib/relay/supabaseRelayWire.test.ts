@@ -4,7 +4,7 @@ import { describe, it, expect, vi } from 'vitest';
 const { rpc } = vi.hoisted(() => ({ rpc: vi.fn() }));
 vi.mock('@/lib/supabase', () => ({ supabase: { rpc: (...args: any[]) => rpc(...args) } }));
 
-import { SupabaseRelayWire } from './supabaseRelayWire';
+import { SupabaseRelayWire, SUPABASE_RELAY_ID } from './supabaseRelayWire';
 
 describe('SupabaseRelayWire (relais aveugle sur Supabase)', () => {
   it('mappe chaque opération sur la bonne RPC', async () => {
@@ -16,7 +16,12 @@ describe('SupabaseRelayWire (relais aveugle sur Supabase)', () => {
     const created = await wire.request({ op: 'createQueue' });
     expect(rpc).toHaveBeenCalledWith('anon_queue_create');
     expect(created.ok).toBe(true);
-    expect(created.result).toEqual({ queueId: 'q1', sendKey: 's1', rcvKey: 'r1' });
+    expect(created.result).toEqual({
+      queueId: 'q1',
+      sendKey: 's1',
+      rcvKey: 'r1',
+      relay: SUPABASE_RELAY_ID,
+    });
 
     // send
     rpc.mockResolvedValueOnce({ data: { ok: true }, error: null });
@@ -60,5 +65,10 @@ describe('SupabaseRelayWire (relais aveugle sur Supabase)', () => {
     rpc.mockResolvedValueOnce({ data: null, error: { message: 'unauthorized' } });
     const res = await wire.request({ op: 'send', queueId: 'q', queueKey: 's', ciphertext: 'x' });
     expect(res.ok).toBe(false);
+  });
+
+  it('expose le tag de relais hôte pour le routage par file', () => {
+    const wire = new SupabaseRelayWire();
+    expect(wire.relayIds).toEqual([SUPABASE_RELAY_ID]);
   });
 });

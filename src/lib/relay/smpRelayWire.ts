@@ -33,6 +33,17 @@ import type { QueueCredentials, StoredEnvelope } from './relayCore';
 
 const TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const READ_TIMEOUT_MS = 300;
+/**
+ * Drainage : au plus N enveloppes renvoyées par `read`. Le relais SMP stocke les
+ * messages côté serveur (pas de suppression à la lecture : l'`ack` les retire),
+ * et le client vendoré met en tampon (`rememberPending`) les messages reçus mais
+ * non consommés. On peut donc lire plusieurs fois de suite sans I/O tant qu'il
+ * reste des enveloppes en attente — ce qui augmente le débit sans changer
+ * l'ordre ni risquer perte/duplication.
+ */
+export const MAX_READ_ENVELOPES = 20;
+/** Délai (ms) des lectures de drainage après la première (attente longue). */
+const DRAIN_TIMEOUT_MS = 1;
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 function b64(bytes: Uint8Array): string {
@@ -221,7 +232,13 @@ export class SmpRelayWire implements RelayWire {
             sndSignPub: b64(senderSign.publicKeyDer),
             sndSignSec: b64(senderSign.secretKey),
           });
-          const creds: QueueCredentials = { queueId, sendKey, rcvKey: 'r' };
+          const creds: QueueCredentials = {
+            queueId,
+            sendKey,
+            rcvKey: 'r',
+            // Tag systématique du relais hôte (routage par file, failover).
+            relay: this.opts.url,
+          };
           return { ok: true, result: creds };
         }
         case 'send': {
@@ -234,24 +251,40 @@ export class SmpRelayWire implements RelayWire {
             await this.client.subscribeQueue(R, {});
             this.subscribed.add(op.queueId);
           }
-          let message: { msgId: Uint8Array; body: Uint8Array };
-          try {
-            message = (await this.client.receiveQueueMessage(R, { timeoutMs: READ_TIMEOUT_MS })).message;
-          } catch {
-            return { ok: true, result: [] as StoredEnvelope[] };
+          // Drainage borné : la première lecture attend un message (READ_TIMEOUT_MS),
+          // les suivantes ne font que vider ce qui est déjà en attente. On ne
+          // renvoie chaque message qu'une fois (le client SMP le retire de son
+          // tampon), et on n'acquitte jamais ici : l'`ack` reste à la charge de
+          // l'appelant → aucune perte ni duplication.
+          const limit = Math.min(
+            Math.max(Math.trunc(op.limit ?? MAX_READ_ENVELOPES) || MAX_READ_ENVELOPES, 1),
+            MAX_READ_ENVELOPES,
+          );
+          const envelopes: StoredEnvelope[] = [];
+          for (let i = 0; i < limit; i++) {
+            let message: { msgId: Uint8Array; body: Uint8Array };
+            try {
+              message = (await this.client.receiveQueueMessage(R, {
+                timeoutMs: i === 0 ? READ_TIMEOUT_MS : DRAIN_TIMEOUT_MS,
+                maxBatches: i === 0 ? undefined : 1,
+              })).message;
+            } catch {
+              // Plus d'enveloppe en attente (timeout) → fin du drainage.
+              break;
+            }
+            const decrypted = decryptRcvMessageBody({
+              serverDhSecret: R.serverDhSecret,
+              msgId: message.msgId,
+              encryptedBody: message.body,
+            });
+            envelopes.push({
+              id: b64(message.msgId),
+              ciphertext: utf8Text(decrypted.body),
+              ts: Date.now(),
+              expiresAt: Date.now() + TTL_MS,
+            });
           }
-          const decrypted = decryptRcvMessageBody({
-            serverDhSecret: R.serverDhSecret,
-            msgId: message.msgId,
-            encryptedBody: message.body,
-          });
-          const env: StoredEnvelope = {
-            id: b64(message.msgId),
-            ciphertext: utf8Text(decrypted.body),
-            ts: Date.now(),
-            expiresAt: Date.now() + TTL_MS,
-          };
-          return { ok: true, result: [env] };
+          return { ok: true, result: envelopes };
         }
         case 'ack': {
           const R = this.recipientFrom(op.queueId);
@@ -270,6 +303,11 @@ export class SmpRelayWire implements RelayWire {
       console.error('[smpRelayWire] op', op.op, 'failed:', e);
       return { ok: false, error: (e as Error)?.message ?? 'smp error' };
     }
+  }
+
+  /** Tag `relay` des files hébergées par ce relais (routage par file). */
+  get relayIds(): string[] {
+    return [this.opts.url];
   }
 }
 

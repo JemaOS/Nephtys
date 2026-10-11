@@ -12,6 +12,10 @@
  * l'invitation → le pair sait sur quel relais lire/ecrire.
  *
  * Si un relais est injoignable a la creation, on essaie le suivant du pool.
+ *
+ * ⚠️ Une operation portant un tag `relay` **absent du pool** est une erreur
+ * explicite : on ne route jamais silencieusement une file inconnue vers
+ * `entries[0]` (cela masquerait une file mal taggée / un relais retiré).
  */
 
 import type { QueueCredentials } from './relayCore';
@@ -29,10 +33,14 @@ export class MultiRelayWire implements RelayWire {
     if (entries.length === 0) throw new Error('MultiRelayWire: aucun relais configure');
   }
 
-  private wireFor(relay?: string): RelayWire {
+  /**
+   * Relais qui heberge une file. `undefined` (file heritee, sans tag) →
+   * `entries[0]` ; tag inconnu → `null` (→ erreur explicite, voir `request`).
+   */
+  private wireFor(relay?: string): RelayWire | null {
     if (relay) {
       const match = this.entries.find(e => e.url === relay);
-      if (match) return match.wire;
+      return match ? match.wire : null;
     }
     return this.entries[0].wire;
   }
@@ -58,11 +66,19 @@ export class MultiRelayWire implements RelayWire {
     }
 
     // Operations sur une file : router vers le relais qui l'heberge.
-    return this.wireFor((op as { relay?: string }).relay).request(op);
+    const relay = (op as { relay?: string }).relay;
+    const wire = this.wireFor(relay);
+    if (!wire) return { ok: false, error: `relais inconnu (hors pool): ${relay}` };
+    return wire.request(op);
   }
 
   /** URLs des relais du pool (diagnostic). */
   get relays(): string[] {
+    return this.entries.map(e => e.url);
+  }
+
+  /** Tags `relay` des files hebergees par ce wire (routage par file). */
+  get relayIds(): string[] {
     return this.entries.map(e => e.url);
   }
 }

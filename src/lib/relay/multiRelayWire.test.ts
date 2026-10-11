@@ -54,4 +54,37 @@ describe('MultiRelayWire (réseau décentralisé)', () => {
     const c = (await m.request({ op: 'createQueue' })).result as { relay?: string };
     expect(c.relay).toBe('wss://b/');
   });
+
+  it('renvoie une erreur explicite pour un relais inconnu (pas de repli silencieux)', async () => {
+    const a = new FakeWire('wss://a/');
+    const b = new FakeWire('wss://b/');
+    const m = new MultiRelayWire([
+      { url: 'wss://a/', wire: a },
+      { url: 'wss://b/', wire: b },
+    ]);
+    const resp = await m.request({
+      op: 'send',
+      queueId: 'q',
+      queueKey: 'k',
+      ciphertext: 'c',
+      relay: 'wss://inconnu/',
+    });
+    expect(resp.ok).toBe(false);
+    expect(resp.error).toMatch(/inconnu/);
+    // Aucun relais du pool n'a été sollicité.
+    expect(a.calls.length).toBe(0);
+    expect(b.calls.length).toBe(0);
+  });
+
+  it('route les files sans tag vers le premier relais (rétro-compatibilité)', async () => {
+    const a = new FakeWire('wss://a/');
+    const b = new FakeWire('wss://b/');
+    const m = new MultiRelayWire([
+      { url: 'wss://a/', wire: a },
+      { url: 'wss://b/', wire: b },
+    ]);
+    await m.request({ op: 'send', queueId: 'q', queueKey: 'k', ciphertext: 'c' });
+    expect(a.calls.length).toBe(1);
+    expect(b.calls.length).toBe(0);
+  });
 });

@@ -20,6 +20,13 @@ import type { RelayOp, RelayResponse, RelayWire } from './wire';
 const ANON_CONSENT_KEY = 'nephtys_anon_relay_consent';
 
 /**
+ * Tag `relay` **stable** des files hébergées sur Supabase. Les deux pairs
+ * calculent le même identifiant : il sert au routage par file (failover) et
+ * survit à l'invitation, sans exposer de secret.
+ */
+export const SUPABASE_RELAY_ID = 'supabase';
+
+/**
  * Vrai si l'utilisateur a accepté d'utiliser le relais Supabase alors que sa
  * **session Supabase est connectée** (le mode privé anonyme ne doit pas, par
  * défaut, écrire sous l'identité du compte).
@@ -102,6 +109,9 @@ export class SupabaseRelayWire implements RelayWire {
           queueId: creds.queueId,
           sendKey: creds.sendToken,
           rcvKey: creds.rcvToken,
+          // Tag systématique : la file est routée vers ce relais, même si le
+          // primaire (SMP) redevient disponible (pas de split-brain).
+          relay: SUPABASE_RELAY_ID,
         };
         return { ok: true, result };
       }
@@ -152,5 +162,10 @@ export class SupabaseRelayWire implements RelayWire {
         return { ok: true, result: true };
       }
     }
+  }
+
+  /** Tag `relay` des files hébergées par ce relais (routage par file). */
+  get relayIds(): string[] {
+    return [SUPABASE_RELAY_ID];
   }
 }
