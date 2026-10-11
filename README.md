@@ -21,13 +21,16 @@
 ## Fonctionnalités
 
 - **Messagerie de bout en bout** : **X25519 + Double Ratchet** (forward secrecy) + **hybride post‑quantique (ML‑KEM‑768, clé liée à la signature)** + **sealed sender** (anonymat de l'expéditeur).
+- **Clés authentifiées** : les clés publiques X25519 sont **signées (Ed25519)** et vérifiées avant usage ; les prekeys du ratchet sont signées (anti‑interception / anti‑downgrade post‑quantique).
+- **Textes, médias et vocaux chiffrés** : le chiffrement est **fail‑closed** — si une clé ne peut pas être créée, l'envoi est refusé (jamais de repli en clair).
 - **Mode privé** : connexions 1‑à‑1 par **invitation** (lien/QR), sans compte ; le relais ne voit que des blocs opaques.
-- **Groupes privés** : clé de groupe distribuée via les files du relais, rotation à l'ajout/retrait de membres.
+- **Groupes privés** : clé de groupe distribuée via les files du relais, **payloads signés** et rotation à l'ajout/retrait de membres.
 - **Statuts éphémères** : chiffrés, expirés automatiquement.
-- **Appels audio/vidéo** WebRTC (désactivés en mode Tor — voir limites).
+- **Appels audio/vidéo** WebRTC (désactivés en mode Tor — voir limites), avec **consentement explicite** à la réception.
 - **Partage de fichiers** chiffré, avec aperçus (images, PDF, documents).
 - **Multi‑appareils** : liaison d'appareil (transfert des clés E2EE via QR/lien).
 - **Tor intégré** : bouton « Router via Tor » (paramètres → confidentialité).
+- **Rétention « local‑first »** : l'historique vit sur l'appareil ; le serveur ne conserve pas l'ancien historique (purge des messages livrés/lus après un délai de grâce).
 
 ---
 
@@ -40,7 +43,7 @@ flowchart LR
   B[Navigateur<br/>app Nephtys] -- WebRTC/QUIC<br/>(KPS UDP) --> G[Passerelle KPS<br/>VPS]
   B -- "circuits Tor construits\nen local (WASM)" --> G
   G -- "octets opaques\n(ne voit pas la destination)" --> T(((Réseau Tor)))
-  T -- exit --> S["Relais /smp<br/>(VPS)"]
+  T -- exit --> S[Relais aveugle<br/>VPS]
   S -- blocs opaques --> T
   T --> G
   G --> B
@@ -48,7 +51,7 @@ flowchart LR
 
 - Le **client Tor (Arti) tourne dans le navigateur**, compilé en **WebAssembly** (`tor-js`), wasm auto‑hébergé.
 - La **passerelle KPS** (VPS) ne relaie que des **octets opaques** : elle **ne voit pas la destination** ni le contenu.
-- Les blocs du mode privé transitent par le **pont relais‑over‑HTTP** (`/smp/up`, `/smp/down`).
+- Les blocs du mode privé transitent par un **pont relais‑over‑HTTP** (montée/descente).
 - Résultat : le **relais ne voit qu'une sortie Tor**, jamais l'IP de l'utilisateur ; aucun logiciel externe (ni Tor Browser, ni Orbot).
 
 ---
@@ -57,20 +60,20 @@ flowchart LR
 
 - **Interface** : React 18 + TypeScript + Vite, Tailwind CSS + Radix UI, TanStack Query, react-router 7.
 - **Mode compte** : backend managé (authentification, base de données, temps réel, stockage). E2EE et sealed sender appliqués **côté client**.
-- **Mode privé** : protocole de **files aveugles** (transport navigateur vendoré sous AGPL‑3), relais **aveugle** (`server/smp-broker`).
-- **Tor WASM** : `tor-js` (Arti/WASM) + passerelle KPS (`server/tor`) + pont `server/tor/smp-http-bridge.mjs`.
+- **Mode privé** : protocole de **files aveugles** (transport navigateur vendoré sous AGPL‑3), relais **aveugle** côté serveur.
+- **Tor WASM** : `tor-js` (Arti/WASM) + passerelle KPS + pont relais‑over‑HTTP.
 - **Crypto** : `@noble/curves|ciphers|hashes|post-quantum`.
 
 ### Serveur (`server/`)
 
 | Composant | Rôle |
 |---|---|
-| `smp-broker/` | Relais aveugle profil navigateur (WebSocket) |
-| `tor/gateway.mjs` | Passerelle WebSocket→Tor (secours) |
-| `tor/smp-http-bridge.mjs` | Pont relais‑over‑HTTP (up/down) ↔ broker |
-| `tor/setup.sh` | Installation Tor sur le VPS |
-| `turn-creds/` | Délivrance des identifiants TURN (appels) |
-| `relay.mjs` | Relais aveugle générique |
+| Relais aveugle (broker WebSocket) | Achemine des blocs opaques entre pairs (files) |
+| Passerelle WebSocket→Tor | Secours de routage vers Tor |
+| Pont relais‑over‑HTTP | Montée/descente ↔ broker |
+| Installation Tor (VPS) | Mise en place du service Tor |
+| Délivrance des identifiants TURN | Appels audio/vidéo |
+| Relais générique | Relais aveugle générique |
 
 ---
 
@@ -78,6 +81,11 @@ flowchart LR
 
 **Garanti (actif en production)**
 - E2EE de bout en bout : **X25519 + Double Ratchet** (forward secrecy) + **post‑quantique (ML‑KEM‑768)** + **sealed sender**.
+- **Authentification des clés** : clés publiques X25519 **signées et vérifiées** ; prekeys ratchet signées ; refus des downgrades post‑quantiques.
+- **Fail‑closed** : aucun envoi en clair si le chiffrement échoue (texte, média, vocal, transfert, diffusion temps réel).
+- **Clés et données locales chiffrées au repos** (clé AES non extractible côté navigateur).
+- **Durcissements RLS/storage** : accès aux objets restreint aux conversations concernées ; envoi/en‑tête anonymes par files opaques à jeton.
+- **2FA** appliqué à la connexion ; rotation de récupération exigeant la **preuve de l'ancienne phrase**.
 - Mode privé : pas de compte, relais aveugle, **invitations explicites** (pas d'annuaire).
 
 **Limites (assumées)**
@@ -85,6 +93,7 @@ flowchart LR
 - **Fingerprinting navigateur** non neutralisé (impossible depuis une page web).
 - Mode Tor : le **premier saut (passerelle KPS) voit l'IP** — comme le *garde* d'un circuit Tor classique ; le relais, lui, ne voit qu'une sortie Tor.
 - **Mode compte** : centralisé → le serveur voit des métadonnées.
+- Les **blobs média** stockés localement pour l'usage hors‑ligne restent en clair sur l'appareil.
 
 ### Comparatif (honnête)
 
@@ -115,12 +124,19 @@ npm install
 
 ### Variables d'environnement (`.env`)
 
-Le mode compte utilise les identifiants de votre backend (URL + clé publique), fournis dans la configuration du déploiement. Mode privé et Tor :
-
 ```dotenv
-VITE_SMP_RELAY_URL=wss://relais.exemple/
-VITE_SMP_RELAY_KEY_HASH=
-VITE_TOR_GATEWAY=1.2.3.4:12298:uEiA...
+# Mode compte (backend managé)
+VITE_SUPABASE_URL=
+VITE_SUPABASE_ANON_KEY=
+
+# Appels audio/vidéo (identifiants TURN éphémères servis par le VPS)
+VITE_TURN_CREDS_URL=
+
+# GIF / stickers
+VITE_TENOR_API_KEY=
+
+# Sélection du transport d'envoi (mode compte)
+VITE_TRANSPORT_SEND=
 ```
 
 ### Lancer
