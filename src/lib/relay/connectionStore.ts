@@ -17,6 +17,8 @@ export interface PendingInit {
   identityKey: string;
   ephemeralPublicKey: string;
   usedOneTimePreKey: string | null;
+  /** Ciphertext ML-KEM (post-quantique) à joindre au premier message. */
+  mlKemCiphertext: string | null;
 }
 
 export interface PrivateConnectionRecord {

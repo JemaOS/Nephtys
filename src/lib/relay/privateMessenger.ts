@@ -218,8 +218,9 @@ export class PrivateMessenger {
       identityKey: localKeys.identityKeyPair.publicKey,
       signingKey: localKeys.signingKeyPair.publicKey,
       signedPreKey: localKeys.signedPreKey.publicKey,
-      signedPreKeySignature: signPreKey(localKeys.signingKeyPair.privateKey, localKeys.signedPreKey.publicKey),
+      signedPreKeySignature: signPreKey(localKeys.signingKeyPair.privateKey, localKeys.signedPreKey.publicKey, localKeys.mlKemKeyPair?.publicKey),
       oneTimePreKey,
+      mlKemPublicKey: localKeys.mlKemKeyPair?.publicKey ?? null,
     };
 
     const link = bytesToBase64(utf8(JSON.stringify({ r: relayInvite, b: bundle })));
@@ -259,6 +260,7 @@ export class PrivateMessenger {
         identityKey: localKeys.identityKeyPair.publicKey,
         ephemeralPublicKey: init.ephemeralPublicKey,
         usedOneTimePreKey: parsed.b.oneTimePreKey ?? null,
+        mlKemCiphertext: init.mlKemCiphertext ?? null,
       },
     });
   }
@@ -342,6 +344,8 @@ export class PrivateMessenger {
                 opkPublic && opkPrivate ? { privateKey: opkPrivate, publicKey: opkPublic } : null,
                 wire.init.identityKey,
                 wire.init.ephemeralPublicKey,
+                wire.init.mlKemCiphertext ?? null,
+                wire.init.mlKemCiphertext ? record.localKeys.mlKemKeyPair?.secretKey ?? null : null,
               );
               session = initReceiverSession(response.rootKey, record.localKeys.signedPreKey, response.associatedData);
             }
