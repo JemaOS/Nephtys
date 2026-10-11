@@ -10,9 +10,9 @@
 
 | | **Mode compte** | **Mode privé (anonyme)** |
 |---|---|---|
-| Accès | Inscription / connexion (Supabase Auth) | Sans compte, sans inscription |
+| Accès | Inscription / connexion (backend managé) | Sans compte, sans inscription |
 | Interface | Application complète (barre latérale, chats, contacts, appels) | Interface **dédiée, plein écran**, isolée de l'app connectée |
-| Transport | Supabase (temps réel) | **Relais aveugle** (files opaques) |
+| Transport | Backend temps réel | **Relais aveugle** (files opaques) |
 | Identité | Compte serveur | **Identité locale** (clés sur l'appareil) |
 | Tor | — | **Oui**, « Router via Tor » (client Tor WASM) |
 
@@ -56,7 +56,7 @@ flowchart LR
 ## Architecture
 
 - **Interface** : React 18 + TypeScript + Vite, Tailwind CSS + Radix UI, TanStack Query, react-router 7.
-- **Mode compte** : Supabase (Auth, Postgres, Realtime, Storage). E2EE et sealed sender appliqués **côté client**.
+- **Mode compte** : backend managé (authentification, base de données, temps réel, stockage). E2EE et sealed sender appliqués **côté client**.
 - **Mode privé** : protocole de **files aveugles** (transport navigateur vendoré sous AGPL‑3), relais **aveugle** (`server/smp-broker`).
 - **Tor WASM** : `tor-js` (Arti/WASM) + passerelle KPS (`server/tor`) + pont `server/tor/smp-http-bridge.mjs`.
 - **Crypto** : `@noble/curves|ciphers|hashes|post-quantum`.
@@ -87,7 +87,7 @@ flowchart LR
 - **Pas d'audit indépendant** à ce jour.
 - **Fingerprinting navigateur** non neutralisé (impossible depuis une page web).
 - Mode Tor : le **premier saut (passerelle KPS) voit l'IP** — comme le *garde* d'un circuit Tor classique ; le relais, lui, ne voit qu'une sortie Tor.
-- **Mode compte** : centralisé (Supabase) → le serveur voit des métadonnées.
+- **Mode compte** : centralisé → le serveur voit des métadonnées.
 
 ### Comparatif (honnête)
 
@@ -117,16 +117,12 @@ npm install
 ```
 
 ### Variables d'environnement (`.env`)
-```dotenv
-# Supabase (mode compte)
-VITE_SUPABASE_URL=...
-VITE_SUPABASE_ANON_KEY=...
 
-# Mode privé (relais aveugle)
+Le mode compte utilise les identifiants de votre backend (URL + clé publique), fournis dans la configuration du déploiement. Mode privé et Tor :
+
+```dotenv
 VITE_SMP_RELAY_URL=wss://relais.exemple/
 VITE_SMP_RELAY_KEY_HASH=
-
-# Tor WASM (passerelle KPS, format ip:port:certhash)
 VITE_TOR_GATEWAY=1.2.3.4:12298:uEiA...
 ```
 
