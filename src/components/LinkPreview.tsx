@@ -5,6 +5,7 @@ import React, { useState } from 'react';
 import { useI18n } from '@/i18n';
 import { X, Play } from 'lucide-react';
 import { LinkPreviewData } from '@/lib/linkPreview';
+import { safeHttpUrl, isSafeMediaSrc } from '@/lib/safeUrl';
 import { YouTubePlayer, isYouTubeUrl, extractYouTubeVideoId } from './YouTubePlayer';
 
 interface LinkPreviewProps {
@@ -30,6 +31,11 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({
   const { url, title, description, image, siteName, domain } = preview;
   const [showYouTubePlayer, setShowYouTubePlayer] = useState(false);
 
+  // Données contrôlées par un pair (link_preview déchiffré E2EE) : on ne fait
+  // jamais confiance au schéma d'URL. Rejette javascript:/data:/etc.
+  const safeUrl = safeHttpUrl(url);
+  const safeImage: string | undefined = (typeof image === 'string' && isSafeMediaSrc(image)) ? image : undefined;
+
   // Check if this is a YouTube link
   const isYouTube = isYouTubeUrl(url);
   const youtubeVideoId = isYouTube ? extractYouTubeVideoId(url) : null;
@@ -50,7 +56,7 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({
     if (isYouTube && youtubeVideoId) {
       setShowYouTubePlayer(true);
     } else {
-      window.open(url, '_blank', 'noopener,noreferrer');
+      if (safeUrl) window.open(safeUrl, '_blank', 'noopener,noreferrer');
     }
   };
 
@@ -100,7 +106,7 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({
         {image && (
           <div className="w-20 h-20 flex-shrink-0 bg-bg-surface">
             <img
-        src={image ?? undefined}
+        src={safeImage}
               alt={title || 'Link preview'}
               className="w-full h-full object-cover"
               onError={(e) => {
@@ -143,7 +149,7 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({
   const renderYouTubeThumbnail = () => (
     <div className="relative">
       <img
-        src={image ?? undefined}
+        src={safeImage}
         alt={title || 'YouTube video'}
         className="w-full h-auto max-h-[140px] object-cover"
         onError={(e) => {
@@ -172,10 +178,10 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({
   const renderRegularPreview = () => (
     <div className="flex">
       {/* Thumbnail - Square on the left */}
-      {image && (
+      {safeImage && (
         <div className="w-[50px] h-[50px] flex-shrink-0">
           <img
-            src={image}
+            src={safeImage}
             alt={title || 'Link preview'}
             className="w-full h-full object-cover"
             onError={(e) => {
@@ -255,22 +261,28 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({
         </button>
 
         {/* Truncated clickable URL below the card */}
-        <a
-          href={url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className={`inline-block text-[11px] mt-1 underline truncate max-w-full ${getLinkColorClass()}`}
-          onClick={(e) => {
-            e.stopPropagation();
-            // For YouTube, also open in-app player
-            if (isYouTube && youtubeVideoId) {
-              e.preventDefault();
-              setShowYouTubePlayer(true);
-            }
-          }}
-        >
-          {truncateUrl(url, 35)}
-        </a>
+        {safeUrl ? (
+          <a
+            href={safeUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`inline-block text-[11px] mt-1 underline truncate max-w-full ${getLinkColorClass()}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              // For YouTube, also open in-app player
+              if (isYouTube && youtubeVideoId) {
+                e.preventDefault();
+                setShowYouTubePlayer(true);
+              }
+            }}
+          >
+            {truncateUrl(url, 35)}
+          </a>
+        ) : (
+          <span className={`inline-block text-[11px] mt-1 truncate max-w-full ${getSecondaryTextClass()}`}>
+            {truncateUrl(String(url ?? ''), 35)}
+          </span>
+        )}
       </div>
 
       {/* YouTube Player Modal */}

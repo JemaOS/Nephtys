@@ -64,11 +64,14 @@ globalThis.addEventListener('fetch', (event) => {
 
   // Media: cache-first for offline support
   if (isMediaRequest(request)) {
+    // On ne met en cache QUE les médias de même origine : évite qu'un hôte
+    // tiers (nom contenant "cdn"/"storage") empoisonne le cache durablement.
+    const cacheable = url.origin === globalThis.location.origin;
     event.respondWith(
       caches.match(request).then((cached) => {
         if (cached) return cached;
         return fetch(request).then((response) => {
-          if (response.ok && response.status !== 206) {
+          if (cacheable && response.ok && response.status !== 206) {
             const clone = response.clone();
             caches.open(MEDIA_CACHE).then((cache) => cache.put(request, clone));
           }
@@ -114,7 +117,18 @@ globalThis.addEventListener('notificationclick', (event) => {
               return client.focus();
             }
           }
-          return clients.openWindow(event.notification.data.url || '/');
+          // N'ouvre QUE des URLs de même origine (le payload de notification
+          // peut être contrôlé → éviter un open-redirect / phishing).
+          let target = '/';
+          try {
+            const candidate = new URL(event.notification.data?.url || '/', globalThis.location.origin);
+            if (candidate.origin === globalThis.location.origin) {
+              target = candidate.pathname + candidate.search + candidate.hash;
+            }
+          } catch {
+            target = '/';
+          }
+          return clients.openWindow(target);
         })
     );
   }

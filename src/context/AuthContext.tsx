@@ -567,6 +567,28 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
       }
     }
     
+    // Purge les secrets locaux avant de fermer la session : un appareil
+    // partagé ne doit conserver ni les clés E2EE, ni les sessions ratchet,
+    // ni le cache de messages en clair, ni le stockage hors-ligne.
+    if (user) {
+      try {
+        const { clearLocalX25519 } = await import('@/lib/e2eeX25519')
+        await clearLocalX25519(user.id)
+      } catch { /* best effort */ }
+      try {
+        const { clearLocalRatchetKeys } = await import('@/lib/ratchet/keyStore')
+        const { clearUserSessions } = await import('@/lib/ratchet/sessionStore')
+        await Promise.all([clearLocalRatchetKeys(user.id), clearUserSessions(user.id)])
+      } catch { /* best effort */ }
+    }
+    try {
+      const { offlineStorage } = await import('@/lib/offlineStorage')
+      await offlineStorage.clearAll()
+    } catch { /* best effort */ }
+    try {
+      localStorage.removeItem('nephtys_plaintext_cache_v1')
+    } catch { /* best effort */ }
+
     const { error } = await supabase.auth.signOut()
     if (error) throw error
   }

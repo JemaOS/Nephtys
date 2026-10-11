@@ -24,7 +24,9 @@ dist-ssr
 *.sw?
 
 .vercel
+.env
 .env*.local
+!.env.example
 
 # Test reports - should not be in repository
 lhreport.html

@@ -13,6 +13,31 @@
 
 import { RelayCore, type QueueCredentials, type StoredEnvelope } from './relayCore';
 
+/**
+ * Autorise le relais uniquement en `wss://` (ou `ws://` vers loopback / `.onion`
+ * sous Tor). Refuse le clair vers un hôte distant : le relais transporte du
+ * chiffré et des métadonnées, un MITM réseau pourrait les lire/modifier.
+ */
+export function isAllowedRelayUrl(rawUrl: string): boolean {
+  try {
+    const u = new URL(rawUrl);
+    if (u.protocol === 'wss:') return true;
+    if (u.protocol === 'ws:') {
+      const h = u.hostname.toLowerCase();
+      return (
+        h === 'localhost' ||
+        h === '127.0.0.1' ||
+        h === '::1' ||
+        h === '[::1]' ||
+        h.endsWith('.onion')
+      );
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 export type RelayOp =
   | { op: 'createQueue' }
   | { op: 'send'; queueId: string; queueKey: string; ciphertext: string }
@@ -65,6 +90,10 @@ export class WebSocketWire implements RelayWire {
     if (this.socket && this.socket.readyState === 1) return;
     if (this.connecting) return this.connecting;
     this.connecting = new Promise<void>((resolve, reject) => {
+      if (!isAllowedRelayUrl(this.url)) {
+        reject(new Error('Relais non sécurisé : wss:// requis (hors loopback/.onion)'));
+        return;
+      }
       const ws = new WebSocket(this.url);
       ws.onopen = () => {
         this.socket = ws;

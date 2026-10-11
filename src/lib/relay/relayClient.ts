@@ -8,7 +8,7 @@
  * pointé sur le relais `VITE_RELAY_URL`.
  */
 
-import { WebSocketWire, type RelayWire } from './wire';
+import { WebSocketWire, isAllowedRelayUrl, type RelayWire } from './wire';
 import { SupabaseRelayWire } from './supabaseRelayWire';
 import { AgentRelayWire } from './agentRelayWire';
 import { SmpRelayWire } from './smpRelayWire';
@@ -114,8 +114,14 @@ export function getRelayLabel(): string {
 export function setRelayUrl(url: string): void {
   try {
     const trimmed = url.trim();
-    if (trimmed) localStorage.setItem(RELAY_OVERRIDE_KEY, trimmed);
-    else localStorage.removeItem(RELAY_OVERRIDE_KEY);
+    if (trimmed) {
+      // Refuse le clair vers un hôte distant (wss:// requis hors loopback/.onion).
+      if (!isAllowedRelayUrl(trimmed)) {
+        console.warn('[relay] URL refusée (wss:// requis) :', trimmed);
+        return;
+      }
+      localStorage.setItem(RELAY_OVERRIDE_KEY, trimmed);
+    } else localStorage.removeItem(RELAY_OVERRIDE_KEY);
   } catch {
     // localStorage indisponible
   }

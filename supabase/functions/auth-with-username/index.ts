@@ -178,10 +178,11 @@ async function enforceRateLimit(
     });
 
     if (!response.ok) {
-        // En cas d'échec du RPC, on FAIL OPEN (laisse passer) pour ne pas bloquer
-        // les utilisateurs légitimes en cas de souci DB. À monitorer.
+        // FAIL CLOSED : si le limiteur est indisponible, on refuse la requête
+        // au lieu de laisser passer (sinon un attaquant peut saturer/faire
+        // échouer le RPC pour désactiver totalement la limitation).
         console.error('[RateLimit] RPC check failed', await response.text());
-        return;
+        throw new RateLimitError('Service de sécurité temporairement indisponible. Réessayez.', 30);
     }
 
     const rows = await response.json();

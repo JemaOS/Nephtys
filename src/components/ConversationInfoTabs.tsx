@@ -9,6 +9,7 @@ import { useDecryptedMedia } from '@/hooks/useDecryptedMedia'
 import { useI18n } from '@/i18n';
 import { useAuth } from '@/context/AuthContext';
 import { MediaImg } from './MediaImg';
+import { safeHttpUrl } from '@/lib/safeUrl';
 
 // Re-export interfaces if needed, or define them here
 export interface GroupMember {
@@ -411,14 +412,20 @@ export const FilesTab: React.FC<FilesTabProps> = ({
               {formatFileSize(file.file_size)} • {formatDate(file.created_at)}
             </p>
           </div>
-          <a
-            href={file.media_url || file.file_url || '#'}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="w-8 h-8 rounded-full bg-bg-hover flex items-center justify-center hover:bg-accent/20 transition-colors"
-          >
-            <Download size={16} className="text-text-secondary" />
-          </a>
+          {safeHttpUrl(file.media_url || file.file_url) ? (
+            <a
+              href={safeHttpUrl(file.media_url || file.file_url) as string}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-8 h-8 rounded-full bg-bg-hover flex items-center justify-center hover:bg-accent/20 transition-colors"
+            >
+              <Download size={16} className="text-text-secondary" />
+            </a>
+          ) : (
+            <span className="w-8 h-8 rounded-full bg-bg-hover flex items-center justify-center opacity-40">
+              <Download size={16} className="text-text-secondary" />
+            </span>
+          )}
         </div>
       ))}
     </div>

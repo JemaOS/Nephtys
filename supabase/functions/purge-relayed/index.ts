@@ -15,6 +15,11 @@ const GRACE_SECONDS = Number(Deno.env.get('PURGE_GRACE_SECONDS') ?? 7 * 24 * 360
 const BATCH = 200
 const MAX_BATCHES = 25 // borne : max 5000 messages par exécution
 
+// Jeton partagé avec le job pg_cron. Sans lui, n'importe quel porteur de la clé
+// anon (publique) pouvait déclencher une purge destructive. À surcharger via
+// l'env PURGE_CRON_TOKEN.
+const CRON_TOKEN = Deno.env.get('PURGE_CRON_TOKEN') ?? 'npt_purge_7f3c9a1b5e2d4c8f'
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -22,7 +27,11 @@ function json(body: unknown, status = 200): Response {
   })
 }
 
-Deno.serve(async () => {
+Deno.serve(async (req) => {
+  if (req.headers.get('x-purge-token') !== CRON_TOKEN) {
+    return json({ ok: false, error: 'forbidden' }, 403)
+  }
+
   const supabaseUrl = Deno.env.get('SUPABASE_URL')
   const serviceRole = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
   if (!supabaseUrl || !serviceRole) {
