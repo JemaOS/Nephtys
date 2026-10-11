@@ -250,6 +250,14 @@ dialog::backdrop {
   background: transparent;
 }
 
+/* Le lecteur media tient toujours dans la vue : la video est bornee a la hauteur
+   utile (header + controls + marges) donc les controles restent visibles, sans
+   scroll, sur desktop comme sur mobile. */
+.media-viewer-fullscreen video {
+  max-height: calc(100dvh - 11rem);
+  object-fit: contain;
+}
+
 /* Ensure media viewer uses full viewport on mobile */
 @media (max-width: 768px) {
   .media-viewer-fullscreen {
@@ -263,11 +271,11 @@ dialog::backdrop {
     height: 100dvh !important;
   }
   
-  /* Video should fill available space */
+  /* Video should fill available space (sans pousser les controles hors vue) */
   .media-viewer-fullscreen video {
     width: 100%;
     height: auto;
-    max-height: 100%;
+    max-height: calc(100dvh - 9rem);
   }
 }
 
