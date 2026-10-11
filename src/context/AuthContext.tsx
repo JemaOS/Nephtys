@@ -672,25 +672,14 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
       }
     }
     
-    // Purge les secrets locaux avant de fermer la session : un appareil
-    // partagé ne doit conserver ni les clés E2EE, ni les sessions ratchet,
-    // ni le cache de messages en clair, ni le stockage hors-ligne.
-    if (user) {
-      try {
-        const { clearLocalX25519 } = await import('@/lib/e2eeX25519')
-        await clearLocalX25519(user.id)
-      } catch { /* best effort */ }
-      try {
-        const { clearLocalRatchetKeys } = await import('@/lib/ratchet/keyStore')
-        const { clearUserSessions } = await import('@/lib/ratchet/sessionStore')
-        await Promise.all([clearLocalRatchetKeys(user.id), clearUserSessions(user.id)])
-      } catch { /* best effort */ }
-    }
+    // Modèle « local-first » (comme WhatsApp) : on NE purge PAS les clés E2EE
+    // (X25519/ratchet) ni l'historique local à la déconnexion. Se reconnecter
+    // sur le MÊME appareil ne doit donc PAS redemander la phrase de récupération.
+    // La phrase n'est requise que sur un AUTRE appareil (ou après effacement
+    // manuel des données du navigateur).
     try {
-      const { offlineStorage } = await import('@/lib/offlineStorage')
-      await offlineStorage.clearAll()
-    } catch { /* best effort */ }
-    try {
+      // Ancien cache de texte déchiffré (versions précédentes) — sans effet sur
+      // les clés ni sur l'historique.
       localStorage.removeItem('nephtys_plaintext_cache_v1')
     } catch { /* best effort */ }
 
