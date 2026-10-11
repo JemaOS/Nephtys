@@ -26,6 +26,7 @@ import { wordlist } from '@scure/bip39/wordlists/english.js';
 import { ed25519, x25519 } from '@noble/curves/ed25519.js';
 import { ml_kem768 } from '@noble/post-quantum/ml-kem.js';
 import { bytesToBase64, hkdf, type RawKeyPair } from '../ratchet/primitives';
+import { tagX25519 } from '../x25519';
 import type { SigningKeyPair } from '../ratchet/x3dh';
 import type { MlKemKeyPair } from '../ratchet/pqKem';
 import type { LocalRatchetKeys } from '../ratchet/service';
@@ -88,10 +89,11 @@ export async function deriveMlKemKeyPair(seed: Uint8Array, label: string): Promi
   return { publicKey: bytesToBase64(publicKey), secretKey: bytesToBase64(secretKey) };
 }
 
-/** Clé X25519 « utilisateur » (pile e2eeX25519) déterministe. */
+/** Clé X25519 « utilisateur » (pile e2eeX25519) déterministe (publique taguée). */
 export async function deriveUserX25519KeyPair(phrase: string): Promise<RawKeyPair> {
   const seed = deriveMasterSeed(phrase);
-  return deriveX25519KeyPair(seed, 'x25519-user');
+  const pair = await deriveX25519KeyPair(seed, 'x25519-user');
+  return { publicKey: tagX25519(pair.publicKey), privateKey: pair.privateKey };
 }
 
 /**

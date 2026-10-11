@@ -216,6 +216,23 @@ export async function unlockX25519KeyPair(userId: string, password: string): Pro
   return keyPair;
 }
 
+/**
+ * Installe une paire X25519 DÉJÀ DÉRIVÉE (récupération par phrase) : stockage
+ * local + publication de la clé publique. **Aucune copie chiffrée serveur**
+ * (modèle « zéro serveur »).
+ */
+export async function installX25519KeyPair(userId: string, keyPair: X25519KeyPair): Promise<void> {
+  const { error } = await supabase
+    .from('profiles')
+    .update({
+      x25519_public_key: keyPair.publicKey,
+      x25519_public_key_updated_at: new Date().toISOString(),
+    })
+    .eq('id', userId);
+  if (error) throw error;
+  await idbSet(idbKeyFor(userId), keyPair);
+}
+
 /** Réinitialise la paire (les anciens messages X25519 deviennent illisibles). */
 export async function resetX25519KeyPair(userId: string, newPassword: string): Promise<X25519KeyPair> {
   await idbDelete(idbKeyFor(userId));

@@ -201,6 +201,16 @@ export async function unlockRatchetKeys(userId: string, password: string): Promi
   return keys;
 }
 
+/**
+ * Installe un matériel ratchet DÉJÀ DÉRIVÉ (récupération par phrase) : stockage
+ * local + publication du bundle public. **Aucune copie chiffrée n'est envoyée
+ * au serveur** (modèle « zéro serveur » : la clé privée reste locale).
+ */
+export async function installRatchetKeys(userId: string, keys: LocalRatchetKeys): Promise<void> {
+  await idbSet(userId, keys);
+  await publishKeys(userId, keys);
+}
+
 /** Réinitialise le matériel ratchet (perte des sessions/anciens messages). */
 export async function resetRatchetKeys(userId: string, password: string): Promise<LocalRatchetKeys> {
   await idbDelete(userId);
