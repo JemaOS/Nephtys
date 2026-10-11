@@ -15,7 +15,11 @@ import { initIceServers } from './lib/iceServers'
 // referencing an old build, this constant won't match what the SW registers
 // for, and we trigger a one-shot self-heal: unregister the SW, purge caches,
 // hard-reload.
-const APP_BUILD_ID = '2026-05-26-thumb-fix-v7';
+// ID de build = commit git (injecté au build). Change à CHAQUE déploiement →
+// déclenche l'auto-nettoyage du Service Worker/caches. (Avant : constante
+// figée '2026-05-26-thumb-fix-v7' → jamais mise à jour → utilisateurs bloqués
+// sur un vieux build.)
+const APP_BUILD_ID = __BUILD_COMMIT__;
 const BUILD_ID_KEY = 'nephtys_app_build_id';
 
 const selfHealStaleClient = async () => {
