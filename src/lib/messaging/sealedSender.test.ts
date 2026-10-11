@@ -10,6 +10,8 @@ import {
   parseSealedSenderPayload,
   verifySealedSender,
   findVerifiedSender,
+  sealedContentHash,
+  type SealedSenderContext,
 } from './sealedSender';
 
 describe('sealed sender authentifié (Phase 1c — anti-usurpation)', () => {
@@ -95,5 +97,81 @@ describe('sealed sender authentifié (Phase 1c — anti-usurpation)', () => {
     const blob = await sealSenderForRecipient(derivedPub, 'dave', dave.privateKey);
     const raw = await openSealedSender(alice.privateKey, blob);
     expect(parseSealedSenderPayload(raw)?.senderId).toBe('dave');
+  });
+});
+
+describe('sealed sender v3 — non rejouable (liaison au contexte)', () => {
+  async function makeContext(over: Partial<SealedSenderContext> = {}): Promise<SealedSenderContext> {
+    return {
+      conversationId: 'conv-1',
+      messageId: 'msg-1',
+      contentHash: await sealedContentHash('ciphertext-of-msg-1'),
+      ...over,
+    };
+  }
+
+  it('v3 : le destinataire vérifie le contexte et retrouve l\'expéditeur', async () => {
+    const alice = generateX25519KeyPair();
+    const dave = generateSigningKeyPair();
+    const senderId = 'dave-id';
+    const ctx = await makeContext();
+
+    const blob = await sealSenderForRecipient(alice.publicKey, senderId, dave.privateKey, ctx);
+    const raw = await openSealedSender(alice.privateKey, blob);
+    const payload = parseSealedSenderPayload(raw);
+    expect(payload?.version).toBe(3);
+    expect(payload?.senderId).toBe(senderId);
+    expect(verifySealedSender(payload!, dave.publicKey, ctx)).toBe(true);
+  });
+
+  it('REJETTE un blob v3 recopié sur un AUTRE message (contexte différent)', async () => {
+    const alice = generateX25519KeyPair();
+    const dave = generateSigningKeyPair();
+    const senderId = 'dave-id';
+    const ctx = await makeContext();
+
+    const blob = await sealSenderForRecipient(alice.publicKey, senderId, dave.privateKey, ctx);
+    const raw = await openSealedSender(alice.privateKey, blob);
+    const payload = parseSealedSenderPayload(raw)!;
+
+    // Même blob, mais on l'attribue au message « msg-2 » / contenu différent.
+    const otherCtx = await makeContext({ messageId: 'msg-2', contentHash: await sealedContentHash('autre') });
+    expect(verifySealedSender(payload, dave.publicKey, otherCtx)).toBe(false);
+    expect(verifySealedSender(payload, dave.publicKey, await makeContext({ conversationId: 'conv-2' }))).toBe(false);
+    expect(verifySealedSender(payload, dave.publicKey, await makeContext({ contentHash: await sealedContentHash('x') }))).toBe(false);
+
+    const getSigningKey = async (id: string) => (id === senderId ? dave.publicKey : null);
+    expect(await findVerifiedSender(alice.privateKey, [blob], getSigningKey, ctx)).toBe(senderId);
+    expect(await findVerifiedSender(alice.privateKey, [blob], getSigningKey, otherCtx)).toBeNull();
+  });
+
+  it('REJETTE un blob v3 sans contexte (la signature couvre le contexte)', async () => {
+    const alice = generateX25519KeyPair();
+    const dave = generateSigningKeyPair();
+    const ctx = await makeContext();
+
+    const blob = await sealSenderForRecipient(alice.publicKey, 'dave', dave.privateKey, ctx);
+    const raw = await openSealedSender(alice.privateKey, blob);
+    const payload = parseSealedSenderPayload(raw)!;
+    // Sans contexte, impossible de vérifier une signature v3 → refus.
+    expect(verifySealedSender(payload, dave.publicKey)).toBe(false);
+  });
+
+  it('rétrocompat : un payload sans `v` est traité comme v2', () => {
+    const parsed = parseSealedSenderPayload(JSON.stringify({ s: 'dave', sig: 'AAAA' }));
+    expect(parsed?.version).toBe(2);
+    expect(parsed?.senderId).toBe('dave');
+  });
+
+  it('rétrocompat : un blob v2 (sans contexte) reste résolu par findVerifiedSender', async () => {
+    const alice = generateX25519KeyPair();
+    const dave = generateSigningKeyPair();
+    // Pas de contexte → scellement v2 (comportement historique).
+    const blobV2 = await sealSenderForRecipient(alice.publicKey, 'dave', dave.privateKey);
+    const raw = await openSealedSender(alice.privateKey, blobV2);
+    expect(parseSealedSenderPayload(raw)?.version).toBe(2);
+
+    const getSigningKey = async (id: string) => (id === 'dave' ? dave.publicKey : null);
+    expect(await findVerifiedSender(alice.privateKey, [blobV2], getSigningKey)).toBe('dave');
   });
 });

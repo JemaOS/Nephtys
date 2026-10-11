@@ -38,7 +38,7 @@ import { fetchX25519PublicKeys, getLocalX25519KeyPair } from './e2eeX25519';
 import { wrapKeyForRecipientX25519, unwrapKeyFromSenderX25519, keyWrapAad } from './x25519';
 import { isRatchetEnvelope, tryDecryptWithRatchet } from './ratchet/chatIntegration';
 import { getLocalRatchetKeys } from './ratchet/keyStore';
-import { findVerifiedSender, sealSenderForMembers } from './messaging/sealedSender';
+import { findVerifiedSender, sealSenderForMembers, sealedContentHash, type SealedSenderContext } from './messaging/sealedSender';
 
 // Taille de bloc du rembourrage. Un message texte est rembourré au
 // multiple de PAD_BLOCK supérieur, avec des octets aléatoires après la
@@ -521,7 +521,18 @@ export async function decryptMessageRows<T extends {
 
   // Phase 1 (sealed sender) : résout l'expéditeur réel depuis les blobs scellés
   // AVANT tout usage de sender_id. Repli sur sender_id si absent/illisible.
-  await resolveSealedSenders(rows as Array<{ sender_id?: string; sender_sealed?: unknown }>, userId);
+  // On transmet id/conversation_id/content pour permettre la vérification v3
+  // (signature liée au contexte du message → blob non rejouable).
+  await resolveSealedSenders(
+    rows as Array<{
+      id?: string;
+      sender_id?: string | null;
+      conversation_id?: string;
+      content?: string;
+      sender_sealed?: unknown;
+    }>,
+    userId,
+  );
 
   // Tout message marqué chiffré est traité : s'il n'est pas déchiffrable (clé
   // absente, enveloppe illisible), il reçoit le PLACEHOLDER — jamais le
@@ -632,9 +643,21 @@ export async function decryptMessageRow<T extends {
  * Résout l'expéditeur réel de messages via leurs blobs sealed sender et
  * remplace `sender_id` en place. Repli : si absent/illisible, `sender_id`
  * (encore peuplé en transition) est conservé.
+ *
+ * Anti-rejeu (v3) : quand la ligne porte `id` + `conversation_id` + `content`,
+ * on reconstruit le contexte du message et on le passe à la vérification. Un
+ * blob v3 recopié sur un AUTRE message (id/conversation/contenu différents)
+ * échoue à la signature → l'expéditeur n'est PAS attribué. Les blobs v2 (ou
+ * sans `v`) restent acceptés sans contexte (rétrocompatibilité).
  */
 export async function resolveSealedSenders(
-  rows: Array<{ sender_id?: string | null; sender_sealed?: unknown }>,
+  rows: Array<{
+    id?: string;
+    sender_id?: string | null;
+    conversation_id?: string;
+    content?: string;
+    sender_sealed?: unknown;
+  }>,
   userId: string,
 ): Promise<void> {
   const sealedRows = rows.filter(
@@ -672,8 +695,28 @@ export async function resolveSealedSenders(
 
   await Promise.all(sealedRows.map(async r => {
     try {
-      // Vérifie la signature Ed25519 → empêche l'usurpation.
-      const resolved = await findVerifiedSender(myPrivateKey, r.sender_sealed as string[], getSigningKey);
+      // Contexte du message (v3) : sans les 3 champs on ne peut PAS vérifier un
+      // blob v3 (la signature couvre le contexte) → il sera rejeté, et seul un
+      // blob v2 reste résoluble.
+      let context: SealedSenderContext | undefined;
+      if (
+        typeof r.id === 'string' &&
+        typeof r.conversation_id === 'string' &&
+        typeof r.content === 'string'
+      ) {
+        context = {
+          conversationId: r.conversation_id,
+          messageId: r.id,
+          contentHash: await sealedContentHash(r.content),
+        };
+      }
+      // Vérifie la signature Ed25519 → empêche l'usurpation ET le rejeu.
+      const resolved = await findVerifiedSender(
+        myPrivateKey,
+        r.sender_sealed as string[],
+        getSigningKey,
+        context,
+      );
       if (resolved) r.sender_id = resolved;
     } catch {
       // repli : on garde sender_id (authentifié par la RLS)
@@ -682,13 +725,49 @@ export async function resolveSealedSenders(
 }
 
 /**
+ * Scelle l'identité de l'expéditeur (v3, liée au message) puis l'attache à la
+ * ligne `messages` déjà insérée (`sender_sealed`). À appeler APRÈS l'insertion
+ * (l'`id` du message n'est connu qu'à ce moment). Best-effort : retourne `null`
+ * si le scellement ou l'attache échoue (le message conserve alors `sender_id`
+ * côté client ; le déchiffrement n'en dépend jamais).
+ */
+export async function sealSenderForMessage(params: {
+  messageId: string;
+  senderId: string;
+  conversationId: string;
+  content: string;
+}): Promise<string[] | null> {
+  const blobs = await buildSenderSealed(params.senderId, params.conversationId, {
+    messageId: params.messageId,
+    content: params.content,
+  });
+  if (!blobs) return null;
+  try {
+    const { error } = await supabase
+      .from('messages')
+      .update({ sender_sealed: blobs })
+      .eq('id', params.messageId);
+    if (error) {
+      console.warn('[sealedSender] attache sender_sealed échouée:', error);
+      return null;
+    }
+  } catch (e) {
+    console.warn('[sealedSender] attache sender_sealed échouée:', e);
+    return null;
+  }
+  return blobs;
+}
+
+/**
  * Construit les blobs sealed sender de l'expéditeur pour tous les membres
- * d'une conversation (phase 1 : dual-write en plus de `sender_id`).
+ * d'une conversation (v3 : signature liée au contexte du message − id,
+ * conversation et hash du contenu − pour rendre le blob non rejouable).
  * Retourne `null` si impossible → le message conserve `sender_id` en clair.
  */
 export async function buildSenderSealed(
   senderId: string,
   conversationId: string,
+  ctx: { messageId: string; content: string },
 ): Promise<string[] | null> {
   try {
     // La clé de signature Ed25519 (ratchet) authentifie le scellé.
@@ -710,7 +789,12 @@ export async function buildSenderSealed(
       .filter((k): k is string => typeof k === 'string' && k.length > 0);
     if (recipientKeys.length === 0) return null;
 
-    return await sealSenderForMembers(recipientKeys, senderId, keys.signingKeyPair.privateKey);
+    const context: SealedSenderContext = {
+      conversationId,
+      messageId: ctx.messageId,
+      contentHash: await sealedContentHash(ctx.content),
+    };
+    return await sealSenderForMembers(recipientKeys, senderId, keys.signingKeyPair.privateKey, context);
   } catch (e) {
     console.warn('[sealedSender] build failed (repli sender_id):', e);
     return null;

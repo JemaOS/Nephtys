@@ -4,7 +4,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { generateX25519KeyPair } from './x25519';
 import { generateSigningKeyPair } from './ratchet/x3dh';
-import { sealSenderForRecipient } from './messaging/sealedSender';
+import { sealSenderForRecipient, sealedContentHash } from './messaging/sealedSender';
 
 const h = vi.hoisted(() => ({
   signingKeys: {} as Record<string, string>,
@@ -59,6 +59,64 @@ describe('resolveSealedSenders — serveur aveugle à l\'expéditeur (Phase 1c)'
     const forged = await sealSenderForRecipient(alice.publicKey, victimId, attackerSign.privateKey);
     const rows: Array<{ sender_id: string | null; sender_sealed?: unknown }> = [
       { sender_id: null, sender_sealed: [forged] },
+    ];
+
+    await resolveSealedSenders(rows, 'alice-id');
+    expect(rows[0].sender_id).toBeNull();
+  });
+});
+
+describe('resolveSealedSenders — sealed sender v3 (anti-rejeu)', () => {
+  it('résout un blob v3 dont le contexte correspond à la ligne', async () => {
+    const alice = generateX25519KeyPair();
+    const bobSign = generateSigningKeyPair();
+    const bobId = 'bob-id';
+    h.recipient = { publicKey: alice.publicKey, privateKey: alice.privateKey };
+    h.signingKeys[bobId] = bobSign.publicKey;
+
+    const content = 'CIPHERTEXT_B64';
+    const context = {
+      conversationId: 'conv-1',
+      messageId: 'msg-1',
+      contentHash: await sealedContentHash(content),
+    };
+    const blob = await sealSenderForRecipient(alice.publicKey, bobId, bobSign.privateKey, context);
+    const rows: Array<{
+      id: string;
+      conversation_id: string;
+      content: string;
+      sender_id: string | null;
+      sender_sealed?: unknown;
+    }> = [
+      { id: 'msg-1', conversation_id: 'conv-1', content, sender_id: null, sender_sealed: [blob] },
+    ];
+
+    await resolveSealedSenders(rows, 'alice-id');
+    expect(rows[0].sender_id).toBe(bobId);
+  });
+
+  it('REJETTE un blob v3 recopié sur un autre message (sender_id reste NULL)', async () => {
+    const alice = generateX25519KeyPair();
+    const bobSign = generateSigningKeyPair();
+    const bobId = 'bob-id';
+    h.recipient = { publicKey: alice.publicKey, privateKey: alice.privateKey };
+    h.signingKeys[bobId] = bobSign.publicKey;
+
+    const context = {
+      conversationId: 'conv-1',
+      messageId: 'msg-1',
+      contentHash: await sealedContentHash('ORIGINAL'),
+    };
+    const blob = await sealSenderForRecipient(alice.publicKey, bobId, bobSign.privateKey, context);
+    // Le blob d'origine est copié sur une AUTRE ligne (id + contenu différents).
+    const rows: Array<{
+      id: string;
+      conversation_id: string;
+      content: string;
+      sender_id: string | null;
+      sender_sealed?: unknown;
+    }> = [
+      { id: 'msg-2', conversation_id: 'conv-1', content: 'AUTRE', sender_id: null, sender_sealed: [blob] },
     ];
 
     await resolveSealedSenders(rows, 'alice-id');

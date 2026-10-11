@@ -22,6 +22,20 @@
  *   payload signé = JSON { v:2, s: senderId, sig: base64(Ed25519(sigMsg)) }
  *   sigMsg        = "nephtys-sealed-sender-sig-v1|" + senderId
  *
+ * ⚠️ REJEU (v3) : la signature v2 ne couvre QUE `senderId`. Un membre peut donc
+ * recopier le blob scellé d'Alice dans un **nouveau** message et se faire passer
+ * pour elle. La **v3** lie la signature au CONTEXTE du message :
+ *
+ *   payload signé = JSON { v:3, s: senderId, sig: base64(Ed25519(sigMsg)) }
+ *   sigMsg        = "nephtys-sealed-sender-v3|" + conversationId + "|"
+ *                   + messageId + "|" + sha256hex(content)
+ *
+ * `sha256(content)` porte sur le champ `messages.content` stocké (ciphertext
+ * pour le texte, texte de légende pour un média, "" sinon). Un blob v3 recopié
+ * sur un autre message (id / conversation / contenu différent) échoue donc à la
+ * vérification → l'expéditeur usurpé n'est PAS attribué. Le blob v2 (ou sans
+ * `v`, considéré comme v2) reste accepté pour la rétrocompatibilité.
+ *
  * Module PUR (aucune dépendance Supabase/IndexedDB) → testable en isolation.
  *
  * @module sealedSender
@@ -31,9 +45,11 @@ import { x25519, ed25519 } from '@noble/curves/ed25519.js';
 import { untagX25519 } from '../x25519';
 
 const HKDF_INFO = 'nephtys-sealed-sender-v1';
-const SIG_DOMAIN = 'nephtys-sealed-sender-sig-v1';
+const SIG_DOMAIN_V2 = 'nephtys-sealed-sender-sig-v1';
+const SIG_DOMAIN_V3 = 'nephtys-sealed-sender-v3';
 const BOX_VERSION = 1;
-const PAYLOAD_VERSION = 2;
+const PAYLOAD_VERSION_V2 = 2;
+const PAYLOAD_VERSION_V3 = 3;
 const EPH_PUB_LEN = 32;
 const IV_LEN = 12;
 const HEADER_LEN = 1 + EPH_PUB_LEN + IV_LEN;
@@ -92,10 +108,38 @@ async function deriveAesKey(sharedSecret: Uint8Array): Promise<CryptoKey> {
   );
 }
 
+// ─── Contexte du message (liaison anti-rejeu, v3) ─────────────────────
+
+/**
+ * Contexte authentifié par la signature v3 : il empêche de rejouer le blob
+ * scellé sur un autre message. `contentHash` = sha256 hex du `messages.content`
+ * stocké au moment du scellement.
+ */
+export interface SealedSenderContext {
+  conversationId: string;
+  messageId: string;
+  contentHash: string;
+}
+
+/** sha256 hex du contenu stocké (`messages.content`). */
+export async function sealedContentHash(content: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', utf8(content) as BufferSource);
+  const bytes = new Uint8Array(digest);
+  let hex = '';
+  for (let i = 0; i < bytes.length; i++) hex += bytes[i].toString(16).padStart(2, '0');
+  return hex;
+}
+
 // ─── Signature du payload ─────────────────────────────────────────────
 
-function sigMessage(senderId: string): Uint8Array {
-  return utf8(`${SIG_DOMAIN}|${senderId}`);
+function sigMessageV2(senderId: string): Uint8Array {
+  return utf8(`${SIG_DOMAIN_V2}|${senderId}`);
+}
+
+function sigMessageV3(context: SealedSenderContext): Uint8Array {
+  return utf8(
+    `${SIG_DOMAIN_V3}|${context.conversationId}|${context.messageId}|${context.contentHash}`,
+  );
 }
 
 // ─── Scellement ───────────────────────────────────────────────────────
@@ -106,19 +150,27 @@ function sigMessage(senderId: string): Uint8Array {
  * @param recipientPublicKey clé publique X25519 du destinataire (taguée ou brute)
  * @param senderId           identifiant de l'expéditeur à cacher au serveur
  * @param signingPrivateKey  clé privée Ed25519 de l'expéditeur (authentifie le scellé)
+ * @param context            contexte du message (v3) → lie la signature au message
+ *                           courant et empêche le rejeu. Omis → v2 (rétrocompat).
  * @returns base64 du blob scellé (opaque pour le serveur)
  */
 export async function sealSenderForRecipient(
   recipientPublicKey: string,
   senderId: string,
   signingPrivateKey: string,
+  context?: SealedSenderContext,
 ): Promise<string> {
-  const signature = ed25519.sign(sigMessage(senderId), fromBase64(signingPrivateKey));
-  const payload = JSON.stringify({
-    v: PAYLOAD_VERSION,
-    s: senderId,
-    sig: toBase64(signature),
-  });
+  const payload = context
+    ? JSON.stringify({
+        v: PAYLOAD_VERSION_V3,
+        s: senderId,
+        sig: toBase64(ed25519.sign(sigMessageV3(context), fromBase64(signingPrivateKey))),
+      })
+    : JSON.stringify({
+        v: PAYLOAD_VERSION_V2,
+        s: senderId,
+        sig: toBase64(ed25519.sign(sigMessageV2(senderId), fromBase64(signingPrivateKey))),
+      });
 
   const ephPriv = crypto.getRandomValues(new Uint8Array(32));
   const ephPub = x25519.getPublicKey(ephPriv);
@@ -165,14 +217,22 @@ export async function openSealedSender(
 export interface SealedSenderPayload {
   senderId: string;
   signature: string;
+  /** Version du payload : 2 (historique) ou 3 (lié au contexte du message). */
+  version: number;
 }
 
-/** Parse un payload signé (v2). Retourne null si legacy/non signé. */
+/**
+ * Parse un payload signé. Retourne null si legacy/non signé (identifiant en
+ * clair). Un payload sans `v` est traité comme **v2** (rétrocompatibilité).
+ */
 export function parseSealedSenderPayload(raw: string): SealedSenderPayload | null {
   try {
     const o = JSON.parse(raw);
-    if (o && o.v === PAYLOAD_VERSION && typeof o.s === 'string' && typeof o.sig === 'string') {
-      return { senderId: o.s, signature: o.sig };
+    if (o && typeof o.s === 'string' && typeof o.sig === 'string') {
+      const v = typeof o.v === 'number' ? o.v : PAYLOAD_VERSION_V2;
+      if (v === PAYLOAD_VERSION_V2 || v === PAYLOAD_VERSION_V3) {
+        return { senderId: o.s, signature: o.sig, version: v };
+      }
     }
   } catch {
     // payload legacy (identifiant en clair, non signé)
@@ -180,15 +240,28 @@ export function parseSealedSenderPayload(raw: string): SealedSenderPayload | nul
   return null;
 }
 
-/** Vérifie la signature Ed25519 du payload avec la clé publique de l'expéditeur. */
+/**
+ * Vérifie la signature Ed25519 du payload avec la clé publique de l'expéditeur.
+ * Pour un payload **v3**, le `context` est requis : la signature couvre le
+ * contexte du message, donc sans contexte (ou avec un contexte différent) la
+ * vérification échoue → rejeu rejeté.
+ */
 export function verifySealedSender(
   payload: SealedSenderPayload,
   signingPublicKey: string,
+  context?: SealedSenderContext,
 ): boolean {
   try {
+    let message: Uint8Array;
+    if (payload.version >= PAYLOAD_VERSION_V3) {
+      if (!context) return false;
+      message = sigMessageV3(context);
+    } else {
+      message = sigMessageV2(payload.senderId);
+    }
     return ed25519.verify(
       fromBase64(payload.signature),
-      sigMessage(payload.senderId),
+      message,
       fromBase64(signingPublicKey),
     );
   } catch {
@@ -202,11 +275,15 @@ export function verifySealedSender(
  * signature avec la clé publique de l'expéditeur revendiqué (`getSigningKey`).
  * Un payload non signé (legacy) est ignoré → retour `null` (repli sender_id).
  * → Empêche l'usurpation : sceller l'id d'un autre échoue à la vérification.
+ *
+ * `context` (v3) lie la vérification au message courant : un blob v3 rejoué sur
+ * un autre message (id / conversation / contenu différents) est **rejeté**.
  */
 export async function findVerifiedSender(
   myPrivateKeyB64: string,
   blobs: string[],
   getSigningKey: (senderId: string) => Promise<string | null>,
+  context?: SealedSenderContext,
 ): Promise<string | null> {
   for (const blob of blobs) {
     let raw: string;
@@ -219,7 +296,7 @@ export async function findVerifiedSender(
     if (!payload) continue; // non authentifié → ignoré
     const signingKey = await getSigningKey(payload.senderId);
     if (!signingKey) continue;
-    if (verifySealedSender(payload, signingKey)) return payload.senderId;
+    if (verifySealedSender(payload, signingKey, context)) return payload.senderId;
   }
   return null;
 }
@@ -229,8 +306,9 @@ export async function sealSenderForMembers(
   memberPublicKeys: string[],
   senderId: string,
   signingPrivateKey: string,
+  context?: SealedSenderContext,
 ): Promise<string[]> {
   return Promise.all(
-    memberPublicKeys.map(pk => sealSenderForRecipient(pk, senderId, signingPrivateKey)),
+    memberPublicKeys.map(pk => sealSenderForRecipient(pk, senderId, signingPrivateKey, context)),
   );
 }
