@@ -33,18 +33,9 @@
  */
 
 import { supabase } from './supabase';
-import {
-  ensureUserKeyPair,
-  encryptMedia,
-  decryptMedia,
-  wrapKeyForRecipient,
-  unwrapKeyFromSender,
-  fetchPublicKeys,
-  cryptoB64,
-  type WrappedKey,
-} from './mediaEncryption';
+import { encryptMedia, decryptMedia, cryptoB64 } from './mediaEncryption';
 import { fetchX25519PublicKeys, getLocalX25519KeyPair } from './e2eeX25519';
-import { isX25519PublicKey, wrapKeyForRecipientX25519, unwrapKeyFromSenderX25519 } from './x25519';
+import { wrapKeyForRecipientX25519, unwrapKeyFromSenderX25519 } from './x25519';
 import { isRatchetEnvelope, tryDecryptWithRatchet } from './ratchet/chatIntegration';
 import { getLocalRatchetKeys } from './ratchet/keyStore';
 import { findVerifiedSender, sealSenderForMembers } from './messaging/sealedSender';
@@ -55,30 +46,6 @@ import { findVerifiedSender, sealSenderForMembers } from './messaging/sealedSend
 const PAD_BLOCK = 256;
 const LENGTH_PREFIX_BYTES = 4;
 const ENVELOPE_VERSION = 1;
-
-// ─── Cache de la paire de clés de l'utilisateur ───────────────────────
-// Évite une lecture IndexedDB + une requête `profiles` par message lors du
-// déchiffrement en masse (liste de conversations, historique).
-type UserKeyPair = Awaited<ReturnType<typeof ensureUserKeyPair>>;
-const keyPairCache = new Map<string, Promise<UserKeyPair>>();
-
-function cachedKeyPair(userId: string): Promise<UserKeyPair> {
-  let pending = keyPairCache.get(userId);
-  if (!pending) {
-    pending = ensureUserKeyPair(userId).catch(err => {
-      // Ne pas mémoriser un échec (clés verrouillées) : on réessaiera.
-      keyPairCache.delete(userId);
-      throw err;
-    });
-    keyPairCache.set(userId, pending);
-  }
-  return pending;
-}
-
-/** Vide le cache de clés (à appeler à la déconnexion / verrouillage). */
-export function clearTextKeyPairCache(): void {
-  keyPairCache.clear();
-}
 
 // ─── Rembourrage ──────────────────────────────────────────────────────
 
@@ -232,40 +199,26 @@ export async function createTextKeysForMessage(params: {
     return { inserted: 0, missingKeys: [] };
   }
 
-  // Deux courbes cohabitent : on privilégie X25519 quand l'émetteur ET le
-  // destinataire en possèdent une, sinon repli sur la pile P-256 historique.
+  // Chiffrement X25519 uniquement (pile P-256 retirée).
   const senderX25519 = await getLocalX25519KeyPair(senderId);
   const x25519Publics = await fetchX25519PublicKeys(recipientIds);
-  const p256Publics = await fetchPublicKeys(recipientIds);
 
   const missingKeys: string[] = [];
   const rows: any[] = [];
-  let senderP256: UserKeyPair | null = null;
 
   for (const recipientId of recipientIds) {
     const recipientX25519 = x25519Publics.get(recipientId);
-    const recipientP256 = p256Publics.get(recipientId);
     try {
-      let wrapped: { encryptedKey: string; iv: string; senderPublicKey: string };
-      if (senderX25519 && recipientX25519) {
-        wrapped = await wrapKeyForRecipientX25519(
-          rawKey,
-          senderX25519.privateKey,
-          senderX25519.publicKey,
-          recipientX25519,
-        );
-      } else if (recipientP256) {
-        if (!senderP256) senderP256 = await cachedKeyPair(senderId);
-        wrapped = await wrapKeyForRecipient(
-          rawKey,
-          senderP256.privateKey,
-          senderP256.publicKeyBase64,
-          recipientP256,
-        );
-      } else {
+      if (!senderX25519 || !recipientX25519) {
         missingKeys.push(recipientId);
         continue;
       }
+      const wrapped = await wrapKeyForRecipientX25519(
+        rawKey,
+        senderX25519.privateKey,
+        senderX25519.publicKey,
+        recipientX25519,
+      );
       rows.push({
         message_id: messageId,
         recipient_id: recipientId,
@@ -347,16 +300,12 @@ export function cacheDecryptedText(id: string, text: string): void {
   persistPlaintextCache();
 }
 
-/** Caches paresseux des paires de clés (une par courbe) pour un batch. */
+/** Cache paresseux de la paire X25519 pour un batch. */
 interface UnwrapCaches {
-  p256?: UserKeyPair | null;
   x25519?: Awaited<ReturnType<typeof getLocalX25519KeyPair>> | null;
 }
 
-/**
- * Déchiffre une clé AES enveloppée, en choisissant la courbe selon le tag de
- * `sender_public_key` : `x25519:...` → X25519, sinon P-256 (legacy).
- */
+/** Déchiffre une clé AES enveloppée (X25519). */
 async function unwrapKeyRowForUser(
   keyRow: { encrypted_key: string; iv: string; sender_public_key: string },
   userId: string,
@@ -367,22 +316,9 @@ async function unwrapKeyRowForUser(
     iv: keyRow.iv,
     senderPublicKey: keyRow.sender_public_key,
   };
-
-  if (isX25519PublicKey(wrapped.senderPublicKey)) {
-    if (caches.x25519 === undefined) caches.x25519 = await getLocalX25519KeyPair(userId);
-    if (!caches.x25519) throw new Error('Clé X25519 locale indisponible');
-    return await unwrapKeyFromSenderX25519(wrapped, caches.x25519.privateKey);
-  }
-
-  if (caches.p256 === undefined) {
-    try {
-      caches.p256 = await cachedKeyPair(userId);
-    } catch {
-      caches.p256 = null;
-    }
-  }
-  if (!caches.p256) throw new Error('Clé P-256 locale indisponible');
-  return await unwrapKeyFromSender(wrapped as WrappedKey, caches.p256.privateKey);
+  if (caches.x25519 === undefined) caches.x25519 = await getLocalX25519KeyPair(userId);
+  if (!caches.x25519) throw new Error('Clé X25519 locale indisponible');
+  return await unwrapKeyFromSenderX25519(wrapped, caches.x25519.privateKey);
 }
 
 /**
