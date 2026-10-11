@@ -434,21 +434,28 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
     return () => clearTimeout(timer);
   }, [isOpen, mediaUrl, mediaType]);
 
-  // Handle mouse wheel zoom
+  // Handle mouse wheel / trackpad pinch zoom
   const handleWheel = useCallback((e: WheelEvent) => {
     if (mediaType !== 'image' && mediaType !== 'gif' && mediaType !== 'sticker') return;
-    
+
     e.preventDefault();
-    
-    const delta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
+
+    // Zoom MULTIPLICATIF proportionnel à l'amplitude du geste. Le pincement
+    // multipoint d'un trackpad arrive en `wheel` avec `ctrlKey=true` et de
+    // petits deltas répétés : un pas fixe (0.25) ferait « sauter » le zoom,
+    // alors qu'un facteur exponentiel suit le geste (vitesse native).
+    const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 100 : 1;
+    const coeff = e.ctrlKey ? 0.01 : 0.002;
+    const factor = Math.exp(-e.deltaY * unit * coeff);
+
     setZoom(prevZoom => {
-      const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, prevZoom + delta));
-      
+      const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, prevZoom * factor));
+
       // Reset position if zooming back to 1 or below
       if (newZoom <= 1) {
         setPosition({ x: 0, y: 0 });
       }
-      
+
       return newZoom;
     });
   }, [mediaType]);
