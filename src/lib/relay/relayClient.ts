@@ -271,6 +271,82 @@ export function isTorAvailable(): boolean {
   return Boolean(getTorRelayUrl());
 }
 
+// ─── Réseau décentralisé (pool de relais, façon SimpleX) ──────────────
+
+const DECENTRALIZED_KEY = 'nephtys_decentralized_relays';
+const RELAY_POOL_KEY = 'nephtys_relay_pool';
+
+function defaultRelayUrl(): string {
+  return (import.meta.env.VITE_SMP_RELAY_URL as string | undefined) ?? 'wss://78-232-3-78.sslip.io/';
+}
+
+/** Valeur brute du pool de relais (saisie UI ou `VITE_SMP_RELAY_URLS`). */
+export function getRelayPoolInput(): string {
+  try {
+    const stored = localStorage.getItem(RELAY_POOL_KEY);
+    if (stored) return stored;
+  } catch {
+    // localStorage indisponible
+  }
+  return (import.meta.env.VITE_SMP_RELAY_URLS as string | undefined) ?? '';
+}
+
+/** Enregistre le pool de relais (liste separee par virgules / espaces / retours). */
+export function setRelayPool(input: string): void {
+  try {
+    const value = input.trim();
+    if (value) localStorage.setItem(RELAY_POOL_KEY, value);
+    else localStorage.removeItem(RELAY_POOL_KEY);
+  } catch {
+    // localStorage indisponible
+  }
+  instance = null;
+}
+
+/** Liste effective des relais : pool saisi/env, sinon le relais par defaut. */
+export function getRelayPool(): string[] {
+  const raw = getRelayPoolInput() || defaultRelayUrl();
+  return raw
+    .split(/[\s,]+/)
+    .map(s => s.trim())
+    .filter(Boolean);
+}
+
+/** Vrai si le reseau decentralise (pool de relais) est active. */
+export function isDecentralizedRelayEnabled(): boolean {
+  try {
+    return localStorage.getItem(DECENTRALIZED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+/** Active/desactive le reseau decentralise. Prend effet a la prochaine connexion. */
+export function setDecentralizedRelayEnabled(enabled: boolean): void {
+  try {
+    if (enabled) localStorage.setItem(DECENTRALIZED_KEY, '1');
+    else localStorage.removeItem(DECENTRALIZED_KEY);
+  } catch {
+    // localStorage indisponible
+  }
+  instance = null;
+}
+
+/**
+ * Chaine de replis sur un pool de relais SMP : on demarre sur un relais tire au
+ * hasard (repartition entre relais au fil des sessions) et chaque relais tombe
+ * sur le suivant s'il est injoignable (aucun point unique de defaillance).
+ */
+function buildSmpFailover(pool: string[], keyHash?: string): RelayWire {
+  const start = Math.floor(Math.random() * pool.length);
+  const ordered = [...pool.slice(start), ...pool.slice(0, start)];
+  let chain: RelayWire = new SmpRelayWire({ url: ordered[ordered.length - 1], keyHash });
+  for (let i = ordered.length - 2; i >= 0; i--) {
+    chain = new FailoverRelayWire(new SmpRelayWire({ url: ordered[i], keyHash }), chain);
+  }
+  return chain;
+}
+
 export function getPrivateMessenger(): PrivateMessenger {
   if (!instance) {
     const mode = import.meta.env.VITE_RELAY_MODE as string | undefined;
@@ -300,8 +376,14 @@ export function getPrivateMessenger(): PrivateMessenger {
       // DÉFAUT : SMP (SimpleX browser-profile) PRIORITAIRE, repli automatique sur
       // le relais aveugle Supabase si le premier est injoignable → le mode privé
       // fonctionne toujours. (Un relais local 127.0.0.1 traînant est ignoré.)
+      const pool = getRelayPool();
+      const primaryWire =
+        isDecentralizedRelayEnabled() && pool.length > 1
+          // Réseau décentralisé : pool de relais (démarrage aléatoire + replis).
+          ? buildSmpFailover(pool, smpKeyHash)
+          : new SmpRelayWire({ url: smpUrl, keyHash: smpKeyHash });
       const fw = new FailoverRelayWire(
-        new SmpRelayWire({ url: smpUrl, keyHash: smpKeyHash }),
+        primaryWire,
         new SupabaseRelayWire(),
         active => { for (const cb of transportListeners) cb(active); },
       );

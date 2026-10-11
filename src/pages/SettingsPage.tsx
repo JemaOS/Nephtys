@@ -26,7 +26,11 @@ import {
   setTorRelayEnabled,
   isTorAvailable,
   getRelayUrl,
-  setRelayUrl
+  setRelayUrl,
+  getRelayPoolInput,
+  setRelayPool,
+  isDecentralizedRelayEnabled,
+  setDecentralizedRelayEnabled
 } from '@/lib/relay/relayClient'
 import { isRelayOnlyCallsEnabled, setRelayOnlyCallsEnabled, getIceServers } from '@/lib/iceServers'
 
@@ -160,6 +164,8 @@ export function SettingsPage() {
   const [torAvailable] = useState<boolean>(() => isTorAvailable())
   const [relayInput, setRelayInput] = useState<string>(() => getRelayUrl() ?? '')
   const [relayOnlyCalls, setRelayOnlyCalls] = useState<boolean>(() => isRelayOnlyCallsEnabled())
+  const [decentralized, setDecentralized] = useState<boolean>(() => isDecentralizedRelayEnabled())
+  const [relayPoolInput, setRelayPoolInput] = useState<string>(() => getRelayPoolInput())
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false)
   const [twoFactorFactors, setTwoFactorFactors] = useState<TOTPFactor[]>([])
   const [twoFactorLoading, setTwoFactorLoading] = useState(false)
@@ -531,7 +537,19 @@ export function SettingsPage() {
     setRelayUrl('')
     setTorRelayEnabled(false)
     setRelayOnlyCallsEnabled(true)
+    setDecentralizedRelayEnabled(false)
+    setRelayPool('')
     globalThis.location.reload()
+  }
+
+  const handleToggleDecentralized = () => {
+    const next = !decentralized
+    setDecentralized(next)
+    setDecentralizedRelayEnabled(next)
+  }
+
+  const handleSaveRelayPool = () => {
+    setRelayPool(relayPoolInput)
   }
 
   /** Applique relais + politique de routage Tor puis relance la connexion. */
@@ -1329,6 +1347,38 @@ export function SettingsPage() {
             </div>
 
             <div className="pt-3 border-t border-bg-hover space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="pr-4">
+                  <div className="text-text-primary">Réseau décentralisé</div>
+                  <div className="text-sm text-text-secondary">Répartir le mode privé sur plusieurs relais, avec repli automatique.</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleToggleDecentralized}
+                  aria-pressed={decentralized}
+                  className={`w-12 h-6 rounded-full relative shrink-0 transition-colors ${decentralized ? 'bg-accent' : 'bg-[#8696a0]'}`}
+                >
+                  <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${decentralized ? 'right-1' : 'left-1'}`}></div>
+                </button>
+              </div>
+              {decentralized && (
+                <div className="space-y-1">
+                  <textarea
+                    value={relayPoolInput}
+                    onChange={e => setRelayPoolInput(e.target.value)}
+                    rows={3}
+                    placeholder="wss://relais1.exemple/  wss://relais2.exemple/"
+                    className="w-full px-2 py-1 rounded-lg bg-bg-surface text-[11px] font-mono text-text-secondary resize-none outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSaveRelayPool}
+                    className="px-2 py-1 rounded-lg bg-bg-hover text-xs text-text-primary"
+                  >
+                    Enregistrer les relais
+                  </button>
+                </div>
+              )}
               <button
                 type="button"
                 onClick={handleResetNetwork}
