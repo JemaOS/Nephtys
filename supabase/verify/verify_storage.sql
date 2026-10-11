@@ -111,4 +111,50 @@ FROM pg_policies
 WHERE schemaname = 'storage' AND tablename = 'objects'
   AND roles && ARRAY['anon', 'public']::name[]
 ORDER BY policyname;
+
+-- ============================================================================
+-- 10) Vérifications des correctifs 20261030_audit_final_storage (après)
+-- ============================================================================
+
+-- 10a) buckets `avatars` / `files` PRIVÉS. ATTENDU : public = false.
+SELECT id, name, public
+FROM storage.buckets
+WHERE id IN ('avatars', 'files')
+ORDER BY id;
+
+-- 10b) AUCUNE policy Storage ne doit viser les buckets avatars/files
+--      (bucket-wide connues des edge functions « temp »). ATTENDU : 0 ligne.
+SELECT policyname, cmd, roles::text AS roles, qual, with_check
+FROM pg_policies
+WHERE schemaname = 'storage' AND tablename = 'objects'
+  AND (
+    qual       ~* 'bucket_id\s*=\s*''(avatars|files)'''
+    OR with_check ~* 'bucket_id\s*=\s*''(avatars|files)'''
+  )
+ORDER BY policyname;
+
+-- 10c) Résidus media NON scopés interdits. ATTENDU : 0 ligne.
+--      (media_insert_owner_or_group / media_update_owner_or_group /
+--       media_*_authenticated / media_select_by_membership / media_delete_owner).
+SELECT policyname, cmd
+FROM pg_policies
+WHERE schemaname = 'storage' AND tablename = 'objects'
+  AND policyname IN (
+    'media_insert_owner_or_group','media_update_owner_or_group',
+    'media_select_authenticated','media_insert_authenticated',
+    'media_update_authenticated','media_delete_authenticated',
+    'media_select_by_membership','media_delete_owner',
+    'Public media access','Users can upload media','Users can update media',
+    'Users can delete media','Users can read media'
+  )
+ORDER BY policyname;
+
+-- 10d) Policies media restantes : doivent être EXACTEMENT les 4 scopées.
+--      ATTENDU : 4 lignes (media_select_scoped, media_insert_scoped,
+--      media_update_scoped, media_delete_scoped).
+SELECT policyname, cmd
+FROM pg_policies
+WHERE schemaname = 'storage' AND tablename = 'objects'
+  AND policyname LIKE 'media%'
+ORDER BY policyname;
 -- ============================================================================

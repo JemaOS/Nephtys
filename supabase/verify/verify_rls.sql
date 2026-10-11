@@ -128,4 +128,101 @@ WHERE n.nspname IN ('public', 'private')
       WHERE cfg LIKE 'search_path=%'
   )
 ORDER BY n.nspname, p.proname;
+
+-- ============================================================================
+-- 8) Vérifications des correctifs 20261030_audit_final (à exécuter après)
+-- ============================================================================
+
+-- 8a) conversation_members INSERT : UNE seule policy pour `authenticated`,
+--     `cm_insert_creator_or_member`, SANS branche `user_id = auth.uid()`.
+--     ATTENDU : exactement 1 ligne, et le `with_check` NE contient PAS
+--     'auth.uid()' en comparaison d'user_id (il peut contenir created_by).
+SELECT policyname, cmd, roles::text AS roles, with_check
+FROM pg_policies
+WHERE schemaname = 'public' AND tablename = 'conversation_members'
+  AND cmd = 'INSERT'
+ORDER BY policyname;
+
+-- Résidu auto-adhésion interdit : ATTENDU 0 ligne.
+SELECT policyname, with_check
+FROM pg_policies
+WHERE schemaname = 'public' AND tablename = 'conversation_members'
+  AND cmd = 'INSERT'
+  AND with_check ILIKE '%user_id = auth.uid()%'
+ORDER BY policyname;
+
+-- 8b) conversations INSERT : UNE seule policy, `conv_insert_creator`, sans
+--     branche `created_by IS NULL`. ATTENDU : 1 ligne, 0 sans auth.uid().
+SELECT policyname, cmd, with_check
+FROM pg_policies
+WHERE schemaname = 'public' AND tablename = 'conversations'
+  AND cmd = 'INSERT'
+ORDER BY policyname;
+
+SELECT policyname, with_check
+FROM pg_policies
+WHERE schemaname = 'public' AND tablename = 'conversations'
+  AND cmd = 'INSERT'
+  AND with_check NOT ILIKE '%auth.uid()%'
+ORDER BY policyname;
+
+-- 8c) profiles : plus de policy INSERT pour anon, et anon ne détient AUCUN
+--     privilège d'écriture. ATTENDU : 0 ligne anon ; les 3 booléens = false.
+SELECT policyname, cmd, roles::text AS roles
+FROM pg_policies
+WHERE schemaname = 'public' AND tablename = 'profiles'
+  AND roles && ARRAY['anon', 'public']::name[]
+ORDER BY policyname;
+
+SELECT has_table_privilege('anon','public.profiles','INSERT') AS anon_insert,
+       has_table_privilege('anon','public.profiles','UPDATE') AS anon_update,
+       has_table_privilege('anon','public.profiles','DELETE') AS anon_delete;
+
+-- 8d) Trigger message : la denylist doit couvrir les nouveaux champs.
+--     ATTENDU : `prosrc` contient chacun des identifiants listés (true x9).
+SELECT
+  position('sender_sealed'        in prosrc) > 0 AS has_sender_sealed,
+  position('sender_name'          in prosrc) > 0 AS has_sender_name,
+  position('sender_avatar'        in prosrc) > 0 AS has_sender_avatar,
+  position('NEW.profiles'         in prosrc) > 0 AS has_profiles,
+  position('reply_to_id'          in prosrc) > 0 AS has_reply_to_id,
+  position('NEW.type'             in prosrc) > 0 AS has_type,
+  position('is_ephemeral'         in prosrc) > 0 AS has_is_ephemeral,
+  position('ephemeral_duration'   in prosrc) > 0 AS has_ephemeral_duration,
+  position('ephemeral_expires_at' in prosrc) > 0 AS has_ephemeral_expires_at
+FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+WHERE n.nspname = 'private' AND p.proname = 'restrict_member_message_update';
+
+-- 8e) profiles : colonnes de clés privées ABSENTES.
+--     ATTENDU : 0 ligne.
+SELECT column_name
+FROM information_schema.columns
+WHERE table_schema = 'public' AND table_name = 'profiles'
+  AND column_name IN (
+    'x25519_private_key','x25519_salt','x25519_iv',
+    'ratchet_keys_encrypted','ratchet_keys_salt','ratchet_keys_iv',
+    'encrypted_private_key','private_key_salt','private_key_iv','password_hash'
+  )
+ORDER BY column_name;
+
+-- 8f) auth_rate_limits : CHECK élargis (anon + anon_queue_create).
+--     ATTENDU : les deux définitions contiennent 'anon' / 'anon_queue_create'.
+SELECT con.conname, pg_get_constraintdef(con.oid) AS definition
+FROM pg_constraint con
+JOIN pg_class rel   ON rel.oid = con.conrelid
+JOIN pg_namespace n ON n.oid   = rel.relnamespace
+WHERE n.nspname = 'public' AND rel.relname = 'auth_rate_limits' AND con.contype = 'c'
+ORDER BY con.conname;
+
+-- 8g) exec_sql : SUPPRIMÉ. ATTENDU : 0 ligne.
+SELECT n.nspname AS schema, p.proname, pg_get_function_identity_arguments(p.oid) AS args
+FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+WHERE p.proname = 'exec_sql'
+ORDER BY n.nspname;
+
+-- 8h) check_and_record_rate_limit : sérialisation par clé présente.
+--     ATTENDU : has_advisory_lock = true.
+SELECT position('pg_advisory_xact_lock' in prosrc) > 0 AS has_advisory_lock
+FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+WHERE n.nspname = 'public' AND p.proname = 'check_and_record_rate_limit';
 -- ============================================================================
