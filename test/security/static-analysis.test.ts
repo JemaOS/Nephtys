@@ -73,11 +73,13 @@ describe('Security Static Analysis', () => {
     if (f.includes('.spec.') || f.includes('.test.') || f.includes('.min.')) return false;
     return true;
   });
+  // Contenus lus UNE seule fois (le scan complet 5× dépassait le timeout
+  // par défaut de Vitest en exécution parallèle).
+  const sources = sourceFiles.map(file => ({ file, content: fs.readFileSync(file, 'utf-8') }));
 
   it('should not contain dangerouslySetInnerHTML', () => {
     const errors: string[] = [];
-    sourceFiles.forEach(file => {
-      const content = fs.readFileSync(file, 'utf-8');
+    sources.forEach(({ file, content }) => {
       if (content.includes('dangerouslySetInnerHTML')) {
         errors.push(`Found dangerouslySetInnerHTML in ${path.relative(rootDir, file)}`);
       }
@@ -88,8 +90,7 @@ describe('Security Static Analysis', () => {
 
   it('should not contain eval()', () => {
     const errors: string[] = [];
-    sourceFiles.forEach(file => {
-      const content = fs.readFileSync(file, 'utf-8');
+    sources.forEach(({ file, content }) => {
       // Simple regex for eval, avoiding comments or strings might be hard with simple regex,
       // but this catches direct usage.
       if (/\beval\(/.test(content)) {
@@ -101,8 +102,7 @@ describe('Security Static Analysis', () => {
 
   it('should not contain innerHTML / insertAdjacentHTML / document.write', () => {
     const errors: string[] = [];
-    sourceFiles.forEach(file => {
-      const content = fs.readFileSync(file, 'utf-8');
+    sources.forEach(({ file, content }) => {
       if (/\binnerHTML\b/.test(content)) {
         errors.push(`Found innerHTML in ${path.relative(rootDir, file)}`);
       }
@@ -118,8 +118,7 @@ describe('Security Static Analysis', () => {
 
   it('should not contain hardcoded javascript: URLs', () => {
     const errors: string[] = [];
-    sourceFiles.forEach(file => {
-      const content = fs.readFileSync(file, 'utf-8');
+    sources.forEach(({ file, content }) => {
       // Un littéral d'URL dangereux est entre guillemets/backticks ; les
       // mentions en commentaire (ex. `Rejette javascript:`) ne matchent pas.
       if (/['"`]\s*javascript:/i.test(content)) {
@@ -131,8 +130,7 @@ describe('Security Static Analysis', () => {
 
   it('should not contain obvious hardcoded secrets', () => {
     const errors: string[] = [];
-    sourceFiles.forEach(file => {
-      const content = fs.readFileSync(file, 'utf-8');
+    sources.forEach(({ file, content }) => {
       const rel = path.relative(rootDir, file);
 
       let m: RegExpExecArray | null;
