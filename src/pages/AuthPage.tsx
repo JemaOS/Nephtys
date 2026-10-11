@@ -52,7 +52,7 @@ const getAuthButtonText = (mode: AuthMode, t: (key: string) => string): string =
 }
 
 export function AuthPage() {
-  const { t } = useI18n()
+  const { t, lang, setLang } = useI18n()
   const navigate = useNavigate()
   const [mode, setMode] = useState<AuthMode>('signin')
   const [username, setUsername] = useState('')
@@ -111,7 +111,22 @@ export function AuthPage() {
   }
 
   return (
-    <div className="h-screen-safe bg-bg-primary flex items-center justify-center p-3 sm:p-4 overflow-hidden">
+    <div className="relative h-screen-safe bg-bg-primary flex items-center justify-center p-3 sm:p-4 overflow-hidden">
+      {/* Sélecteur de langue (FR/EN) — haut à droite, dès la 1re page */}
+      <div className="absolute top-3 right-3 z-10 flex gap-1 p-1 rounded-xl bg-bg-surface">
+        {(['fr', 'en'] as const).map(l => (
+          <button
+            key={l}
+            type="button"
+            onClick={() => setLang(l)}
+            className={`px-2 py-1 rounded-lg text-xs font-medium transition-colors ${lang === l ? 'bg-[#7578db] text-white' : 'text-text-secondary'}`}
+            aria-label={l === 'fr' ? 'Français' : 'English'}
+            aria-pressed={lang === l}
+          >
+            {l.toUpperCase()}
+          </button>
+        ))}
+      </div>
       {/* Injecte les styles CSS pour l'autofill */}
       <style>{autofillStyles}</style>
 
