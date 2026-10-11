@@ -9,7 +9,7 @@ import { useTheme } from '@/context/ThemeContext'
 import { MainLayout } from '@/components/MainLayout'
 import { supabase, Message, Conversation, Profile, sendBroadcastMessage } from '@/lib/supabase'
 import { signFieldsBatch, resolveMediaUrl, extractStoragePath } from '@/lib/mediaUrl'
-import { createMediaKeysForMessage, fetchMediaRawKey } from '@/lib/encryptedMediaService'
+import { createMediaKeysForMessage, fetchMediaRawKey, uploadEncryptedMedia } from '@/lib/encryptedMediaService'
 import {
   encryptText,
   createTextKeysForMessage,
@@ -2367,21 +2367,22 @@ await decryptMessageRows(validData as any[], user.id)
         fileExtension = 'webm'
       }
       const fileName = `${user.id}/${Date.now()}.${fileExtension}`
-      const { error: uploadError } = await supabase.storage.from('media').upload(fileName, audioBlob, {
-        cacheControl: '3600',
-        upsert: false,
-        contentType: mimeType // Explicitly set the content type
-      })
-      if (uploadError) throw uploadError
+
+      // E2EE : on chiffre le vocal AVANT l'upload (comme images/vidéos/docs).
+      // Le bucket ne contient qu'un blob opaque ; la clé AES est enveloppée par
+      // destinataire dans `message_media_keys` (createMediaKeysForMessage plus bas).
+      const encrypted = await uploadEncryptedMedia(audioBlob, fileName)
+
       // On stocke le path nu (pas l'URL signée). L'URL est régénérée au chargement.
       const now = new Date().toISOString()
       const tempId = `temp-${Date.now()}`
       
       const messageData: any = {
         conversation_id: conversationId!, sender_id: user.id, content: '', type: 'audio', status: 'sent',
-        reply_to_id: replyToMessage?.id || null, media_url: fileName, media_type: 'audio',
-        file_name: `voice-${Date.now()}.${fileExtension}`, file_size: audioBlob.size,
-        file_url: fileName, // Fallback for older schema
+        reply_to_id: replyToMessage?.id || null, media_url: encrypted.path, media_type: 'audio',
+        file_name: `voice-${Date.now()}.${fileExtension}`, file_size: encrypted.originalSize,
+        file_url: encrypted.path, // Fallback for older schema
+        is_media_encrypted: true,
       }
       
       // Add ephemeral fields if enabled
@@ -2402,11 +2403,12 @@ await decryptMessageRows(validData as any[], user.id)
         type: 'audio',
         status: 'sent',
         created_at: now,
-        media_url: fileName,   // path nu — résolu en URL signée à l'affichage
+        media_url: encrypted.path,   // path nu — résolu en URL signée / déchiffré à l'affichage
         media_type: 'audio',
         file_name: messageData.file_name,
-        file_size: audioBlob.size,
+        file_size: encrypted.originalSize,
         reply_to_id: replyToMessage?.id || null,
+        is_media_encrypted: true,
         is_ephemeral: !!ephemeralDuration,
         ephemeral_duration: ephemeralDuration,
         ephemeral_expires_at: ephemeralDuration
@@ -2421,6 +2423,19 @@ await decryptMessageRows(validData as any[], user.id)
       const { data: insertedMessage, error } = await insertMessageSingle(messageData)
       
       if (!error && insertedMessage) {
+        // Clés média enveloppées : sans elles le destinataire (et l'expéditeur
+        // sur un autre appareil) ne peut pas déchiffrer le vocal.
+        try {
+          await createMediaKeysForMessage({
+            messageId: insertedMessage.id,
+            senderId: user.id,
+            conversationId: conversationId!,
+            rawKey: encrypted.rawKey,
+            mediaIvBase64: encrypted.mediaIvBase64,
+          })
+        } catch (e) {
+          console.error('[E2EE] Échec création clés média vocal:', e)
+        }
         // Replace optimistic message with real one
         setMessages(prev => prev.map(m => m.id === tempId ? { ...insertedMessage, sender_id: insertedMessage.sender_id ?? user.id } : m))
         await supabase.from('conversations').update({ last_message_at: now }).eq('id', conversationId!)
