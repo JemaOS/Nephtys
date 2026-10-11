@@ -5,6 +5,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { MainLayout } from '@/components/MainLayout'
 import { useAuth } from '@/context/AuthContext'
+import { verifyCurrentPhrase, validateRecoveryPhrase } from '@/lib/recovery/recoveryService'
 import { useTheme } from '@/context/ThemeContext'
 import { supabase } from '@/lib/supabase'
 import { MediaImg } from '@/components/MediaImg'
@@ -134,7 +135,7 @@ const getParentView = (view: SettingsView): SettingsView => {
 // ============ COMPONENT ============
 
 export function SettingsPage() {
-  const { profile, signOut, user, updateLocalProfile } = useAuth()
+  const { profile, signOut, user, updateLocalProfile, regenerateRecovery } = useAuth()
   const { theme, wallpaper, setTheme, setWallpaper } = useTheme()
   const { t } = useI18n()
   const navigate = useNavigate()
@@ -167,6 +168,9 @@ export function SettingsPage() {
   const [twoFactorError, setTwoFactorError] = useState('')
   const [twoFactorStep, setTwoFactorStep] = useState<'idle' | 'enrolling' | 'verifying' | 'disabling'>('idle')
   const [showSecret, setShowSecret] = useState(false)
+  const [recoveryPhraseInput, setRecoveryPhraseInput] = useState('')
+  const [recoveryBusy, setRecoveryBusy] = useState(false)
+  const [recoveryError, setRecoveryError] = useState('')
   const [enterToSend, setEnterToSend] = useState(true)
   const [autoDownloadWifi, setAutoDownloadWifi] = useState(true)
   const [autoDownloadMobile, setAutoDownloadMobile] = useState(false)
@@ -309,6 +313,32 @@ export function SettingsPage() {
     setTwoFactorCode('')
     setTwoFactorError('')
     setTwoFactorStep('idle')
+  }
+
+  // Rotation de la phrase de récupération : EXIGE la preuve de l'ancienne
+  // phrase (vérifiée contre le matériel local) avant toute régénération.
+  const handleRotateRecovery = async () => {
+    if (!user || recoveryBusy) return
+    const phrase = recoveryPhraseInput.trim()
+    if (!validateRecoveryPhrase(phrase)) {
+      setRecoveryError(t('recoveryPhraseInvalid'))
+      return
+    }
+    setRecoveryBusy(true)
+    setRecoveryError('')
+    try {
+      const verified = await verifyCurrentPhrase(user.id, phrase)
+      if (!verified) {
+        setRecoveryError(t('recoveryPhraseIncorrect'))
+        return
+      }
+      await regenerateRecovery(phrase)
+      setRecoveryPhraseInput('')
+    } catch (e) {
+      setRecoveryError((e as Error)?.message || t('recoveryRegenerateError'))
+    } finally {
+      setRecoveryBusy(false)
+    }
   }
 
   const copyToClipboard = async (text: string) => {
@@ -954,7 +984,7 @@ export function SettingsPage() {
   )
 
   const renderSecurityView = () => (
-    <div className="flex-1 overflow-y-auto p-6">
+    <div className="flex-1 overflow-y-auto p-6 space-y-6">
       <div className="bg-bg-surface rounded-2xl p-6 text-center space-y-4">
         <div className="w-20 h-20 mx-auto rounded-full bg-accent/20 flex items-center justify-center">
           <Lock size={40} className="text-accent" />
@@ -966,6 +996,26 @@ export function SettingsPage() {
         <div className="pt-4 border-t border-bg-hover">
           <p className="text-xs text-text-secondary">{t('protocolLabel')}</p>
         </div>
+      </div>
+
+      <div className="bg-bg-surface rounded-2xl p-6 space-y-3">
+        <h3 className="text-lg font-semibold text-text-primary">{t('recoveryRotateTitle')}</h3>
+        <p className="text-sm text-text-secondary">{t('recoveryRotateDesc')}</p>
+        <textarea
+          value={recoveryPhraseInput}
+          onChange={(e) => { setRecoveryPhraseInput(e.target.value); setRecoveryError('') }}
+          rows={3}
+          placeholder={t('recoveryCurrentPhrasePlaceholder')}
+          className="w-full px-3 py-2 rounded-xl bg-bg-primary text-sm text-text-primary font-mono resize-none outline-none"
+        />
+        {recoveryError && <p className="text-sm text-red-500">{recoveryError}</p>}
+        <button
+          onClick={handleRotateRecovery}
+          disabled={recoveryBusy || recoveryPhraseInput.trim().length === 0}
+          className="w-full py-3 rounded-2xl bg-accent text-white font-medium hover:bg-[#5a5ec9] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+        >
+          {recoveryBusy ? <><Loader2 size={18} className="animate-spin" />{t('recoveryVerifying')}</> : t('recoveryRotateButton')}
+        </button>
       </div>
     </div>
   )

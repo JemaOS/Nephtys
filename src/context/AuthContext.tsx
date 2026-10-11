@@ -1,18 +1,23 @@
 // Copyright (c) 2025 Jema Technology.
 // Distributed under the license specified in the root directory of this project.
 
-import { createContext, useContext, useEffect, useState, useMemo, ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, useMemo, useRef, ReactNode } from 'react'
 import { tStatic } from '@/i18n';
 import { User } from '@supabase/supabase-js'
 import { supabase, Profile } from '@/lib/supabase'
 import { initializePresence, cleanupPresence } from '@/hooks/usePresence'
 import { resolveMediaUrl } from '@/lib/mediaUrl'
 import { deleteMyMessages } from '@/lib/conversationService'
-import { setupRecoveryKeys, installKeysFromPhrase, hasLocalKeys, regenerateRecoveryKeys } from '@/lib/recovery/recoveryService'
+import { setupRecoveryKeys, installKeysFromPhrase, hasLocalKeys, regenerateRecoveryKeys, verifyCurrentPhrase } from '@/lib/recovery/recoveryService'
+import { getMFAChallenge, verifyMFAChallenge } from '@/lib/twoFactorAuth'
 
 // Timeout for auth operations (in milliseconds)
 const AUTH_TIMEOUT = 5000;
 const PROFILE_TIMEOUT = 3000;
+
+// Nombre maximal de tentatives de code 2FA au login (côté client), avant de
+// refuser toute vérification supplémentaire (l'utilisateur doit se reconnecter).
+const MAX_MFA_ATTEMPTS = 5;
 
 // Local storage keys for offline support
 const CACHED_USER_KEY = 'anu_cached_user';
@@ -37,8 +42,12 @@ interface AuthContextType {
   confirmPhraseSaved: () => void
   /** Restaure les clés depuis la phrase de récupération. */
   completeRecovery: (phrase: string) => Promise<void>
-  /** Régénère les clés (nouvelle phrase) — l'historique devient illisible. */
-  regenerateRecovery: () => Promise<void>
+  /** Régénère les clés (nouvelle phrase) — exige la preuve de l'ancienne. */
+  regenerateRecovery: (currentPhrase: string) => Promise<void>
+  /** Facteur 2FA en attente au login (aal1 → aal2), sinon null. */
+  mfaPending: { factorId: string; challengeId: string } | null
+  /** Vérifie le code 2FA au login et lève le gate MFA en cas de succès. */
+  verifyMfaAtLogin: (code: string) => Promise<{ success: boolean; error?: string }>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -166,6 +175,11 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
   // phrase requise (nouvel appareil sans clés locales).
   const [pendingPhrase, setPendingPhrase] = useState<string | null>(null)
   const [recoveryRequired, setRecoveryRequired] = useState(false)
+
+  // 2FA au login : tant que ce facteur est en attente, l'app n'est pas
+  // considérée comme pleinement accessible (voir App.tsx → MfaGate).
+  const [mfaPending, setMfaPending] = useState<{ factorId: string; challengeId: string } | null>(null)
+  const mfaAttemptsRef = useRef(0)
 
 
   // Monitor online/offline status
@@ -370,6 +384,21 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
           console.error('Session error:', sessionError)
           throw new Error('❌ Erreur de session\n\nImpossible de vous connecter.')
         }
+        // 2FA : si un second facteur est requis (aal1 → aal2), on bloque l'accès
+        // à l'app derrière l'écran MfaGate tant que le code n'est pas vérifié.
+        // L'utilisateur n'est donc PAS considéré comme pleinement connecté.
+        try {
+          const mfa = await getMFAChallenge()
+          if (mfa.needsChallenge && mfa.factorId && mfa.challengeId) {
+            mfaAttemptsRef.current = 0
+            setMfaPending({ factorId: mfa.factorId, challengeId: mfa.challengeId })
+            return
+          }
+        } catch (mfaErr) {
+          // Limite connue : si la vérification du niveau d'assurance échoue, on
+          // ne peut pas distinguer « pas de 2FA » d'une erreur réseau.
+          console.warn('[Auth] MFA challenge check failed:', mfaErr)
+        }
         // Restaurer (ou créer) la clé E2EE AVEC le password. On ATTEND la
         // restauration (multi-appareil) : sinon les conversations se chargent
         // avant que les clés (ratchet) soient en IndexedDB → « clés locales
@@ -539,6 +568,8 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
   const signOut = async () => {
     setPendingPhrase(null)
     setRecoveryRequired(false)
+    setMfaPending(null)
+    mfaAttemptsRef.current = 0
     // Si mode éphémère, supprimer toutes les données
     const isEphemeral = localStorage.getItem('anu_ephemeral_mode') === 'true'
     
@@ -602,11 +633,34 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
     setRecoveryRequired(false)
   }
 
-  const regenerateRecovery = async () => {
+  const regenerateRecovery = async (currentPhrase: string) => {
     const uid = user?.id
     if (!uid) throw new Error('Non connecté')
-    const phrase = await regenerateRecoveryKeys(uid)
+    // Preuve de possession de l'ancienne phrase AVANT toute modification.
+    const verified = await verifyCurrentPhrase(uid, currentPhrase)
+    if (!verified) {
+      throw new Error(tStatic('recoveryPhraseIncorrect'))
+    }
+    const phrase = await regenerateRecoveryKeys(uid, currentPhrase)
     setPendingPhrase(phrase)
+  }
+
+  const verifyMfaAtLogin = async (code: string): Promise<{ success: boolean; error?: string }> => {
+    const pending = mfaPending
+    if (!pending) {
+      return { success: false, error: tStatic('mfaGateNoChallenge') }
+    }
+    if (mfaAttemptsRef.current >= MAX_MFA_ATTEMPTS) {
+      return { success: false, error: tStatic('mfaTooManyAttempts') }
+    }
+    const result = await verifyMFAChallenge(pending.factorId, pending.challengeId, code)
+    if (result.success) {
+      mfaAttemptsRef.current = 0
+      setMfaPending(null)
+      return { success: true }
+    }
+    mfaAttemptsRef.current += 1
+    return { success: false, error: result.error ?? tStatic('twoFaInvalidCode') }
   }
 
   const updateLocalProfile = (patch: Partial<Profile>) => {
@@ -633,7 +687,9 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
     confirmPhraseSaved,
     completeRecovery,
     regenerateRecovery,
-  }), [user, profile, loading, isOffline, pendingPhrase, recoveryRequired]);
+    mfaPending,
+    verifyMfaAtLogin,
+  }), [user, profile, loading, isOffline, pendingPhrase, recoveryRequired, mfaPending]);
 
   return (
     <AuthContext.Provider value={value}>

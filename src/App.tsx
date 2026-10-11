@@ -13,6 +13,7 @@ import { useEffect, useState, useCallback, lazy, Suspense } from 'react'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { SubscriptionGuard } from './SubscriptionGuard'
 import { RecoveryGate } from './components/RecoveryGate'
+import { MfaGate } from './components/MfaGate'
 import { useI18n } from './i18n'
 
 
@@ -173,6 +174,12 @@ function PublicRoute({ children }: { readonly children: React.ReactNode }) {
 }
 
 function AppRoutes() {
+  const { mfaPending } = useAuth()
+  // 2FA exigé au login : tant que le code n'est pas vérifié, l'app n'est pas
+  // accessible — on remplace les routes par l'écran bloquant.
+  if (mfaPending) {
+    return <MfaGate />
+  }
   return (
     <ErrorBoundary>
       <Suspense fallback={<LoadingScreen />}>

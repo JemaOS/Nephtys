@@ -56,11 +56,60 @@ export async function hasLocalKeys(userId: string): Promise<boolean> {
 }
 
 /**
- * Régénère les clés (nouvelle phrase) : efface l'ancien matériel local/serveur
- * PUIS dérive + installe un nouveau jeu. Renvoie la nouvelle phrase.
- * ⚠️ L'historique chiffré avec l'ancienne phrase devient illisible.
+ * Vérifie qu'une phrase fournie correspond bien au matériel DÉJÀ installé
+ * localement — preuve de possession de l'ancienne phrase avant toute rotation.
+ *
+ * Compare la clé publique d'identité X25519 (X3DH) et la clé publique de
+ * signature ratchet si disponible, ainsi que la clé publique X25519
+ * « utilisateur » (pile e2eeX25519). Renvoie `false` si aucune clé locale
+ * ne permet la vérification (aucune preuve ⇒ refus).
  */
-export async function regenerateRecoveryKeys(userId: string): Promise<string> {
+export async function verifyCurrentPhrase(userId: string, phrase: string): Promise<boolean> {
+  if (!validateRecoveryPhrase(phrase)) return false;
+
+  const [ratchet, x25519, derivedRatchet, derivedX25519] = await Promise.all([
+    getLocalRatchetKeys(userId),
+    getLocalX25519KeyPair(userId),
+    deriveLocalRatchetKeys(phrase),
+    deriveUserX25519KeyPair(phrase),
+  ]);
+
+  let checked = false;
+
+  const localIdentity = ratchet?.identityKeyPair?.publicKey;
+  if (localIdentity) {
+    if (localIdentity !== derivedRatchet.identityKeyPair.publicKey) return false;
+    checked = true;
+  }
+
+  const localSigning = ratchet?.signingKeyPair?.publicKey;
+  if (localSigning) {
+    if (localSigning !== derivedRatchet.signingKeyPair.publicKey) return false;
+    checked = true;
+  }
+
+  if (x25519?.publicKey) {
+    if (x25519.publicKey !== derivedX25519.publicKey) return false;
+    checked = true;
+  }
+
+  return checked;
+}
+
+/**
+ * Régénère les clés (nouvelle phrase). Exige la PREUVE de l'ancienne phrase :
+ * `currentPhrase` est vérifiée contre le matériel local AVANT toute
+ * modification. Ensuite on efface l'ancien matériel local/serveur PUIS on
+ * dérive + installe un nouveau jeu. Renvoie la nouvelle phrase.
+ * ⚠️ L'historique chiffré avec l'ancienne phrase devient illisible.
+ *
+ * @throws si `currentPhrase` ne correspond pas aux clés installées.
+ */
+export async function regenerateRecoveryKeys(userId: string, currentPhrase: string): Promise<string> {
+  const verified = await verifyCurrentPhrase(userId, currentPhrase);
+  if (!verified) {
+    throw new Error('Phrase de récupération actuelle incorrecte.');
+  }
   await clearLocalRatchetKeys(userId);
   await clearLocalX25519(userId);
   return setupRecoveryKeys(userId);
