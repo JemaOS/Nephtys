@@ -42,7 +42,14 @@ import { tStatic } from './i18n';
 // Fichier partagé : le garder identique dans toutes les apps PWA.
 
 const API_BASE = 'https://connect-api.jematech.fr';
-const API_KEY = 'e58492a3-b452-4197-9f4a-deb7915b9446';
+// Identifiant client du backend connect. Fourni de préférence par la variable
+// d'environnement VITE_CONNECT_API_KEY (à définir dans Vercel). La valeur de
+// repli est un identifiant PARTAGÉ livré dans le bundle : par nature PUBLIC
+// (tout ce qui est dans un bundle JS l'est, quelle que soit la variable d'env
+// utilisée). Le contrôle d'accès réel doit rester côté serveur.
+const API_KEY =
+  (import.meta.env.VITE_CONNECT_API_KEY as string | undefined) ||
+  'e58492a3-b452-4197-9f4a-deb7915b9446';
 
 // Portail SSO central (authentification JemaOS). Sur l'hôte SSO lui-même,
 // /auth est la page de connexion du routeur de l'app.
@@ -65,6 +72,13 @@ const AUTH_PORTAL_URL = 'https://auth-app.jematech.fr';
 const REFRESH_URL = `${API_BASE}/v1/connect/refreshtoken`;
 
 const GRACE_KEY = 'jemaos_sub_ok_until';
+// SÉCURITÉ : en production, le stockage local ne doit JAMAIS accorder l'accès.
+// La « grâce » hors-ligne (jemaos_sub_ok_until) est une valeur purement
+// client, donc falsifiable (il suffit de la fixer dans le futur pour
+// contourner le paywall). Elle n'est donc honorée qu'en développement. En
+// production, seul le serveur tranche ; un mode hors-ligne réellement sûr
+// exigerait un jeton d'entitlement SIGNÉ par le serveur (hors de ce fichier).
+const TRUST_LOCAL_GRACE = import.meta.env.DEV;
 // Tolérance hors-ligne : après une vérification réussie, l'abonnement est
 // considéré valide sans internet pendant cette durée (renouvelée à chaque
 // check en ligne, donc "OFFLINE_GRACE_DAYS jours depuis le dernier
@@ -73,11 +87,13 @@ const GRACE_KEY = 'jemaos_sub_ok_until';
 const OFFLINE_GRACE_DAYS = 7;
 const GRACE_MS = OFFLINE_GRACE_DAYS * 24 * 60 * 60 * 1000;
 
-// ─── Déblocage TEMPORAIRE (test) ──────────────────────────────────────
-// ⚠️ TEMPORAIRE : bouton « Débloquer (test) » affiché partout, actif au clic
-// (accès sans abonnement). À RETIRER avant mise en production publique.
-// Pour tout désactiver d'un coup : repasser ALLOW_DEV_UNLOCK à false.
-const ALLOW_DEV_UNLOCK = true;
+// ─── Déblocage de DEVELOPPEMENT uniquement ────────────────────────────
+// `import.meta.env.DEV` vaut true en dev (vite) et false dans un build de
+// production : le bouton « Débloquer (test) » n'est donc JAMAIS rendu en
+// production, et le flag localStorage `jemaos_dev_unlock` ne peut jamais
+// accorder l'accès en production. En prod, l'accès dépend uniquement de la
+// vérification serveur (POST /v1/connect/os/subscription).
+const ALLOW_DEV_UNLOCK = import.meta.env.DEV;
 const DEV_UNLOCK_KEY = 'jemaos_dev_unlock';
 
 function isDevUnlocked(): boolean {
@@ -211,9 +227,10 @@ function clearStaleTokenCookie() {
     '.jematech.fr',
   ];
   for (const domain of domains) {
-    document.cookie =
-      'jemaos_access_token=; Max-Age=0; path=/' +
-      (domain ? `; domain=${domain}` : '');
+    const suffix = domain ? `; domain=${domain}` : '';
+    document.cookie = `jemaos_access_token=; Max-Age=0; path=/${suffix}`;
+    // Purge du refresh token partagé hérité (ancien format vulnérable).
+    document.cookie = `jemaos_refresh_token=; Max-Age=0; path=/${suffix}`;
   }
 }
 
@@ -238,6 +255,7 @@ function clearSubscriptionGrace() {
 }
 
 function inGracePeriod(): boolean {
+  if (!TRUST_LOCAL_GRACE) return false;
   try {
     const until = Number(localStorage.getItem(GRACE_KEY) || 0);
     return Date.now() < until;
@@ -349,23 +367,29 @@ async function requestTokensFromPortal(): Promise<{
   }
 }
 
-// Stocke les jetons reçus du portail dans les stores du PWA (le cookie
-// partagé .jemaos.com permet aux autres PWA d'en profiter directement).
+// Durée de vie du cookie d'access token partagé. Raccourcie (24 h -> 1 h) :
+// un jeton d'accès lisible par TOUS les sous-domaines .jemaos.com ne doit pas
+// rester exposé une journée entière.
+const ACCESS_COOKIE_MAX_AGE = 3600;
+
+// Stocke les jetons reçus du portail dans les stores du PWA. SÉCURITÉ : le
+// refresh token n'est PLUS persisté dans localStorage ni dans un cookie à
+// domaine partagé `.jemaos.com` (lisible par tous les sous-domaines, donc
+// exfiltrable par n'importe quelle app compromise). Il ne vit qu'en
+// sessionStorage (portée onglet/origine).
 function storePortalTokens(accessToken: string | null, refreshToken: string | null) {
   if (accessToken) {
     try { sessionStorage.setItem('jemaos_access_token', accessToken); } catch {
       /* storage unavailable — best-effort */
     }
-    document.cookie = `jemaos_access_token=${accessToken}; Domain=.jemaos.com; Path=/; Secure; SameSite=Lax; Max-Age=86400`;
+    document.cookie = `jemaos_access_token=${accessToken}; Domain=.jemaos.com; Path=/; Secure; SameSite=Lax; Max-Age=${ACCESS_COOKIE_MAX_AGE}`;
   }
   if (refreshToken) {
     try {
       sessionStorage.setItem('jemaos_refresh_token', refreshToken);
-      localStorage.setItem('jemaos_refresh_token', refreshToken);
     } catch {
       /* storage unavailable — best-effort */
     }
-    document.cookie = `jemaos_refresh_token=${refreshToken}; Domain=.jemaos.com; Path=/; Secure; SameSite=Lax; Max-Age=604800`;
   }
 }
 
@@ -393,27 +417,17 @@ async function checkSubscription(token: string): Promise<CheckResult> {
   }
 }
 
-// Cherche le refresh token : pont OEM (getJemaOSRefreshToken), puis cookie
-// partagé .jemaos.com, window.jemaosRefreshToken, session/localStorage.
+// Cherche le refresh token : pont OEM (getJemaOSRefreshToken), puis
+// window.jemaosRefreshToken, puis sessionStorage. SÉCURITÉ : on ne lit PLUS le
+// cookie à domaine partagé `.jemaos.com` ni localStorage — ces supports sont
+// partagés/persistants et falsifiables, et exposaient le refresh token à tous
+// les sous-domaines.
 function getRefreshTokenFromStores(): string | null {
-  const cookies = document.cookie.split(';');
-  for (const cookie of cookies) {
-    const [name, value] = cookie.trim().split('=');
-    if (name === 'jemaos_refresh_token' && value) {
-      return value;
-    }
-  }
   if (window.jemaosRefreshToken) {
     return window.jemaosRefreshToken;
   }
   try {
     const t = sessionStorage.getItem('jemaos_refresh_token');
-    if (t) return t;
-  } catch {
-    /* storage unavailable — best-effort */
-  }
-  try {
-    const t = localStorage.getItem('jemaos_refresh_token');
     if (t) return t;
   } catch {
     /* storage unavailable — best-effort */
@@ -472,16 +486,15 @@ async function tryRefreshToken(): Promise<boolean> {
     if (typeof t !== 'string' || !t) return false;
     sessionStorage.setItem('jemaos_access_token', t);
     // Cookie partagé : les autres PWA JemaOS liront directement le
-    // nouvel access token (même session, même appareil).
-    document.cookie = `jemaos_access_token=${t}; Domain=.jemaos.com; Path=/; Secure; SameSite=Lax; Max-Age=86400`;
+    // nouvel access token (même session, même appareil). TTL volontairement
+    // court (cf. ACCESS_COOKIE_MAX_AGE).
+    document.cookie = `jemaos_access_token=${t}; Domain=.jemaos.com; Path=/; Secure; SameSite=Lax; Max-Age=${ACCESS_COOKIE_MAX_AGE}`;
 
     const rt = data?.refresh_token || data?.refreshToken;
     if (typeof rt === 'string' && rt) {
+      // SÉCURITÉ : refresh token conservé en sessionStorage UNIQUEMENT — plus
+      // de localStorage ni de cookie partagé .jemaos.com.
       sessionStorage.setItem('jemaos_refresh_token', rt);
-      try { localStorage.setItem('jemaos_refresh_token', rt); } catch {
-        /* storage unavailable — best-effort */
-      }
-      document.cookie = `jemaos_refresh_token=${rt}; Domain=.jemaos.com; Path=/; Secure; SameSite=Lax; Max-Age=604800`;
     }
     return true;
   } catch {

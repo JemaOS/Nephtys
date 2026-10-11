@@ -7,6 +7,37 @@
 
 const MEDIA_CACHE = 'nephtys-media-v8';
 
+// Bornes du cache média : on ne laisse pas le cache grandir sans limite ni
+// conserver des entrées périmées indéfiniment (éviction).
+const MEDIA_MAX_ENTRIES = 80;
+const MEDIA_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000; // 14 jours
+
+// Évince d'abord les entrées trop anciennes (via l'en-tête Date de la
+// réponse), puis applique une limite de nombre d'entrées (FIFO par ordre
+// d'insertion). Best-effort : ne doit jamais faire échouer le fetch.
+async function trimMediaCache() {
+  try {
+    const cache = await caches.open(MEDIA_CACHE);
+    const now = Date.now();
+    for (const request of await cache.keys()) {
+      const response = await cache.match(request);
+      if (!response) continue;
+      const dateHeader = response.headers.get('date');
+      const storedAt = dateHeader ? Date.parse(dateHeader) : NaN;
+      if (!Number.isNaN(storedAt) && now - storedAt > MEDIA_MAX_AGE_MS) {
+        await cache.delete(request);
+      }
+    }
+    let keys = await cache.keys();
+    while (keys.length > MEDIA_MAX_ENTRIES) {
+      await cache.delete(keys[0]);
+      keys = await cache.keys();
+    }
+  } catch {
+    /* cache indisponible — best-effort */
+  }
+}
+
 // Install: take over immediately
 globalThis.addEventListener('install', () => {
   globalThis.skipWaiting();
@@ -27,6 +58,7 @@ globalThis.addEventListener('activate', (event) => {
         )
       )
       .then(() => globalThis.clients.claim())
+      .then(() => trimMediaCache())
   );
 });
 
@@ -73,7 +105,10 @@ globalThis.addEventListener('fetch', (event) => {
         return fetch(request).then((response) => {
           if (cacheable && response.ok && response.status !== 206) {
             const clone = response.clone();
-            caches.open(MEDIA_CACHE).then((cache) => cache.put(request, clone));
+            caches.open(MEDIA_CACHE)
+              .then((cache) => cache.put(request, clone))
+              .then(() => trimMediaCache())
+              .catch(() => { /* best-effort */ });
           }
           return response;
         }).catch(() => cached);
