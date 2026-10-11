@@ -17,6 +17,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getPeerConnectionConfig } from '@/lib/iceServers'
+import { isCoverTrafficEnabled } from '@/lib/privacyPrefs'
 import QRCode from 'react-qr-code'
 import { ArrowLeft, Copy, Lock, Paperclip, Plus, Send, ShieldCheck, SlidersHorizontal, Trash2, X } from 'lucide-react'
 import { MainLayout } from '@/components/MainLayout'
@@ -282,7 +283,7 @@ export function PrivatePage() {
         }
       })
       const stopRot = messenger.startQueueRotation(convId)
-      const stopCover = messenger.startCoverTraffic(convId)
+      const stopCover = isCoverTrafficEnabled() ? messenger.startCoverTraffic(convId) : () => {}
       monitors.set(convId, () => { unsubMsg(); stopRot(); stopCover() })
     }
 

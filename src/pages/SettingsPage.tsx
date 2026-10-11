@@ -33,6 +33,7 @@ import {
   setDecentralizedRelayEnabled
 } from '@/lib/relay/relayClient'
 import { isRelayOnlyCallsEnabled, setRelayOnlyCallsEnabled, getIceServers } from '@/lib/iceServers'
+import { isCoverTrafficEnabled, setCoverTrafficEnabled } from '@/lib/privacyPrefs'
 
 // Type for storage/media type filter
 type StorageType = 'all' | 'photos' | 'videos' | 'files' | 'audio';
@@ -166,6 +167,7 @@ export function SettingsPage() {
   const [relayOnlyCalls, setRelayOnlyCalls] = useState<boolean>(() => isRelayOnlyCallsEnabled())
   const [decentralized, setDecentralized] = useState<boolean>(() => isDecentralizedRelayEnabled())
   const [relayPoolInput, setRelayPoolInput] = useState<string>(() => getRelayPoolInput())
+  const [coverTraffic, setCoverTraffic] = useState<boolean>(() => isCoverTrafficEnabled())
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false)
   const [twoFactorFactors, setTwoFactorFactors] = useState<TOTPFactor[]>([])
   const [twoFactorLoading, setTwoFactorLoading] = useState(false)
@@ -552,6 +554,12 @@ export function SettingsPage() {
     setRelayPool(relayPoolInput)
   }
 
+  const handleToggleCover = () => {
+    const next = !coverTraffic
+    setCoverTraffic(next)
+    setCoverTrafficEnabled(next)
+  }
+
   /** Applique relais + politique de routage Tor puis relance la connexion. */
   const handleSaveAndReconnect = () => {
     setRelayUrl(relayInput)
@@ -861,7 +869,7 @@ export function SettingsPage() {
       </div>
       <div className="px-6 py-8 text-center space-y-2">
         <p className="text-sm text-text-secondary">{t('optimizedForJemaos')}</p>
-        <p className="text-xs text-text-secondary">{t('versionLabel', { version: '1.1.0' })}</p>
+        <p className="text-xs text-text-secondary">{t('versionLabel', { version: '1.1.0' })} · build {__BUILD_COMMIT__}</p>
       </div>
       <div className="px-6 pb-8">
         <button onClick={handleSignOut} className="w-full py-3 rounded-2xl bg-bg-surface hover:bg-bg-hover text-[#ea4335] font-medium transition-colors flex items-center justify-center gap-2">
@@ -1349,6 +1357,20 @@ export function SettingsPage() {
             <div className="pt-3 border-t border-bg-hover space-y-2">
               <div className="flex items-center justify-between">
                 <div className="pr-4">
+                  <div className="text-text-primary">Trafic de couverture</div>
+                  <div className="text-sm text-text-secondary">Brouille le timing/volume en envoyant des messages factices.</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleToggleCover}
+                  aria-pressed={coverTraffic}
+                  className={`w-12 h-6 rounded-full relative shrink-0 transition-colors ${coverTraffic ? 'bg-accent' : 'bg-[#8696a0]'}`}
+                >
+                  <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${coverTraffic ? 'right-1' : 'left-1'}`}></div>
+                </button>
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="pr-4">
                   <div className="text-text-primary">Réseau décentralisé</div>
                   <div className="text-sm text-text-secondary">Répartir le mode privé sur plusieurs relais, avec repli automatique.</div>
                 </div>
@@ -1499,7 +1521,7 @@ export function SettingsPage() {
         </button>
         <div className="px-6 py-8 text-center space-y-2">
           <p className="text-sm text-text-secondary">{t('optimizedForJemaos')}</p>
-          <p className="text-xs text-text-secondary">{t('versionLabel', { version: '1.1.0' })}</p>
+          <p className="text-xs text-text-secondary">{t('versionLabel', { version: '1.1.0' })} · build {__BUILD_COMMIT__}</p>
           <p className="text-xs text-text-secondary mt-4">{t('copyright')}</p>
         </div>
       </div>

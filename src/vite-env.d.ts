@@ -1,4 +1,4 @@
-// Copyright (c) 2025 Jema Technology.
-// Distributed under the license specified in the root directory of this project.
-
 /// <reference types="vite/client" />
+
+/** Commit git injecte au build (voir vite.config.ts) — build verifiable. */
+declare const __BUILD_COMMIT__: string;
