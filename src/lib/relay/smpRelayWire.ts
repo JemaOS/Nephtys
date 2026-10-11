@@ -41,11 +41,80 @@ function b64(bytes: Uint8Array): string {
 function unb64(value: string): Uint8Array {
   return decodeBase64Url(value);
 }
-function token(obj: unknown): string {
-  return b64(utf8Bytes(JSON.stringify(obj)));
+/**
+ * Tokens de file SMP **compacts** : champs joints par `|`. Les clés sont déjà en
+ * base64url ; l'URL du serveur et le mode sont base64url-encodés. On supprime le
+ * `base64(JSON(...))` qui doublait l'encodage et gonflait l'invitation (QR code).
+ * Compatibilité ascendante assurée pour l'ancien format base64(JSON).
+ */
+function encField(value: string | null | undefined): string {
+  return value ? b64(utf8Bytes(value)) : '';
 }
-function parseToken(value: string): any {
-  return JSON.parse(utf8Text(unb64(value)));
+function decField(value: string | undefined): string | null {
+  return value ? utf8Text(unb64(value)) : null;
+}
+interface RecipientToken {
+  server: string | null;
+  queueMode: string;
+  rcvId: string;
+  rcvSignPub: string;
+  rcvSignSec: string;
+  serverDhSecret: string;
+}
+interface SenderToken {
+  server: string | null;
+  queueMode: string;
+  sndId: string;
+  sndSignPub: string;
+  sndSignSec: string;
+}
+function recipientToken(f: RecipientToken): string {
+  return [encField(f.server), encField(f.queueMode), f.rcvId, f.rcvSignPub, f.rcvSignSec, f.serverDhSecret].join('|');
+}
+function parseRecipientToken(value: string): RecipientToken {
+  if (!value.includes('|')) {
+    const t = JSON.parse(utf8Text(unb64(value)));
+    return {
+      server: t.server ?? null,
+      queueMode: t.queueMode || 'messaging',
+      rcvId: t.rcvId,
+      rcvSignPub: t.rcvSignPub,
+      rcvSignSec: t.rcvSignSec,
+      serverDhSecret: t.serverDhSecret,
+    };
+  }
+  const p = value.split('|');
+  return {
+    server: decField(p[0]),
+    queueMode: decField(p[1]) || 'messaging',
+    rcvId: p[2] ?? '',
+    rcvSignPub: p[3] ?? '',
+    rcvSignSec: p[4] ?? '',
+    serverDhSecret: p[5] ?? '',
+  };
+}
+function senderToken(f: SenderToken): string {
+  return [encField(f.server), encField(f.queueMode), f.sndId, f.sndSignPub, f.sndSignSec].join('|');
+}
+function parseSenderToken(value: string): SenderToken {
+  if (!value.includes('|')) {
+    const t = JSON.parse(utf8Text(unb64(value)));
+    return {
+      server: t.server ?? null,
+      queueMode: t.queueMode || 'messaging',
+      sndId: t.sndId,
+      sndSignPub: t.sndSignPub,
+      sndSignSec: t.sndSignSec,
+    };
+  }
+  const p = value.split('|');
+  return {
+    server: decField(p[0]),
+    queueMode: decField(p[1]) || 'messaging',
+    sndId: p[2] ?? '',
+    sndSignPub: p[3] ?? '',
+    sndSignSec: p[4] ?? '',
+  };
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
@@ -92,10 +161,10 @@ export class SmpRelayWire implements RelayWire {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private recipientFrom(queueId: string): any {
-    const t = parseToken(queueId);
+    const t = parseRecipientToken(queueId);
     return {
-      server: t.server ?? null,
-      queueMode: t.queueMode || 'messaging',
+      server: t.server,
+      queueMode: t.queueMode,
       rcvId: unb64(t.rcvId),
       rcvSignKey: { publicKeyDer: unb64(t.rcvSignPub), secretKey: unb64(t.rcvSignSec) },
       serverDhSecret: unb64(t.serverDhSecret),
@@ -104,10 +173,10 @@ export class SmpRelayWire implements RelayWire {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private senderFrom(sendKey: string): any {
-    const t = parseToken(sendKey);
+    const t = parseSenderToken(sendKey);
     return {
-      server: t.server ?? null,
-      queueMode: t.queueMode || 'messaging',
+      server: t.server,
+      queueMode: t.queueMode,
       sndId: unb64(t.sndId),
       senderSignKey: { publicKeyDer: unb64(t.sndSignPub), secretKey: unb64(t.sndSignSec) },
     };
@@ -137,20 +206,20 @@ export class SmpRelayWire implements RelayWire {
           const senderSign = generateEd25519KeyPair();
           await this.client.secureQueue(R, senderSign.publicKeyDer, {});
 
-          const queueId = token({
+          const queueId = recipientToken({
+            server: R.server ?? null,
+            queueMode: R.queueMode || 'messaging',
             rcvId: b64(R.rcvId),
             rcvSignPub: b64(R.rcvSignKey.publicKeyDer),
             rcvSignSec: b64(R.rcvSignKey.secretKey),
             serverDhSecret: b64(R.serverDhSecret),
+          });
+          const sendKey = senderToken({
             server: R.server ?? null,
             queueMode: R.queueMode || 'messaging',
-          });
-          const sendKey = token({
             sndId: b64(R.sndId),
             sndSignPub: b64(senderSign.publicKeyDer),
             sndSignSec: b64(senderSign.secretKey),
-            server: R.server ?? null,
-            queueMode: R.queueMode || 'messaging',
           });
           const creds: QueueCredentials = { queueId, sendKey, rcvKey: 'r' };
           return { ok: true, result: creds };
