@@ -145,6 +145,39 @@ export function AuthPage() {
     }
   }
 
+  // Écran DÉDIÉ de liaison (opaque, dans le thème de l'app) — pas de superposition.
+  if (linkReq) {
+    return (
+      <div className="h-screen-safe bg-bg-primary flex flex-col items-center justify-center p-6 gap-5 overflow-auto">
+        <button
+          type="button"
+          onClick={() => setLinkReq(null)}
+          className="absolute top-3 right-3 p-2 rounded-lg bg-bg-surface text-text-primary"
+          aria-label="Fermer"
+        >
+          <X size={18} />
+        </button>
+        <div className="flex flex-col items-center gap-1">
+          <img src="/icon.svg" alt="Nephtys" className="w-11 h-11 rounded-2xl" />
+          <h1 className="text-lg font-bold text-text-primary">Nephtys</h1>
+        </div>
+        <h2 className="text-base font-semibold text-text-primary text-center">Liez votre appareil</h2>
+        <ol className="text-sm text-text-secondary space-y-1.5 max-w-sm list-decimal list-inside">
+          <li>Ouvrez Nephtys sur votre <b className="text-text-primary">autre appareil</b> (déjà connecté).</li>
+          <li>Paramètres → <b className="text-text-primary">Code QR</b> → <b className="text-text-primary">Scanner le code</b>.</li>
+          <li>Scannez ce code QR.</li>
+        </ol>
+        <div className="bg-white p-4 rounded-2xl shadow-lg">
+          <SafeQrCode value={linkReq.payload} size={220} />
+        </div>
+        <p className="text-xs text-text-secondary text-center">
+          {linking ? 'Connexion en cours…' : 'En attente du scan…'}
+        </p>
+        {linkError && <p className="text-xs text-amber-300 text-center max-w-xs">{linkError}</p>}
+      </div>
+    )
+  }
+
   return (
     <div className="relative h-screen-safe bg-bg-primary flex items-center justify-center p-3 sm:p-4 overflow-hidden">
       {/* Sélecteur de langue (FR/EN) — haut à droite, dès la 1re page */}
@@ -330,33 +363,7 @@ export function AuthPage() {
           </p>
         </div>
 
-        {/* Liaison d'appareil : on AFFICHE un QR (façon WhatsApp Web) */}
-        {linkReq && (
-          <div className="absolute inset-0 z-50 bg-bg-primary/98 flex flex-col items-center justify-center p-6 gap-4 overflow-auto">
-            <button
-              type="button"
-              onClick={() => setLinkReq(null)}
-              className="absolute top-3 right-3 p-2 rounded-lg bg-bg-surface text-text-primary"
-              aria-label="Fermer"
-            >
-              <X size={18} />
-            </button>
-            <h2 className="text-lg font-semibold text-text-primary text-center">Liez votre appareil</h2>
-            <ol className="text-xs text-text-secondary space-y-1 max-w-sm list-decimal list-inside">
-              <li>Ouvrez Nephtys sur votre <b>autre appareil</b> (déjà connecté).</li>
-              <li>Paramètres → <b>Code QR</b> → <b>Scanner le code</b>.</li>
-              <li>Scannez ce code QR.</li>
-            </ol>
-            <div className="bg-white p-4 rounded-2xl">
-              <SafeQrCode value={linkReq.payload} size={220} />
-            </div>
-            <p className="text-xs text-text-tertiary text-center max-w-xs">
-              {linking ? 'Connexion en cours…' : 'En attente du scan…'}
-            </p>
-            {linkError && <p className="text-xs text-amber-300 text-center max-w-xs">{linkError}</p>}
-          </div>
-        )}
-      </div>
+        </div>
     </div>
   )
 }
