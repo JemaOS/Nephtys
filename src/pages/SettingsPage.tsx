@@ -50,8 +50,9 @@ import {
 } from 'lucide-react'
 import { SafeQrCode } from '@/components/SafeQrCode'
 import { QrScanner } from '@/components/QrScanner'
-import { createDeviceLink, isDeviceLink, redeemDeviceLink } from '@/lib/recovery/deviceLink'
+import { isDeviceLink, redeemDeviceLink } from '@/lib/recovery/deviceLink'
 import { fulfillLinkRequest } from '@/lib/recovery/deviceLinkChannel'
+import { encodeContactLink, isContactLink, parseContactLink, addContactAndOpenConversation } from '@/lib/contactLink'
 import {
   createBackup,
   createLightBackup,
@@ -184,7 +185,6 @@ export function SettingsPage() {
   // Multi-appareil (QR) : code à afficher + scanner.
   const [deviceTab, setDeviceTab] = useState<'mine' | 'scan'>('mine')
   const [deviceMsg, setDeviceMsg] = useState<string | null>(null)
-  const [deviceQr, setDeviceQr] = useState<string | null>(null)
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false)
   const [twoFactorFactors, setTwoFactorFactors] = useState<TOTPFactor[]>([])
   const [twoFactorLoading, setTwoFactorLoading] = useState(false)
@@ -1647,47 +1647,36 @@ export function SettingsPage() {
       </div>
 
       {deviceTab === 'mine' ? (
-        <div className="flex-1 overflow-y-auto flex flex-col items-center p-6 gap-4">
-          <div className="w-16 h-16 rounded-full overflow-hidden bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-2xl">
-            {profile?.username?.[0]?.toUpperCase()}
+        <div className="flex-1 overflow-y-auto flex flex-col items-center p-6">
+          <div className="relative w-full max-w-sm mt-10">
+            <div className="bg-bg-surface rounded-3xl pt-12 pb-5 px-5 flex flex-col items-center shadow-lg">
+              <div className="absolute -top-9 w-20 h-20 rounded-full border-4 border-bg-primary overflow-hidden bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-3xl">
+                {profile?.username?.[0]?.toUpperCase()}
+              </div>
+              <h3 className="text-lg font-semibold text-text-primary">{profile?.display_name || profile?.username}</h3>
+              <p className="text-sm text-text-secondary mb-4">Contact Nephtys</p>
+              {profile?.username && (
+                <div className="relative bg-white p-3 rounded-2xl">
+                  <SafeQrCode value={encodeContactLink(profile.username)} size={220} />
+                  <img src="/icon.svg" alt="" className="absolute inset-0 m-auto w-9 h-9 rounded-lg" />
+                </div>
+              )}
+            </div>
           </div>
-          <div className="text-center">
-            <div className="text-text-primary font-medium">{profile?.display_name || profile?.username}</div>
-            <div className="text-xs text-text-secondary">@{profile?.username}</div>
-          </div>
-          {deviceQr ? (
-            <>
-              <SafeQrCode value={deviceQr} size={220} />
-              <p className="text-xs text-text-secondary text-center max-w-xs">
-                Votre code QR est privé. Faites-le scanner par l'autre appareil (Paramètres → Code QR
-                → Scanner le code) pour le lier et retrouver vos messages.
-              </p>
-              <button
-                type="button"
-                onClick={() => navigator.clipboard?.writeText(deviceQr)}
-                className="px-4 py-2 rounded-xl bg-bg-hover text-text-primary text-sm"
-              >
-                Copier le code
-              </button>
-              <p className="text-[11px] text-[#e0a800] text-center max-w-xs">
-                Ne le partagez qu'avec un appareil de confiance : il donne accès à vos messages.
-              </p>
-            </>
-          ) : (
+          <p className="mt-5 text-sm text-text-secondary text-center max-w-xs">
+            Votre code QR est privé. Si vous le partagez avec quelqu'un, cette personne pourra le
+            scanner pour vous ajouter en tant que contact.
+          </p>
+          {profile?.username && (
             <button
               type="button"
-              onClick={() => {
-                setDeviceMsg(null)
-                void createDeviceLink()
-                  .then(setDeviceQr)
-                  .catch((e: unknown) => setDeviceMsg((e as Error).message))
-              }}
-              className="w-full max-w-xs flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-[#7578db] text-white text-sm font-medium"
+              onClick={() => navigator.clipboard?.writeText(encodeContactLink(profile.username as string))}
+              className="mt-3 px-4 py-2 rounded-xl bg-bg-hover text-text-primary text-sm"
             >
-              <QrCode size={16} /> Afficher mon code
+              Copier le lien
             </button>
           )}
-          {deviceMsg && <p className="text-xs text-text-secondary text-center">{deviceMsg}</p>}
+          {deviceMsg && <p className="mt-3 text-xs text-text-secondary text-center">{deviceMsg}</p>}
         </div>
       ) : (
         <div className="flex-1 flex flex-col overflow-hidden">
@@ -1699,9 +1688,17 @@ export function SettingsPage() {
               onClose={() => setDeviceTab('mine')}
               onResult={(text) => {
                 setDeviceMsg(null)
-                if (isDeviceLink(text)) {
+                if (isContactLink(text)) {
+                  // QR de contact → ajoute le contact et ouvre la discussion.
+                  const username = parseContactLink(text)
+                  const uid = user?.id
+                  if (!username || !uid) { setDeviceMsg('QR contact invalide.'); return }
+                  void addContactAndOpenConversation(uid, username)
+                    .then((convId) => { if (convId) navigate(`/chat/${convId}`); else setDeviceMsg('Contact ajouté ✅.') })
+                    .catch((e: unknown) => setDeviceMsg(`Échec : ${(e as Error).message}`))
+                } else if (isDeviceLink(text)) {
                   void redeemDeviceLink(text)
-                    .then(() => setDeviceMsg('Appareil lié ✅ — vos messages sont de nouveau lisibles.'))
+                    .then(() => setDeviceMsg('Appareil lié ✅.'))
                     .catch((e: unknown) => setDeviceMsg(`Échec : ${(e as Error).message}`))
                 } else {
                   // QR affiché par un nouvel appareil (page de connexion) → on lui
