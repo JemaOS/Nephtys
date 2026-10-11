@@ -15,6 +15,7 @@ import { supabase } from '../supabase';
 import { signPreKey } from './x3dh';
 import type { LocalRatchetKeys, PeerBundle } from './service';
 import { clearUserSessions } from './sessionStore';
+import { sealAtRest, openAtRest } from '../atRestCrypto';
 
 const DB_NAME = 'nephtys-ratchet-keys';
 const STORE = 'keys';
@@ -37,19 +38,21 @@ function openDb(): Promise<IDBDatabase> {
 
 async function idbGet(userId: string): Promise<LocalRatchetKeys | undefined> {
   const db = await openDb();
-  return await new Promise((resolve, reject) => {
+  const raw = await new Promise<unknown>((resolve, reject) => {
     const tx = db.transaction(STORE, 'readonly');
     const req = tx.objectStore(STORE).get(`${IDB_KEY_PREFIX}:${userId}`);
-    req.onsuccess = () => resolve(req.result as LocalRatchetKeys | undefined);
+    req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
+  return (await openAtRest(raw)) as LocalRatchetKeys | undefined;
 }
 
 async function idbSet(userId: string, keys: LocalRatchetKeys): Promise<void> {
   const db = await openDb();
+  const stored = await sealAtRest(keys);
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(STORE, 'readwrite');
-    tx.objectStore(STORE).put(keys, `${IDB_KEY_PREFIX}:${userId}`);
+    tx.objectStore(STORE).put(stored, `${IDB_KEY_PREFIX}:${userId}`);
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
