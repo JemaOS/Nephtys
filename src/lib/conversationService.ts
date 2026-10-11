@@ -66,6 +66,18 @@ export const fetchLastMessages = async (conversationIds: string[]) => {
     .limit(conversationIds.length * 10) // Increased to ensure we get last message for each conversation
 }
 
+/**
+ * IDs des messages que l'utilisateur a masqués (suppression pour moi /
+ * « effacer les messages »). La liste de conversations doit les exclure de
+ * l'aperçu du dernier message et des compteurs de non-lus.
+ */
+export const fetchDeletedMessageIds = async (userId: string) => {
+  return await supabase
+    .from('deleted_messages')
+    .select('message_id')
+    .eq('user_id', userId)
+}
+
 export const fetchUnreadCounts = async (conversationIds: string[], userId: string) => {
   // Phase 1c : l'expéditeur est aveuglé côté serveur (sender_id NULL). On ne
   // peut donc plus filtrer « non-moi » en SQL : on récupère les messages non
@@ -92,7 +104,7 @@ export const fetchUnreadCounts = async (conversationIds: string[], userId: strin
   // Non lus = messages REÇUS (non-moi).
   const received = rows
     .filter(r => r.sender_id !== userId)
-    .map(r => ({ conversation_id: r.conversation_id }))
+    .map(r => ({ conversation_id: r.conversation_id, id: r.id }))
 
   return { data: received, error: null }
 }
@@ -297,8 +309,9 @@ export const fetchAllConversationData = async (userId: string) => {
   // Après : 1 round-trip parallèle (~200ms sur 3G).
   const [
     { data: allMembersIncludingSelf },
-    { data: recentMessages },
-    { data: unreadData },
+    { data: recentMessagesRaw },
+    { data: unreadDataRaw },
+    { data: deletedIds },
     // On a besoin des allMembers pour calculer les profileIds, donc on
     // récupère d'abord les members en parallèle avec les autres, puis
     // on déclenche le fetch des profiles avec leurs IDs.
@@ -306,7 +319,18 @@ export const fetchAllConversationData = async (userId: string) => {
     fetchAllMembers(conversationIds),
     fetchLastMessages(conversationIds),
     fetchUnreadCounts(conversationIds, userId),
+    fetchDeletedMessageIds(userId),
   ])
+
+  // Exclut les messages masqués par l'utilisateur (suppression pour moi /
+  // « effacer les messages ») : sinon l'aperçu du dernier message et le
+  // compteur de non-lus les réaffichent, donnant l'impression que « ça ne
+  // marche pas ».
+  const deletedIdSet = new Set<string>(
+    (deletedIds ?? []).map((d: { message_id: string }) => d.message_id)
+  )
+  const recentMessages = (recentMessagesRaw ?? []).filter((m: Message) => !deletedIdSet.has(m.id))
+  const unreadData = (unreadDataRaw ?? []).filter((r: { id: string }) => !deletedIdSet.has(r.id))
 
   const allMembers = allMembersIncludingSelf?.filter(m => m.user_id !== userId) || []
 

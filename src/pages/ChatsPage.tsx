@@ -995,19 +995,57 @@ export function ChatsPage() {
   }
 
   const handleClearMessages = async (conversationId: string) => {
-    if (confirm(t('clearMessagesConfirm'))) {
-      // Soft-delete all messages in the conversation (set deleted_at timestamp)
-      const { error } = await supabase
+    if (!confirm(t('clearMessagesConfirm')) || !user) return
+
+    const previous = conversations.find(c => c.id === conversationId)
+
+    // OPTIMISTE : la conversation apparaît vide immédiatement (aperçu + non lus).
+    setConversations(prev => prev.map(conv =>
+      conv.id === conversationId
+        ? { ...conv, lastMessage: undefined, unreadCount: 0 }
+        : conv
+    ))
+
+    // Purge les caches locaux de messages pour que la vue de conversation ne
+    // réaffiche pas les anciens messages depuis le cache avant le filtrage.
+    try {
+      localStorage.removeItem(`anu_cache_msgs_${conversationId}`)
+    } catch {
+      // ignore
+    }
+    offlineStorage.clearConversationMessages(conversationId).catch(() => {})
+
+    try {
+      // « Effacer les messages » = suppression POUR MOI (l'autre participant
+      // conserve les siens). On ne peut PAS faire un soft-delete groupé des
+      // messages (l'expéditeur est aveuglé et le trigger d'autorisation rejette
+      // la modification des messages des autres → HTTP 400). On masque donc
+      // chaque message via `deleted_messages`, comme « supprimer pour moi ».
+      const { data: ids, error: idsError } = await supabase
         .from('messages')
-        .update({ deleted_at: new Date().toISOString() })
+        .select('id')
         .eq('conversation_id', conversationId)
-      
-      if (!error) {
-        // Update local state to show empty conversation (clear lastMessage)
-        setConversations(prev => prev.map(conv =>
-          conv.id === conversationId
-            ? { ...conv, lastMessage: undefined, unreadCount: 0 }
-            : conv
+      if (idsError) throw idsError
+
+      const rows = (ids ?? []).map((m: { id: string }) => ({
+        message_id: m.id,
+        user_id: user.id,
+      }))
+
+      if (rows.length > 0) {
+        const { error } = await supabase
+          .from('deleted_messages')
+          .upsert(rows, { onConflict: 'message_id,user_id', ignoreDuplicates: true })
+        if (error && error.code !== '23505') throw error
+      }
+    } catch (e) {
+      console.error('[ChatsPage] Error clearing messages:', e)
+      // Revert l'affichage uniquement si l'opération a réellement échoué.
+      if (previous) {
+        setConversations(prev => prev.map(c =>
+          c.id === conversationId
+            ? { ...c, lastMessage: previous.lastMessage, unreadCount: previous.unreadCount }
+            : c
         ))
       }
     }

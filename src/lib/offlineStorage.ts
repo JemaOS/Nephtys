@@ -378,6 +378,39 @@ class OfflineStorage {
     });
   }
 
+  /**
+   * Vide le cache (mémoire + IndexedDB) des messages d'une conversation.
+   * Utilisé par « Effacer les messages » pour éviter que la vue de
+   * conversation ne ressuscite les anciens messages depuis le cache local.
+   */
+  async clearConversationMessages(conversationId: string): Promise<void> {
+    // Purge mémoire d'abord : getMessages renverrait sinon le cache mémoire.
+    this.memoryCache.messages.delete(conversationId);
+
+    const ready = await this.ensureReady();
+    if (!ready) {
+      return;
+    }
+
+    return new Promise((resolve) => {
+      const transaction = this.db!.transaction([MESSAGES_STORE], 'readwrite');
+      const store = transaction.objectStore(MESSAGES_STORE);
+      const index = store.index('conversation_id');
+      const request = index.openCursor(IDBKeyRange.only(conversationId));
+
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (cursor) {
+          cursor.delete();
+          cursor.continue();
+        } else {
+          resolve();
+        }
+      };
+      request.onerror = () => resolve();
+    });
+  }
+
   // Pending messages operations (for offline sending)
   async savePendingMessage(message: PendingMessage): Promise<void> {
     const ready = await this.ensureReady();
