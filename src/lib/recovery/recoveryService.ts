@@ -17,8 +17,8 @@ import {
   deriveLocalRatchetKeys,
   deriveUserX25519KeyPair,
 } from './keysFromPhrase';
-import { installRatchetKeys, getLocalRatchetKeys } from '../ratchet/keyStore';
-import { installX25519KeyPair, getLocalX25519KeyPair } from '../e2eeX25519';
+import { installRatchetKeys, getLocalRatchetKeys, clearLocalRatchetKeys } from '../ratchet/keyStore';
+import { installX25519KeyPair, getLocalX25519KeyPair, clearLocalX25519 } from '../e2eeX25519';
 
 export { generateRecoveryPhrase, validateRecoveryPhrase };
 
@@ -53,4 +53,15 @@ export async function hasLocalKeys(userId: string): Promise<boolean> {
     getLocalX25519KeyPair(userId),
   ]);
   return !!ratchet && !!x25519;
+}
+
+/**
+ * Régénère les clés (nouvelle phrase) : efface l'ancien matériel local/serveur
+ * PUIS dérive + installe un nouveau jeu. Renvoie la nouvelle phrase.
+ * ⚠️ L'historique chiffré avec l'ancienne phrase devient illisible.
+ */
+export async function regenerateRecoveryKeys(userId: string): Promise<string> {
+  await clearLocalRatchetKeys(userId);
+  await clearLocalX25519(userId);
+  return setupRecoveryKeys(userId);
 }

@@ -8,7 +8,6 @@ import { useAuth } from '@/context/AuthContext'
 import { useTheme } from '@/context/ThemeContext'
 import { supabase } from '@/lib/supabase'
 import { createDeviceLink, redeemDeviceLink } from '@/lib/deviceLink'
-import { resetRatchetKeys } from '@/lib/ratchet/keyStore'
 import QRCode from 'react-qr-code'
 import { MediaImg } from '@/components/MediaImg'
 import { invalidateMediaUrl } from '@/lib/mediaUrl'
@@ -133,7 +132,7 @@ const getParentView = (view: SettingsView): SettingsView => {
 // ============ COMPONENT ============
 
 export function SettingsPage() {
-  const { profile, signOut, user, updateLocalProfile } = useAuth()
+  const { profile, signOut, user, updateLocalProfile, regenerateRecovery } = useAuth()
   const { theme, wallpaper, setTheme, setWallpaper } = useTheme()
   const { t } = useI18n()
   const navigate = useNavigate()
@@ -515,12 +514,12 @@ export function SettingsPage() {
   }
 
   const handleResetEncryption = async () => {
-    if (!user || !resetPwd.trim()) return
+    if (!user) return
     setResetBusy(true)
     setResetMsg(null)
     try {
-      await resetRatchetKeys(user.id, resetPwd)
-      setResetMsg('Chiffrement réinitialisé. Les nouveaux messages fonctionneront ; les anciens restent illisibles. Recharge l’app.')
+      await regenerateRecovery()
+      setResetMsg('Chiffrement réinitialisé. Note ta NOUVELLE phrase de récupération ; les anciens messages restent illisibles.')
       setResetPwd('')
     } catch (e) {
       setResetMsg(`Échec : ${(e as Error).message}`)

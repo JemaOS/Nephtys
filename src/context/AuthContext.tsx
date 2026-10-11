@@ -8,9 +8,7 @@ import { supabase, Profile } from '@/lib/supabase'
 import { initializePresence, cleanupPresence } from '@/hooks/usePresence'
 import { resolveMediaUrl } from '@/lib/mediaUrl'
 import { deleteMyMessages } from '@/lib/conversationService'
-import { initKeyPairOnSignin, initKeyPairOnSignup } from '@/lib/mediaEncryption'
-import { initX25519OnSignin, initX25519OnSignup } from '@/lib/e2eeX25519'
-import { initRatchetOnSignin, initRatchetOnSignup } from '@/lib/ratchet/keyStore'
+import { setupRecoveryKeys, installKeysFromPhrase, hasLocalKeys, regenerateRecoveryKeys } from '@/lib/recovery/recoveryService'
 
 // Timeout for auth operations (in milliseconds)
 const AUTH_TIMEOUT = 5000;
@@ -31,6 +29,16 @@ interface AuthContextType {
   signOut: () => Promise<void>
   /** Met à jour le profil local immédiatement (sans attendre Realtime) */
   updateLocalProfile: (patch: Partial<Profile>) => void
+  /** Phrase de récupération fraîchement générée (signup), à sauvegarder. */
+  pendingPhrase: string | null
+  /** Vrai si l'appareil n'a pas les clés locales → phrase requise. */
+  recoveryRequired: boolean
+  /** Confirme que l'utilisateur a sauvegardé la phrase. */
+  confirmPhraseSaved: () => void
+  /** Restaure les clés depuis la phrase de récupération. */
+  completeRecovery: (phrase: string) => Promise<void>
+  /** Régénère les clés (nouvelle phrase) — l'historique devient illisible. */
+  regenerateRecovery: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -154,6 +162,11 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
   const [loading, setLoading] = useState(true)
   const [isOffline, setIsOffline] = useState(!navigator.onLine)
 
+  // Récupération « zéro serveur » : phrase neuve à sauvegarder (signup) ou
+  // phrase requise (nouvel appareil sans clés locales).
+  const [pendingPhrase, setPendingPhrase] = useState<string | null>(null)
+  const [recoveryRequired, setRecoveryRequired] = useState(false)
+
 
   // Monitor online/offline status
   useEffect(() => {
@@ -201,6 +214,11 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
           loadProfile(session.user.id);
           // Initialize presence tracking
           initializePresence(session.user.id);
+          // « Zéro serveur » : si l'appareil n'a pas les clés locales (nouvel
+          // appareil / IndexedDB vidé), exiger la phrase de récupération.
+          void hasLocalKeys(session.user.id)
+            .then(ok => { if (!ok) setRecoveryRequired(true); })
+            .catch(() => {});
         } else if (!cachedUser) {
           // No session and no cache - check for ephemeral recovery
           const ephemeralUser = localStorage.getItem('anu_ephemeral_user');
@@ -243,6 +261,9 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
         loadProfile(session.user.id);
         // Initialize presence tracking when user logs in
         initializePresence(session.user.id);
+        void hasLocalKeys(session.user.id)
+          .then(ok => { if (!ok) setRecoveryRequired(true); })
+          .catch(() => {});
       } else {
         setProfile(null);
         cacheProfile(null);
@@ -354,12 +375,8 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
         // avant que les clés (ratchet) soient en IndexedDB → « clés locales
         // absentes » → 🔒. Les fonctions ne lèvent jamais (try/catch interne).
         const userId = data.data.session.user?.id
-        if (userId) {
-          await Promise.all([
-            initKeyPairOnSignin(userId, password),
-            initX25519OnSignin(userId, password),
-            initRatchetOnSignin(userId, password),
-          ])
+        if (userId && !(await hasLocalKeys(userId))) {
+          setRecoveryRequired(true)
         }
       } else {
         throw new Error(tStatic('authNoSession'))
@@ -410,14 +427,13 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
           console.error('Session error:', sessionError)
           throw new Error(tStatic('sessionErrorSignup'))
         }
-        // Générer + chiffrer + publier la paire E2EE avec le password
+        // « Zéro serveur » : on génère une phrase, on dérive les clés LOCALEMENT
+        // et on ne publie que le matériel public. La phrase est affichée à
+        // l'utilisateur (sauvegarde obligatoire) via le gate.
         const userId = data.data.session.user?.id
         if (userId) {
-          initKeyPairOnSignup(userId, password)
-          // Paire X25519 (utilisée en priorité par le chiffrement du texte)
-          initX25519OnSignup(userId, password)
-          // Matériel X3DH/Double Ratchet (forward secrecy, conversations directes)
-          initRatchetOnSignup(userId, password)
+          const phrase = await setupRecoveryKeys(userId)
+          setPendingPhrase(phrase)
         }
       } else {
         throw new Error('❌ Erreur d\'inscription\n\nAucune session reçue.')
@@ -494,11 +510,11 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
         }
         // Compte éphémère : générer + publier les clés E2EE (sinon le compte
         // ne peut ni déchiffrer les messages reçus ni être chiffré pour lui).
+        // Compte éphémère : clés dérivées d'une phrase jetable (aucune privée
+        // envoyée au serveur).
         const guestUserId = data.data.session.user?.id
         if (guestUserId) {
-          initKeyPairOnSignup(guestUserId, randomPassword)
-          initX25519OnSignup(guestUserId, randomPassword)
-          initRatchetOnSignup(guestUserId, randomPassword)
+          await setupRecoveryKeys(guestUserId)
         }
       } else {
         throw new Error(tStatic('creationErrorNoSession'))
@@ -521,6 +537,8 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
   }
 
   const signOut = async () => {
+    setPendingPhrase(null)
+    setRecoveryRequired(false)
     // Si mode éphémère, supprimer toutes les données
     const isEphemeral = localStorage.getItem('anu_ephemeral_mode') === 'true'
     
@@ -553,6 +571,22 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
     if (error) throw error
   }
 
+  const confirmPhraseSaved = () => setPendingPhrase(null)
+
+  const completeRecovery = async (phrase: string) => {
+    const uid = user?.id
+    if (!uid) throw new Error('Non connecté')
+    await installKeysFromPhrase(uid, phrase)
+    setRecoveryRequired(false)
+  }
+
+  const regenerateRecovery = async () => {
+    const uid = user?.id
+    if (!uid) throw new Error('Non connecté')
+    const phrase = await regenerateRecoveryKeys(uid)
+    setPendingPhrase(phrase)
+  }
+
   const updateLocalProfile = (patch: Partial<Profile>) => {
     setProfile(prev => {
       if (!prev) return prev
@@ -572,7 +606,12 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
     signInAsGuest,
     signOut,
     updateLocalProfile,
-  }), [user, profile, loading, isOffline]);
+    pendingPhrase,
+    recoveryRequired,
+    confirmPhraseSaved,
+    completeRecovery,
+    regenerateRecovery,
+  }), [user, profile, loading, isOffline, pendingPhrase, recoveryRequired]);
 
   return (
     <AuthContext.Provider value={value}>

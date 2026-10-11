@@ -233,6 +233,16 @@ export async function installX25519KeyPair(userId: string, keyPair: X25519KeyPai
   await idbSet(idbKeyFor(userId), keyPair);
 }
 
+/** Efface la paire X25519 locale et le blob serveur (sans rien uploader). */
+export async function clearLocalX25519(userId: string): Promise<void> {
+  await idbDelete(idbKeyFor(userId));
+  await upsertKeyMaterial(userId, {
+    x25519_private_key: null,
+    x25519_salt: null,
+    x25519_iv: null,
+  });
+}
+
 /** Réinitialise la paire (les anciens messages X25519 deviennent illisibles). */
 export async function resetX25519KeyPair(userId: string, newPassword: string): Promise<X25519KeyPair> {
   await idbDelete(idbKeyFor(userId));

@@ -211,6 +211,16 @@ export async function installRatchetKeys(userId: string, keys: LocalRatchetKeys)
   await publishKeys(userId, keys);
 }
 
+/**
+ * Efface le matériel ratchet LOCAL (IndexedDB + sessions + OPKs serveur) sans
+ * rien uploader — utilisé avant de rebasculer sur une nouvelle phrase.
+ */
+export async function clearLocalRatchetKeys(userId: string): Promise<void> {
+  await idbDelete(userId);
+  await clearUserSessions(userId);
+  await supabase.from('one_time_prekeys').delete().eq('user_id', userId);
+}
+
 /** Réinitialise le matériel ratchet (perte des sessions/anciens messages). */
 export async function resetRatchetKeys(userId: string, password: string): Promise<LocalRatchetKeys> {
   await idbDelete(userId);

@@ -12,6 +12,7 @@ import { useKeepAlive } from './hooks/useKeepAlive'
 import { useEffect, useState, useCallback, lazy, Suspense } from 'react'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { SubscriptionGuard } from './SubscriptionGuard'
+import { RecoveryGate } from './components/RecoveryGate'
 import { useI18n } from './i18n'
 
 
@@ -93,7 +94,8 @@ function PrivateRoute({ children }: { readonly children: React.ReactNode }) {
     );
   }
   
-  return user ? <>{children}</> : <Navigate to="/auth" />
+  if (!user) return <Navigate to="/auth" />
+  return <RecoveryGate>{children}</RecoveryGate>
 }
 
 // Component to handle Supabase reconnection for PWA
