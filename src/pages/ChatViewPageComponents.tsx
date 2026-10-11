@@ -13,8 +13,9 @@ import { MediaImg } from '@/components/MediaImg'
 import { VoiceMessage } from '@/components/VoiceMessage'
 import { AudioFilePlayer } from '@/components/AudioFilePlayer'
 import { LinkPreview } from '@/components/LinkPreview'
-import { formatTime } from '@/components/MessageItemComponents'
+import { formatTime, LinkifiedText } from '@/components/MessageItemComponents'
 import { cleanLinkPreviewContent } from '@/lib/utils'
+import { safeHttpUrl } from '@/lib/safeUrl'
 import { useI18n } from '@/i18n'
 
 // Helper to extract message type info - extracted to reduce complexity in MessageList
@@ -691,7 +692,7 @@ const GifStickerMessageDisplay = ({ message, typeInfo, hoveredMessageId, isOwn, 
             </button>
             {caption && (
               <div className={`px-3 py-2 rounded-2xl ${isOwn ? 'bg-[#787add] text-white' : 'bg-bg-surface text-text-primary'}`}>
-                <p className="text-sm whitespace-pre-wrap break-words">{caption}</p>
+                <LinkifiedText text={caption} className="text-sm whitespace-pre-wrap break-words" isOwn={isOwn} />
               </div>
             )}
           </div>
@@ -730,7 +731,7 @@ const GifStickerMessageDisplay = ({ message, typeInfo, hoveredMessageId, isOwn, 
             </button>
             {caption && (
               <div className={`px-3 py-2 rounded-2xl ${isOwn ? 'bg-[#787add] text-white' : 'bg-bg-surface text-text-primary'}`}>
-                <p className="text-sm whitespace-pre-wrap break-words">{caption}</p>
+                <LinkifiedText text={caption} className="text-sm whitespace-pre-wrap break-words" isOwn={isOwn} />
               </div>
             )}
           </div>
@@ -952,14 +953,18 @@ const TextMessageDisplay = ({ message, hoveredMessageId, isOwn, setContextMenu, 
                 const previewData = typeof message.link_preview === 'string'
                   ? JSON.parse(message.link_preview)
                   : message.link_preview
-                if (previewData.url) {
+                // On ne retire l'URL que si la carte d'aperçu est réellement
+                // rendable (URL http(s) sûre) : sinon on garde l'URL visible.
+                if (previewData?.url && safeHttpUrl(previewData.url)) {
                   displayContent = cleanLinkPreviewContent(message.content, previewData.url)
                 }
               } catch {
                 // Ignore parse errors - link preview data may be malformed
               }
             }
-            return displayContent ? <p className="text-sm whitespace-pre-wrap break-words">{displayContent}</p> : null
+            return displayContent ? (
+              <LinkifiedText text={displayContent} className="text-sm whitespace-pre-wrap break-words" isOwn={isOwn} />
+            ) : null
           })()}
           {message.link_preview && (() => {
             try {

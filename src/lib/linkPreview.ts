@@ -1,6 +1,8 @@
 // Copyright (c) 2025 Jema Technology.
 // Distributed under the license specified in the root directory of this project.
 
+import { safeHttpUrl } from '@/lib/safeUrl';
+
 /**
  * Link Preview Service
  * Handles URL detection and Open Graph metadata fetching
@@ -15,28 +17,37 @@ export interface LinkPreviewData {
   domain: string;
 }
 
+// Pattern volontairement simple (classe de caractères, pas de backtracking
+// catastrophique) : on repère des candidats puis on valide avec safeHttpUrl.
+const URL_PATTERN = /https?:\/\/[^\s<>"'`]+/gi;
+// Ponctuation qui termine souvent une phrase mais ne fait pas partie de l'URL.
+const TRAILING_PUNCTUATION = /[.,;:!?)\]}'"]+$/;
+
+/**
+ * Retire la ponctuation finale (`.,;:!?)]}` etc.) collée à une URL détectée
+ * dans une phrase, sans regex coûteuse.
+ */
+const stripTrailingPunctuation = (raw: string): string => {
+  const trailing = TRAILING_PUNCTUATION.exec(raw);
+  return trailing ? raw.slice(0, raw.length - trailing[0].length) : raw;
+};
+
 // URL extraction using native URL API for better performance and security
 const extractUrlsInternal = (text: string): string[] => {
-  // Use a simple pattern to find potential URLs, then validate with URL API
-  const urlPattern = /https?:\/\/[^\s<>"]+/gi;
-  const matches = text.match(urlPattern) || [];
-  
-  // Validate and dedupe using URL API
+  if (!text) return [];
+
   const validUrls: string[] = [];
   const seen = new Set<string>();
-  
-  for (const match of matches) {
-    try {
-      const url = new URL(match);
-      if (!seen.has(url.href)) {
-        seen.add(url.href);
-        validUrls.push(url.href);
-      }
-    } catch {
-      // Invalid URL, skip
+
+  for (const match of text.matchAll(URL_PATTERN)) {
+    // safeHttpUrl rejette javascript:/data:/etc. et ne garde que http(s).
+    const href = safeHttpUrl(stripTrailingPunctuation(match[0]));
+    if (href && !seen.has(href)) {
+      seen.add(href);
+      validUrls.push(href);
     }
   }
-  
+
   return validUrls;
 }
 
@@ -47,6 +58,60 @@ const extractUrlsInternal = (text: string): string[] => {
  */
 export function extractUrls(text: string): string[] {
   return extractUrlsInternal(text);
+}
+
+/**
+ * Segment de texte : soit du texte brut, soit une URL validée et cliquable.
+ * `href` n'est renseigné que pour les segments `url` et provient toujours de
+ * `safeHttpUrl` (schéma http/https uniquement, jamais javascript:/data:).
+ */
+export interface TextUrlSegment {
+  type: 'text' | 'url';
+  value: string;
+  href?: string;
+}
+
+const WWW_PREFIX = /^www\./i;
+
+/**
+ * Découpe un texte en segments texte/URL pour un rendu linkifié SANS
+ * injection de HTML brut (nœuds React uniquement). Chaque URL est validée par
+ * safeHttpUrl ; les URL invalides (ou dangereuses) restent du texte brut.
+ */
+export function splitTextByUrls(text: string): TextUrlSegment[] {
+  if (!text) return [];
+
+  const segments: TextUrlSegment[] = [];
+  const pattern = new RegExp(URL_PATTERN.source, 'gi');
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = pattern.exec(text)) !== null) {
+    const raw = match[0];
+    if (match.index > lastIndex) {
+      segments.push({ type: 'text', value: text.slice(lastIndex, match.index) });
+    }
+
+    const candidate = stripTrailingPunctuation(raw);
+    const trailing = raw.slice(candidate.length);
+    const hrefCandidate = WWW_PREFIX.test(candidate) ? `https://${candidate}` : candidate;
+    const href = safeHttpUrl(hrefCandidate);
+
+    if (href) {
+      segments.push({ type: 'url', value: candidate, href });
+      if (trailing) segments.push({ type: 'text', value: trailing });
+    } else {
+      segments.push({ type: 'text', value: raw });
+    }
+
+    lastIndex = match.index + raw.length;
+  }
+
+  if (lastIndex < text.length) {
+    segments.push({ type: 'text', value: text.slice(lastIndex) });
+  }
+
+  return segments;
 }
 
 /**
@@ -206,12 +271,12 @@ export function debounce<T extends (...args: any[]) => any>(
  * @returns Boolean indicating if URL is valid for preview
  */
 export function isValidPreviewUrl(url: string): boolean {
+  // Réutilise le garde-fou partagé : seuls http/https passent, jamais
+  // javascript:/data:/etc.
+  const safe = safeHttpUrl(url);
+  if (!safe) return false;
   try {
-    const urlObj = new URL(url);
-    // Only allow http and https protocols
-    if (!['http:', 'https:'].includes(urlObj.protocol)) {
-      return false;
-    }
+    const urlObj = new URL(safe);
     // Exclude common file extensions that don't have OG metadata
     const excludedExtensions = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.zip', '.rar', '.7z', '.tar', '.gz'];
     const pathname = urlObj.pathname.toLowerCase();

@@ -4,12 +4,14 @@
 import React, { useState } from 'react';
 import { useI18n } from '@/i18n';
 import { X, Play } from 'lucide-react';
-import { LinkPreviewData } from '@/lib/linkPreview';
+import { LinkPreviewData, extractDomain } from '@/lib/linkPreview';
 import { safeHttpUrl, isSafeMediaSrc } from '@/lib/safeUrl';
 import { YouTubePlayer, isYouTubeUrl, extractYouTubeVideoId } from './YouTubePlayer';
 
 interface LinkPreviewProps {
-  preview: LinkPreviewData;
+  // Données possiblement partielles : titre/description/image peuvent manquer,
+  // seul `url` est réellement indispensable pour afficher une carte cliquable.
+  preview: Partial<LinkPreviewData> | null | undefined;
   onDismiss?: () => void;
   isInMessage?: boolean;
   isOwn?: boolean;
@@ -20,6 +22,10 @@ interface LinkPreviewProps {
  * Displays a rich preview card for URLs with Open Graph metadata
  * Used both in the input area (while typing) and in sent messages
  * For YouTube links, opens an in-app video player with PiP support
+ *
+ * Robustesse : le composant ne rend jamais un href non validé et ne casse pas
+ * si les métadonnées sont absentes. Tant qu'une URL http(s) valide existe, il
+ * affiche au minimum une carte cliquable (domaine en repli du titre).
  */
 export const LinkPreview: React.FC<LinkPreviewProps> = ({
   preview,
@@ -28,17 +34,40 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({
   isOwn = false,
 }) => {
   const { t } = useI18n();
-  const { url, title, description, image, siteName, domain } = preview;
   const [showYouTubePlayer, setShowYouTubePlayer] = useState(false);
 
   // Données contrôlées par un pair (link_preview déchiffré E2EE) : on ne fait
-  // jamais confiance au schéma d'URL. Rejette javascript:/data:/etc.
-  const safeUrl = safeHttpUrl(url);
-  const safeImage: string | undefined = (typeof image === 'string' && isSafeMediaSrc(image)) ? image : undefined;
+  // jamais confiance au schéma d'URL ni à la forme de l'objet. Rejette
+  // javascript:/data:/etc. et accepte un `preview` partiel ou null.
+  const data: Partial<LinkPreviewData> = (preview && typeof preview === 'object')
+    ? preview
+    : {};
+  const rawUrl = typeof data.url === 'string' ? data.url : '';
+  const safeUrl = safeHttpUrl(rawUrl);
+
+  // Hooks avant tout retour conditionnel (règles des hooks React).
+  const nonEmpty = (v: unknown): string | null =>
+    typeof v === 'string' && v.trim() !== '' ? v : null;
+
+  // Une URL valide est le seul prérequis. Sans elle, rien à rendre (et surtout
+  // pas de carte/texte mensonger).
+  if (!safeUrl) {
+    return null;
+  }
+
+  const title = nonEmpty(data.title);
+  const description = nonEmpty(data.description);
+  const siteName = nonEmpty(data.siteName);
+  const rawImage = typeof data.image === 'string' ? data.image : null;
+  const safeImage: string | undefined = (rawImage && isSafeMediaSrc(rawImage)) ? rawImage : undefined;
+  const domain = nonEmpty(data.domain) || extractDomain(safeUrl);
+  // Repli d'affichage : si aucun titre, on montre le domaine pour que la carte
+  // ne soit jamais vide.
+  const displayTitle = title || domain;
 
   // Check if this is a YouTube link
-  const isYouTube = isYouTubeUrl(url);
-  const youtubeVideoId = isYouTube ? extractYouTubeVideoId(url) : null;
+  const isYouTube = isYouTubeUrl(safeUrl);
+  const youtubeVideoId = isYouTube ? extractYouTubeVideoId(safeUrl) : null;
 
   // Truncate description to 2 lines (approximately 100 characters)
   const getTruncatedDescription = (): string | null => {
@@ -56,7 +85,7 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({
     if (isYouTube && youtubeVideoId) {
       setShowYouTubePlayer(true);
     } else {
-      if (safeUrl) window.open(safeUrl, '_blank', 'noopener,noreferrer');
+      window.open(safeUrl, '_blank', 'noopener,noreferrer');
     }
   };
 
@@ -100,14 +129,14 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({
       <button
         className="flex w-full text-left cursor-pointer hover:bg-bg-surface/50 transition-colors"
         onClick={handleClick}
-        aria-label={title || 'Ouvrir le lien'}
+        aria-label={displayTitle || 'Ouvrir le lien'}
       >
         {/* Thumbnail */}
-        {image && (
+        {safeImage && (
           <div className="w-20 h-20 flex-shrink-0 bg-bg-surface">
             <img
-        src={safeImage}
-              alt={title || 'Link preview'}
+              src={safeImage}
+              alt={displayTitle || 'Link preview'}
               className="w-full h-full object-cover"
               onError={(e) => {
                 // Hide image on error
@@ -125,9 +154,9 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({
           </p>
 
           {/* Title */}
-          {title && (
+          {displayTitle && (
             <h4 className="text-sm font-semibold text-text-primary line-clamp-1 mb-1">
-              {title}
+              {displayTitle}
             </h4>
           )}
 
@@ -150,7 +179,7 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({
     <div className="relative">
       <img
         src={safeImage}
-        alt={title || 'YouTube video'}
+        alt={displayTitle || 'YouTube video'}
         className="w-full h-auto max-h-[140px] object-cover"
         onError={(e) => {
           (e.target as HTMLImageElement).style.display = 'none';
@@ -162,13 +191,13 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({
       </div>
       {/* Title and domain below image - compact */}
       <div className={`px-2 py-1.5 ${getCardBgClass()}`}>
-        {title && (
+        {displayTitle && (
           <h4 className={`text-[12px] font-medium line-clamp-1 ${getTextColorClass()}`}>
-            {title}
+            {displayTitle}
           </h4>
         )}
         <p className={`text-[10px] mt-0.5 ${getSecondaryTextClass()}`}>
-          youtube.com
+          {domain || 'youtube.com'}
         </p>
       </div>
     </div>
@@ -182,7 +211,7 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({
         <div className="w-[50px] h-[50px] flex-shrink-0">
           <img
             src={safeImage}
-            alt={title || 'Link preview'}
+            alt={displayTitle || 'Link preview'}
             className="w-full h-full object-cover"
             onError={(e) => {
               (e.target as HTMLImageElement).style.display = 'none';
@@ -193,10 +222,10 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({
 
       {/* Content */}
       <div className="flex-1 px-2 py-1.5 min-w-0 flex flex-col justify-center">
-        {/* Title - Bold at top */}
-        {title && (
+        {/* Title - Bold at top (repli sur le domaine si absent) */}
+        {displayTitle && (
           <h4 className={`text-[11px] font-medium line-clamp-1 ${getTextColorClass()}`}>
-            {title}
+            {displayTitle}
           </h4>
         )}
 
@@ -241,19 +270,20 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({
         <button
           className={`w-full text-left rounded-lg overflow-hidden cursor-pointer relative ${getCardBgClass()}`}
           onClick={handleClick}
-          aria-label={title || 'Ouvrir le lien'}
+          aria-label={displayTitle || 'Ouvrir le lien'}
         >
           {/* YouTube Play Overlay - smaller and more subtle */}
-          {isYouTube && image && (
+          {isYouTube && safeImage && (
             <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
               <div className="w-10 h-10 rounded-full bg-red-600/90 flex items-center justify-center shadow-lg">
                 <Play size={18} className="text-white ml-0.5" fill="white" />
               </div>
             </div>
           )}
-          
-          {/* For YouTube, show compact thumbnail with play button overlay */}
-          {isYouTube && image ? (
+
+          {/* For YouTube, show compact thumbnail with play button overlay.
+              Sans vignette on retombe sur la carte régulière (jamais d'<img> vide). */}
+          {isYouTube && safeImage ? (
             renderYouTubeThumbnail()
           ) : (
             renderRegularPreview()
@@ -261,28 +291,22 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({
         </button>
 
         {/* Truncated clickable URL below the card */}
-        {safeUrl ? (
-          <a
-            href={safeUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={`inline-block text-[11px] mt-1 underline truncate max-w-full ${getLinkColorClass()}`}
-            onClick={(e) => {
-              e.stopPropagation();
-              // For YouTube, also open in-app player
-              if (isYouTube && youtubeVideoId) {
-                e.preventDefault();
-                setShowYouTubePlayer(true);
-              }
-            }}
-          >
-            {truncateUrl(url, 35)}
-          </a>
-        ) : (
-          <span className={`inline-block text-[11px] mt-1 truncate max-w-full ${getSecondaryTextClass()}`}>
-            {truncateUrl(String(url ?? ''), 35)}
-          </span>
-        )}
+        <a
+          href={safeUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={`inline-block text-[11px] mt-1 underline truncate max-w-full ${getLinkColorClass()}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            // For YouTube, also open in-app player
+            if (isYouTube && youtubeVideoId) {
+              e.preventDefault();
+              setShowYouTubePlayer(true);
+            }
+          }}
+        >
+          {truncateUrl(safeUrl, 35)}
+        </a>
       </div>
 
       {/* YouTube Player Modal */}

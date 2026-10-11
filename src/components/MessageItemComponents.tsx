@@ -2,9 +2,44 @@ import React from 'react'
 import { useI18n } from '@/i18n';
 import { Message } from '@/lib/supabase'
 import { cleanLinkPreviewContent } from '@/lib/utils'
+import { splitTextByUrls } from '@/lib/linkPreview'
+import { safeHttpUrl } from '@/lib/safeUrl'
 import { MessageReply } from '@/components/MessageReply'
 import { LinkPreview } from '@/components/LinkPreview'
 import { Reply, Forward, Smile, Star } from 'lucide-react'
+
+// Rend un texte en linkifiant les URLs http(s) détectées. Les href proviennent
+// toujours de safeHttpUrl (via splitTextByUrls) : jamais de javascript:/data:.
+// Aucune injection de HTML brut : on ne construit que des noeuds React.
+export const LinkifiedText: React.FC<{
+  text: string
+  className?: string
+  isOwn?: boolean
+}> = ({ text, className, isOwn = false }) => {
+  const segments = splitTextByUrls(text)
+  const linkColor = isOwn ? 'text-[#53bdeb]' : 'text-accent'
+
+  return (
+    <p className={className}>
+      {segments.map((segment, index) =>
+        segment.type === 'url' && segment.href ? (
+          <a
+            key={index}
+            href={segment.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`underline break-all hover:opacity-80 ${linkColor}`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {segment.value}
+          </a>
+        ) : (
+          <React.Fragment key={index}>{segment.value}</React.Fragment>
+        )
+      )}
+    </p>
+  )
+}
 
 // Helper to format time
 export const formatTime = (timestamp: string): string => {
@@ -56,7 +91,10 @@ export const MessageContent: React.FC<{ message: Message; isOwn: boolean }> = ({
       const previewData = typeof linkPreview === 'string'
         ? JSON.parse(linkPreview)
         : linkPreview
-      if (previewData.url) {
+      // On ne retire l'URL du texte QUE si la carte d'aperçu pourra
+      // effectivement être rendue (URL http(s) sûre). Sinon on garde l'URL
+      // visible/cliquable au lieu d'une URL morte.
+      if (previewData?.url && safeHttpUrl(previewData.url)) {
         displayContent = cleanLinkPreviewContent(message.content, previewData.url)
       }
     } catch {
@@ -69,7 +107,7 @@ export const MessageContent: React.FC<{ message: Message; isOwn: boolean }> = ({
   return (
     <>
       {displayContent ? (
-        <p className="text-sm whitespace-pre-wrap break-words">{displayContent}</p>
+        <LinkifiedText text={displayContent} className="text-sm whitespace-pre-wrap break-words" isOwn={isOwn} />
       ) : null}
       {hasLinkPreview && (() => {
         try {
