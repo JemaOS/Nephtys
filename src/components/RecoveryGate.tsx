@@ -12,6 +12,7 @@
 import { useState, type ReactNode } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { validateRecoveryPhrase, parseDeviceLink } from '@/lib/recovery/recoveryService';
+import { isDeviceLink, redeemDeviceLink } from '@/lib/recovery/deviceLink';
 import { QrScanner } from '@/components/QrScanner';
 
 function ShowPhraseScreen({ phrase, onConfirm }: { readonly phrase: string; readonly onConfirm: () => void }) {
@@ -115,6 +116,14 @@ function EnterPhraseScreen() {
           onClose={() => setScanning(false)}
           onResult={(text) => {
             setScanning(false);
+            if (isDeviceLink(text)) {
+              setError(null);
+              setBusy(true);
+              void redeemDeviceLink(text)
+                .catch((e: unknown) => setError((e as Error).message))
+                .finally(() => setBusy(false));
+              return;
+            }
             const scanned = parseDeviceLink(text);
             if (scanned) {
               setPhrase(scanned);

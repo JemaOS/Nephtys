@@ -50,7 +50,8 @@ import {
 } from 'lucide-react'
 import { SafeQrCode } from '@/components/SafeQrCode'
 import { QrScanner } from '@/components/QrScanner'
-import { encodeDeviceLink, parseDeviceLink, getStoredRecoveryPhrase } from '@/lib/recovery/recoveryService'
+import { parseDeviceLink } from '@/lib/recovery/recoveryService'
+import { createDeviceLink } from '@/lib/recovery/deviceLink'
 import {
   createBackup,
   createLightBackup,
@@ -183,6 +184,7 @@ export function SettingsPage() {
   // Multi-appareil (QR) : code à afficher + scanner.
   const [showScanner, setShowScanner] = useState(false)
   const [deviceMsg, setDeviceMsg] = useState<string | null>(null)
+  const [deviceQr, setDeviceQr] = useState<string | null>(null)
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false)
   const [twoFactorFactors, setTwoFactorFactors] = useState<TOTPFactor[]>([])
   const [twoFactorLoading, setTwoFactorLoading] = useState(false)
@@ -1638,13 +1640,13 @@ export function SettingsPage() {
             « Scanner un QR code », puis scannez ce code. Vos messages et contacts y seront
             accessibles (mêmes clés E2EE).
           </p>
-          {getStoredRecoveryPhrase() ? (
+          {deviceQr ? (
             <div className="flex flex-col items-center gap-3 p-4 bg-bg-surface rounded-2xl">
               <p className="text-xs text-text-tertiary">Mon code (à scanner par l'autre appareil)</p>
-              <SafeQrCode value={encodeDeviceLink(getStoredRecoveryPhrase() as string)} size={200} />
+              <SafeQrCode value={deviceQr} size={200} />
               <button
                 type="button"
-                onClick={() => navigator.clipboard?.writeText(encodeDeviceLink(getStoredRecoveryPhrase() as string))}
+                onClick={() => navigator.clipboard?.writeText(deviceQr)}
                 className="px-3 py-2 rounded-xl bg-bg-hover text-text-primary text-sm"
               >
                 Copier le code
@@ -1654,10 +1656,18 @@ export function SettingsPage() {
               </p>
             </div>
           ) : (
-            <p className="text-xs text-[#e0a800]">
-              Aucun code disponible sur cet appareil. Reconnectez-vous (la phrase sera alors mémorisée
-              localement) pour pouvoir afficher votre code.
-            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setDeviceMsg(null)
+                void createDeviceLink()
+                  .then(setDeviceQr)
+                  .catch((e: unknown) => setDeviceMsg((e as Error).message))
+              }}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-bg-surface text-text-primary text-sm"
+            >
+              <QrCode size={16} /> Afficher mon code
+            </button>
           )}
           <button
             type="button"

@@ -4,8 +4,10 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
-import { Lock, User, Shield, Zap, EyeOff } from 'lucide-react'
+import { Lock, User, Shield, Zap, EyeOff, X } from 'lucide-react'
 import { useI18n } from '@/i18n'
+import { QrScanner } from '@/components/QrScanner'
+import { isDeviceLink, redeemDeviceLink } from '@/lib/recovery/deviceLink'
 
 // Type alias for auth mode
 type AuthMode = 'signin' | 'signup' | 'guest'
@@ -55,7 +57,9 @@ export function AuthPage() {
   const { t, lang, setLang } = useI18n()
   const navigate = useNavigate()
   const [mode, setMode] = useState<AuthMode>('signin')
-  const [linkHint, setLinkHint] = useState(false)
+  const [scanning, setScanning] = useState(false)
+  const [linkError, setLinkError] = useState<string | null>(null)
+  const [linking, setLinking] = useState(false)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -189,12 +193,6 @@ export function AuthPage() {
 
         {/* Auth Form */}
         <div className="bg-bg-surface rounded-3xl p-3 sm:p-3.5 lg:p-3.5 space-y-1.5 sm:space-y-2 lg:space-y-2.5">
-          {linkHint && (
-            <div className="rounded-xl bg-[#7578db]/10 border border-[#7578db]/30 p-2 text-[10px] lg:text-xs text-text-secondary">
-              Pour lier cet appareil : connectez-vous avec <b>le même compte</b>, puis <b>scannez
-              le QR code</b> de votre autre appareil (ou saisissez votre phrase de récupération).
-            </div>
-          )}
           <div className="text-center">
             <h2 className="text-sm sm:text-base lg:text-lg font-semibold text-text-primary mb-0.5">
               {getAuthTitle(mode, t)}
@@ -288,7 +286,7 @@ export function AuthPage() {
           </button>
           <button
             type="button"
-            onClick={() => { setMode('signin'); setLinkHint(true) }}
+            onClick={() => { setLinkError(null); setScanning(true) }}
             className="text-[10px] lg:text-xs text-accent hover:underline block w-full"
           >
             Lier un nouvel appareil (QR)
@@ -301,6 +299,43 @@ export function AuthPage() {
             {t('developedBy')} <a href="https://www.jematechnology.fr/" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">Jema Technology</a> {t('footerLicense')}
           </p>
         </div>
+
+        {/* Liaison d'appareil (scanner, façon WhatsApp Web) */}
+        {scanning && (
+          <div className="absolute inset-0 z-50 bg-black/95 flex flex-col">
+            <div className="p-4 flex items-center justify-between">
+              <span className="text-white text-sm font-medium">Scannez pour vous connecter</span>
+              <button type="button" onClick={() => setScanning(false)} className="p-2 rounded-lg bg-white/10 text-white" aria-label="Fermer">
+                <X size={18} />
+              </button>
+            </div>
+            <ol className="px-6 pb-3 space-y-1 text-xs text-white/80 list-decimal list-inside">
+              <li>Ouvrez Nephtys sur votre autre appareil (déjà connecté).</li>
+              <li>Allez dans Paramètres → Appareils liés → Mon code.</li>
+              <li>Scannez ce QR code ici.</li>
+            </ol>
+            <div className="flex-1">
+              <QrScanner
+                onClose={() => setScanning(false)}
+                onResult={async (text) => {
+                  setScanning(false)
+                  if (!isDeviceLink(text)) { setLinkError('QR code non reconnu.'); return }
+                  setLinking(true)
+                  try {
+                    await redeemDeviceLink(text)
+                    navigate('/chats')
+                  } catch (e) {
+                    setLinkError((e as Error).message)
+                  } finally {
+                    setLinking(false)
+                  }
+                }}
+              />
+            </div>
+            {linking && <p className="p-3 text-center text-xs text-white">Liaison…</p>}
+            {linkError && <p className="p-3 text-center text-xs text-amber-300">{linkError}</p>}
+          </div>
+        )}
       </div>
     </div>
   )
