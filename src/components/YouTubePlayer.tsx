@@ -86,6 +86,10 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
   const [pipPosition, setPipPosition] = useState<Position>({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState<Position>({ x: 0, y: 0 });
+  // PiP redimensionnable par l'utilisateur (hauteur derivee en 16/9).
+  const [pipWidth, setPipWidth] = useState(280);
+  const [isResizing, setIsResizing] = useState(false);
+  const [resizeStart, setResizeStart] = useState<Position & { width: number }>({ x: 0, y: 0, width: 280 });
   const containerRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const pipRef = useRef<HTMLDivElement>(null);
@@ -95,14 +99,13 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
     if (isPiP && pipPosition.x === 0 && pipPosition.y === 0) {
       const windowWidth = globalThis.innerWidth;
       const windowHeight = globalThis.innerHeight;
-      const pipWidth = 280;
-      const pipHeight = 158; // 16:9 aspect ratio
+      const pipHeight = Math.round(pipWidth * 9 / 16);
       setPipPosition({
         x: windowWidth - pipWidth - 16,
         y: windowHeight - pipHeight - 80, // Above bottom nav
       });
     }
-  }, [isPiP]);
+  }, [isPiP, pipWidth]);
 
   // Handle drag start
   const handleDragStart = useCallback((e: React.MouseEvent | React.TouchEvent) => {
@@ -126,8 +129,7 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
     const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
     const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
     
-    const pipWidth = 280;
-    const pipHeight = 158;
+    const pipHeight = Math.round(pipWidth * 9 / 16);
     const windowWidth = globalThis.innerWidth;
     const windowHeight = globalThis.innerHeight;
     
@@ -140,7 +142,7 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
     newY = Math.max(8, Math.min(windowHeight - pipHeight - 8, newY));
     
     setPipPosition({ x: newX, y: newY });
-  }, [isDragging, dragOffset]);
+  }, [isDragging, dragOffset, pipWidth]);
 
   // Handle drag end
   const handleDragEnd = useCallback(() => {
@@ -164,6 +166,40 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
     };
   }, [isDragging, handleDragMove, handleDragEnd]);
 
+
+  // Resize du PiP (poignee en bas a droite)
+  const handleResizeStart = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    e.stopPropagation();
+    setIsResizing(true);
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    setResizeStart({ x: clientX, y: 0, width: pipWidth });
+  }, [pipWidth]);
+
+  const handleResizeMove = useCallback((e: MouseEvent | TouchEvent) => {
+    if (!isResizing) return;
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const min = 180;
+    const max = Math.max(min, globalThis.innerWidth - 24);
+    const next = Math.min(max, Math.max(min, resizeStart.width + (clientX - resizeStart.x)));
+    setPipWidth(next);
+  }, [isResizing, resizeStart]);
+
+  const handleResizeEnd = useCallback(() => setIsResizing(false), []);
+
+  useEffect(() => {
+    if (isResizing) {
+      globalThis.addEventListener('mousemove', handleResizeMove);
+      globalThis.addEventListener('mouseup', handleResizeEnd);
+      globalThis.addEventListener('touchmove', handleResizeMove);
+      globalThis.addEventListener('touchend', handleResizeEnd);
+    }
+    return () => {
+      globalThis.removeEventListener('mousemove', handleResizeMove);
+      globalThis.removeEventListener('mouseup', handleResizeEnd);
+      globalThis.removeEventListener('touchmove', handleResizeMove);
+      globalThis.removeEventListener('touchend', handleResizeEnd);
+    };
+  }, [isResizing, handleResizeMove, handleResizeEnd]);
 
   // Handle escape key to close
   useEffect(() => {
@@ -200,14 +236,15 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
     return (
       <div
         ref={pipRef}
-        className={`fixed z-[100] w-[280px] rounded-xl overflow-hidden shadow-2xl bg-black ${
+        className={`fixed z-[100] rounded-xl overflow-hidden shadow-2xl bg-black ${
           isDragging ? 'cursor-grabbing' : ''
         }`}
         style={{
+          width: `${pipWidth}px`,
           aspectRatio: '16/9',
           left: `${pipPosition.x}px`,
           top: `${pipPosition.y}px`,
-          transition: isDragging ? 'none' : 'box-shadow 0.2s',
+          transition: isDragging || isResizing ? 'none' : 'box-shadow 0.2s',
           boxShadow: isDragging ? '0 25px 50px -12px rgba(0, 0, 0, 0.5)' : undefined,
         }}
       >
@@ -260,6 +297,18 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
           allowFullScreen
         />
+
+        {/* Poignee de redimensionnement (bas-droite) */}
+        <div
+          className="absolute bottom-0 right-0 z-30 w-5 h-5 cursor-nwse-resize flex items-end justify-end p-0.5"
+          onMouseDown={handleResizeStart}
+          onTouchStart={handleResizeStart}
+          aria-label="Redimensionner"
+          role="separator"
+          style={{ touchAction: 'none' }}
+        >
+          <div className="w-2.5 h-2.5 border-r-2 border-b-2 border-white/80 rounded-br-sm" />
+        </div>
       </div>
     );
   }
@@ -271,17 +320,7 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
       className="fixed inset-0 z-[100] bg-black flex flex-col"
     >
       {/* Header */}
-      <div className="flex items-center justify-between p-4 bg-gradient-to-b from-black/80 to-transparent absolute top-0 left-0 right-0 z-10">
-        <button
-          type="button"
-          onClick={togglePiP}
-          className="w-10 h-10 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center transition-colors"
-          title="Picture-in-Picture"
-          aria-label={t('pipMode')}
-        >
-          <Minimize2 size={20} className="text-white" />
-        </button>
-        
+      <div className="flex items-center justify-end p-4 bg-gradient-to-b from-black/80 to-transparent absolute top-0 left-0 right-0 z-10">
         <button
           type="button"
           onClick={onClose}
