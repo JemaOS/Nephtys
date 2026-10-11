@@ -111,35 +111,35 @@ export function AuthPage() {
   }
 
   return (
-    <div className="min-h-screen bg-bg-primary flex items-start sm:items-center justify-center p-4 py-6 overflow-y-auto">
+    <div className="h-screen-safe bg-bg-primary flex items-center justify-center p-3 sm:p-4 overflow-hidden">
       {/* Injecte les styles CSS pour l'autofill */}
       <style>{autofillStyles}</style>
-      
-      <div className="w-full max-w-md lg:max-w-lg xl:max-w-xl space-y-1 sm:space-y-2 lg:space-y-4">
+
+      <div className="w-full max-w-md lg:max-w-lg max-h-full overflow-y-auto space-y-1.5">
         {/* Logo & Title */}
         <div className="text-center space-y-0.5 sm:space-y-1">
           {/* Logo officiel de l'app (public/icon.svg) — source unique, identique
               au favicon et à l'icône PWA, pastille de notification incluse. */}
-          <img src="/icon.svg" alt="Nephtys" className="w-10 h-10 sm:w-12 sm:h-12 lg:w-16 lg:h-16 mx-auto rounded-2xl shadow-xl" />
+          <img src="/icon.svg" alt="Nephtys" className="w-10 h-10 sm:w-11 sm:h-11 lg:w-11 lg:h-11 mx-auto rounded-2xl shadow-xl" />
           <div>
-            <h1 className="text-lg sm:text-xl lg:text-3xl font-bold text-text-primary">Nephtys</h1>
-            <p className="text-[10px] sm:text-xs lg:text-sm text-text-secondary">{t('secureMessaging')}</p>
+            <h1 className="text-lg sm:text-xl lg:text-2xl font-bold text-text-primary">Nephtys</h1>
+            <p className="text-[10px] sm:text-xs text-text-secondary">{t('secureMessaging')}</p>
           </div>
         </div>
 
         {/* Features */}
         <div className="grid grid-cols-3 gap-2 lg:gap-3">
-          <div className="bg-bg-surface rounded-xl p-2 lg:p-3 flex flex-col items-center justify-center gap-1 lg:gap-2">
-            <Shield size={16} className="text-accent lg:w-[22px] lg:h-[22px]" />
-            <span className="text-[9px] lg:text-xs font-bold text-text-secondary">E2EE</span>
+          <div className="bg-bg-surface rounded-xl p-2 lg:p-2.5 flex flex-col items-center justify-center gap-1 lg:gap-1.5">
+            <Shield size={16} className="text-accent lg:w-[20px] lg:h-[20px]" />
+            <span className="text-[9px] lg:text-[11px] font-bold text-text-secondary">E2EE</span>
           </div>
-          <div className="bg-bg-surface rounded-xl p-2 lg:p-3 flex flex-col items-center justify-center gap-1 lg:gap-2">
-            <Zap size={16} className="text-accent lg:w-[22px] lg:h-[22px]" />
-            <span className="text-[9px] lg:text-xs font-bold text-text-secondary">P2P</span>
+          <div className="bg-bg-surface rounded-xl p-2 lg:p-2.5 flex flex-col items-center justify-center gap-1 lg:gap-1.5">
+            <Zap size={16} className="text-accent lg:w-[20px] lg:h-[20px]" />
+            <span className="text-[9px] lg:text-[11px] font-bold text-text-secondary">P2P</span>
           </div>
-          <div className="bg-bg-surface rounded-xl p-2 lg:p-3 flex flex-col items-center justify-center gap-1 lg:gap-2">
-            <EyeOff size={16} className="text-accent lg:w-[22px] lg:h-[22px]" />
-            <span className="text-[9px] lg:text-xs font-bold text-text-secondary">NO-LOG</span>
+          <div className="bg-bg-surface rounded-xl p-2 lg:p-2.5 flex flex-col items-center justify-center gap-1 lg:gap-1.5">
+            <EyeOff size={16} className="text-accent lg:w-[20px] lg:h-[20px]" />
+            <span className="text-[9px] lg:text-[11px] font-bold text-text-secondary">NO-LOG</span>
           </div>
         </div>
 
@@ -147,7 +147,7 @@ export function AuthPage() {
         <div className="flex gap-2">
           <button
             onClick={() => setMode('signin')}
-            className={`flex-1 py-1.5 lg:py-2.5 rounded-xl text-xs lg:text-sm font-medium transition-colors ${
+            className={`flex-1 py-1.5 lg:py-2 rounded-xl text-xs lg:text-sm font-medium transition-colors ${
               mode === 'signin' ? 'bg-accent text-white' : 'bg-bg-surface text-text-secondary'
             }`}
           >
@@ -155,7 +155,7 @@ export function AuthPage() {
           </button>
           <button
             onClick={() => setMode('signup')}
-            className={`flex-1 py-1.5 lg:py-2.5 rounded-xl text-xs lg:text-sm font-medium transition-colors ${
+            className={`flex-1 py-1.5 lg:py-2 rounded-xl text-xs lg:text-sm font-medium transition-colors ${
               mode === 'signup' ? 'bg-accent text-white' : 'bg-bg-surface text-text-secondary'
             }`}
           >
@@ -163,7 +163,7 @@ export function AuthPage() {
           </button>
           <button
             onClick={() => setMode('guest')}
-            className={`flex-1 py-1.5 lg:py-2.5 rounded-xl text-xs lg:text-sm font-medium transition-colors ${
+            className={`flex-1 py-1.5 lg:py-2 rounded-xl text-xs lg:text-sm font-medium transition-colors ${
               mode === 'guest' ? 'bg-accent text-white' : 'bg-bg-surface text-text-secondary'
             }`}
           >
@@ -172,9 +172,9 @@ export function AuthPage() {
         </div>
 
         {/* Auth Form */}
-        <div className="bg-bg-surface rounded-3xl p-3 sm:p-4 lg:p-7 space-y-2 sm:space-y-3 lg:space-y-5">
+        <div className="bg-bg-surface rounded-3xl p-3 sm:p-3.5 lg:p-3.5 space-y-1.5 sm:space-y-2 lg:space-y-2.5">
           <div className="text-center">
-            <h2 className="text-sm sm:text-base lg:text-xl font-semibold text-text-primary mb-0.5">
+            <h2 className="text-sm sm:text-base lg:text-lg font-semibold text-text-primary mb-0.5">
               {getAuthTitle(mode, t)}
             </h2>
             <p className="text-[9px] sm:text-[10px] lg:text-xs text-text-secondary">
@@ -182,7 +182,7 @@ export function AuthPage() {
             </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-1.5 sm:space-y-2 lg:space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-1.5">
             <div className="space-y-0.5 sm:space-y-1">
               <label htmlFor="username" className="text-[9px] sm:text-[10px] lg:text-xs text-text-secondary font-medium">{t('usernameShort')}</label>
               <div className="relative">
@@ -193,7 +193,7 @@ export function AuthPage() {
                   placeholder={t('usernamePlaceholder')}
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="w-full h-8 sm:h-9 lg:h-11 pl-9 lg:pl-10 pr-3 bg-bg-hover text-text-primary text-sm lg:text-base rounded-xl border border-bg-hover outline-none placeholder:text-text-secondary focus:ring-2 focus:ring-[#6b6fdb]"
+                  className="w-full h-9 sm:h-10 lg:h-10 pl-9 lg:pl-10 pr-3 bg-bg-hover text-text-primary text-sm rounded-xl border border-bg-hover outline-none placeholder:text-text-secondary focus:ring-2 focus:ring-[#6b6fdb]"
                   required
                 />
               </div>
@@ -210,7 +210,7 @@ export function AuthPage() {
                     placeholder="••••••••"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full h-8 sm:h-9 lg:h-11 pl-9 lg:pl-10 pr-3 bg-bg-hover text-text-primary text-sm lg:text-base rounded-xl border border-bg-hover outline-none placeholder:text-text-secondary focus:ring-2 focus:ring-[#6b6fdb]"
+                    className="w-full h-9 sm:h-10 lg:h-10 pl-9 lg:pl-10 pr-3 bg-bg-hover text-text-primary text-sm rounded-xl border border-bg-hover outline-none placeholder:text-text-secondary focus:ring-2 focus:ring-[#6b6fdb]"
                     required
                   />
                 </div>
@@ -232,7 +232,7 @@ export function AuthPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full h-8 sm:h-9 lg:h-11 rounded-xl bg-accent hover:bg-[#5a5ec9] text-white font-medium text-sm lg:text-base transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              className="w-full h-9 sm:h-10 lg:h-10 rounded-xl bg-accent hover:bg-[#5a5ec9] text-white font-medium text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
             >
               {loading ? (
                 <div className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
