@@ -143,20 +143,25 @@ export async function createMediaKeysForMessage(params: {
     }
   }
 
-  if (rows.length > 0) {
-    const { error } = await supabase
-      .from('message_media_keys')
-      .insert(rows);
-    if (error) {
-      if (error.message?.includes('message_media_keys')) {
-        console.error(
-          '[E2EE] Table message_media_keys manquante. Applique la migration 20260513_e2ee_media_keys.sql avant d\'envoyer des m\u00e9dias chiffr\u00e9s.'
-        );
-      } else {
-        console.error('[E2EE] failed to insert media keys:', error);
-      }
-      throw new Error('Échec de la sauvegarde des clés de chiffrement');
+  if (rows.length === 0) {
+    // Fail-closed : aucune clé enveloppée créée. Le média (déjà chiffré) ne
+    // serait déchiffrable par personne ; on remonte l'erreur plutôt que de
+    // laisser passer un message cassé.
+    throw new Error('Échec du chiffrement : aucune clé média n\'a pu être créée');
+  }
+
+  const { error } = await supabase
+    .from('message_media_keys')
+    .insert(rows);
+  if (error) {
+    if (error.message?.includes('message_media_keys')) {
+      console.error(
+        '[E2EE] Table message_media_keys manquante. Applique la migration 20260513_e2ee_media_keys.sql avant d\'envoyer des m\u00e9dias chiffr\u00e9s.'
+      );
+    } else {
+      console.error('[E2EE] failed to insert media keys:', error);
     }
+    throw new Error('Échec de la sauvegarde des clés de chiffrement');
   }
 
   return { inserted: rows.length, missingKeys };

@@ -167,6 +167,15 @@ export async function sendBroadcastMessage(
   conversationId: string,
   message: Message
 ): Promise<void> {
+  // FAIL-CLOSED (fuite de clair) : le canal Realtime est relayé par le serveur.
+  // On refuse donc de diffuser le CONTENU d'un message texte non chiffré.
+  // Les appels légitimes ne passent que la ligne chiffrée (is_text_encrypted) ;
+  // la défense en profondeur évite qu'un futur appelant ne fuite du clair.
+  // Dans ce cas on n'émet rien : la ligne chiffrée arrivera via postgres_changes.
+  if (message?.type === 'text' && (message as { is_text_encrypted?: boolean }).is_text_encrypted !== true) {
+    console.warn('[broadcast] diffusion refusée : message texte non chiffré (fail-closed)')
+    return
+  }
   const channel = supabase.channel(`broadcast:${conversationId}`)
   
   await channel.subscribe((status) => {

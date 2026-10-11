@@ -201,6 +201,12 @@ export async function createTextKeysForMessage(params: {
 
   // Chiffrement X25519 uniquement (pile P-256 retirée).
   const senderX25519 = await getLocalX25519KeyPair(senderId);
+  if (!senderX25519) {
+    // Fail-closed : sans la paire locale on ne peut envelopper la clé pour
+    // personne (pas même pour soi) → on refuse plutôt que de laisser un
+    // message indéchiffrable (et on n'a AUCUN repli en clair).
+    throw new Error('Clés E2EE locales absentes (X25519) : envoi annulé');
+  }
   const x25519Publics = await fetchX25519PublicKeys(recipientIds);
 
   const missingKeys: string[] = [];
@@ -209,7 +215,7 @@ export async function createTextKeysForMessage(params: {
   for (const recipientId of recipientIds) {
     const recipientX25519 = x25519Publics.get(recipientId);
     try {
-      if (!senderX25519 || !recipientX25519) {
+      if (!recipientX25519) {
         missingKeys.push(recipientId);
         continue;
       }
@@ -233,12 +239,17 @@ export async function createTextKeysForMessage(params: {
     }
   }
 
-  if (rows.length > 0) {
-    const { error } = await supabase.from('message_text_keys').insert(rows);
-    if (error) {
-      console.error('[textEncryption] insert message_text_keys failed:', error);
-      throw new Error('Échec de la sauvegarde des clés de chiffrement du message');
-    }
+  if (rows.length === 0) {
+    // Fail-closed : aucune clé enveloppée (échec de wrapping ou clés
+    // publiques absentes). On remonte l'erreur au lieu de laisser passer un
+    // message que PERSONNE ne pourra déchiffrer.
+    throw new Error('Échec du chiffrement : aucune clé de message n\'a pu être créée');
+  }
+
+  const { error } = await supabase.from('message_text_keys').insert(rows);
+  if (error) {
+    console.error('[textEncryption] insert message_text_keys failed:', error);
+    throw new Error('Échec de la sauvegarde des clés de chiffrement du message');
   }
 
   return { inserted: rows.length, missingKeys };

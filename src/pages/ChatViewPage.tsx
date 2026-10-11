@@ -1939,11 +1939,11 @@ await decryptMessageRows(validData as any[], user.id)
     
     // Add to local state immediately (optimistic update)
     setMessages(prev => [...prev, optimisticMessage])
-    
-    // Queue for broadcast delivery
-    messageQueueRef.current.push(optimisticMessage)
-    processMessageQueue()
-    
+    // FAIL-CLOSED (fuite de clair Realtime) : on ne diffuse JAMAIS le message
+    // optimiste (texte en clair). Le broadcast est mis en file APRÈS chiffrement
+    // + insertion des clés, avec la ligne CHIFFRÉE (cf. plus bas). Le broadcast
+    // ne sert qu'à l'instantanéité ; il ne doit transporter que du ciphertext.
+
     // Clear input immediately for better UX
     setNewMessage('')
     setReplyToMessage(null)
@@ -1970,8 +1970,9 @@ await decryptMessageRows(validData as any[], user.id)
 
       // E2EE du texte : clé AES unique au message, enveloppée pour chaque
       // destinataire (l'émetteur inclus, pour relire ses propres messages).
-      // Repli en clair si le chiffrement est impossible → jamais de base64 affiché.
-      let encryptedText: EncryptedTextPayload | null = null
+      // FAIL-CLOSED : si le chiffrement échoue, on ANNULE l'envoi — plus aucun
+      // repli en clair (le serveur ne doit jamais voir le texte).
+      let encryptedText: EncryptedTextPayload
       try {
         // 1) X25519 TOUJOURS (clé AES enveloppée par destinataire) → repli
         // garanti : TOUT destinataire peut déchiffrer, même sans clés ratchet.
@@ -1996,13 +1997,13 @@ await decryptMessageRows(validData as any[], user.id)
 
         messageData.encryption_metadata = meta
       } catch (encErr) {
-        console.warn('[E2EE] chiffrement du texte impossible, envoi en clair:', encErr)
-        encryptedText = null
-      }
-
-      // Repli en clair : l'aperçu reste alors stocké en clair.
-      if (!encryptedText && linkPreviewPayload) {
-        messageData.link_preview = JSON.stringify(linkPreviewPayload)
+        // FAIL-CLOSED : on n'envoie JAMAIS le message en clair. On annule
+        // l'optimistic update et on rend le texte à l'utilisateur.
+        console.error('[E2EE] chiffrement du texte échoué — envoi annulé (fail-closed):', encErr)
+        setMessages(prev => prev.filter(m => m.id !== tempId))
+        setNewMessage(plaintext)
+        alert(t('messageSendError'))
+        return
       }
       
       if (ephemeralDuration) {
@@ -2047,37 +2048,30 @@ await decryptMessageRows(validData as any[], user.id)
         insertResult = await supabase.from('messages').insert(messageData).select()
       }
 
-      // Fallback : si la migration E2EE n'est pas appliquée (colonnes/tables
-      // absentes), on réessaie en clair pour ne pas casser l'envoi.
-      if (insertResult.error?.message && (
-        insertResult.error.message.includes('is_text_encrypted') ||
-        insertResult.error.message.includes('encryption_metadata') ||
-        insertResult.error.message.includes('message_text_keys')
-      )) {
-        console.warn('[E2EE] colonnes texte absentes, fallback en clair')
-        delete messageData.is_text_encrypted
-        delete messageData.encryption_metadata
-        messageData.content = plaintext
-        if (linkPreviewPayload) messageData.link_preview = JSON.stringify(linkPreviewPayload)
-        encryptedText = null
-        insertResult = await supabase.from('messages').insert(messageData).select()
-      }
+      // FAIL-CLOSED : plus de repli en clair si la migration E2EE n'est pas
+      // appliquée (colonnes/tables absentes). On laisse l'erreur remonter :
+      // mieux vaut un échec visible qu'un message en clair stocké au serveur.
 
       const { data, error } = insertResult
       
       if (!error && data?.[0]) {
         // Persiste les clés enveloppées (une par destinataire, incl. soi).
-        if (encryptedText) {
-          try {
-            await createTextKeysForMessage({
-              messageId: data[0].id,
-              senderId: user.id,
-              conversationId: conversationId!,
-              rawKey: encryptedText.rawKey,
-            })
-          } catch (keyErr) {
-            console.error('[E2EE] création des clés texte échouée:', keyErr)
-          }
+        // FAIL-CLOSED : sans ces clés le message (déjà chiffré) serait
+        // indéchiffrable → on supprime la ligne au lieu de la laisser cassée.
+        try {
+          await createTextKeysForMessage({
+            messageId: data[0].id,
+            senderId: user.id,
+            conversationId: conversationId!,
+            rawKey: encryptedText.rawKey,
+          })
+        } catch (keyErr) {
+          console.error('[E2EE] création des clés texte échouée — annulation du message:', keyErr)
+          await supabase.from('messages').delete().eq('id', data[0].id)
+          setMessages(prev => prev.filter(m => m.id !== tempId))
+          setNewMessage(plaintext)
+          alert(t('messageSendError'))
+          return
         }
 
         // Replace optimistic message with real one from DB, en conservant
@@ -2092,6 +2086,17 @@ await decryptMessageRows(validData as any[], user.id)
           settled.link_preview = JSON.stringify(linkPreviewPayload)
         }
         setMessages(prev => prev.map(m => m.id === tempId ? settled : m))
+        // Diffusion Realtime APRÈS chiffrement : on envoie la ligne CHIFFRÉE
+        // (ciphertext + enveloppe), JAMAIS le `settled` en clair. Les clés sont
+        // déjà en base → le destinataire déchiffre dès réception (latence conservée).
+        messageQueueRef.current.push({
+          ...(data[0] as Message),
+          content: encryptedText.ciphertextB64,
+          is_text_encrypted: true,
+          encryption_metadata: messageData.encryption_metadata,
+          link_preview: null,
+        } as Message)
+        processMessageQueue()
         await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conversationId!)
         // Dispatch event to update ChatsPage conversation list in real-time
         globalThis.dispatchEvent(new CustomEvent('message-sent-in-chat', {
@@ -2101,10 +2106,12 @@ await decryptMessageRows(validData as any[], user.id)
         // Remove optimistic message on error
         setMessages(prev => prev.filter(m => m.id !== tempId))
         console.error('[ChatViewPage] Error sending message:', error)
+        alert(t('messageSendError'))
       }
     } catch (sendError) {
       console.error('[ChatViewPage] Error sending message:', sendError)
       setMessages(prev => prev.filter(m => m.id !== tempId))
+      alert(t('messageSendError'))
     } finally {
       sendingRef.current = false
       setSending(false)
@@ -2131,7 +2138,17 @@ await decryptMessageRows(validData as any[], user.id)
     const isEncrypted = !!(fileData as any).encrypted
     const encryptionKey = (fileData as any).encryptionKey as Uint8Array | undefined
     const mediaIv = (fileData as any).mediaIv as string | undefined
-    
+
+    // FAIL-CLOSED : un média non chiffré (ou sans clé/IV) ne doit JAMAIS partir
+    // en clair. MediaUploader échoue explicitement désormais ; on refuse ici par
+    // défense en profondeur AVANT tout insert / optimistic update.
+    if (!isEncrypted || !encryptionKey || !mediaIv) {
+      console.error('[E2EE] média non chiffré (encrypted=false) — envoi annulé (fail-closed)')
+      alert(t('messageSendError'))
+      setSending(false)
+      return
+    }
+
     // Optimistic update
     const tempId = `temp-${Date.now()}`
     const optimisticMessage = {
@@ -2165,16 +2182,32 @@ await decryptMessageRows(validData as any[], user.id)
     setShowMediaUploader(false)
 
     try {
+      const caption = newMessage.trim()
       const messageData: any = {
-        conversation_id: conversationId!, sender_id: user.id, content: optimisticMessage.content,
+        conversation_id: conversationId!, sender_id: user.id, content: caption,
         type, status: 'sent', reply_to_id: optimisticMessage.reply_to_id,
         media_url: url, media_type: type, file_name: fileName, file_size: fileSize,
         file_url: url, // Fallback for older schema
       }
-      // is_media_encrypted ajouté seulement si la colonne existe (migration appliquée).
-      // On essaie d'abord avec, on retombe sans en cas d'erreur sur ce champ.
-      if (isEncrypted) {
-        messageData.is_media_encrypted = true
+      // Le média est toujours chiffré ici (garde en tête de fonction).
+      messageData.is_media_encrypted = true
+
+      // FAIL-CLOSED : la légende est du TEXTE → elle doit être chiffrée comme un
+      // message texte (sinon elle partirait en clair vers le serveur). Les clés
+      // texte enveloppées sont créées après l'insert (comme pour un message texte).
+      let captionEnc: EncryptedTextPayload | null = null
+      if (caption) {
+        try {
+          captionEnc = await encryptText(caption, null)
+          messageData.content = captionEnc.ciphertextB64
+          messageData.is_text_encrypted = true
+          messageData.encryption_metadata = { v: 1, iv: captionEnc.ivB64 }
+        } catch (encErr) {
+          console.error('[E2EE] chiffrement de la légende échoué — envoi annulé (fail-closed):', encErr)
+          setMessages(prev => prev.filter(m => m.id !== tempId))
+          alert(t('messageSendError'))
+          return
+        }
       }
 
       // Add image dimensions if available
@@ -2195,44 +2228,65 @@ await decryptMessageRows(validData as any[], user.id)
           : null
       }
 
-      // Tentative d'INSERT. Si la colonne is_media_encrypted n'existe pas
-      // (migration pas encore appliquée), on retire le champ et on retente.
-      let insertResult = await supabase.from('messages').insert(messageData).select().single()
-      if (insertResult.error?.message?.includes('is_media_encrypted')) {
-        console.warn('[E2EE] colonne is_media_encrypted absente, fallback sans')
-        delete messageData.is_media_encrypted
-        insertResult = await supabase.from('messages').insert(messageData).select().single()
-      }
+      // INSERT du message.
+      const insertResult = await supabase.from('messages').insert(messageData).select().single()
+      // FAIL-CLOSED : plus de repli « sans is_media_encrypted ». Si la migration
+      // E2EE n'est pas appliquée, on préfère un échec visible plutôt qu'un média
+      // chiffré stocké sans son flag (indéchiffrable côté destinataire).
       const { data, error } = insertResult
 
       if (!error && data) {
-        // Si le média est chiffré E2EE, créer les clés enveloppées pour chaque destinataire
-        if (isEncrypted && encryptionKey && mediaIv) {
+        // Légende chiffrée : clés texte enveloppées (comme un message texte).
+        // FAIL-CLOSED : sans elles la légende serait indéchiffrable.
+        if (captionEnc) {
           try {
-            const result = await createMediaKeysForMessage({
+            await createTextKeysForMessage({
               messageId: data.id,
               senderId: user.id,
               conversationId: conversationId!,
-              rawKey: encryptionKey,
-              mediaIvBase64: mediaIv,
+              rawKey: captionEnc.rawKey,
             })
-            console.log('[E2EE] Clés enveloppées créées:', result.inserted, '/', result.inserted + result.missingKeys.length, 'destinataires')
-            if (result.missingKeys.length > 0) {
-              console.warn('[E2EE] Membres sans clé publique (média non déchiffrable pour eux):', result.missingKeys)
-            }
-          } catch (e) {
-            console.error('[E2EE] Échec de création des clés enveloppées:', e)
-            // On ne bloque pas l'envoi : le message est créé, mais les destinataires
-            // sans clé recevront un message avec média non déchiffrable.
+          } catch (keyErr) {
+            console.error('[E2EE] clés texte de la légende échouées — annulation:', keyErr)
+            await supabase.from('messages').delete().eq('id', data.id)
+            setMessages(prev => prev.filter(m => m.id !== tempId))
+            alert(t('messageSendError'))
+            return
           }
         }
+        // Média chiffré (garanti par la garde en tête de fonction) : créer les
+        // clés enveloppées pour chaque destinataire. FAIL-CLOSED : sans ces clés
+        // le média serait indéchiffrable → on supprime la ligne et on annule
+        // l'optimistic update.
+        try {
+          const result = await createMediaKeysForMessage({
+            messageId: data.id,
+            senderId: user.id,
+            conversationId: conversationId!,
+            rawKey: encryptionKey,
+            mediaIvBase64: mediaIv,
+          })
+          console.log('[E2EE] Clés enveloppées créées:', result.inserted, '/', result.inserted + result.missingKeys.length, 'destinataires')
+          if (result.missingKeys.length > 0) {
+            console.warn('[E2EE] Membres sans clé publique (média non déchiffrable pour eux):', result.missingKeys)
+          }
+        } catch (e) {
+          console.error('[E2EE] Échec de création des clés enveloppées — annulation du média:', e)
+          await supabase.from('messages').delete().eq('id', data.id)
+          setMessages(prev => prev.filter(m => m.id !== tempId))
+          alert(t('messageSendError'))
+          return
+        }
 
-        // Replace optimistic message with real one
-        setMessages(prev => prev.map(m => m.id === tempId ? { ...data, sender_id: data.sender_id ?? user.id } : m))
+        // Replace optimistic message with real one, en conservant la légende en
+        // clair côté client (jamais le ciphertext à l'écran).
+        const settledMedia: any = { ...data, content: caption, sender_id: data.sender_id ?? user.id }
+        if (caption) cacheDecryptedText(data.id, caption)
+        setMessages(prev => prev.map(m => m.id === tempId ? settledMedia : m))
         await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conversationId!)
         // Dispatch event to update ChatsPage conversation list in real-time
         globalThis.dispatchEvent(new CustomEvent('message-sent-in-chat', {
-          detail: { conversationId, message: data }
+          detail: { conversationId, message: settledMedia }
         }))
       } else {
         // Remove optimistic message on error
@@ -2290,6 +2344,7 @@ await decryptMessageRows(validData as any[], user.id)
     setReplyToMessage(null)
     setShowMediaUploader(false)
 
+    let fileErrorCount = 0
     try {
       // Send each file as a separate message
       for (let i = 0; i < files.length; i++) {
@@ -2323,9 +2378,14 @@ await decryptMessageRows(validData as any[], user.id)
         const isEncrypted = !!(file as any).encrypted
         const encryptionKey = (file as any).encryptionKey as Uint8Array | undefined
         const mediaIv = (file as any).mediaIv as string | undefined
-        if (isEncrypted) {
-          messageData.is_media_encrypted = true
+        // FAIL-CLOSED : pas de média non chiffré / sans clé vers le serveur.
+        if (!isEncrypted || !encryptionKey || !mediaIv) {
+          console.error('[E2EE] média non chiffré (multi) — envoi annulé (fail-closed)')
+          setMessages(prev => prev.filter(m => m.id !== tempId))
+          fileErrorCount++
+          continue
         }
+        messageData.is_media_encrypted = true
 
         // Add ephemeral fields if enabled
         if (ephemeralDuration) {
@@ -2336,35 +2396,37 @@ await decryptMessageRows(validData as any[], user.id)
             : null
         }
         
-        let insertResult = await insertMessageSingle(messageData)
-        if (insertResult.error?.message?.includes('is_media_encrypted')) {
-          delete messageData.is_media_encrypted
-          insertResult = await supabase.from('messages').insert(messageData).select().single()
-        }
+        const insertResult = await insertMessageSingle(messageData)
+        // FAIL-CLOSED : plus de repli « sans is_media_encrypted ».
         const { data, error } = insertResult
         
         if (!error && data) {
-          setMessages(prev => prev.map(m => m.id === tempId ? { ...data, sender_id: data.sender_id ?? user.id } : m))
-          // Créer les clés enveloppées pour les médias chiffrés
-          if (isEncrypted && encryptionKey && mediaIv) {
-            try {
-              const result = await createMediaKeysForMessage({
-                messageId: data.id,
-                senderId: user.id,
-                conversationId: conversationId!,
-                rawKey: encryptionKey,
-                mediaIvBase64: mediaIv,
-              })
-              if (result.missingKeys.length > 0) {
-                console.warn('[E2EE] Membres sans clé publique:', result.missingKeys)
-              }
-            } catch (e) {
-              console.error('[E2EE] Échec création clés enveloppées (multi):', e)
+          // Créer les clés enveloppées pour les médias chiffrés.
+          // FAIL-CLOSED : si la création échoue, on supprime la ligne et on
+          // annule l'optimistic update (média sinon indéchiffrable).
+          try {
+            const result = await createMediaKeysForMessage({
+              messageId: data.id,
+              senderId: user.id,
+              conversationId: conversationId!,
+              rawKey: encryptionKey,
+              mediaIvBase64: mediaIv,
+            })
+            if (result.missingKeys.length > 0) {
+              console.warn('[E2EE] Membres sans clé publique:', result.missingKeys)
             }
+          } catch (e) {
+            console.error('[E2EE] Échec création clés enveloppées (multi) — annulation:', e)
+            await supabase.from('messages').delete().eq('id', data.id)
+            setMessages(prev => prev.filter(m => m.id !== tempId))
+            fileErrorCount++
+            continue
           }
+          setMessages(prev => prev.map(m => m.id === tempId ? { ...data, sender_id: data.sender_id ?? user.id } : m))
         } else {
             // Remove failed message
             setMessages(prev => prev.filter(m => m.id !== tempId))
+            fileErrorCount++
         }
       }
       
@@ -2373,6 +2435,9 @@ await decryptMessageRows(validData as any[], user.id)
       globalThis.dispatchEvent(new CustomEvent('message-sent-in-chat', {
         detail: { conversationId, message: { id: `temp-${Date.now()}`, conversation_id: conversationId, created_at: new Date().toISOString(), type: 'file' } }
       }))
+      if (fileErrorCount > 0) {
+        alert(t('messageSendError'))
+      }
     } finally {
       setSending(false)
     }
@@ -2455,6 +2520,8 @@ await decryptMessageRows(validData as any[], user.id)
       if (!error && insertedMessage) {
         // Clés média enveloppées : sans elles le destinataire (et l'expéditeur
         // sur un autre appareil) ne peut pas déchiffrer le vocal.
+        // FAIL-CLOSED : on annule le message plutôt que de laisser un vocal
+        // chiffré indéchiffrable.
         try {
           await createMediaKeysForMessage({
             messageId: insertedMessage.id,
@@ -2464,7 +2531,11 @@ await decryptMessageRows(validData as any[], user.id)
             mediaIvBase64: encrypted.mediaIvBase64,
           })
         } catch (e) {
-          console.error('[E2EE] Échec création clés média vocal:', e)
+          console.error('[E2EE] Échec création clés média vocal — annulation:', e)
+          await supabase.from('messages').delete().eq('id', insertedMessage.id)
+          setMessages(prev => prev.filter(m => m.id !== tempId))
+          alert(t('voiceSendError'))
+          return
         }
         // Replace optimistic message with real one
         setMessages(prev => prev.map(m => m.id === tempId ? { ...insertedMessage, sender_id: insertedMessage.sender_id ?? user.id } : m))
@@ -2775,10 +2846,12 @@ await decryptMessageRows(validData as any[], user.id)
     for (const targetConversationId of conversationIds) {
       const messageData = buildForwardMessageData(targetConversationId, messageToForward!, userId)
 
-      // Si la clé source n'a pas pu être récupérée pour un message chiffré,
-      // on retire le flag chiffré car les destinataires ne pourront pas déchiffrer.
+      // FAIL-CLOSED : si la clé média source n'a pas pu être récupérée pour un
+      // message chiffré, on N'ENVOIE PAS (plus de transfert en clair / cassé).
       if (isSourceEncrypted && !sourceKeyData) {
-        delete messageData.is_media_encrypted
+        console.error('[forward][E2EE] clé média source introuvable — transfert annulé (fail-closed)')
+        errorCount++
+        continue
       }
 
       // Chiffrer le texte des messages transférés (type 'text' uniquement).
@@ -2807,31 +2880,22 @@ await decryptMessageRows(validData as any[], user.id)
           }
           if (forwardLinkPreview) delete messageData.link_preview
         } catch (encErr) {
-          console.warn('[forward][E2EE] chiffrement texte impossible:', encErr)
-          encryptedText = null
+          // FAIL-CLOSED : jamais de transfert en clair.
+          console.error('[forward][E2EE] chiffrement texte échoué — transfert annulé (fail-closed):', encErr)
+          errorCount++
+          continue
         }
       }
 
       messageData.sender_sealed = await buildSenderSealed(userId, targetConversationId)
 
-      let insertResult = await supabase
+      const insertResult = await supabase
         .from('messages')
         .insert(messageData)
         .select('id')
 
-      // Fallback si la migration E2EE n'est pas appliquée.
-      if (encryptedText && insertResult.error?.message && (
-        insertResult.error.message.includes('is_text_encrypted') ||
-        insertResult.error.message.includes('encryption_metadata')
-      )) {
-        console.warn('[forward][E2EE] colonnes texte absentes, fallback en clair')
-        delete messageData.is_text_encrypted
-        delete messageData.encryption_metadata
-        messageData.content = forwardPlaintext
-        if (forwardLinkPreview) messageData.link_preview = JSON.stringify(forwardLinkPreview)
-        encryptedText = null
-        insertResult = await supabase.from('messages').insert(messageData).select('id')
-      }
+      // FAIL-CLOSED : plus de repli en clair si la migration E2EE n'est pas
+      // appliquée — on laisse l'erreur d'insertion remonter.
 
       const { data: insertedRows, error: insertError } = insertResult
 
@@ -2839,38 +2903,46 @@ await decryptMessageRows(validData as any[], user.id)
         console.error('Error inserting forwarded message:', insertError)
         errorCount++
       } else {
-        successCount++
-        await updateConversationLastMessage(targetConversationId)
-
+        const newId = insertedRows?.[0]?.id
         // Recréer les clés texte enveloppées pour la conversation cible.
-        if (encryptedText && insertedRows?.[0]?.id) {
+        // FAIL-CLOSED : on supprime la ligne si les clés ne peuvent être créées.
+        if (encryptedText && newId) {
           try {
             await createTextKeysForMessage({
-              messageId: insertedRows[0].id,
+              messageId: newId,
               senderId: userId,
               conversationId: targetConversationId,
               rawKey: encryptedText.rawKey,
             })
           } catch (e) {
-            console.error('[forward][E2EE] création des clés texte échouée:', e)
+            console.error('[forward][E2EE] création des clés texte échouée — annulation:', e)
+            await supabase.from('messages').delete().eq('id', newId)
+            errorCount++
+            continue
           }
         }
 
         // Re-créer les clés de chiffrement pour le message transféré
         // afin que les membres de la conversation cible puissent déchiffrer le média.
-        if (isSourceEncrypted && sourceKeyData && insertedRows?.[0]?.id) {
+        if (isSourceEncrypted && sourceKeyData && newId) {
           try {
             await createMediaKeysForMessage({
-              messageId: insertedRows[0].id,
+              messageId: newId,
               senderId: userId,
               conversationId: targetConversationId,
               rawKey: sourceKeyData.rawKey,
               mediaIvBase64: sourceKeyData.mediaIvBase64,
             })
           } catch (e) {
-            console.error('[forward] failed to create media keys for target:', e)
+            console.error('[forward] failed to create media keys for target — annulation:', e)
+            await supabase.from('messages').delete().eq('id', newId)
+            errorCount++
+            continue
           }
         }
+
+        successCount++
+        await updateConversationLastMessage(targetConversationId)
       }
     }
 
@@ -3541,13 +3613,41 @@ await decryptMessageRows(validData as any[], user.id)
             try {
               const messageData: any = {
                 conversation_id: conversationId!,
-                sender_id: user.id,
+                sender_id: BLIND_SENDER ? null : user.id,
                 content: content,
                 type: 'text',
                 status: 'sent',
                 reply_to_id: optimisticMessage.reply_to_id,
               }
-              
+
+              // FAIL-CLOSED : le contenu (caption + lien distant vers le
+              // GIF/sticker) doit être CHIFFRÉ comme un message texte, sinon le
+              // lien part en clair vers le serveur. Pas de repli en clair.
+              let encryptedText: EncryptedTextPayload
+              try {
+                encryptedText = await encryptText(content, null)
+                messageData.content = encryptedText.ciphertextB64
+                messageData.is_text_encrypted = true
+                const meta: Record<string, unknown> = { v: 1, iv: encryptedText.ivB64 }
+                try {
+                  const ratchet = ENABLE_RATCHET_ON_SEND && conversationId
+                    ? await tryEncryptWithRatchet(user.id, conversationId, serializeTextPayload(content, null))
+                    : null
+                  if (ratchet) {
+                    meta.ratchet = ratchet.encryptionMetadata
+                    meta.ratchetContent = ratchet.content
+                  }
+                } catch (rErr) {
+                  console.warn('[E2EE] ratchet indisponible (GIF/sticker), X25519 seul:', rErr)
+                }
+                messageData.encryption_metadata = meta
+              } catch (encErr) {
+                console.error('[E2EE] chiffrement GIF/sticker échoué — envoi annulé (fail-closed):', encErr)
+                setMessages(prev => prev.filter(m => m.id !== tempId))
+                alert(t('messageSendError'))
+                return
+              }
+
               // Add ephemeral fields if enabled
               if (ephemeralDuration) {
                 messageData.is_ephemeral = true
@@ -3556,18 +3656,43 @@ await decryptMessageRows(validData as any[], user.id)
                   ? new Date(Date.now() + ephemeralDuration * 1000).toISOString() 
                   : null
               }
-              
+
+              messageData.sender_sealed = conversationId
+                ? await buildSenderSealed(user.id, conversationId)
+                : null
+
               const { data, error } = await insertMessageSingle(messageData)
               
               if (!error && data) {
-                setMessages(prev => prev.map(m => m.id === tempId ? { ...data, sender_id: data.sender_id ?? user.id } : m))
+                // FAIL-CLOSED : sans les clés enveloppées le message serait
+                // indéchiffrable → on supprime la ligne au lieu de la laisser cassée.
+                try {
+                  await createTextKeysForMessage({
+                    messageId: data.id,
+                    senderId: user.id,
+                    conversationId: conversationId!,
+                    rawKey: encryptedText.rawKey,
+                  })
+                } catch (keyErr) {
+                  console.error('[E2EE] clés GIF/sticker échouées — annulation:', keyErr)
+                  await supabase.from('messages').delete().eq('id', data.id)
+                  setMessages(prev => prev.filter(m => m.id !== tempId))
+                  alert(t('messageSendError'))
+                  return
+                }
+                // Conserve le clair côté client (jamais le ciphertext à l'écran).
+                const settled: any = { ...(data as any), content: content, sender_id: (data as any).sender_id ?? user.id }
+                cacheDecryptedText(data.id, content)
+                markOwnMessage(data.id)
+                setMessages(prev => prev.map(m => m.id === tempId ? settled : m))
                 await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conversationId!)
                 // Dispatch event to update ChatsPage conversation list in real-time
                 globalThis.dispatchEvent(new CustomEvent('message-sent-in-chat', {
-                  detail: { conversationId, message: data }
+                  detail: { conversationId, message: settled }
                 }))
               } else {
                 setMessages(prev => prev.filter(m => m.id !== tempId))
+                alert(t('messageSendError'))
               }
             } finally {
               setSending(false)

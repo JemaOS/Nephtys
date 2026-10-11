@@ -518,12 +518,23 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       }
 
       // If we have a callback for multiple uploads, use it
-      if (onMultipleUploadComplete && uploadedFiles.length > 0) {
-        onMultipleUploadComplete(uploadedFiles);
+      if (uploadedFiles.length === 0) {
+        // FAIL-CLOSED : aucun fichier n'a pu être chiffré → rien n'est envoyé
+        // (jamais en clair). On remonte une erreur au lieu d'un no-op silencieux.
+        alert(t('fileUploadError', { message: t('unknownError') }));
       } else {
-        // Fallback: send files one by one
-        for (const uploadedFile of uploadedFiles) {
-          onUploadComplete(uploadedFile);
+        // Certains fichiers n'ont pas pu être chiffrés : on prévient sans
+        // jamais envoyer de clair.
+        if (uploadedFiles.length < selectedFiles.length) {
+          alert(t('fileUploadError', { message: t('unknownError') }));
+        }
+        if (onMultipleUploadComplete) {
+          onMultipleUploadComplete(uploadedFiles);
+        } else {
+          // Fallback: send files one by one
+          for (const uploadedFile of uploadedFiles) {
+            onUploadComplete(uploadedFile);
+          }
         }
       }
 
@@ -670,6 +681,10 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       if (uploadedFile) {
         // Call completion callback
         onUploadComplete(uploadedFile);
+      } else {
+        // FAIL-CLOSED : l'upload chiffré a échoué (le contenu n'a jamais été
+        // envoyé en clair) → on remonte une erreur au lieu d'un no-op silencieux.
+        alert(t('fileUploadError', { message: t('unknownError') }));
       }
       
       // Reset state
