@@ -50,6 +50,7 @@ export type { FileDescriptor };
 export function sanitizeFileName(name: unknown): string {
   if (typeof name !== 'string' || !name) return 'fichier';
   const base = name.split(/[\\/]+/).pop() ?? '';
+  // eslint-disable-next-line no-control-regex -- on retire volontairement les caracteres de controle
   const cleaned = base.replace(/[\u0000-\u001f\u007f]/g, '').replace(/^\.+/, '').trim();
   return cleaned.slice(0, 200) || 'fichier';
 }
