@@ -20,7 +20,7 @@
 
 ## Fonctionnalités
 
-- **Messagerie de bout en bout** : chiffrement **X25519** + **sealed sender** (anonymat de l'expéditeur). Les primitives **Double Ratchet** (forward secrecy) et **post‑quantique (ML‑KEM)** sont présentes dans le code mais **désactivées en production** (bugs `OperationError` en cours de correction).
+- **Messagerie de bout en bout** : **X25519 + Double Ratchet** (forward secrecy) + **hybride post‑quantique (ML‑KEM‑768, clé liée à la signature)** + **sealed sender** (anonymat de l'expéditeur).
 - **Mode privé** : connexions 1‑à‑1 par **invitation** (lien/QR), sans compte ; le relais ne voit que des blocs opaques.
 - **Groupes privés** : clé de groupe distribuée via les files du relais, rotation à l'ajout/retrait de membres.
 - **Statuts éphémères** : chiffrés, expirés automatiquement.
@@ -77,11 +77,8 @@ flowchart LR
 ## Modèle de sécurité — et ses limites
 
 **Garanti (actif en production)**
-- E2EE de bout en bout (**X25519**) et **sealed sender**.
+- E2EE de bout en bout : **X25519 + Double Ratchet** (forward secrecy) + **post‑quantique (ML‑KEM‑768)** + **sealed sender**.
 - Mode privé : pas de compte, relais aveugle, **invitations explicites** (pas d'annuaire).
-
-**Présent mais désactivé (en cours de correction)**
-- **Double Ratchet** (forward secrecy) et **post‑quantique (ML‑KEM)** : code présent, **non activés en production** (bugs `OperationError`).
 
 **Limites (assumées)**
 - **Pas d'audit indépendant** à ce jour.
@@ -93,8 +90,8 @@ flowchart LR
 
 | Critère | Nephtys privé | Nephtys compte | Signal | Telegram |
 |---|---|---|---|---|
-| E2EE par défaut | Oui (X25519) | Oui (X25519) | Oui | Non |
-| Post‑quantique | Présent (off) | Présent (off) | Oui | Non |
+| E2EE par défaut | Oui (X25519+DR) | Oui (X25519+DR) | Oui | Non |
+| Post‑quantique | Oui (ML‑KEM‑768) | Oui (ML‑KEM‑768) | Oui | Non |
 | Sealed sender | Oui | Oui | Oui | Non |
 | Compte / identifiant | Aucun | Compte | N° tél. | N° tél. |
 | Métadonnées serveur | Minimales | Élevées | Faibles | Élevées |

@@ -58,13 +58,10 @@ export async function tryEncryptWithRatchet(
   conversationId: string,
   plaintext: string,
 ): Promise<{ content: string; encryptionMetadata: unknown } | null> {
-  // Sessions désormais indexées par CONVERSATION (fix appliqué) → le
-  // déchiffrement cross-user fonctionne et ne lève plus « OperationError ».
-  // On garde l'envoi ratchet DÉSACTIVÉ tant que l'affichage du clair côté
-  // destinataire n'est pas validé (sinon ciphertext brut à l'écran).
-  // DÉSACTIVÉ (fiabilité prod) : le ratchet échoue en prod (OperationError sur
-  // aeadDecrypt → clé de session divergente) et pollue/casse le déchiffrement.
-  // On envoie en X25519 (robuste, incl. l'expéditeur) → TOUT le monde déchiffre.
+  // Double chiffrement : X25519 reste TOUJOURS appliqué (repli garanti) ; le
+  // ratchet (X3DH + Double Ratchet + hybride post-quantique ML-KEM) est une
+  // surcouche. Sessions indexées par CONVERSATION. Un échec ratchet retombe
+  // proprement sur X25519 (cf. textEncryption) → jamais de clair à l'écran.
   const RATCHET_SEND_ENABLED = true;
   if (!RATCHET_SEND_ENABLED) return null;
 

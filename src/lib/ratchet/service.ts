@@ -96,6 +96,8 @@ export interface RatchetEnvelope {
   usedOneTimePreKey?: string | null;
   /** Ciphertext ML-KEM (post-quantique), présent pour `ratchet-init`. */
   mlKemCiphertext?: string | null;
+  /** Vrai si l'init a utilisé le hybride post-quantique (ML-KEM). */
+  pq?: boolean;
 }
 
 export interface EncryptedRatchetMessage {
@@ -126,7 +128,7 @@ export async function encryptForPeer(
   plaintext: string,
 ): Promise<EncryptedRatchetMessage> {
   let session = await deps.loadSession(userId, sessionId);
-  let initFields: Pick<RatchetEnvelope, 'identityKey' | 'ephemeralPublicKey' | 'usedOneTimePreKey' | 'mlKemCiphertext'> | null = null;
+  let initFields: Pick<RatchetEnvelope, 'identityKey' | 'ephemeralPublicKey' | 'usedOneTimePreKey' | 'mlKemCiphertext' | 'pq'> | null = null;
 
   if (!session) {
     const localKeys = await deps.loadLocalKeys(userId);
@@ -137,7 +139,9 @@ export async function encryptForPeer(
     // Fiabilité : on n'utilise PAS de one-time prekey à l'init (source des
     // échecs « one-time prekey indisponible »). X3DH reste valide sans OPK ;
     // la forward secrecy est ensuite assurée par le Double Ratchet.
-    const init = await x3dhInitiate(localKeys.identityKeyPair, { ...toBundle(bundle), oneTimePreKey: null, mlKemPublicKey: null });
+    // Hybride post-quantique : si le pair publie une clé ML-KEM (dont la
+    // signature couvre la clé), on l'utilise. Sinon, chemin X3DH classique.
+    const init = await x3dhInitiate(localKeys.identityKeyPair, { ...toBundle(bundle), oneTimePreKey: null });
     session = await initSenderSession(
       init.rootKey,
       bundle.signedPreKey,
@@ -154,6 +158,7 @@ export async function encryptForPeer(
       ephemeralPublicKey: init.ephemeralPublicKey,
       usedOneTimePreKey,
       mlKemCiphertext: init.mlKemCiphertext ?? null,
+      pq: !!init.mlKemCiphertext,
     };
   }
 
@@ -193,14 +198,17 @@ export async function decryptFromPeer(
       if (priv) oneTimePreKey = { privateKey: priv, publicKey: oneTimePreKeyPublic };
     }
 
+    // Hybride post-quantique : on décapsule le ciphertext ML-KEM avec NOTRE
+    // clé secrète. Invariant : la clé publique publiée == cette clé secrète
+    // (garanti par `keyStore.ensureMlKem`). Sinon on retombe sur X25519.
     const resp = await x3dhRespond(
       localKeys.identityKeyPair,
       localKeys.signedPreKey,
       oneTimePreKey,
       envelope.identityKey,
       envelope.ephemeralPublicKey,
-      null, // ML-KEM désactivé (source d'OperationError) — X3DH classique + Double Ratchet
-      null,
+      envelope.pq ? envelope.mlKemCiphertext ?? null : null,
+      envelope.pq ? localKeys.mlKemKeyPair?.secretKey ?? null : null,
     );
     return initReceiverSession(resp.rootKey, localKeys.signedPreKey, resp.associatedData);
   };

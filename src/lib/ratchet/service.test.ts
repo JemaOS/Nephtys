@@ -7,6 +7,7 @@ import {
   type SessionState,
 } from './index';
 import { generateX25519KeyPair } from './primitives';
+import { generateMlKemKeyPair } from './pqKem';
 import {
   encryptForPeer,
   decryptFromPeer,
@@ -26,18 +27,20 @@ function makeUser(): TestUser {
   const signingKeyPair = generateSigningKeyPair();
   const signedPreKey = generateX25519KeyPair();
   const opks = generateOneTimePreKeys(5);
+  const mlKemKeyPair = generateMlKemKeyPair();
 
   const oneTimePreKeys: Record<string, string> = {};
   for (const k of opks) oneTimePreKeys[k.publicKey] = k.privateKey;
 
   return {
-    local: { identityKeyPair, signingKeyPair, signedPreKey, oneTimePreKeys },
+    local: { identityKeyPair, signingKeyPair, signedPreKey, oneTimePreKeys, mlKemKeyPair },
     bundle: {
       identityKey: identityKeyPair.publicKey,
       signingKey: signingKeyPair.publicKey,
       signedPreKey: signedPreKey.publicKey,
-      signedPreKeySignature: signPreKey(signingKeyPair.privateKey, signedPreKey.publicKey),
+      signedPreKeySignature: signPreKey(signingKeyPair.privateKey, signedPreKey.publicKey, mlKemKeyPair.publicKey),
       oneTimePreKey: opks[0].publicKey,
+      mlKemPublicKey: mlKemKeyPair.publicKey,
     },
   };
 }
@@ -114,6 +117,17 @@ describe('ratchet service (X3DH + Double Ratchet end-to-end)', () => {
     expect(await decryptFromPeer(deps, 'bob', 'conv', m3.envelope, m3.content)).toBe('m3');
     expect(await decryptFromPeer(deps, 'bob', 'conv', m1.envelope, m1.content)).toBe('m1');
     expect(await decryptFromPeer(deps, 'bob', 'conv', m2.envelope, m2.content)).toBe('m2');
+  });
+
+  it('round-trip avec hybride post-quantique (ML-KEM actif)', async () => {
+    const users = { alice: makeUser(), bob: makeUser() };
+    const { deps } = makeDeps(users);
+
+    const init = await encryptForPeer(deps, 'alice', 'conv', 'bob', 'pq-bonjour');
+    expect(init.envelope.type).toBe('ratchet-init');
+    expect(init.envelope.pq).toBe(true);
+    expect(init.envelope.mlKemCiphertext).toBeTruthy();
+    expect(await decryptFromPeer(deps, 'bob', 'conv', init.envelope, init.content)).toBe('pq-bonjour');
   });
 
   it('rejects a tampered init (bad signature) and detects envelopes', async () => {

@@ -24,6 +24,7 @@ import {
 } from './x3dh';
 import { base64ToBytes, bytesToBase64 } from './primitives';
 import { generateLocalRatchetKeys, type LocalRatchetKeys, type PeerBundle } from './service';
+import { generateMlKemKeyPair } from './pqKem';
 import { clearUserSessions } from './sessionStore';
 
 const DB_NAME = 'nephtys-ratchet-keys';
@@ -91,6 +92,16 @@ function generateLocalKeys(): LocalRatchetKeys {
   return generateLocalRatchetKeys();
 }
 
+/**
+ * Garantit la présence d'une paire ML-KEM (upgrade des comptes pré-post-quantique).
+ * Renvoie `true` si une paire a été générée (→ à persister + republier).
+ */
+function ensureMlKem(keys: LocalRatchetKeys): boolean {
+  if (keys.mlKemKeyPair?.publicKey && keys.mlKemKeyPair?.secretKey) return false;
+  keys.mlKemKeyPair = generateMlKemKeyPair();
+  return true;
+}
+
 /** Lecture locale seule (pas de réseau) — utilisée par le service ratchet. */
 export async function getLocalRatchetKeys(userId: string): Promise<LocalRatchetKeys | null> {
   try {
@@ -109,7 +120,7 @@ async function publishKeys(userId: string, keys: LocalRatchetKeys): Promise<void
       ratchet_identity_key: keys.identityKeyPair.publicKey,
       ratchet_signing_key: keys.signingKeyPair.publicKey,
       ratchet_signed_prekey: keys.signedPreKey.publicKey,
-      ratchet_signed_prekey_sig: signPreKey(keys.signingKeyPair.privateKey, keys.signedPreKey.publicKey),
+      ratchet_signed_prekey_sig: signPreKey(keys.signingKeyPair.privateKey, keys.signedPreKey.publicKey, keys.mlKemKeyPair?.publicKey),
       ml_kem_public_key: keys.mlKemKeyPair?.publicKey ?? null,
       ratchet_updated_at: new Date().toISOString(),
     })
@@ -157,6 +168,7 @@ export async function setupRatchetKeys(userId: string, password: string): Promis
   if (enc) return await unlockRatchetKeys(userId, password);
 
   const keys = (await idbGet(userId)) ?? generateLocalKeys();
+  ensureMlKem(keys);
   await persistEncrypted(userId, keys, password);
   await publishKeys(userId, keys);
   await idbSet(userId, keys);
@@ -168,6 +180,15 @@ export async function unlockRatchetKeys(userId: string, password: string): Promi
   const enc = await fetchEncrypted(userId);
   if (!enc) throw new Error('Aucune clé ratchet chiffrée en DB pour cet utilisateur.');
   const keys = decodeKeys(await decryptPrivateKeyWithPassphrase(enc, password));
+  // Upgrade post-quantique : si le blob précède ML-KEM, on génère la paire et
+  // on re-chiffre (sinon des messages PQ seraient indéchiffrables).
+  if (ensureMlKem(keys)) {
+    try {
+      await persistEncrypted(userId, keys, password);
+    } catch {
+      // ignore
+    }
+  }
   await idbSet(userId, keys);
   // Réconciliation : republie le bundle public pour qu'il corresponde EXACTEMENT
   // aux clés locales (sinon un pair chiffre pour une clé publiée périmée →

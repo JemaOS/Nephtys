@@ -66,22 +66,37 @@ export function generateOneTimePreKeys(count: number): RawKeyPair[] {
   return Array.from({ length: count }, () => generateX25519KeyPair());
 }
 
-/** Signe la signed prekey avec la clé de signature Ed25519. */
-export function signPreKey(signingPrivateKeyB64: string, signedPreKeyB64: string): string {
-  const signature = ed25519.sign(
-    base64ToBytes(signedPreKeyB64),
-    base64ToBytes(signingPrivateKeyB64),
-  );
+/**
+ * Signe la signed prekey (et, si présente, la clé ML-KEM) avec la clé Ed25519.
+ * Lier la clé post-quantique à la signature empêche un serveur malveillant de
+ * substituer une clé ML-KEM (downgrade / MITM sur la partie post-quantique).
+ */
+export function signPreKey(
+  signingPrivateKeyB64: string,
+  signedPreKeyB64: string,
+  mlKemPublicKeyB64?: string | null,
+): string {
+  const data = mlKemPublicKeyB64
+    ? concat(base64ToBytes(signedPreKeyB64), base64ToBytes(mlKemPublicKeyB64))
+    : base64ToBytes(signedPreKeyB64);
+  const signature = ed25519.sign(data, base64ToBytes(signingPrivateKeyB64));
   return bytesToBase64(signature);
 }
 
-/** Vérifie la signature de la signed prekey (protège contre un MITM). */
+/**
+ * Vérifie la signature de la signed prekey (protège contre un MITM). Si le
+ * bundle publie une clé ML-KEM, la signature DOIT couvrir
+ * `signedPreKey || mlKemPublicKey` — sinon on refuse (PQ non authentifié).
+ */
 export function verifyPreKey(bundle: PreKeyBundle): boolean {
   if (!bundle.signingKey || !bundle.signedPreKeySignature) return false;
   try {
+    const data = bundle.mlKemPublicKey
+      ? concat(base64ToBytes(bundle.signedPreKey), base64ToBytes(bundle.mlKemPublicKey))
+      : base64ToBytes(bundle.signedPreKey);
     return ed25519.verify(
       base64ToBytes(bundle.signedPreKeySignature),
-      base64ToBytes(bundle.signedPreKey),
+      data,
       base64ToBytes(bundle.signingKey),
     );
   } catch {

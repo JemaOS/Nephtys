@@ -24,7 +24,7 @@ function responderSetup(withPq: boolean) {
     identityKey: identity.publicKey,
     signingKey: sign.publicKey,
     signedPreKey: signedPreKey.publicKey,
-    signedPreKeySignature: signPreKey(sign.privateKey, signedPreKey.publicKey),
+    signedPreKeySignature: signPreKey(sign.privateKey, signedPreKey.publicKey, mlKem?.publicKey),
     oneTimePreKey: oneTimePreKey.publicKey,
     mlKemPublicKey: mlKem?.publicKey ?? null,
   };
