@@ -1726,8 +1726,38 @@ await decryptMessageRows(validData as any[], user.id)
           for (let i = 0; i < validData.length; i++) ((validData as any[])[i]) = { ...(validData as any[])[i] }
       }
 
-      setMessages(validData)
-      setCache(`msgs_${conversationId}`, validData)
+      // ── Local-first : le serveur ne garde pas tout (rétention type
+      // WhatsApp). On fusionne l'historique LOCAL DURABLE (IndexedDB) avec ce
+      // que renvoie le serveur. Les messages locaux plus ANCIENS que la fenêtre
+      // serveur (= historique purgé côté serveur) sont conservés ; les messages
+      // récents absents du serveur (supprimés pour moi / pour tout le monde) ne
+      // sont PAS ressuscités.
+      let localHistory: Message[] = []
+      try {
+        localHistory = (await offlineStorage.getMessages(conversationId!)) as Message[]
+      } catch {
+        // ignore : on retombe sur l'état en mémoire
+      }
+      const localById = new Map<string, Message>()
+      for (const m of [...localHistory, ...messages]) localById.set(m.id, m)
+
+      const validIds = new Set(validData.map(m => m.id))
+      const oldestServerTs = validData.length > 0 ? Date.parse(validData[0].created_at) : Number.POSITIVE_INFINITY
+      const nowTs = Date.now()
+      const localOnly = [...localById.values()].filter(m => {
+        if (validIds.has(m.id)) return false
+        if (deletedForMeSet.has(m.id)) return false
+        if (pendingDeletedIdsRef.current.has(m.id)) return false
+        if (typeof m.id === 'string' && m.id.startsWith('temp-')) return true
+        if (m.is_ephemeral && m.ephemeral_expires_at && Date.parse(m.ephemeral_expires_at) <= nowTs) return false
+        const ts = Date.parse(m.created_at)
+        return Number.isFinite(ts) && ts < oldestServerTs
+      })
+      const merged: Message[] = [...localOnly, ...validData]
+        .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at))
+
+      setMessages(merged)
+      setCache(`msgs_${conversationId}`, merged)
 
       // Pré-signer les médias non chiffrés EN PARALLÈLE pour que les URLs
       // soient prêtes au moment où MediaImg les demande. signFieldsBatch
@@ -1745,8 +1775,8 @@ await decryptMessageRows(validData as any[], user.id)
           })
       }
       
-      // Save to offlineStorage for long-term caching
-      offlineStorage.saveMessages(validData as any[]).catch(() => {
+      // Save to offlineStorage for long-term caching (historique durable local)
+      offlineStorage.saveMessages(merged as any[]).catch(() => {
         // Silent fail
       })
       
@@ -2604,6 +2634,10 @@ await decryptMessageRows(validData as any[], user.id)
     // attendait la suppression storage + l'UPDATE DB avant de voir le message
     // disparaître (ressenti « ça prend du temps »).
     pendingDeletedIdsRef.current.add(target.id)
+    // Retire aussi du cache durable : sinon la fusion local-first le
+    // ressusciterait (le serveur ne le renvoie plus, mais le local l'a encore).
+    offlineStorage.deleteMessage(target.id).catch(() => {})
+    if (target.media_url) offlineStorage.deleteMediaBlob(target.id).catch(() => {})
     setMessageToDelete(null)
     setShowDeleteDialog(false)
     setMessages(prev => prev.filter(m => m.id !== target.id))
@@ -3093,6 +3127,8 @@ await decryptMessageRows(validData as any[], user.id)
     // Tombsones locales : empêchent le poll/reload de réafficher ces messages
     // tant que l'UPDATE serveur n'est pas commité.
     ids.forEach(id => pendingDeletedIdsRef.current.add(id))
+    // Purge aussi le cache durable local (évite toute résurrection local-first).
+    ids.forEach(id => { offlineStorage.deleteMessage(id).catch(() => {}) })
     
     // Collect all media file paths to delete in batch
     const selectedMsgs = messages.filter(m => selectedMessages.has(m.id))

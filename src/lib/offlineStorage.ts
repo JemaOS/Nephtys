@@ -7,11 +7,12 @@
 // Uses localStorage as a fast synchronous cache layer for instant display
 
 const DB_NAME = 'nephtys-offline-db';
-const DB_VERSION = 2; // Incremented for profiles store
+const DB_VERSION = 3; // v3: store `media` (blobs média déchiffrés, cache durable)
 const MESSAGES_STORE = 'messages';
 const CONVERSATIONS_STORE = 'conversations';
 const PENDING_STORE = 'pending-messages';
 const PROFILES_STORE = 'profiles';
+const MEDIA_STORE = 'media';
 
 // localStorage keys for instant cache (survives page refresh)
 const LS_CONVERSATIONS_KEY = 'nephtys_conversations_cache';
@@ -255,6 +256,14 @@ class OfflineStorage {
             const profilesStore = db.createObjectStore(PROFILES_STORE, { keyPath: 'id' });
             profilesStore.createIndex('username', 'username', { unique: false });
           }
+
+          // Create media store for durable local cache of decrypted media blobs.
+          // Nécessaire au modèle « local-first » : une fois le blob média
+          // déchiffré, on le garde localement pour qu'il reste disponible même
+          // si le serveur purge l'objet (rétention type WhatsApp).
+          if (!db.objectStoreNames.contains(MEDIA_STORE)) {
+            db.createObjectStore(MEDIA_STORE, { keyPath: 'messageId' });
+          }
         };
 
         // Handle blocked event (when another tab has the DB open with older version)
@@ -408,6 +417,56 @@ class OfflineStorage {
         }
       };
       request.onerror = () => resolve();
+    });
+  }
+
+  // ── Cache durable des médias déchiffrés (local-first) ────────────────
+  // Une fois un média E2EE déchiffré, on stocke le blob en clair localement.
+  // Il reste lisible même après purge de l'objet côté serveur (rétention).
+  async saveMediaBlob(messageId: string, blob: Blob, mimeType?: string): Promise<void> {
+    const ready = await this.ensureReady();
+    if (!ready) return;
+
+    return new Promise((resolve) => {
+      const transaction = this.db!.transaction([MEDIA_STORE], 'readwrite');
+      const store = transaction.objectStore(MEDIA_STORE);
+      store.put({
+        messageId,
+        blob,
+        mimeType: mimeType || blob.type || 'application/octet-stream',
+        updatedAt: new Date().toISOString(),
+      });
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => resolve();
+    });
+  }
+
+  async getMediaBlob(messageId: string): Promise<{ blob: Blob; mimeType: string } | null> {
+    const ready = await this.ensureReady();
+    if (!ready) return null;
+
+    return new Promise((resolve) => {
+      const transaction = this.db!.transaction([MEDIA_STORE], 'readonly');
+      const store = transaction.objectStore(MEDIA_STORE);
+      const request = store.get(messageId);
+      request.onsuccess = () => {
+        const r = request.result;
+        if (r && r.blob) resolve({ blob: r.blob as Blob, mimeType: r.mimeType || 'application/octet-stream' });
+        else resolve(null);
+      };
+      request.onerror = () => resolve(null);
+    });
+  }
+
+  async deleteMediaBlob(messageId: string): Promise<void> {
+    const ready = await this.ensureReady();
+    if (!ready) return;
+
+    return new Promise((resolve) => {
+      const transaction = this.db!.transaction([MEDIA_STORE], 'readwrite');
+      transaction.objectStore(MEDIA_STORE).delete(messageId);
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => resolve();
     });
   }
 
@@ -575,13 +634,14 @@ class OfflineStorage {
     
     return new Promise((resolve) => {
       const transaction = this.db!.transaction(
-        [MESSAGES_STORE, CONVERSATIONS_STORE, PENDING_STORE],
+        [MESSAGES_STORE, CONVERSATIONS_STORE, PENDING_STORE, MEDIA_STORE],
         'readwrite'
       );
 
       transaction.objectStore(MESSAGES_STORE).clear();
       transaction.objectStore(CONVERSATIONS_STORE).clear();
       transaction.objectStore(PENDING_STORE).clear();
+      transaction.objectStore(MEDIA_STORE).clear();
 
       transaction.oncomplete = () => resolve();
       transaction.onerror = () => {

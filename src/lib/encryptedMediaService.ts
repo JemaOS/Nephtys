@@ -21,6 +21,7 @@ import { extractStoragePath } from './mediaUrl';
 import { encryptMedia, decryptMedia, cryptoB64, type WrappedKey } from './mediaEncryption';
 import { getLocalX25519KeyPair, fetchX25519PublicKeys } from './e2eeX25519';
 import { wrapKeyForRecipientX25519, unwrapKeyFromSenderX25519 } from './x25519';
+import { offlineStorage } from './offlineStorage';
 
 // ─── Cache local des blobURL déchiffrés ───────────────────────────────
 
@@ -178,6 +179,20 @@ export async function fetchAndDecryptMedia(
     return cached.url;
   }
 
+  // 0. Cache durable local (IndexedDB) : un média déjà déchiffré reste
+  // disponible même si l'objet a été purgé du serveur (rétention). Et ça
+  // évite tout accès réseau pour un média déjà vu.
+  try {
+    const local = await offlineStorage.getMediaBlob(messageId);
+    if (local) {
+      const url = URL.createObjectURL(local.blob);
+      decryptedBlobCache.set(cacheKey, { url, expiresAt: Date.now() + BLOB_CACHE_TTL_MS });
+      return url;
+    }
+  } catch {
+    // ignore : on retombe sur le réseau
+  }
+
   // 1. Récupère la clé enveloppée
   const { data: keyRow, error: keyError } = await supabase
     .from('message_media_keys')
@@ -227,6 +242,15 @@ export async function fetchAndDecryptMedia(
   const blob = new Blob([plaintext as BlobPart]);
   const url = URL.createObjectURL(blob);
   decryptedBlobCache.set(cacheKey, { url, expiresAt: Date.now() + BLOB_CACHE_TTL_MS });
+
+  // 6. Persiste le blob en clair localement (cache durable, local-first).
+  // Best-effort : les gros fichiers peuvent échouer (quota) sans casser l'affichage.
+  try {
+    await offlineStorage.saveMediaBlob(messageId, blob);
+  } catch {
+    // ignore
+  }
+
   return url;
 }
 
