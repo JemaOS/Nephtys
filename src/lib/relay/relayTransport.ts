@@ -27,7 +27,7 @@ import type {
 } from '../transport/types';
 import type { QueueCredentials, StoredEnvelope } from './relayCore';
 import type { RelayWire } from './wire';
-import { compressToEncodedURIComponent, decompressFromEncodedURIComponent } from 'lz-string';
+import { deflate, inflate } from 'pako';
 
 export interface RelayQueueRef {
   queueId: string;
@@ -60,7 +60,22 @@ interface ConnectionState {
  * déborder le QR code). Le relais (URL avec points) est base64url-encodé.
  * Rétro-compatibilité assurée pour l'ancien format base64(JSON).
  */
-const INVITE_PREFIX = 'nL';
+const INVITE_PREFIX = 'nP';
+
+function toB64Url(bytes: Uint8Array): string {
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
+}
+
+function fromB64Url(value: string): Uint8Array {
+  let b64 = value.replaceAll('-', '+').replaceAll('_', '/');
+  while (b64.length % 4) b64 += '=';
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
 
 function encPart(value?: string): string {
   if (!value) return '';
@@ -101,14 +116,19 @@ function parseInvitePayload(payload: string): Invite {
  * format base64(JSON).
  */
 export function encodeInvite(invite: Invite): string {
-  return INVITE_PREFIX + compressToEncodedURIComponent(invitePayload(invite));
+  const deflated = deflate(new TextEncoder().encode(invitePayload(invite)), { level: 9 });
+  return INVITE_PREFIX + toB64Url(deflated);
 }
 
 export function decodeInvite(link: string): Invite {
   const trimmed = link.trim();
   if (trimmed.startsWith(INVITE_PREFIX)) {
-    const payload = decompressFromEncodedURIComponent(trimmed.slice(INVITE_PREFIX.length));
-    if (payload) return parseInvitePayload(payload);
+    try {
+      const inflated = inflate(fromB64Url(trimmed.slice(INVITE_PREFIX.length)));
+      return parseInvitePayload(new TextDecoder().decode(inflated));
+    } catch {
+      // format invalide → tentative legacy ci-dessous
+    }
   }
   // Rétro-compatibilité : ancien format base64(JSON).
   let b64 = trimmed.replaceAll('-', '+').replaceAll('_', '/');

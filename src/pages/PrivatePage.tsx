@@ -18,7 +18,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { useNavigate } from 'react-router-dom'
 import { getPeerConnectionConfig } from '@/lib/iceServers'
 import { isCoverTrafficEnabled } from '@/lib/privacyPrefs'
-import QRCode from 'react-qr-code'
+import { SafeQrCode } from '@/components/SafeQrCode'
 import { ArrowLeft, Copy, Lock, Paperclip, Plus, Send, ShieldCheck, SlidersHorizontal, Trash2, X } from 'lucide-react'
 import { MainLayout } from '@/components/MainLayout'
 import { useAuth } from '@/context/AuthContext'
@@ -614,15 +614,7 @@ export function PrivatePage() {
                       <X size={16} />
                     </button>
                   </div>
-                  {invite.length <= 2900 ? (
-                    <div className="bg-white p-3 rounded-xl">
-                      <QRCode value={invite} size={180} />
-                    </div>
-                  ) : (
-                    <p className="text-[11px] text-text-tertiary text-center">
-                      Invitation trop longue pour un QR code — partagez le <b>lien</b> ci-dessous.
-                    </p>
-                  )}
+                  <SafeQrCode value={invite} size={180} />
                   <div className="w-full flex items-center gap-2">
                     <input
                       readOnly
@@ -768,13 +760,7 @@ export function PrivatePage() {
 
               {groupInvite && (
                 <div className="rounded-2xl bg-bg-surface p-4 flex flex-col items-center gap-3">
-                  {groupInvite.length <= 2900 ? (
-                    <div className="bg-white p-3 rounded-xl"><QRCode value={groupInvite} size={160} /></div>
-                  ) : (
-                    <p className="text-[11px] text-text-tertiary text-center">
-                      Invitation trop longue pour un QR code — partagez le <b>lien</b> ci-dessous.
-                    </p>
-                  )}
+                  <SafeQrCode value={groupInvite} size={160} />
                   <div className="w-full flex items-center gap-2">
                     <input readOnly value={groupInvite} className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-bg-primary text-[11px] font-mono text-text-secondary truncate" />
                     <button type="button" onClick={() => navigator.clipboard?.writeText(groupInvite)} className="px-3 py-2 rounded-lg bg-bg-hover text-xs text-text-primary">Copier</button>
