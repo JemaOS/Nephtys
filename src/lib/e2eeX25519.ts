@@ -18,18 +18,8 @@
  */
 
 import { supabase } from './supabase';
-import {
-  decryptPrivateKeyWithPassphrase,
-  encryptPrivateKeyWithPassphrase,
-} from './passphraseKeyStore';
-import { fetchKeyMaterial, upsertKeyMaterial } from './keyMaterial';
-import {
-  deriveX25519PublicKey,
-  generateX25519KeyPair,
-  isX25519PublicKey,
-  tagX25519,
-  type X25519KeyPair,
-} from './x25519';
+import { upsertKeyMaterial } from './keyMaterial';
+import { isX25519PublicKey, tagX25519, type X25519KeyPair } from './x25519';
 
 const IDB_NAME = 'nephtys-e2ee';
 const IDB_STORE = 'private-keys';
@@ -124,97 +114,7 @@ export async function fetchX25519PublicKeys(userIds: string[]): Promise<Map<stri
   return map;
 }
 
-// ─── Cycle de vie de la paire (setup / unlock / reset) ────────────────
-
-/**
- * Crée (ou reprend) la paire X25519, la chiffre avec le mot de passe et
- * publie le matériel. Idempotent : préserve une paire déjà publiée.
- */
-export async function setupX25519KeyPair(userId: string, password: string): Promise<X25519KeyPair> {
-  const keyMat = await fetchKeyMaterial(userId);
-
-  const remoteHasKey = !!(
-    keyMat?.x25519_private_key &&
-    keyMat?.x25519_salt &&
-    keyMat?.x25519_iv
-  );
-  if (remoteHasKey) {
-    return await unlockX25519KeyPair(userId, password);
-  }
-
-  // Préserve une paire locale existante si présente, sinon en génère une.
-  const local = await idbGet(idbKeyFor(userId));
-  const keyPair: X25519KeyPair = local?.privateKey
-    ? { publicKey: deriveX25519PublicKey(local.privateKey), privateKey: local.privateKey }
-    : generateX25519KeyPair();
-
-  const enc = await encryptPrivateKeyWithPassphrase(keyPair.privateKey, password);
-  const { error } = await supabase
-    .from('profiles')
-    .update({
-      x25519_public_key: keyPair.publicKey,
-      x25519_public_key_updated_at: new Date().toISOString(),
-    })
-    .eq('id', userId);
-  if (error) {
-    if (error.message?.includes('x25519_')) {
-      throw new Error('Migration manquante : applique 20261010_x25519_profiles.sql');
-    }
-    throw error;
-  }
-  await upsertKeyMaterial(userId, {
-    x25519_private_key: enc.encryptedPrivateKey,
-    x25519_salt: enc.salt,
-    x25519_iv: enc.iv,
-  });
-
-  await idbSet(idbKeyFor(userId), keyPair);
-  return keyPair;
-}
-
-/**
- * Déverrouille la paire X25519 sur un device : télécharge la privée chiffrée,
- * la déchiffre avec le mot de passe, la stocke en IndexedDB local.
- */
-export async function unlockX25519KeyPair(userId: string, password: string): Promise<X25519KeyPair> {
-  const [{ data: profile }, keyMat] = await Promise.all([
-    supabase.from('profiles').select('x25519_public_key').eq('id', userId).maybeSingle(),
-    fetchKeyMaterial(userId),
-  ]);
-
-  if (!keyMat?.x25519_private_key || !keyMat?.x25519_salt || !keyMat?.x25519_iv) {
-    throw new Error('Aucune clé X25519 chiffrée en DB pour cet utilisateur.');
-  }
-
-  const privateKey = await decryptPrivateKeyWithPassphrase(
-    {
-      encryptedPrivateKey: keyMat.x25519_private_key,
-      salt: keyMat.x25519_salt,
-      iv: keyMat.x25519_iv,
-    },
-    password,
-  );
-
-  // ⚠️ On DÉRIVE toujours la publique de la privée locale : préférer la
-  // publique STOCKÉE provoquait un désaccord (pubkey publiée ≠ privée locale)
-  // → les pairs enveloppaient pour une clé que l'on ne pouvait pas ouvrir
-  // (cause du « message indéchiffrable » côté destinataire).
-  const publicKey = deriveX25519PublicKey(privateKey);
-  if (profile?.x25519_public_key !== publicKey) {
-    try {
-      await supabase
-        .from('profiles')
-        .update({ x25519_public_key: publicKey, x25519_public_key_updated_at: new Date().toISOString() })
-        .eq('id', userId);
-    } catch {
-      // best-effort
-    }
-  }
-
-  const keyPair: X25519KeyPair = { publicKey, privateKey };
-  await idbSet(idbKeyFor(userId), keyPair);
-  return keyPair;
-}
+// ─── Cycle de vie de la paire (install / clear) ───────────────────────
 
 /**
  * Installe une paire X25519 DÉJÀ DÉRIVÉE (récupération par phrase) : stockage
@@ -243,62 +143,3 @@ export async function clearLocalX25519(userId: string): Promise<void> {
   });
 }
 
-/** Réinitialise la paire (les anciens messages X25519 deviennent illisibles). */
-export async function resetX25519KeyPair(userId: string, newPassword: string): Promise<X25519KeyPair> {
-  await idbDelete(idbKeyFor(userId));
-  await upsertKeyMaterial(userId, {
-    x25519_private_key: null,
-    x25519_salt: null,
-    x25519_iv: null,
-  });
-  return await setupX25519KeyPair(userId, newPassword);
-}
-
-// ─── Initialisation silencieuse (mêmes hooks que la pile P-256) ───────
-
-/** À la création de compte : génère + publie la paire X25519 (silencieux). */
-export async function initX25519OnSignup(userId: string, password: string): Promise<void> {
-  try {
-    await setupX25519KeyPair(userId, password);
-  } catch (err) {
-    console.error('[E2EE][x25519] initX25519OnSignup failed (migration ?)', err);
-  }
-}
-
-/** À la connexion : restaure la paire X25519 avec le mot de passe (silencieux). */
-export async function initX25519OnSignin(userId: string, password: string): Promise<void> {
-  try {
-    const keyMat = await fetchKeyMaterial(userId);
-
-    const remoteHasKey = !!(
-      keyMat?.x25519_private_key &&
-      keyMat?.x25519_salt &&
-      keyMat?.x25519_iv
-    );
-
-    if (remoteHasKey) {
-      try {
-        await unlockX25519KeyPair(userId, password);
-      } catch {
-        // NON DESTRUCTIF : si une clé locale existe déjà, on la GARDE
-        // (régénérer effacerait l'historique lisible). On ne régénère que si
-        // AUCUNE clé locale n'existe (device vierge / clé perdue).
-        const local = await getLocalX25519KeyPair(userId);
-        if (!local) {
-          console.warn('[E2EE][x25519] Déverrouillage échoué et aucune clé locale → régénération');
-          try {
-            await resetX25519KeyPair(userId, password);
-          } catch (e) {
-            console.error('[E2EE][x25519] régénération échouée', e);
-          }
-        } else {
-          console.warn('[E2EE][x25519] Déverrouillage DB échoué mais clé locale présente → conservée');
-        }
-      }
-    } else {
-      await setupX25519KeyPair(userId, password);
-    }
-  } catch (err) {
-    console.error('[E2EE][x25519] initX25519OnSignin failed', err);
-  }
-}

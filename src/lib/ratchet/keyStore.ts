@@ -4,27 +4,16 @@
 /**
  * Gestion des clés X3DH/Double Ratchet de l'utilisateur.
  *
- *   • Matériel privé (identité DH, clé de signature, signed prekey,
- *     one-time prekeys) : stocké en IndexedDB local, ET copie chiffrée par
- *     mot de passe dans `user_key_material.ratchet_keys_*`.
+ *   • Matériel privé (identité DH, clé de signature, signed prekey, one-time
+ *     prekeys, ML-KEM) : **IndexedDB local uniquement**, dérivé de la phrase
+ *     de récupération. **Aucune copie serveur.**
  *   • Bundle public : publié dans `profiles.ratchet_*` + one-time prekeys
  *     dans la table `one_time_prekeys`.
- *
- * Mêmes hooks d'init silencieuse que les piles P-256 / X25519.
  */
 
 import { supabase } from '../supabase';
-import {
-  decryptPrivateKeyWithPassphrase,
-  encryptPrivateKeyWithPassphrase,
-} from '../passphraseKeyStore';
-import { fetchKeyMaterial, upsertKeyMaterial } from '../keyMaterial';
-import {
-  signPreKey,
-} from './x3dh';
-import { base64ToBytes, bytesToBase64 } from './primitives';
-import { generateLocalRatchetKeys, type LocalRatchetKeys, type PeerBundle } from './service';
-import { generateMlKemKeyPair } from './pqKem';
+import { signPreKey } from './x3dh';
+import type { LocalRatchetKeys, PeerBundle } from './service';
 import { clearUserSessions } from './sessionStore';
 
 const DB_NAME = 'nephtys-ratchet-keys';
@@ -76,32 +65,6 @@ async function idbDelete(userId: string): Promise<void> {
   });
 }
 
-// ─── Encodage du blob privé ───────────────────────────────────────────
-
-function encodeKeys(keys: LocalRatchetKeys): string {
-  return bytesToBase64(new TextEncoder().encode(JSON.stringify(keys)));
-}
-
-function decodeKeys(b64: string): LocalRatchetKeys {
-  return JSON.parse(new TextDecoder().decode(base64ToBytes(b64))) as LocalRatchetKeys;
-}
-
-// ─── Génération ───────────────────────────────────────────────────────
-
-function generateLocalKeys(): LocalRatchetKeys {
-  return generateLocalRatchetKeys();
-}
-
-/**
- * Garantit la présence d'une paire ML-KEM (upgrade des comptes pré-post-quantique).
- * Renvoie `true` si une paire a été générée (→ à persister + republier).
- */
-function ensureMlKem(keys: LocalRatchetKeys): boolean {
-  if (keys.mlKemKeyPair?.publicKey && keys.mlKemKeyPair?.secretKey) return false;
-  keys.mlKemKeyPair = generateMlKemKeyPair();
-  return true;
-}
-
 /** Lecture locale seule (pas de réseau) — utilisée par le service ratchet. */
 export async function getLocalRatchetKeys(userId: string): Promise<LocalRatchetKeys | null> {
   try {
@@ -111,7 +74,7 @@ export async function getLocalRatchetKeys(userId: string): Promise<LocalRatchetK
   }
 }
 
-// ─── Publication / récupération serveur ───────────────────────────────
+// ─── Publication du bundle public ─────────────────────────────────────
 
 async function publishKeys(userId: string, keys: LocalRatchetKeys): Promise<void> {
   const { error } = await supabase
@@ -144,63 +107,6 @@ async function publishKeys(userId: string, keys: LocalRatchetKeys): Promise<void
   if (opkError) throw opkError;
 }
 
-async function persistEncrypted(userId: string, keys: LocalRatchetKeys, password: string): Promise<void> {
-  const enc = await encryptPrivateKeyWithPassphrase(encodeKeys(keys), password);
-  await upsertKeyMaterial(userId, {
-    ratchet_keys_encrypted: enc.encryptedPrivateKey,
-    ratchet_keys_salt: enc.salt,
-    ratchet_keys_iv: enc.iv,
-  });
-}
-
-async function fetchEncrypted(userId: string) {
-  const km = await fetchKeyMaterial(userId);
-  if (!km?.ratchet_keys_encrypted || !km.ratchet_keys_salt || !km.ratchet_keys_iv) return null;
-  return { encryptedPrivateKey: km.ratchet_keys_encrypted, salt: km.ratchet_keys_salt, iv: km.ratchet_keys_iv };
-}
-
-/**
- * Crée (ou reprend) le matériel ratchet, le chiffre avec le mot de passe et
- * publie le bundle. Idempotent.
- */
-export async function setupRatchetKeys(userId: string, password: string): Promise<LocalRatchetKeys> {
-  const enc = await fetchEncrypted(userId);
-  if (enc) return await unlockRatchetKeys(userId, password);
-
-  const keys = (await idbGet(userId)) ?? generateLocalKeys();
-  ensureMlKem(keys);
-  await persistEncrypted(userId, keys, password);
-  await publishKeys(userId, keys);
-  await idbSet(userId, keys);
-  return keys;
-}
-
-/** Déverrouille le matériel ratchet sur un nouveau device via le mot de passe. */
-export async function unlockRatchetKeys(userId: string, password: string): Promise<LocalRatchetKeys> {
-  const enc = await fetchEncrypted(userId);
-  if (!enc) throw new Error('Aucune clé ratchet chiffrée en DB pour cet utilisateur.');
-  const keys = decodeKeys(await decryptPrivateKeyWithPassphrase(enc, password));
-  // Upgrade post-quantique : si le blob précède ML-KEM, on génère la paire et
-  // on re-chiffre (sinon des messages PQ seraient indéchiffrables).
-  if (ensureMlKem(keys)) {
-    try {
-      await persistEncrypted(userId, keys, password);
-    } catch {
-      // ignore
-    }
-  }
-  await idbSet(userId, keys);
-  // Réconciliation : republie le bundle public pour qu'il corresponde EXACTEMENT
-  // aux clés locales (sinon un pair chiffre pour une clé publiée périmée →
-  // OperationError / « message indéchiffrable »). Best-effort.
-  try {
-    await publishKeys(userId, keys);
-  } catch {
-    // ignore
-  }
-  return keys;
-}
-
 /**
  * Installe un matériel ratchet DÉJÀ DÉRIVÉ (récupération par phrase) : stockage
  * local + publication du bundle public. **Aucune copie chiffrée n'est envoyée
@@ -219,23 +125,6 @@ export async function clearLocalRatchetKeys(userId: string): Promise<void> {
   await idbDelete(userId);
   await clearUserSessions(userId);
   await supabase.from('one_time_prekeys').delete().eq('user_id', userId);
-}
-
-/** Réinitialise le matériel ratchet (perte des sessions/anciens messages). */
-export async function resetRatchetKeys(userId: string, password: string): Promise<LocalRatchetKeys> {
-  await idbDelete(userId);
-  // Purge AUSSI les sessions (sinon sessions périmées → OperationError).
-  await clearUserSessions(userId);
-  await supabase
-    .from('one_time_prekeys')
-    .delete()
-    .eq('user_id', userId);
-  await upsertKeyMaterial(userId, {
-    ratchet_keys_encrypted: null,
-    ratchet_keys_salt: null,
-    ratchet_keys_iv: null,
-  });
-  return await setupRatchetKeys(userId, password);
 }
 
 /** Bundle public d'un pair + une one-time prekey disponible. */
@@ -271,42 +160,4 @@ export async function markOneTimePreKeyUsed(peerId: string, oneTimePreKey: strin
     .update({ is_used: true })
     .eq('user_id', peerId)
     .eq('public_key', oneTimePreKey);
-}
-
-// ─── Initialisation silencieuse ───────────────────────────────────────
-
-export async function initRatchetOnSignup(userId: string, password: string): Promise<void> {
-  try {
-    await setupRatchetKeys(userId, password);
-  } catch (err) {
-    console.error('[E2EE][ratchet] initRatchetOnSignup failed (migration ?)', err);
-  }
-}
-
-export async function initRatchetOnSignin(userId: string, password: string): Promise<void> {
-  try {
-    const enc = await fetchEncrypted(userId);
-    if (enc) {
-      try {
-        await unlockRatchetKeys(userId, password);
-      } catch {
-        // NON DESTRUCTIF : ne régénère que si aucune clé locale n'existe.
-        const local = await idbGet(userId);
-        if (!local) {
-          console.warn('[E2EE][ratchet] Déverrouillage échoué et aucune clé locale → régénération');
-          try {
-            await resetRatchetKeys(userId, password);
-          } catch (e) {
-            console.error('[E2EE][ratchet] régénération échouée', e);
-          }
-        } else {
-          console.warn('[E2EE][ratchet] Déverrouillage DB échoué mais clé locale présente → conservée');
-        }
-      }
-    } else {
-      await setupRatchetKeys(userId, password);
-    }
-  } catch (err) {
-    console.error('[E2EE][ratchet] initRatchetOnSignin failed', err);
-  }
 }
