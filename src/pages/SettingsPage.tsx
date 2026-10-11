@@ -491,10 +491,24 @@ export function SettingsPage() {
   // Routage Tor : simple préférence locale (aucun envoi serveur). Un clic active
   // la passerelle Tor de l'infra — aucun logiciel externe. Prend effet à la
   // prochaine connexion du mode privé.
-  const handleToggleTor = () => {
-    const next = !torEnabled
-    setTorEnabled(next)
-    setTorRelayEnabled(next)
+  const handleSetTorPolicy = (enabled: boolean) => {
+    setTorEnabled(enabled)
+    setTorRelayEnabled(enabled)
+  }
+
+  /** Remet relais / Tor / appels aux valeurs par defaut puis recharge. */
+  const handleResetNetwork = () => {
+    setRelayUrl('')
+    setTorRelayEnabled(false)
+    setRelayOnlyCallsEnabled(true)
+    globalThis.location.reload()
+  }
+
+  /** Applique relais + politique de routage Tor puis relance la connexion. */
+  const handleSaveAndReconnect = () => {
+    setRelayUrl(relayInput)
+    setTorRelayEnabled(torEnabled)
+    globalThis.location.reload()
   }
 
   const handleSaveRelay = () => {
@@ -1242,16 +1256,42 @@ export function SettingsPage() {
 
             <div className="flex items-center justify-between">
               <div className="pr-4">
-                <div className="text-text-primary">Se connecter via Tor</div>
-                <div className="text-sm text-text-secondary">Masque votre IP via le réseau Tor (passerelle).</div>
+                <div className="text-text-primary">Routage privé</div>
+                <div className="text-sm text-text-secondary">Router le mode privé via le réseau Tor.</div>
               </div>
+              <div className="flex gap-1 p-1 rounded-xl bg-bg-surface shrink-0">
+                <button
+                  type="button"
+                  onClick={() => handleSetTorPolicy(true)}
+                  disabled={!torAvailable}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${torEnabled ? 'bg-[#7578db] text-white' : 'text-text-secondary'} ${torAvailable ? '' : 'opacity-50'}`}
+                >
+                  Toujours
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSetTorPolicy(false)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${torEnabled ? 'text-text-secondary' : 'bg-[#7578db] text-white'}`}
+                >
+                  Jamais
+                </button>
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-bg-hover space-y-2">
               <button
-                onClick={handleToggleTor}
-                disabled={!torAvailable}
-                aria-pressed={torEnabled}
-                className={`w-12 h-6 rounded-full relative shrink-0 transition-colors ${torEnabled ? 'bg-accent' : 'bg-[#8696a0]'} ${torAvailable ? '' : 'opacity-50'}`}
+                type="button"
+                onClick={handleResetNetwork}
+                className="w-full px-3 py-2 rounded-xl bg-bg-surface hover:bg-bg-hover text-text-primary text-sm"
               >
-                <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${torEnabled ? 'right-1' : 'left-1'}`}></div>
+                Réinitialiser les valeurs par défaut
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveAndReconnect}
+                className="w-full px-3 py-2 rounded-xl bg-[#7578db] text-white text-sm font-medium"
+              >
+                Sauvegarder et se reconnecter
               </button>
             </div>
 
