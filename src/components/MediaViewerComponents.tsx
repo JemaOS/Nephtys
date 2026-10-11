@@ -280,6 +280,7 @@ interface ImageViewerProps {
   allMedia?: any[];
   isMobile: boolean;
   showControls: boolean;
+  isPinching: boolean;
 }
 
 export const ImageViewer: React.FC<ImageViewerProps> = ({
@@ -300,6 +301,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
   allMedia,
   isMobile,
   showControls,
+  isPinching,
 }) => {
   const { t } = useI18n();
   return (
@@ -345,7 +347,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
         className="max-w-full max-h-full object-contain select-none"
         style={{
           transform: `scale(${zoom}) translate(${position.x / zoom}px, ${position.y / zoom}px)`,
-          transition: isDragging ? 'none' : 'transform 0.1s ease-out',
+          transition: isDragging || isPinching ? 'none' : 'transform 0.1s ease-out',
           touchAction: 'manipulation',
           pointerEvents: isSwipeActive ? 'none' : 'auto',
         }}

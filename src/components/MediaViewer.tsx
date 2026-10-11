@@ -236,7 +236,8 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
-  const [isDragging, setIsDragging] = useState(false);
+  const [isDragging, setIsDragging] = useState(false)
+  const [isPinching, setIsPinching] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   
   // Video progress state
@@ -315,6 +316,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
     setTouchStartY(null);
     setIsSwipeActive(false);
     setSwipeDirection(null);
+    setIsPinching(false);
     setShowControls(true);
   }, [currentIndex, mediaUrl, isOpen]);
 
@@ -512,6 +514,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
       setInitialPinchDistance(distance);
       setInitialZoom(zoom);
       setPinchCenter(getTouchCenter(e.touches));
+      setIsPinching(true);
       setIsSwipeActive(false);
     } else if (e.touches.length === 1) {
       const touch = e.touches[0];
@@ -714,6 +717,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
     // Reset touch state
     setTouchStartX(null);
     setTouchStartY(null);
+    setIsPinching(false);
     setIsSwipeActive(false);
     setSwipeDirection(null);
   }, [initialPinchDistance, touchStartX, zoom, allMedia, currentIndex, onNavigate, swipeDirection, shouldNavigateFromSwipe]);
@@ -1259,6 +1263,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
             allMedia={allMedia}
             isMobile={isMobile}
             showControls={showControls}
+            isPinching={isPinching}
           />
         )}
 
