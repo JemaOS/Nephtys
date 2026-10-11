@@ -143,7 +143,7 @@ async function fetchConversationData(supabaseUrl: string, supabaseServiceKey: st
 
 async function fetchMembersData(supabaseUrl: string, supabaseServiceKey: string, conversation_id: string) {
   const response = await fetch(
-    `${supabaseUrl}/rest/v1/conversation_members?conversation_id=eq.${conversation_id}&select=*,profile:profiles(id,username,display_name,avatar_url,bio,session_id,public_key,created_at,updated_at)`,
+    `${supabaseUrl}/rest/v1/conversation_members?conversation_id=eq.${conversation_id}&select=*,profile:profiles(id,username,display_name,avatar_url,bio,session_id,created_at,updated_at)`,
     {
       headers: {
         'Authorization': `Bearer ${supabaseServiceKey}`,
@@ -172,7 +172,7 @@ async function fetchMembersData(supabaseUrl: string, supabaseServiceKey: string,
 }
 
 async function fetchMessagesData(supabaseUrl: string, supabaseServiceKey: string, conversation_id: string, limit: number, before_message_id?: string) {
-  let messagesUrl = `${supabaseUrl}/rest/v1/messages?conversation_id=eq.${conversation_id}&select=*,sender:profiles(id,username,display_name,avatar_url,bio,session_id,public_key,created_at,updated_at)&order=created_at.desc&limit=${limit}`;
+  let messagesUrl = `${supabaseUrl}/rest/v1/messages?conversation_id=eq.${conversation_id}&select=*,sender:profiles(id,username,display_name,avatar_url,bio,session_id,created_at,updated_at)&order=created_at.desc&limit=${limit}`;
   
   if (before_message_id) {
     messagesUrl += `&created_at.lt=(select created_at from messages where id='${before_message_id}')`;
@@ -221,7 +221,7 @@ async function fetchOtherUserData(supabaseUrl: string, supabaseServiceKey: strin
   if (convType === 'direct') {
     // For direct messages, find the other member
     const membersResponse = await fetch(
-      `${supabaseUrl}/rest/v1/conversation_members?conversation_id=eq.${conversation_id}&user_id=neq.${userId}&select=profile:profiles(id,username,display_name,avatar_url,bio,session_id,public_key,created_at,updated_at)`,
+      `${supabaseUrl}/rest/v1/conversation_members?conversation_id=eq.${conversation_id}&user_id=neq.${userId}&select=profile:profiles(id,username,display_name,avatar_url,bio,session_id,created_at,updated_at)`,
       {
         headers: {
           'Authorization': `Bearer ${supabaseServiceKey}`,
@@ -250,7 +250,7 @@ async function fetchProfilesData(supabaseUrl: string, supabaseServiceKey: string
   if (userIds.length > 0) {
     const userIdList = userIds.map((id: string) => `"${id}"`).join(',');
     const profilesResponse = await fetch(
-      `${supabaseUrl}/rest/v1/profiles?id=in.(${userIdList})&select=id,username,display_name,avatar_url,bio,session_id,public_key,created_at,updated_at`,
+      `${supabaseUrl}/rest/v1/profiles?id=in.(${userIdList})&select=id,username,display_name,avatar_url,bio,session_id,created_at,updated_at`,
       {
         headers: {
           'Authorization': `Bearer ${supabaseServiceKey}`,
