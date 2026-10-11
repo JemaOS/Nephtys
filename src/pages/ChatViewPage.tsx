@@ -825,6 +825,10 @@ export function ChatViewPage() {
   // crée PAS une seconde entrée : sinon DOUBLON (temp + réel, ou 2× le même
   // id réel). On préserve l'ordre (remplacement en place) et on nettoie le temp.
   const settleOptimisticMessage = useCallback((tempId: string, realMsg: Message) => {
+    // Sealed sender : la ligne réelle peut avoir `sender_id` NULL. On mémorise
+    // systématiquement son id RÉEL comme « envoyé par moi » (l'id temp ne
+    // suffit pas : il disparaît du state et n'est jamais persisté).
+    markOwnMessage(realMsg.id)
     setMessages(prev => {
       const alreadyHasReal = prev.some(m => m.id === realMsg.id)
       if (alreadyHasReal) {
@@ -2362,6 +2366,10 @@ await decryptMessageRows(validData as any[], user.id)
         // clair côté client (jamais le ciphertext à l'écran).
         const settledMedia: any = { ...data, content: caption, sender_id: data.sender_id ?? user.id }
         if (caption) cacheDecryptedText(data.id, caption)
+        // Sealed sender : `sender_id` peut être NULL côté serveur → on mémorise
+        // l'id RÉEL comme « envoyé par moi » pour que l'alignement (droite)
+        // survive au rechargement / à l'écho realtime (sender_id NULL).
+        markOwnMessage(data.id)
         settleOptimisticMessage(tempId, settledMedia)
         // Diffusion Realtime : la ligne RÉELLE (chemins storage + enveloppe
         // éventuelle), jamais le blob local. Garantit l'arrivée instantanée des
@@ -2508,6 +2516,8 @@ await decryptMessageRows(validData as any[], user.id)
             continue
           }
           const settledFile = { ...data, sender_id: data.sender_id ?? user.id } as unknown as Message
+          // Sealed sender : id RÉEL mémorisé comme « à moi » (chaque fichier).
+          markOwnMessage(data.id)
           settleOptimisticMessage(tempId, settledFile)
           // Diffusion Realtime de chaque fichier (ligne réelle, chemins storage).
           messageQueueRef.current.push(settledFile)
@@ -2628,6 +2638,8 @@ await decryptMessageRows(validData as any[], user.id)
           return
         }
         // Replace optimistic message with real one
+        // Sealed sender : id RÉEL mémorisé comme « à moi » (vocal).
+        markOwnMessage(insertedMessage.id)
         settleOptimisticMessage(tempId, { ...insertedMessage, sender_id: insertedMessage.sender_id ?? user.id } as unknown as Message)
         // Diffusion Realtime du vocal (ligne réelle, chemin storage chiffré).
         messageQueueRef.current.push({ ...insertedMessage } as unknown as Message)
@@ -3035,6 +3047,8 @@ await decryptMessageRows(validData as any[], user.id)
         }
 
         successCount++
+        // Sealed sender : id RÉEL du transfert mémorisé comme « à moi ».
+        if (newId) markOwnMessage(newId)
         await updateConversationLastMessage(targetConversationId)
       }
     }
@@ -3943,7 +3957,7 @@ await decryptMessageRows(validData as any[], user.id)
         onDeleteForMe={handleBulkDeleteForMe}
         isOwn={Array.from(selectedMessages).every(id => {
           const msg = messages.find(m => m.id === id)
-          return msg?.sender_id === user?.id
+          return !!msg && (msg.sender_id === user?.id || isOwnMessage(msg.id))
         })}
         hasMedia={Array.from(selectedMessages).some(id => {
           const msg = messages.find(m => m.id === id)
