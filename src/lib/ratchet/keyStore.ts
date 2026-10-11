@@ -100,15 +100,30 @@ async function publishKeys(userId: string, keys: LocalRatchetKeys): Promise<void
     throw error;
   }
 
-  // (Re)publie les one-time prekeys disponibles.
+  // (Re)publie les one-time prekeys SANS jamais ressusciter une OPK consommée.
+  //
+  // `ignoreDuplicates: true` ⇒ INSERT ... ON CONFLICT (user_id, public_key) DO
+  // NOTHING : une OPK déjà présente côté serveur (y compris `is_used = true`)
+  // n'est PLUS réécrite ; seules les OPK absentes du serveur sont insérées
+  // `is_used = false`. L'ancien upsert (`ignoreDuplicates: false`, DO UPDATE)
+  // remettait `is_used = false` sur TOUTES les OPK locales à chaque
+  // (re)publication : une OPK déjà consommée redevenait « disponible », cassant
+  // le caractère one-time (et exigeait la policy UPDATE `otpk_update_own`).
+  //
+  // Les OPK sont dérivées de façon déterministe de la phrase (labels `opk-<i>`,
+  // cf. keysFromPhrase.ts) : une (re)publication ne fait donc que réinsérer les
+  // OPK absentes (ex. après `clearLocalRatchetKeys`) — jamais réinitialiser les
+  // OPK consommées. Côté RLS, un simple INSERT owner-scopé (`otpk_insert_own`)
+  // suffit désormais.
   const rows = Object.keys(keys.oneTimePreKeys).map(publicKey => ({
     user_id: userId,
     public_key: publicKey,
     is_used: false,
   }));
+  if (rows.length === 0) return;
   const { error: opkError } = await supabase
     .from('one_time_prekeys')
-    .upsert(rows, { onConflict: 'user_id,public_key', ignoreDuplicates: false });
+    .upsert(rows, { onConflict: 'user_id,public_key', ignoreDuplicates: true });
   if (opkError) throw opkError;
 }
 

@@ -6,9 +6,18 @@
  *
  * Une session par (utilisateur, pair). Base IndexedDB dédiée pour ne pas
  * entrer en conflit de version avec les autres stores E2EE.
+ *
+ * L'état de session est du MATÉRIEL SENSIBLE (clé racine, clés de chaîne,
+ * clé privée de ratchet) : il est chiffré « au repos » via `sealAtRest` /
+ * `openAtRest` (même modèle que `keyStore` / `e2eeX25519` / `decryptCache`).
+ * Les entrées historiques stockées en clair restent lisibles (rétrocompat) et
+ * sont re-chiffrées à la prochaine écriture. La CLÉ IndexedDB (`userId|peerId`)
+ * reste en clair : elle est hors-ligne (out-of-line) et c'est elle qui indexe
+ * la session, pas un champ du enregistrement.
  */
 
 import type { SessionState } from './doubleRatchet';
+import { sealAtRest, openAtRest } from '../atRestCrypto';
 
 const DB_NAME = 'nephtys-ratchet-sessions';
 const STORE = 'sessions';
@@ -33,12 +42,19 @@ function sessionKey(userId: string, peerId: string): string {
 export async function loadSession(userId: string, peerId: string): Promise<SessionState | null> {
   try {
     const db = await openDb();
-    return await new Promise<SessionState | null>((resolve, reject) => {
+    const raw = await new Promise<unknown>((resolve, reject) => {
       const tx = db.transaction(STORE, 'readonly');
       const req = tx.objectStore(STORE).get(sessionKey(userId, peerId));
-      req.onsuccess = () => resolve((req.result as SessionState) ?? null);
+      req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
     });
+    if (raw == null) return null;
+    // `openAtRest` déchiffre les enregistrements scellés et renvoie TEL QUEL
+    // l'ancien format historique en clair (rétrocompatibilité). `undefined` =
+    // boîte indéchiffrable (clé au repos perdue) → traité comme session absente
+    // (l'app refera X3DH plutôt que de dériver un état corrompu).
+    const opened = await openAtRest(raw);
+    return (opened as SessionState | undefined) ?? null;
   } catch {
     return null;
   }
@@ -50,9 +66,14 @@ export async function saveSession(
   state: SessionState,
 ): Promise<void> {
   const db = await openDb();
+  // Chiffrement « au repos » de l'état de session (clés de chaîne, clé privée
+  // de ratchet). `sealAtRest` est best-effort : il retombe sur la valeur brute
+  // si le chiffrement au repos est indisponible (pas de régression d'envoi), et
+  // reste rétrocompatible avec les enregistrements en clair déjà présents.
+  const stored = await sealAtRest(state);
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(STORE, 'readwrite');
-    tx.objectStore(STORE).put(state, sessionKey(userId, peerId));
+    tx.objectStore(STORE).put(stored, sessionKey(userId, peerId));
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
