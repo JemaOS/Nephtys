@@ -908,6 +908,7 @@ export function ChatViewPage() {
   const isLoadingDataRef = useRef(false)
   const lastLoadTimeRef = useRef(0)
   const initialLoadDoneRef = useRef(false)
+  const lastLoadedConvRef = useRef<string | null>(null)
   
   // Debounced load function to prevent request spam - WHATSAPP STYLE
   const debouncedLoadData = useCallback(() => {
@@ -943,7 +944,15 @@ export function ChatViewPage() {
 
   useEffect(() => {
     if (!conversationId || !user) return
-    
+
+    // Reset du garde-fou quand on CHANGE de conversation : sinon la nouvelle
+    // conversation ne charge jamais ses messages → fil vide.
+    if (lastLoadedConvRef.current !== conversationId) {
+      lastLoadedConvRef.current = conversationId
+      initialLoadDoneRef.current = false
+      lastLoadTimeRef.current = 0
+    }
+
     // WHATSAPP-LEVEL STABILITY: Only load once on mount
     // Real-time updates come through the channel, not polling
     if (!initialLoadDoneRef.current) {
@@ -959,6 +968,22 @@ export function ChatViewPage() {
         } finally {
           await loadCallLogs()
         }
+        // Course « nouvelle conversation » : la membership peut ne pas être
+        // encore propagée côté RLS → 0 message. On vérifie et on retente.
+        setTimeout(async () => {
+          try {
+            const { count } = await supabase
+              .from('messages')
+              .select('id', { count: 'exact', head: true })
+              .eq('conversation_id', conversationId)
+            if (count && count > 0) {
+              lastLoadTimeRef.current = 0
+              await loadMessages()
+            }
+          } catch {
+            // ignore
+          }
+        }, 2500)
       }
       loadInitialData()
     }
