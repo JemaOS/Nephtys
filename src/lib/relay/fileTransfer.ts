@@ -29,6 +29,20 @@ export const FILE_MAX_BYTES = 4 * 1024 * 1024 * 1024; // 4 GiB
 /** Préfixe de dossier autorisé : `[A-Za-z0-9_-]{8,}` (opaque, non devinable). */
 const PREFIX_RE = /^[A-Za-z0-9_-]{8,}$/;
 
+/**
+ * Bucket `anon_files` PRIVÉ + policy SELECT bucket-wide supprimée ⇒ la lecture
+ * directe (`storage.download`) est refusée. Le download passe par l'edge
+ * function `anon-files-download` (service_role) qui renvoie des URLs signées
+ * (60 s) pour un préfixe EXACT fourni — sans jamais lister le bucket.
+ */
+const DOWNLOAD_FN = 'anon-files-download';
+/** Nombre max de chunks signés par appel (aligné sur la borne de la function). */
+const SIGN_BATCH_SIZE = 64;
+
+interface SignedChunksResponse {
+  chunks: { index: number; url: string }[];
+}
+
 interface FileDescriptor {
   v: 1;
   name: string;
@@ -173,16 +187,62 @@ export async function encryptAndUploadFile(
   };
 }
 
+/**
+ * Demande à l'edge function les URLs signées d'un lot d'index (préfixe EXACT).
+ * En cas d'erreur HTTP, remonte le message serveur si disponible.
+ */
+async function fetchSignedChunkUrls(prefix: string, indices: number[]): Promise<Map<number, string>> {
+  const { data, error } = await supabase.functions.invoke<SignedChunksResponse>(DOWNLOAD_FN, {
+    body: { prefix, chunks: indices },
+  });
+
+  if (error) {
+    let detail = error.message;
+    try {
+      const res = (error as { context?: Response }).context;
+      if (res && typeof res.json === 'function') {
+        const body = (await res.json()) as { error?: { message?: string } };
+        if (body?.error?.message) detail = body.error.message;
+      }
+    } catch {
+      // corps non JSON : on garde le message générique
+    }
+    throw new Error(`signature chunks: ${detail}`);
+  }
+
+  const list = data?.chunks;
+  if (!Array.isArray(list)) throw new Error('signature chunks: réponse invalide');
+  const urls = new Map<number, string>();
+  for (const c of list) {
+    if (c && Number.isInteger(c.index) && typeof c.url === 'string') urls.set(c.index, c.url);
+  }
+  return urls;
+}
+
 export async function downloadAndDecryptFile(desc: FileDescriptor): Promise<Blob> {
   const { key, ivBase } = validateDescriptor(desc);
   const parts: BlobPart[] = [];
 
-  for (let i = 0; i < desc.chunks; i++) {
-    const { data, error } = await supabase.storage.from(FILE_BUCKET).download(`${desc.prefix}/${i}`);
-    if (error || !data) throw new Error(`download chunk ${i}: ${error?.message ?? 'no data'}`);
-    const ct = new Uint8Array(await data.arrayBuffer());
-    const pt = await decryptChunk(key, ivBase, i, ct);
-    parts.push(pt as unknown as BlobPart);
+  // Découpage en lots bornés (la function plafonne à SIGN_BATCH_SIZE/appel).
+  for (let start = 0; start < desc.chunks; start += SIGN_BATCH_SIZE) {
+    const indices: number[] = [];
+    for (let i = start; i < Math.min(start + SIGN_BATCH_SIZE, desc.chunks); i++) indices.push(i);
+
+    const urls = await fetchSignedChunkUrls(desc.prefix, indices);
+
+    // FAIL CLOSED : URL manquante ou téléchargement en échec ⇒ erreur remontée
+    // (aucun contenu partiel silencieux).
+    for (const i of indices) {
+      const url = urls.get(i);
+      if (!url) throw new Error(`download chunk ${i}: url signée absente`);
+
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`download chunk ${i}: HTTP ${res.status}`);
+
+      const ct = new Uint8Array(await res.arrayBuffer());
+      const pt = await decryptChunk(key, ivBase, i, ct);
+      parts.push(pt as unknown as BlobPart);
+    }
   }
 
   return new Blob(parts, { type: desc.mime });
