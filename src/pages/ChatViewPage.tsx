@@ -17,7 +17,7 @@ import {
   decryptMessageRows,
   resolveSealedSenders,
   serializeTextPayload,
-  buildSenderSealed,
+  sealSenderForMessage,
   UNDECRYPTABLE_PLACEHOLDER,
   getCachedDecryptedText,
   cacheDecryptedText,
@@ -46,6 +46,7 @@ import { PinnedMessageBanner } from '@/components/PinnedMessageBanner'
 import { DeleteMessageDialog } from '@/components/DeleteMessageDialog'
 import { QuickReactionBar } from '@/components/QuickReactionBar'
 import { ChatHeader, CallLog, TimelineItem, MessageList } from './ChatViewPageComponents'
+import type { MessageUserState } from './ChatViewPageComponents'
 
 // Kill-switch : Double Ratchet (forward secrecy) à l'envoi des conversations
 // directes. Repli automatique sur la pile X25519/P-256 si indisponible.
@@ -427,6 +428,131 @@ export function ChatViewPage() {
       return next
     })
   }, [])
+
+  // ── État message PAR UTILISATEUR (étoile / épingle) ────────────────────────
+  // `messages.is_starred` / `is_pinned` sont des colonnes PARTAGÉES : l'action
+  // d'un participant affecte tout le monde. On lit/écrit l'état par utilisateur
+  // dans `public.message_user_state` (map messageId → état), transmis aux
+  // composants d'affichage. Repli rétrocompat : si la table n'existe pas encore
+  // (prod non migrée), la map reste vide et l'affichage retombe sur les colonnes
+  // partagées historiques.
+  const [messageUserState, setMessageUserState] = useState<Map<string, MessageUserState>>(new Map())
+  const messageUserStateRef = useRef<Map<string, MessageUserState>>(new Map())
+  // `null` = disponibilité de la table inconnue ; `false` = absente (repli actif).
+  const userStateTableAvailableRef = useRef<boolean | null>(null)
+  // Ref sur l'id utilisateur : ces helpers sont appelés depuis des callbacks au
+  // périmètre figé (poll `debouncedLoadData`), il ne faut donc PAS capturer
+  // `user` par closure.
+  const userIdRef = useRef<string | null>(null)
+  useEffect(() => {
+    userIdRef.current = user?.id ?? null
+  }, [user?.id])
+
+  // État effectif (per-user) d'un message. Sans entrée dans la map (table
+  // absente OU message pas encore chargé), repli sur les colonnes partagées.
+  const getEffectiveUserState = useCallback((messageId: string): MessageUserState => {
+    const known = messageUserStateRef.current.get(messageId)
+    if (known) return known
+    const legacy = messagesRef.current.find(m => m.id === messageId) as any
+    return {
+      is_starred: !!legacy?.is_starred,
+      is_pinned: !!legacy?.is_pinned,
+      pinned_until: legacy?.pinned_until ?? null,
+    }
+  }, [])
+
+  // Applique un patch à la map per-user (optimiste + rollback). Met à jour la
+  // ref pour un accès immédiat depuis les handlers.
+  const applyLocalUserState = useCallback((messageId: string, patch: Partial<MessageUserState>) => {
+    setMessageUserState(prev => {
+      const base = prev.get(messageId) ?? { is_starred: false, is_pinned: false, pinned_until: null as string | null }
+      const next = new Map(prev)
+      next.set(messageId, { ...base, ...patch })
+      messageUserStateRef.current = next
+      return next
+    })
+  }, [])
+
+  // Charge l'état per-user pour une liste d'ids. `available=false` si la table
+  // n'existe pas encore → repli colonnes partagées (map vide, on n'écrit rien).
+  const fetchMyMessageState = useCallback(async (ids: string[]) => {
+    const unique = Array.from(new Set(ids.filter(Boolean)))
+    const uid = userIdRef.current
+    if (!uid || unique.length === 0) {
+      return { available: userStateTableAvailableRef.current !== false, map: new Map<string, MessageUserState>() }
+    }
+    const { data, error } = await supabase
+      .from('message_user_state')
+      .select('message_id, is_starred, is_pinned, pinned_until')
+      .eq('user_id', uid)
+      .in('message_id', unique)
+    if (error) {
+      userStateTableAvailableRef.current = false
+      console.warn('[message_user_state] lecture ignorée (table absente ?):', error.message)
+      return { available: false, map: new Map<string, MessageUserState>() }
+    }
+    userStateTableAvailableRef.current = true
+    const map = new Map<string, MessageUserState>()
+    // Table disponible → elle fait AUTORITÉ : toute ligne absente = false. Sans
+    // cela, on retomberait sur la colonne partagée et le bug « étoilé pour tout
+    // le monde » persisterait sur les données historiques.
+    for (const id of unique) map.set(id, { is_starred: false, is_pinned: false, pinned_until: null })
+    for (const row of (data ?? []) as any[]) {
+      map.set(row.message_id, {
+        is_starred: !!row.is_starred,
+        is_pinned: !!row.is_pinned,
+        pinned_until: row.pinned_until ?? null,
+      })
+    }
+    return { available: true, map }
+  }, [])
+
+  const mergeMessageUserState = useCallback((map: Map<string, MessageUserState>) => {
+    if (map.size === 0) return
+    setMessageUserState(prev => {
+      const next = new Map(prev)
+      map.forEach((v, k) => next.set(k, v))
+      messageUserStateRef.current = next
+      return next
+    })
+  }, [])
+
+  // Écriture per-user (upsert). Repli rétrocompat : si la table n'existe pas,
+  // on écrit sur les colonnes partagées `messages` (ancien comportement).
+  const setMessageState = useCallback(async (messageId: string, patch: Partial<MessageUserState>) => {
+    const uid = userIdRef.current
+    if (!uid) return { error: new Error('no user') as any }
+    const current = getEffectiveUserState(messageId)
+    const next = { ...current, ...patch }
+    const { error } = await supabase
+      .from('message_user_state')
+      .upsert({
+        message_id: messageId,
+        user_id: uid,
+        is_starred: !!next.is_starred,
+        is_pinned: !!next.is_pinned,
+        pinned_until: next.pinned_until ?? null,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'message_id,user_id' })
+    if (error) {
+      const legacy = userStateTableAvailableRef.current === false
+        || /does not exist|42P01|schema cache/i.test(error.message ?? '')
+      if (legacy) {
+        userStateTableAvailableRef.current = false
+        const legacyPatch: any = {}
+        if (patch.is_starred !== undefined) legacyPatch.is_starred = patch.is_starred
+        if (patch.is_pinned !== undefined) {
+          legacyPatch.is_pinned = patch.is_pinned
+          legacyPatch.pinned_at = patch.is_pinned ? new Date().toISOString() : null
+          legacyPatch.pinned_until = patch.pinned_until ?? null
+        }
+        const res = await supabase.from('messages').update(legacyPatch).eq('id', messageId)
+        return { error: res.error as any }
+      }
+    }
+    return { error: error as any }
+  }, [getEffectiveUserState])
+
   // IDs supprimés « pour tout le monde » de façon optimiste, le temps que la
   // mise à jour serveur (`deleted_at`) soit commitée. Filtre les reloads
   // concurrents (poll 4 s, reconnexion) qui, sans cela, feraient réapparaître
@@ -1939,6 +2065,15 @@ await decryptMessageRows(validData as any[], user.id)
       setMessages(merged)
       setCache(`msgs_${conversationId}`, merged)
 
+      // État star/pin PAR UTILISATEUR des messages chargés (repli silencieux si
+      // `message_user_state` n'existe pas encore).
+      try {
+        const { map } = await fetchMyMessageState(merged.map(m => m.id))
+        mergeMessageUserState(map)
+      } catch (e) {
+        console.warn('[message_user_state] chargement ignoré:', e)
+      }
+
       // Pré-signer les médias non chiffrés EN PARALLÈLE pour que les URLs
       // soient prêtes au moment où MediaImg les demande. signFieldsBatch
       // mute aussi les objets en place — on déclenche un re-render léger
@@ -2027,6 +2162,14 @@ await decryptMessageRows(validData as any[], user.id)
           const newMessages = validData.filter(m => !existingIds.has(m.id))
           return [...newMessages, ...prev]
         })
+
+        // État star/pin PAR UTILISATEUR des messages paginés.
+        try {
+          const { map } = await fetchMyMessageState(validData.map(m => m.id))
+          mergeMessageUserState(map)
+        } catch (e) {
+          console.warn('[message_user_state] chargement paginé ignoré:', e)
+        }
         
         // Update oldest message reference
         oldestMessageRef.current = data[0].id
@@ -2206,11 +2349,9 @@ await decryptMessageRows(validData as any[], user.id)
         messageData.ephemeral_expires_at = expiresAt.toISOString()
       }
       
-      // Phase 1 (sealed sender) : identité de l'expéditeur scellée pour les
-      // membres (dual-write, en plus de sender_id). null = repli sender_id.
-      messageData.sender_sealed = conversationId
-        ? await buildSenderSealed(user.id, conversationId)
-        : null
+      // Phase 1 (sealed sender v3) : l'identité est scellée APRÈS insertion
+      // (l'id du message n'est connu qu'à ce moment) → `sender_sealed` est
+      // attaché juste après la création des clés (voir plus bas).
 
       // Use optional chaining as required by SonarQube
       let insertResult: { data: any; error: any }
@@ -2266,6 +2407,18 @@ await decryptMessageRows(validData as any[], user.id)
           return
         }
 
+        // Phase 1 (sealed sender v3) : scelle l'identité liée au message
+        // (id + conversation + hash du contenu) et l'attache à la ligne.
+        // Best-effort : un échec conserve `sender_id` côté client.
+        const sealedSender: string[] | null = conversationId
+          ? await sealSenderForMessage({
+              messageId: data[0].id,
+              senderId: user.id,
+              conversationId,
+              content: messageData.content,
+            })
+          : null
+
         // Replace optimistic message with real one from DB, en conservant
         // le texte en clair côté client (jamais le ciphertext à l'écran).
         const settled: any = { ...(data[0] as Message), content: plaintext, sender_id: (data[0] as any).sender_id ?? user.id }
@@ -2283,6 +2436,7 @@ await decryptMessageRows(validData as any[], user.id)
         // déjà en base → le destinataire déchiffre dès réception (latence conservée).
         messageQueueRef.current.push({
           ...(data[0] as Message),
+          sender_sealed: sealedSender ?? undefined,
           content: encryptedText.ciphertextB64,
           is_text_encrypted: true,
           encryption_metadata: messageData.encryption_metadata,
@@ -2470,6 +2624,17 @@ await decryptMessageRows(validData as any[], user.id)
           return
         }
 
+        // Phase 1 (sealed sender v3) : scelle l'identité liée au message
+        // (id + conversation + hash du contenu) et l'attache à la ligne média.
+        const sealedSender: string[] | null = conversationId
+          ? await sealSenderForMessage({
+              messageId: data.id,
+              senderId: user.id,
+              conversationId,
+              content: String(messageData.content ?? ''),
+            })
+          : null
+
         // Replace optimistic message with real one, en conservant la légende en
         // clair côté client (jamais le ciphertext à l'écran).
         const settledMedia: any = { ...data, content: caption, sender_id: data.sender_id ?? user.id }
@@ -2482,7 +2647,7 @@ await decryptMessageRows(validData as any[], user.id)
         // Diffusion Realtime : la ligne RÉELLE (chemins storage + enveloppe
         // éventuelle), jamais le blob local. Garantit l'arrivée instantanée des
         // MÉDIAS/FICHIERS (le garde-fou ne bloque que le texte non chiffré).
-        messageQueueRef.current.push({ ...(data as unknown as Message) })
+        messageQueueRef.current.push({ ...(data as unknown as Message), sender_sealed: sealedSender ?? undefined } as Message)
         processMessageQueue()
         await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conversationId!)
         // Dispatch event to update ChatsPage conversation list in real-time
@@ -2623,7 +2788,17 @@ await decryptMessageRows(validData as any[], user.id)
             fileErrorCount++
             continue
           }
-          const settledFile = { ...data, sender_id: data.sender_id ?? user.id } as unknown as Message
+          // Phase 1 (sealed sender v3) : scelle l'identité du fichier (id +
+          // conversation + hash du contenu) et l'attache à la ligne.
+          const sealedSender: string[] | null = conversationId
+            ? await sealSenderForMessage({
+                messageId: data.id,
+                senderId: user.id,
+                conversationId,
+                content: String(messageData.content ?? ''),
+              })
+            : null
+          const settledFile = { ...data, sender_id: data.sender_id ?? user.id, sender_sealed: sealedSender ?? undefined } as unknown as Message
           // Sealed sender : id RÉEL mémorisé comme « à moi » (chaque fichier).
           markOwnMessage(data.id)
           settleOptimisticMessage(tempId, settledFile)
@@ -2745,12 +2920,22 @@ await decryptMessageRows(validData as any[], user.id)
           alert(t('voiceSendError'))
           return
         }
+        // Phase 1 (sealed sender v3) : scelle l'identité du vocal (id +
+        // conversation + hash du contenu) et l'attache à la ligne.
+        const sealedSender: string[] | null = conversationId
+          ? await sealSenderForMessage({
+              messageId: insertedMessage.id,
+              senderId: user.id,
+              conversationId,
+              content: String(messageData.content ?? ''),
+            })
+          : null
         // Replace optimistic message with real one
         // Sealed sender : id RÉEL mémorisé comme « à moi » (vocal).
         markOwnMessage(insertedMessage.id)
         settleOptimisticMessage(tempId, { ...insertedMessage, sender_id: insertedMessage.sender_id ?? user.id } as unknown as Message)
         // Diffusion Realtime du vocal (ligne réelle, chemin storage chiffré).
-        messageQueueRef.current.push({ ...insertedMessage } as unknown as Message)
+        messageQueueRef.current.push({ ...insertedMessage, sender_sealed: sealedSender ?? undefined } as unknown as Message)
         processMessageQueue()
         await supabase.from('conversations').update({ last_message_at: now }).eq('id', conversationId!)
         // Dispatch event to update ChatsPage conversation list in real-time
@@ -3111,7 +3296,7 @@ await decryptMessageRows(validData as any[], user.id)
         }
       }
 
-      messageData.sender_sealed = await buildSenderSealed(userId, targetConversationId)
+      // Phase 1 (sealed sender v3) : scellé APRÈS insertion (id connu).
 
       const insertResult = await supabase
         .from('messages')
@@ -3166,8 +3351,18 @@ await decryptMessageRows(validData as any[], user.id)
         }
 
         successCount++
-        // Sealed sender : id RÉEL du transfert mémorisé comme « à moi ».
-        if (newId) markOwnMessage(newId)
+        // Phase 1 (sealed sender v3) : scelle l'identité du transfert (id +
+        // conversation cible + hash du contenu) et l'attache à la ligne.
+        if (newId) {
+          await sealSenderForMessage({
+            messageId: newId,
+            senderId: userId,
+            conversationId: targetConversationId,
+            content: String(messageData.content ?? ''),
+          })
+          // Sealed sender : id RÉEL du transfert mémorisé comme « à moi ».
+          markOwnMessage(newId)
+        }
         await updateConversationLastMessage(targetConversationId)
       }
     }
@@ -3213,37 +3408,36 @@ await decryptMessageRows(validData as any[], user.id)
 
     const pinnedAt = new Date()
     const pinnedUntil = new Date(pinnedAt.getTime() + durationSeconds * 1000)
+    const previousState = getEffectiveUserState(messageToPin.id)
 
-    // Update the message as pinned
-    const { error } = await supabase
-      .from('messages')
-      .update({
-        is_pinned: true,
-        pinned_at: pinnedAt.toISOString(),
-        pinned_until: pinnedUntil.toISOString(),
+    // Épingle PAR UTILISATEUR : écriture dans `message_user_state`. Optimiste +
+    // rollback (avant, `messages.is_pinned` était partagé → épingle globale).
+    applyLocalUserState(messageToPin.id, { is_pinned: true, pinned_until: pinnedUntil.toISOString() })
+
+    const senderName = messageToPin.sender_id === user?.id
+      ? t('you')
+      : otherUser?.display_name || otherUser?.username || t('userFallback')
+
+    setPinnedMessage({
+      id: messageToPin.id,
+      content: messageToPin.content || '',
+      sender_name: senderName,
+      pinned_at: pinnedAt.toISOString(),
+      pinned_until: pinnedUntil.toISOString(),
+    })
+
+    const { error } = await setMessageState(messageToPin.id, {
+      is_pinned: true,
+      pinned_until: pinnedUntil.toISOString(),
+    })
+
+    if (error) {
+      console.error('Pin failed, rolling back:', error)
+      applyLocalUserState(messageToPin.id, {
+        is_pinned: previousState.is_pinned,
+        pinned_until: previousState.pinned_until ?? null,
       })
-      .eq('id', messageToPin.id)
-
-    if (!error) {
-      // Update local state
-      setMessages(prev => prev.map(m =>
-        m.id === messageToPin.id
-          ? { ...m, is_pinned: true, pinned_at: pinnedAt.toISOString(), pinned_until: pinnedUntil.toISOString() }
-          : m
-      ))
-
-      // Set the pinned message for the banner
-      const senderName = messageToPin.sender_id === user?.id
-        ? t('you')
-        : otherUser?.display_name || otherUser?.username || t('userFallback')
-
-      setPinnedMessage({
-        id: messageToPin.id,
-        content: messageToPin.content || '',
-        sender_name: senderName,
-        pinned_at: pinnedAt.toISOString(),
-        pinned_until: pinnedUntil.toISOString(),
-      })
+      setPinnedMessage(null)
     }
 
     setMessageToPin(null)
@@ -3255,30 +3449,22 @@ await decryptMessageRows(validData as any[], user.id)
 
     // Optimistic UI : on retire la pin instantanément, rollback si erreur
     const previousPinned = pinnedMessage
-    const previousMessages = messages
+    const previousState = getEffectiveUserState(previousPinned.id)
     setPinnedMessage(null)
-    setMessages(prev => prev.map(m =>
-      m.id === previousPinned.id
-        ? { ...m, is_pinned: false, pinned_at: null, pinned_until: null }
-        : m
-    ))
+    applyLocalUserState(previousPinned.id, { is_pinned: false, pinned_until: null })
 
-    const { error } = await supabase
-      .from('messages')
-      .update({
-        is_pinned: false,
-        pinned_at: null,
-        pinned_until: null,
-      })
-      .eq('id', previousPinned.id)
+    const { error } = await setMessageState(previousPinned.id, { is_pinned: false, pinned_until: null })
 
     if (error) {
       // Rollback en cas d'erreur réseau / RLS
       console.error('Unpin failed, rolling back:', error)
       setPinnedMessage(previousPinned)
-      setMessages(previousMessages)
+      applyLocalUserState(previousPinned.id, {
+        is_pinned: previousState.is_pinned,
+        pinned_until: previousState.pinned_until ?? null,
+      })
     }
-  }, [pinnedMessage, messages])
+  }, [pinnedMessage, getEffectiveUserState, applyLocalUserState, setMessageState])
 
   const scrollToPinnedMessage = () => {
     if (!pinnedMessage) return
@@ -3309,59 +3495,98 @@ await decryptMessageRows(validData as any[], user.id)
   // Load pinned message on mount
   useEffect(() => {
     const loadPinnedMessage = async () => {
-      if (!conversationId) return
+      if (!conversationId || !user) return
 
-      const { data, error } = await supabase
+      const nowIso = new Date().toISOString()
+
+      // Épingle PAR UTILISATEUR : on part de `message_user_state` (RLS), puis on
+      // ne retient que les messages de CETTE conversation.
+      const { data: states, error: stateError } = await supabase
+        .from('message_user_state')
+        .select('message_id, pinned_until, updated_at')
+        .eq('user_id', user.id)
+        .eq('is_pinned', true)
+        .gt('pinned_until', nowIso)
+        .order('updated_at', { ascending: false })
+        .limit(20)
+
+      if (stateError) {
+        // Repli rétrocompat (prod non migrée) : colonne partagée `messages`.
+        userStateTableAvailableRef.current = false
+        const { data, error } = await supabase
+          .from('messages')
+          .select('*')
+          .eq('conversation_id', conversationId)
+          .eq('is_pinned', true)
+          .gt('pinned_until', nowIso)
+          .order('pinned_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        if (!error && data) {
+          const senderName = data.sender_id === user.id
+            ? t('you')
+            : otherUser?.display_name || otherUser?.username || t('userFallback')
+          setPinnedMessage({
+            id: data.id,
+            content: data.content || '',
+            sender_name: senderName,
+            pinned_at: data.pinned_at,
+            pinned_until: data.pinned_until,
+          })
+        }
+        return
+      }
+
+      const stateRows = (states ?? []) as any[]
+      const ids = stateRows.map(s => s.message_id)
+      if (ids.length === 0) return
+
+      const { data: msgs, error } = await supabase
         .from('messages')
         .select('*')
         .eq('conversation_id', conversationId)
-        .eq('is_pinned', true)
-        .gt('pinned_until', new Date().toISOString())
-        .order('pinned_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
+        .in('id', ids)
+      if (error || !msgs || msgs.length === 0) return
 
-      if (!error && data) {
-        const senderName = data.sender_id === user?.id
-          ? t('you')
-          : otherUser?.display_name || otherUser?.username || t('userFallback')
-
-        setPinnedMessage({
-          id: data.id,
-          content: data.content || '',
-          sender_name: senderName,
-          pinned_at: data.pinned_at,
-          pinned_until: data.pinned_until,
-        })
+      const byId = new Map<string, any>(msgs.map((m: any) => [m.id, m]))
+      let chosen: any = null
+      let chosenState: any = null
+      for (const s of stateRows) {
+        const m = byId.get(s.message_id)
+        if (m) { chosen = m; chosenState = s; break }
       }
+      if (!chosen) return
+
+      const senderName = chosen.sender_id === user.id
+        ? t('you')
+        : otherUser?.display_name || otherUser?.username || t('userFallback')
+      setPinnedMessage({
+        id: chosen.id,
+        content: chosen.content || '',
+        sender_name: senderName,
+        pinned_at: chosenState.updated_at ?? nowIso,
+        pinned_until: chosenState.pinned_until ?? nowIso,
+      })
     }
 
     loadPinnedMessage()
   }, [conversationId, user?.id, otherUser])
 
   const handleStarMessage = useCallback(async (messageId: string) => {
-    const message = messages.find(m => m.id === messageId)
-    if (!message) return
+    const previous = getEffectiveUserState(messageId)
+    const newStarredStatus = !previous.is_starred
 
-    const newStarredStatus = !message.is_starred
+    // Étoile PAR UTILISATEUR : écriture dans `message_user_state` (avant,
+    // `messages.is_starred` partagé → étoile globale). Optimiste + rollback.
+    applyLocalUserState(messageId, { is_starred: newStarredStatus })
 
-    // Optimistic UI : toggle local instantané, rollback si erreur
-    setMessages(prev => prev.map(m =>
-      m.id === messageId ? { ...m, is_starred: newStarredStatus } : m
-    ))
-
-    const { error } = await supabase
-      .from('messages')
-      .update({ is_starred: newStarredStatus })
-      .eq('id', messageId)
+    const { error } = await setMessageState(messageId, { is_starred: newStarredStatus })
 
     if (error) {
       console.error('Star toggle failed, rolling back:', error)
-      setMessages(prev => prev.map(m =>
-        m.id === messageId ? { ...m, is_starred: !newStarredStatus } : m
-      ))
+      applyLocalUserState(messageId, { is_starred: previous.is_starred })
     }
-  }, [messages])
+  }, [getEffectiveUserState, applyLocalUserState, setMessageState])
 
   const handleReportMessage = (messageId: string) => {
     // Report functionality - show confirmation and send to server
@@ -3392,22 +3617,26 @@ await decryptMessageRows(validData as any[], user.id)
 
   const handleBulkStar = useCallback(async () => {
     const ids = Array.from(selectedMessages)
-    
-    // Update all selected messages to starred
-    const { error } = await supabase
-      .from('messages')
-      .update({ is_starred: true })
-      .in('id', ids)
-    
-    if (!error) {
-      // Update local state
-      setMessages(prev => prev.map(m =>
-        selectedMessages.has(m.id) ? { ...m, is_starred: true } : m
-      ))
+    if (ids.length === 0) {
+      exitSelectionMode()
+      return
     }
-    
+
+    // Étoile PAR UTILISATEUR pour tous les messages sélectionnés (optimiste).
+    ids.forEach(id => applyLocalUserState(id, { is_starred: true }))
+
+    const results = await Promise.all(ids.map(id => setMessageState(id, { is_starred: true })))
+    if (results.some(r => r.error)) {
+      // Non bloquant : on recharge l'état réel pour corriger la map optimiste.
+      console.error('Bulk star failed:', results.find(r => r.error)?.error)
+      try {
+        const { map } = await fetchMyMessageState(ids)
+        mergeMessageUserState(map)
+      } catch { /* ignore */ }
+    }
+
     exitSelectionMode()
-  }, [selectedMessages, exitSelectionMode])
+  }, [selectedMessages, exitSelectionMode, applyLocalUserState, setMessageState, fetchMyMessageState, mergeMessageUserState])
 
   const handleBulkDelete = useCallback(() => {
     // Show the bulk delete dialog instead of confirm
@@ -3686,6 +3915,7 @@ await decryptMessageRows(validData as any[], user.id)
           replyToMessage={replyToMessage}
           isLoadingPreview={isLoadingPreview}
           otherUser={otherUser}
+          messageUserState={messageUserState}
         />
 
         {/* Input Bar JemaOS - Fixed at bottom on mobile, above nav bar - Hidden in selection mode */}
@@ -3884,9 +4114,7 @@ await decryptMessageRows(validData as any[], user.id)
                   : null
               }
 
-              messageData.sender_sealed = conversationId
-                ? await buildSenderSealed(user.id, conversationId)
-                : null
+              // Phase 1 (sealed sender v3) : scellé APRÈS insertion (id connu).
 
               const { data, error } = await insertMessageSingle(messageData)
               
@@ -3907,6 +4135,16 @@ await decryptMessageRows(validData as any[], user.id)
                   alert(t('messageSendError'))
                   return
                 }
+                // Phase 1 (sealed sender v3) : scelle l'identité (id +
+                // conversation + hash du contenu) et l'attache à la ligne.
+                const sealedSender: string[] | null = conversationId
+                  ? await sealSenderForMessage({
+                      messageId: data.id,
+                      senderId: user.id,
+                      conversationId,
+                      content: messageData.content,
+                    })
+                  : null
                 // Conserve le clair côté client (jamais le ciphertext à l'écran).
                 const settled: any = { ...(data as any), content: content, sender_id: (data as any).sender_id ?? user.id }
                 cacheDecryptedText(data.id, content)
@@ -3915,6 +4153,7 @@ await decryptMessageRows(validData as any[], user.id)
                 // Diffusion Realtime (texte chiffré → autorisé par le garde-fou).
                 messageQueueRef.current.push({
                   ...(data as any),
+                  sender_sealed: sealedSender ?? undefined,
                   content: encryptedText.ciphertextB64,
                   is_text_encrypted: true,
                   encryption_metadata: messageData.encryption_metadata,
@@ -4147,7 +4386,7 @@ await decryptMessageRows(validData as any[], user.id)
           senderAvatar={gifStickerViewer.senderAvatar}
           timestamp={gifStickerViewer.timestamp}
           isOwn={gifStickerViewer.isOwn}
-          isStarred={messages.find(m => m.id === gifStickerViewer.messageId)?.is_starred || false}
+          isStarred={getEffectiveUserState(gifStickerViewer.messageId).is_starred}
           onClose={() => setGifStickerViewer(null)}
           onReaction={(emoji) => addReaction(gifStickerViewer.messageId, emoji)}
           onForward={() => {

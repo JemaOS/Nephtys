@@ -18,6 +18,33 @@ import { cleanLinkPreviewContent } from '@/lib/utils'
 import { safeHttpUrl } from '@/lib/safeUrl'
 import { useI18n } from '@/i18n'
 
+// État message PAR UTILISATEUR (étoile / épingle), lu depuis
+// `public.message_user_state` et transmis aux composants d'affichage via la
+// prop `messageUserState`. Évite les colonnes PARTAGÉES
+// `messages.is_starred` / `messages.is_pinned` (étoile/épingle pour tout le
+// monde).
+export interface MessageUserState {
+  is_starred: boolean
+  is_pinned: boolean
+  pinned_until?: string | null
+}
+
+// Repli rétrocompat : si la table `message_user_state` n'existe pas encore
+// (prod non migrée), la map ne porte aucune entrée → on retombe sur les
+// colonnes partagées `messages`. Sinon l'état per-user fait foi.
+export const resolveUserState = (
+  map: Map<string, MessageUserState> | undefined,
+  message: Message,
+): MessageUserState => {
+  const state = map?.get(message.id)
+  if (state) return state
+  return {
+    is_starred: !!(message as any)?.is_starred,
+    is_pinned: !!(message as any)?.is_pinned,
+    pinned_until: (message as any)?.pinned_until ?? null,
+  }
+}
+
 // Helper to extract message type info - extracted to reduce complexity in MessageList
 const getMessageTypeInfo = (message: Message) => {
   // Check if this is an emoji-only message (1-3 emojis, no other text)
@@ -616,34 +643,39 @@ interface TimelineItemComponentProps {
   handleStartAudioCall: () => void
   otherUser: Profile | null
   messages: Message[]
+  messageUserState?: Map<string, MessageUserState>
 }
 
 // Helper components for TimelineItemComponent to reduce complexity
 
-const EmojiMessageDisplay = ({ message, typeInfo, hoveredMessageId, isOwn, setContextMenu, addReaction }: any) => (
-  <div className="relative">
-    <MessageHoverActions
-      isVisible={hoveredMessageId === message.id}
-      isOwn={isOwn}
-      onOpenMenu={(e) => {
-        const rect = e.currentTarget.getBoundingClientRect();
-        setContextMenu({
-          isOpen: true,
-          position: { x: rect.left, y: rect.bottom + 5 },
-          message,
-        });
-      }}
-    />
-    <div className={`${getEmojiSizeClass(typeInfo.emojiCount)} leading-none py-1`}>
-      {message.content}
+const EmojiMessageDisplay = ({ message, typeInfo, hoveredMessageId, isOwn, setContextMenu, addReaction, messageUserState }: any) => {
+  const userState = resolveUserState(messageUserState, message)
+  return (
+    <div className="relative">
+      <MessageHoverActions
+        isVisible={hoveredMessageId === message.id}
+        isOwn={isOwn}
+        onOpenMenu={(e) => {
+          const rect = e.currentTarget.getBoundingClientRect();
+          setContextMenu({
+            isOpen: true,
+            position: { x: rect.left, y: rect.bottom + 5 },
+            message,
+          });
+        }}
+      />
+      <div className={`${getEmojiSizeClass(typeInfo.emojiCount)} leading-none py-1`}>
+        {message.content}
+      </div>
+      <MessageTimestamp timestamp={message.created_at} isStarred={userState.is_starred} isOwn={isOwn} status={message.status} />
     </div>
-    <MessageTimestamp timestamp={message.created_at} isStarred={message.is_starred || false} isOwn={isOwn} status={message.status} />
-  </div>
-)
+  )
+}
 
-const GifStickerMessageDisplay = ({ message, typeInfo, hoveredMessageId, isOwn, setContextMenu, getSenderInfo, setGifStickerViewer, user }: any) => {
+const GifStickerMessageDisplay = ({ message, typeInfo, hoveredMessageId, isOwn, setContextMenu, getSenderInfo, setGifStickerViewer, user, messageUserState }: any) => {
   const { t } = useI18n()
   const { isGifMessage, gifMatch, isStickerMessage, stickerMatch } = typeInfo
+  const userState = resolveUserState(messageUserState, message)
   
   return (
     <div className="relative">
@@ -737,14 +769,15 @@ const GifStickerMessageDisplay = ({ message, typeInfo, hoveredMessageId, isOwn, 
           </div>
         )
       })()}
-      <MessageTimestamp timestamp={message.created_at} isStarred={message.is_starred || false} isOwn={isOwn} status={message.status} />
+      <MessageTimestamp timestamp={message.created_at} isStarred={userState.is_starred} isOwn={isOwn} status={message.status} />
     </div>
   )
 }
 
-const MediaMessageDisplay = ({ message, typeInfo, hoveredMessageId, isOwn, setContextMenu, getSenderInfo, handleForwardMessage, handleStarMessage, handlePinMessage, addReaction, allMediaItems, getMediaIndexForMessage, handleMediaNavigate, mediaAlbumMap, user }: any) => {
+const MediaMessageDisplay = ({ message, typeInfo, hoveredMessageId, isOwn, setContextMenu, getSenderInfo, handleForwardMessage, handleStarMessage, handlePinMessage, addReaction, allMediaItems, getMediaIndexForMessage, handleMediaNavigate, mediaAlbumMap, user, messageUserState }: any) => {
   const { mediaUrl, mediaType } = typeInfo
   const mediaSenderInfo = getSenderInfo(message.sender_id)
+  const userState = resolveUserState(messageUserState, message)
 
   // --- WhatsApp-style album ---------------------------------------------
   // Si ce message fait partie d'un album et n'est PAS le leader, on ne
@@ -773,7 +806,7 @@ const MediaMessageDisplay = ({ message, typeInfo, hoveredMessageId, isOwn, setCo
           onStar={() => handleStarMessage(message.id)}
           onPin={() => handlePinMessage(message.id)}
           onReaction={(emoji: string) => addReaction(message.id, emoji)}
-          isStarred={message.is_starred || false}
+          isStarred={userState.is_starred}
           status={message.status as 'sent' | 'delivered' | 'read' | undefined}
           senderName={mediaSenderInfo.name}
           senderAvatar={mediaSenderInfo.avatar}
@@ -800,7 +833,7 @@ const MediaMessageDisplay = ({ message, typeInfo, hoveredMessageId, isOwn, setCo
             senderAvatar={mediaSenderInfo.avatar}
             timestamp={message.created_at}
             isOwn={(message.sender_id === user?.id || isOwnMessage(message.id))}
-            isStarred={message.is_starred || false}
+            isStarred={userState.is_starred}
             messageId={message.id}
             status={message.status as 'sent' | 'delivered' | 'read' | undefined}
             onForward={() => handleForwardMessage(message)}
@@ -827,9 +860,10 @@ const MediaMessageDisplay = ({ message, typeInfo, hoveredMessageId, isOwn, setCo
   )
 }
 
-const DocumentMessageDisplay = ({ message, typeInfo, hoveredMessageId, isOwn, setContextMenu, getSenderInfo, handleForwardMessage, handleStarMessage, handlePinMessage, addReaction, user }: any) => {
+const DocumentMessageDisplay = ({ message, typeInfo, hoveredMessageId, isOwn, setContextMenu, getSenderInfo, handleForwardMessage, handleStarMessage, handlePinMessage, addReaction, user, messageUserState }: any) => {
   const { mediaUrl } = typeInfo
   const docSenderInfo = getSenderInfo(message.sender_id)
+  const userState = resolveUserState(messageUserState, message)
   
   return (
     <div className="relative">
@@ -855,7 +889,7 @@ const DocumentMessageDisplay = ({ message, typeInfo, hoveredMessageId, isOwn, se
         senderName={docSenderInfo.name}
         timestamp={message.created_at}
         isOwn={(message.sender_id === user?.id || isOwnMessage(message.id))}
-        isStarred={message.is_starred || false}
+        isStarred={userState.is_starred}
         messageId={message.id}
         status={message.status as 'sent' | 'delivered' | 'read' | undefined}
         onForward={() => handleForwardMessage(message)}
@@ -878,7 +912,8 @@ const DocumentMessageDisplay = ({ message, typeInfo, hoveredMessageId, isOwn, se
   )
 }
 
-const TextMessageDisplay = ({ message, hoveredMessageId, isOwn, setContextMenu, user, otherUser, messages, scrollToMessage, setReplyToMessage }: any) => {
+const TextMessageDisplay = ({ message, hoveredMessageId, isOwn, setContextMenu, user, otherUser, messages, scrollToMessage, setReplyToMessage, messageUserState }: any) => {
+  const userState = resolveUserState(messageUserState, message)
   return (
     <div className={`relative px-3 py-2 rounded-2xl ${isOwn ? 'bg-[#787add] text-white rounded-br-none' : 'bg-bg-surface text-text-primary dark:text-[#e9edef] rounded-bl-none'}`}>
       <MessageHoverActions
@@ -992,7 +1027,7 @@ const TextMessageDisplay = ({ message, hoveredMessageId, isOwn, setContextMenu, 
       )}
       {!(message.media_url && (message.media_type === 'image' || message.media_type === 'video') && message.type !== 'audio') && (
       <div className={`flex items-center justify-end gap-1 mt-1 text-xs ${isOwn ? 'text-[#2d2f6e]' : 'text-text-secondary'}`}>
-        {message.is_starred && (
+        {userState.is_starred && (
           <Star size={12} className="fill-current" />
         )}
         <span>{formatTime(message.created_at)}</span>
@@ -1129,7 +1164,8 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = React.memo((
   handleStartVideoCall,
   handleStartAudioCall,
   otherUser,
-  messages
+  messages,
+  messageUserState
 }) => {
   const { t } = useI18n()
   if (item.type === 'call') {
@@ -1251,6 +1287,7 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = React.memo((
             messages={messages}
             otherUser={otherUser}
             setReplyToMessage={setReplyToMessage}
+            messageUserState={messageUserState}
           />
 
           {isSelectionMode && (
@@ -1335,6 +1372,9 @@ interface MessageListProps {
   replyToMessage: Message | null
   isLoadingPreview: boolean
   otherUser: Profile | null
+  // État star/pin per-user (map messageId → état). Absent → repli sur les
+  // colonnes partagées `messages.is_starred` / `is_pinned`.
+  messageUserState?: Map<string, MessageUserState>
   // Infinite scroll props
   onScroll?: (e: React.UIEvent<HTMLDivElement>) => void
   onLoadMore?: () => void
@@ -1384,6 +1424,7 @@ export const MessageList: React.FC<MessageListProps> = React.memo(({
   replyToMessage,
   isLoadingPreview,
   otherUser,
+  messageUserState,
   onScroll,
   onLoadMore,
   isLoadingMore,
@@ -1477,6 +1518,7 @@ export const MessageList: React.FC<MessageListProps> = React.memo(({
               handleStartAudioCall={handleStartAudioCall}
               otherUser={otherUser}
               messages={messages}
+              messageUserState={messageUserState}
               messagesEndRef={messagesEndRef}
               onLoadMore={onLoadMore}
               isLoadingMore={isLoadingMore}
@@ -1522,6 +1564,7 @@ export const MessageList: React.FC<MessageListProps> = React.memo(({
                 handleStartAudioCall={handleStartAudioCall}
                 otherUser={otherUser}
                 messages={messages}
+                messageUserState={messageUserState}
               />
             ))}
             </div>
