@@ -182,50 +182,84 @@ export async function unenroll2FA(factorId: string): Promise<{
   }
 }
 
-// Get current MFA challenge (for login flow)
-export async function getMFAChallenge(): Promise<{
+/**
+ * Résultat d'un contrôle MFA au login. Le champ `status` est EXPLICITE pour
+ * éviter tout fail-open :
+ * - `'ok'`          : AAL récupéré ET aucune vérification supplémentaire
+ *                     requise (pas de 2FA, ou déjà en aal2) → session sûre.
+ * - `'challenge'`   : un second facteur est exigé ; `factorId`/`challengeId`
+ *                     sont fournis pour vérifier le code.
+ * - `'unavailable'` : impossible de conclure (erreur réseau, `supabase.auth.mfa`
+ *                     indisponible, échec de création du challenge…). NE JAMAIS
+ *                     interpréter comme « pas de 2FA » : c'est un état d'erreur
+ *                     que l'appelant doit traiter en fail-closed.
+ */
+export type MfaChallengeStatus = 'ok' | 'challenge' | 'unavailable'
+
+export interface MfaChallengeResult {
+  status: MfaChallengeStatus
+  /**
+   * Conservé pour compatibilité : vrai uniquement quand `status === 'challenge'`.
+   * N'est JAMAIS `true` sur `'unavailable'` (l'appelant doit se fier à `status`).
+   */
   needsChallenge: boolean
   factorId?: string
   challengeId?: string
   error?: string
-}> {
+}
+
+// Get current MFA challenge (for login flow)
+export async function getMFAChallenge(): Promise<MfaChallengeResult> {
   try {
     // Check the current assurance level
     const { data: aalData, error: aalError } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel()
-    
-    if (aalError) {
+
+    // Échec de lecture de l'AAL : on ne peut pas affirmer « pas de 2FA ».
+    if (aalError || !aalData) {
       console.error('[2FA] AAL error:', aalError)
-      return { needsChallenge: false, error: aalError.message }
+      return { status: 'unavailable', needsChallenge: false, error: aalError?.message ?? 'AAL indéterminé' }
     }
-    
+
     // If current level is aal1 but next level is aal2, user needs to verify 2FA
     if (aalData.currentLevel === 'aal1' && aalData.nextLevel === 'aal2') {
       // Get the first verified TOTP factor
-      const { data: factorsData } = await supabase.auth.mfa.listFactors()
+      const { data: factorsData, error: factorsError } = await supabase.auth.mfa.listFactors()
+      if (factorsError) {
+        // AAL exige aal2 mais on ne peut pas lister les facteurs → indéterminé.
+        console.error('[2FA] listFactors error:', factorsError)
+        return { status: 'unavailable', needsChallenge: false, error: factorsError.message }
+      }
       const verifiedFactor = factorsData?.totp?.find((f: any) => f.status === 'verified')
-      
-      if (verifiedFactor) {
-        // Create a challenge
-        const { data: challengeData, error: challengeError } = await supabase.auth.mfa.challenge({
-          factorId: verifiedFactor.id
-        })
-        
-        if (challengeError) {
-          return { needsChallenge: false, error: challengeError.message }
-        }
-        
-        return {
-          needsChallenge: true,
-          factorId: verifiedFactor.id,
-          challengeId: challengeData.id
-        }
+
+      if (!verifiedFactor) {
+        // Incohérence : aal2 réclamé mais aucun facteur vérifié listable.
+        // Prudence : on refuse de conclure « pas de 2FA ».
+        return { status: 'unavailable', needsChallenge: false, error: 'No verified factor available' }
+      }
+
+      // Create a challenge
+      const { data: challengeData, error: challengeError } = await supabase.auth.mfa.challenge({
+        factorId: verifiedFactor.id
+      })
+
+      if (challengeError || !challengeData) {
+        return { status: 'unavailable', needsChallenge: false, error: challengeError?.message }
+      }
+
+      return {
+        status: 'challenge',
+        needsChallenge: true,
+        factorId: verifiedFactor.id,
+        challengeId: challengeData.id
       }
     }
-    
-    return { needsChallenge: false }
+
+    // AAL récupéré et aucune vérification supplémentaire requise.
+    return { status: 'ok', needsChallenge: false }
   } catch (err: any) {
+    // Exception (ex. `supabase.auth.mfa` indisponible) → état d'erreur explicite.
     console.error('[2FA] Challenge error:', err)
-    return { needsChallenge: false, error: err.message }
+    return { status: 'unavailable', needsChallenge: false, error: err?.message ?? 'MFA unavailable' }
   }
 }
 

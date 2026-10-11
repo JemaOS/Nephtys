@@ -13,14 +13,18 @@ import { useAuth } from '@/context/AuthContext';
 import { useI18n } from '@/i18n';
 
 export function MfaGate() {
-  const { verifyMfaAtLogin, signOut } = useAuth();
+  const { verifyMfaAtLogin, signOut, retryMfaCheck, mfaPending } = useAuth();
   const { t } = useI18n();
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
+  // `unavailable` (ou état inattendu) : la vérification du 2FA n'a pas pu être
+  // effectuée → écran « Réessayer / Annuler » (fail-closed), sans saisie de code.
+  const unavailable = mfaPending?.status !== 'challenge';
+
   const submit = async () => {
-    if (busy || code.length !== 6) return;
+    if (busy || unavailable || code.length !== 6) return;
     setBusy(true);
     setError('');
     const result = await verifyMfaAtLogin(code);
@@ -30,6 +34,17 @@ export function MfaGate() {
     }
     // En cas de succès, `mfaPending` passe à null et cet écran est démonté.
     setBusy(false);
+  };
+
+  const retry = async () => {
+    if (busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      await retryMfaCheck();
+    } finally {
+      setBusy(false);
+    }
   };
 
   const cancel = async () => {
@@ -48,38 +63,56 @@ export function MfaGate() {
         <div className="w-20 h-20 mx-auto rounded-full bg-accent/20 flex items-center justify-center">
           <ShieldCheck size={40} className="text-accent" />
         </div>
-        <h1 className="text-xl font-bold text-text-primary text-center">{t('mfaGateTitle')}</h1>
-        <p className="text-sm text-text-secondary text-center">{t('mfaGateDesc')}</p>
+        <h1 className="text-xl font-bold text-text-primary text-center">
+          {unavailable ? t('mfaGateUnavailableTitle') : t('mfaGateTitle')}
+        </h1>
+        <p className="text-sm text-text-secondary text-center">
+          {unavailable ? t('mfaGateUnavailableDesc') : t('mfaGateDesc')}
+        </p>
 
-        <form
-          onSubmit={(e) => { e.preventDefault(); void submit(); }}
-          className="space-y-3"
-        >
-          <label className="block text-sm text-text-secondary" htmlFor="mfa-gate-code">
-            {t('mfaGateCodeLabel')}
-          </label>
-          <input
-            id="mfa-gate-code"
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            autoFocus
-            value={code}
-            onChange={(e) => {
-              setCode(e.target.value.replaceAll(/\D/g, '').slice(0, 6));
-              setError('');
-            }}
-            placeholder="123456"
-            className="w-full px-3 py-3 rounded-2xl bg-bg-surface text-center text-2xl tracking-[0.5em] font-mono text-text-primary outline-none"
-          />
-          {error && <p className="text-sm text-red-500 text-center">{error}</p>}
-          <button
-            type="submit"
-            disabled={busy || code.length !== 6}
-            className="w-full py-3 rounded-2xl bg-[#7578db] text-white font-medium hover:bg-[#5a5ec9] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+        {unavailable ? (
+          <div className="space-y-3">
+            {error && <p className="text-sm text-red-500 text-center">{error}</p>}
+            <button
+              type="button"
+              onClick={() => void retry()}
+              disabled={busy}
+              className="w-full py-3 rounded-2xl bg-[#7578db] text-white font-medium hover:bg-[#5a5ec9] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {busy ? <><Loader2 size={18} className="animate-spin" />{t('mfaGateVerifying')}</> : t('retry')}
+            </button>
+          </div>
+        ) : (
+          <form
+            onSubmit={(e) => { e.preventDefault(); void submit(); }}
+            className="space-y-3"
           >
-            {busy ? <><Loader2 size={18} className="animate-spin" />{t('mfaGateVerifying')}</> : t('mfaGateVerify')}
-          </button>
-        </form>
+            <label className="block text-sm text-text-secondary" htmlFor="mfa-gate-code">
+              {t('mfaGateCodeLabel')}
+            </label>
+            <input
+              id="mfa-gate-code"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              autoFocus
+              value={code}
+              onChange={(e) => {
+                setCode(e.target.value.replaceAll(/\D/g, '').slice(0, 6));
+                setError('');
+              }}
+              placeholder="123456"
+              className="w-full px-3 py-3 rounded-2xl bg-bg-surface text-center text-2xl tracking-[0.5em] font-mono text-text-primary outline-none"
+            />
+            {error && <p className="text-sm text-red-500 text-center">{error}</p>}
+            <button
+              type="submit"
+              disabled={busy || code.length !== 6}
+              className="w-full py-3 rounded-2xl bg-[#7578db] text-white font-medium hover:bg-[#5a5ec9] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {busy ? <><Loader2 size={18} className="animate-spin" />{t('mfaGateVerifying')}</> : t('mfaGateVerify')}
+            </button>
+          </form>
+        )}
 
         <button
           type="button"

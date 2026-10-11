@@ -19,6 +19,72 @@ const PROFILE_TIMEOUT = 3000;
 // refuser toute vérification supplémentaire (l'utilisateur doit se reconnecter).
 const MAX_MFA_ATTEMPTS = 5;
 
+/**
+ * État du gate 2FA au login. Tant qu'il est non-null, l'app n'est pas
+ * accessible (App.tsx → MfaGate).
+ * - `challenge`   : un code doit être saisi (facteur vérifié + challenge créé).
+ * - `unavailable` : on ne peut PAS vérifier le niveau d'assurance 2FA
+ *                   (erreur réseau, API MFA indisponible…). C'est un état
+ *                   FAIL-CLOSED : l'app reste bloquée derrière un écran
+ *                   « Réessayer / Annuler » — jamais d'accès silencieux.
+ */
+export type MfaPendingState =
+  | { status: 'challenge'; factorId: string; challengeId: string }
+  | { status: 'unavailable' };
+
+/**
+ * Résout le gate 2FA après `setSession` (fail-closed).
+ *
+ * 1. `getMFAChallenge()` renvoie un statut explicite.
+ * 2. `ok` → aucun gate (session sûre).
+ * 3. `challenge` → gate avec saisie du code.
+ * 4. `unavailable` → on ne conclut JAMAIS « pas de 2FA » : on distingue via
+ *    `listFactors()` :
+ *      - Aucun facteur vérifié → l'utilisateur n'a pas de 2FA → on le laisse
+ *        entrer (ne pas bloquer les comptes sans 2FA).
+ *      - Facteurs vérifiés confirmés → on retente une fois d'obtenir un
+ *        challenge (erreur transitoire). Si ça échoue encore, on maintient le
+ *        gate « unavailable » (Réessayer / Annuler) au lieu de refuser
+ *        brutalement la session : fail-closed ET utilisable.
+ *      - `listFactors()` échoue aussi (indéterminable) → gate « unavailable ».
+ */
+async function resolveMfaGate(): Promise<MfaPendingState | null> {
+  const mfa = await getMFAChallenge()
+
+  if (mfa.status === 'challenge' && mfa.factorId && mfa.challengeId) {
+    return { status: 'challenge', factorId: mfa.factorId, challengeId: mfa.challengeId }
+  }
+  if (mfa.status === 'ok') {
+    // Vérifié : aucune vérification supplémentaire requise.
+    return null
+  }
+
+  // status === 'unavailable' → on ne peut pas conclure « pas de 2FA ».
+  try {
+    const { data, error } = await supabase.auth.mfa.listFactors()
+    if (error) {
+      // Facteurs indéterminables → fail-closed (gate, pas d'accès).
+      console.warn('[Auth] MFA listFactors failed while AAL unavailable:', error)
+      return { status: 'unavailable' }
+    }
+    const hasVerified = (data?.totp || []).some((f: any) => f.status === 'verified')
+    if (!hasVerified) {
+      // Confirmé : pas de 2FA vérifié → autoriser (ne pas bloquer sans 2FA).
+      return null
+    }
+    // 2FA confirmé mais AAL illisible : on retente une fois un challenge.
+    const retry = await getMFAChallenge()
+    if (retry.status === 'challenge' && retry.factorId && retry.challengeId) {
+      return { status: 'challenge', factorId: retry.factorId, challengeId: retry.challengeId }
+    }
+    // 2FA confirmé et non vérifiable → gate « unavailable » (fail-closed).
+    return { status: 'unavailable' }
+  } catch (err) {
+    console.warn('[Auth] MFA fail-closed resolution error:', err)
+    return { status: 'unavailable' }
+  }
+}
+
 // Local storage keys for offline support
 const CACHED_USER_KEY = 'anu_cached_user';
 const CACHED_PROFILE_KEY = 'anu_cached_profile';
@@ -44,10 +110,14 @@ interface AuthContextType {
   completeRecovery: (phrase: string) => Promise<void>
   /** Régénère les clés (nouvelle phrase) — exige la preuve de l'ancienne. */
   regenerateRecovery: (currentPhrase: string) => Promise<void>
-  /** Facteur 2FA en attente au login (aal1 → aal2), sinon null. */
-  mfaPending: { factorId: string; challengeId: string } | null
+  /** Gate 2FA en attente au login (challenge à saisir, ou vérification
+   *  indisponible), sinon null. Tant que non-null, l'app n'est pas accessible. */
+  mfaPending: MfaPendingState | null
   /** Vérifie le code 2FA au login et lève le gate MFA en cas de succès. */
   verifyMfaAtLogin: (code: string) => Promise<{ success: boolean; error?: string }>
+  /** Relance la résolution du gate 2FA (bouton « Réessayer » quand la
+   *  vérification est indisponible). */
+  retryMfaCheck: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -178,7 +248,7 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
 
   // 2FA au login : tant que ce facteur est en attente, l'app n'est pas
   // considérée comme pleinement accessible (voir App.tsx → MfaGate).
-  const [mfaPending, setMfaPending] = useState<{ factorId: string; challengeId: string } | null>(null)
+  const [mfaPending, setMfaPending] = useState<MfaPendingState | null>(null)
   const mfaAttemptsRef = useRef(0)
 
 
@@ -384,21 +454,19 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
           console.error('Session error:', sessionError)
           throw new Error('❌ Erreur de session\n\nImpossible de vous connecter.')
         }
-        // 2FA : si un second facteur est requis (aal1 → aal2), on bloque l'accès
-        // à l'app derrière l'écran MfaGate tant que le code n'est pas vérifié.
-        // L'utilisateur n'est donc PAS considéré comme pleinement connecté.
-        try {
-          const mfa = await getMFAChallenge()
-          if (mfa.needsChallenge && mfa.factorId && mfa.challengeId) {
-            mfaAttemptsRef.current = 0
-            setMfaPending({ factorId: mfa.factorId, challengeId: mfa.challengeId })
-            return
-          }
-        } catch (mfaErr) {
-          // Limite connue : si la vérification du niveau d'assurance échoue, on
-          // ne peut pas distinguer « pas de 2FA » d'une erreur réseau.
-          console.warn('[Auth] MFA challenge check failed:', mfaErr)
+        // 2FA (fail-closed) : si un second facteur est requis (aal1 → aal2), on
+        // bloque l'accès à l'app derrière MfaGate tant que le code n'est pas
+        // vérifié. Si le niveau d'assurance ne peut PAS être vérifié, on
+        // n'accorde jamais la session en silence : un compte avec 2FA vérifié
+        // est maintenu derrière un gate « vérification indisponible »
+        // (Réessayer / Annuler), tandis qu'un compte sans 2FA passe normalement.
+        mfaAttemptsRef.current = 0
+        const gate = await resolveMfaGate()
+        if (gate) {
+          setMfaPending(gate)
+          return
         }
+        // Pas de gate 2FA → on poursuit la restauration des clés E2EE ci-dessous.
         // Restaurer (ou créer) la clé E2EE AVEC le password. On ATTEND la
         // restauration (multi-appareil) : sinon les conversations se chargent
         // avant que les clés (ratchet) soient en IndexedDB → « clés locales
@@ -653,7 +721,7 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
 
   const verifyMfaAtLogin = async (code: string): Promise<{ success: boolean; error?: string }> => {
     const pending = mfaPending
-    if (!pending) {
+    if (!pending || pending.status !== 'challenge') {
       return { success: false, error: tStatic('mfaGateNoChallenge') }
     }
     if (mfaAttemptsRef.current >= MAX_MFA_ATTEMPTS) {
@@ -667,6 +735,19 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
     }
     mfaAttemptsRef.current += 1
     return { success: false, error: result.error ?? tStatic('twoFaInvalidCode') }
+  }
+
+  /**
+   * Relance la résolution du gate 2FA. Utilisé par l'écran « vérification
+   * indisponible » : si la cause était transitoire, on retombe soit sur un
+   * challenge à saisir, soit (si confirmé sans 2FA) sur l'accès à l'app.
+   */
+  const retryMfaCheck = async (): Promise<void> => {
+    const gate = await resolveMfaGate()
+    if (gate === null) {
+      mfaAttemptsRef.current = 0
+    }
+    setMfaPending(gate)
   }
 
   const updateLocalProfile = (patch: Partial<Profile>) => {
@@ -695,6 +776,7 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
     regenerateRecovery,
     mfaPending,
     verifyMfaAtLogin,
+    retryMfaCheck,
   }), [user, profile, loading, isOffline, pendingPhrase, recoveryRequired, mfaPending]);
 
   return (
