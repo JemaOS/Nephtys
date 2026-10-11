@@ -40,10 +40,10 @@ export function isAllowedRelayUrl(rawUrl: string): boolean {
 
 export type RelayOp =
   | { op: 'createQueue' }
-  | { op: 'send'; queueId: string; queueKey: string; ciphertext: string }
-  | { op: 'read'; queueId: string; queueKey: string; limit?: number }
-  | { op: 'ack'; queueId: string; queueKey: string; ids: string[] }
-  | { op: 'delete'; queueId: string; queueKey: string };
+  | { op: 'send'; queueId: string; queueKey: string; ciphertext: string; relay?: string }
+  | { op: 'read'; queueId: string; queueKey: string; limit?: number; relay?: string }
+  | { op: 'ack'; queueId: string; queueKey: string; ids: string[]; relay?: string }
+  | { op: 'delete'; queueId: string; queueKey: string; relay?: string };
 
 export interface RelayResponse {
   ok: boolean;

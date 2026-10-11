@@ -22,6 +22,8 @@ export interface QueueCredentials {
   queueId: string;
   sendKey: string;
   rcvKey: string;
+  /** URL du relais qui heberge cette file (reseau decentralise multi-relais). */
+  relay?: string;
 }
 
 export interface StoredEnvelope {

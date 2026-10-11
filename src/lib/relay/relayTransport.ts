@@ -31,6 +31,8 @@ import type { RelayWire } from './wire';
 export interface RelayQueueRef {
   queueId: string;
   queueKey: string;
+  /** URL du relais hebergeant cette file (reseau decentralise multi-relais). */
+  relay?: string;
 }
 
 export interface RelayConnection {
@@ -93,12 +95,12 @@ export class RelayTransport implements MessagingTransport {
     const outbound = await this.createQueue(); // le pair lit ici (rcvKey), on y écrit (sendKey)
 
     const connection: RelayConnection = {
-      rcvQueue: { queueId: inbound.queueId, queueKey: inbound.rcvKey },
-      sendQueue: { queueId: outbound.queueId, queueKey: outbound.sendKey },
+      rcvQueue: { queueId: inbound.queueId, queueKey: inbound.rcvKey, relay: inbound.relay },
+      sendQueue: { queueId: outbound.queueId, queueKey: outbound.sendKey, relay: outbound.relay },
     };
     const invite: Invite = {
-      rcvQueue: { queueId: outbound.queueId, queueKey: outbound.rcvKey },
-      sendQueue: { queueId: inbound.queueId, queueKey: inbound.sendKey },
+      rcvQueue: { queueId: outbound.queueId, queueKey: outbound.rcvKey, relay: outbound.relay },
+      sendQueue: { queueId: inbound.queueId, queueKey: inbound.sendKey, relay: inbound.relay },
     };
     return { connection, invite: encodeInvite(invite) };
   }
@@ -112,8 +114,8 @@ export class RelayTransport implements MessagingTransport {
   async createReceiveQueue(): Promise<{ ourRcv: RelayQueueRef; peerRef: RelayQueueRef }> {
     const queue = await this.createQueue();
     return {
-      ourRcv: { queueId: queue.queueId, queueKey: queue.rcvKey },
-      peerRef: { queueId: queue.queueId, queueKey: queue.sendKey },
+      ourRcv: { queueId: queue.queueId, queueKey: queue.rcvKey, relay: queue.relay },
+      peerRef: { queueId: queue.queueId, queueKey: queue.sendKey, relay: queue.relay },
     };
   }
 
@@ -142,7 +144,7 @@ export class RelayTransport implements MessagingTransport {
     }
     if (deleteOnRelay) {
       try {
-        await this.wire.request({ op: 'delete', queueId: ref.queueId, queueKey: ref.queueKey });
+        await this.wire.request({ op: 'delete', queueId: ref.queueId, queueKey: ref.queueKey, relay: ref.relay });
       } catch {
         // best-effort : la file expirera d'elle-même (TTL)
       }
@@ -168,6 +170,7 @@ export class RelayTransport implements MessagingTransport {
       queueId: state.sendQueue.queueId,
       queueKey: state.sendQueue.queueKey,
       ciphertext: msg.content,
+      relay: state.sendQueue.relay,
     });
     if (!resp.ok || !resp.result) {
       throw new Error(`Relay: envoi refusé (${resp.error ?? 'inconnu'})`);
@@ -197,6 +200,7 @@ export class RelayTransport implements MessagingTransport {
             op: 'read',
             queueId: queue.queueId,
             queueKey: queue.queueKey,
+            relay: queue.relay,
           });
           const messages = (resp.result as StoredEnvelope[]) ?? [];
           if (messages.length === 0) continue;
@@ -219,6 +223,7 @@ export class RelayTransport implements MessagingTransport {
             queueId: queue.queueId,
             queueKey: queue.queueKey,
             ids,
+            relay: queue.relay,
           });
         }
       } finally {

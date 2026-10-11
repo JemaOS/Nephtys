@@ -14,6 +14,7 @@ import { AgentRelayWire } from './agentRelayWire';
 import { SmpRelayWire } from './smpRelayWire';
 import { createTorWebSocketImpl } from './torClient';
 import { FailoverRelayWire } from './failoverRelayWire';
+import { MultiRelayWire } from './multiRelayWire';
 import { PrivateMessenger } from './privateMessenger';
 import { IdbConnectionStore } from './connectionStore';
 import { IdbHistoryStore } from './historyStore';
@@ -332,21 +333,6 @@ export function setDecentralizedRelayEnabled(enabled: boolean): void {
   instance = null;
 }
 
-/**
- * Chaine de replis sur un pool de relais SMP : on demarre sur un relais tire au
- * hasard (repartition entre relais au fil des sessions) et chaque relais tombe
- * sur le suivant s'il est injoignable (aucun point unique de defaillance).
- */
-function buildSmpFailover(pool: string[], keyHash?: string): RelayWire {
-  const start = Math.floor(Math.random() * pool.length);
-  const ordered = [...pool.slice(start), ...pool.slice(0, start)];
-  let chain: RelayWire = new SmpRelayWire({ url: ordered[ordered.length - 1], keyHash });
-  for (let i = ordered.length - 2; i >= 0; i--) {
-    chain = new FailoverRelayWire(new SmpRelayWire({ url: ordered[i], keyHash }), chain);
-  }
-  return chain;
-}
-
 export function getPrivateMessenger(): PrivateMessenger {
   if (!instance) {
     const mode = import.meta.env.VITE_RELAY_MODE as string | undefined;
@@ -379,8 +365,10 @@ export function getPrivateMessenger(): PrivateMessenger {
       const pool = getRelayPool();
       const primaryWire =
         isDecentralizedRelayEnabled() && pool.length > 1
-          // Réseau décentralisé : pool de relais (démarrage aléatoire + replis).
-          ? buildSmpFailover(pool, smpKeyHash)
+          // Réseau décentralisé : une file par relais (round-robin + repli).
+          ? new MultiRelayWire(
+              pool.map(url => ({ url, wire: new SmpRelayWire({ url, keyHash: smpKeyHash }) })),
+            )
           : new SmpRelayWire({ url: smpUrl, keyHash: smpKeyHash });
       const fw = new FailoverRelayWire(
         primaryWire,
