@@ -1,13 +1,13 @@
 // Copyright (c) 2025 Jema Technology.
 // Distributed under the license specified in the root directory of this project.
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { Lock, User, Shield, Zap, EyeOff, X } from 'lucide-react'
 import { useI18n } from '@/i18n'
-import { QrScanner } from '@/components/QrScanner'
-import { isDeviceLink, redeemDeviceLink } from '@/lib/recovery/deviceLink'
+import { SafeQrCode } from '@/components/SafeQrCode'
+import { createLinkRequest, applyLinkResponse, type LinkRequest } from '@/lib/recovery/deviceLinkChannel'
 
 // Type alias for auth mode
 type AuthMode = 'signin' | 'signup' | 'guest'
@@ -57,9 +57,39 @@ export function AuthPage() {
   const { t, lang, setLang } = useI18n()
   const navigate = useNavigate()
   const [mode, setMode] = useState<AuthMode>('signin')
-  const [scanning, setScanning] = useState(false)
+  const [linkReq, setLinkReq] = useState<LinkRequest | null>(null)
   const [linkError, setLinkError] = useState<string | null>(null)
   const [linking, setLinking] = useState(false)
+
+  // Page de connexion = appareil NON connecté → on AFFICHE un QR, et on attend
+  // que l'appareil déjà connecté le scanne pour transmettre la session + clés.
+  const startLinking = async () => {
+    setLinkError(null)
+    try {
+      setLinkReq(await createLinkRequest())
+    } catch (e) {
+      setLinkError((e as Error).message)
+    }
+  }
+
+  useEffect(() => {
+    if (!linkReq) return
+    let cancelled = false
+    const timer = setInterval(async () => {
+      try {
+        const res = await linkReq.poll()
+        if (!res || cancelled) return
+        cancelled = true
+        clearInterval(timer)
+        setLinking(true)
+        await applyLinkResponse(res)
+        navigate('/chats')
+      } catch {
+        /* on réessaiera */
+      }
+    }, 2000)
+    return () => { cancelled = true; clearInterval(timer) }
+  }, [linkReq, navigate])
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -286,7 +316,7 @@ export function AuthPage() {
           </button>
           <button
             type="button"
-            onClick={() => { setLinkError(null); setScanning(true) }}
+            onClick={() => { setLinkError(null); void startLinking() }}
             className="text-[10px] lg:text-xs text-accent hover:underline block w-full"
           >
             Lier un nouvel appareil (QR)
@@ -300,40 +330,30 @@ export function AuthPage() {
           </p>
         </div>
 
-        {/* Liaison d'appareil (scanner, façon WhatsApp Web) */}
-        {scanning && (
-          <div className="absolute inset-0 z-50 bg-black/95 flex flex-col">
-            <div className="p-4 flex items-center justify-between">
-              <span className="text-white text-sm font-medium">Scannez pour vous connecter</span>
-              <button type="button" onClick={() => setScanning(false)} className="p-2 rounded-lg bg-white/10 text-white" aria-label="Fermer">
-                <X size={18} />
-              </button>
-            </div>
-            <ol className="px-6 pb-3 space-y-1 text-xs text-white/80 list-decimal list-inside">
-              <li>Ouvrez Nephtys sur votre autre appareil (déjà connecté).</li>
-              <li>Allez dans Paramètres → Appareils liés → Mon code.</li>
-              <li>Scannez ce QR code ici.</li>
+        {/* Liaison d'appareil : on AFFICHE un QR (façon WhatsApp Web) */}
+        {linkReq && (
+          <div className="absolute inset-0 z-50 bg-bg-primary/98 flex flex-col items-center justify-center p-6 gap-4 overflow-auto">
+            <button
+              type="button"
+              onClick={() => setLinkReq(null)}
+              className="absolute top-3 right-3 p-2 rounded-lg bg-bg-surface text-text-primary"
+              aria-label="Fermer"
+            >
+              <X size={18} />
+            </button>
+            <h2 className="text-lg font-semibold text-text-primary text-center">Liez votre appareil</h2>
+            <ol className="text-xs text-text-secondary space-y-1 max-w-sm list-decimal list-inside">
+              <li>Ouvrez Nephtys sur votre <b>autre appareil</b> (déjà connecté).</li>
+              <li>Paramètres → <b>Code QR</b> → <b>Scanner le code</b>.</li>
+              <li>Scannez ce code QR.</li>
             </ol>
-            <div className="flex-1">
-              <QrScanner
-                onClose={() => setScanning(false)}
-                onResult={async (text) => {
-                  setScanning(false)
-                  if (!isDeviceLink(text)) { setLinkError('QR code non reconnu.'); return }
-                  setLinking(true)
-                  try {
-                    await redeemDeviceLink(text)
-                    navigate('/chats')
-                  } catch (e) {
-                    setLinkError((e as Error).message)
-                  } finally {
-                    setLinking(false)
-                  }
-                }}
-              />
+            <div className="bg-white p-4 rounded-2xl">
+              <SafeQrCode value={linkReq.payload} size={220} />
             </div>
-            {linking && <p className="p-3 text-center text-xs text-white">Liaison…</p>}
-            {linkError && <p className="p-3 text-center text-xs text-amber-300">{linkError}</p>}
+            <p className="text-xs text-text-tertiary text-center max-w-xs">
+              {linking ? 'Connexion en cours…' : 'En attente du scan…'}
+            </p>
+            {linkError && <p className="text-xs text-amber-300 text-center max-w-xs">{linkError}</p>}
           </div>
         )}
       </div>

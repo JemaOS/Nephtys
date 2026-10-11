@@ -51,6 +51,7 @@ import {
 import { SafeQrCode } from '@/components/SafeQrCode'
 import { QrScanner } from '@/components/QrScanner'
 import { createDeviceLink, isDeviceLink, redeemDeviceLink } from '@/lib/recovery/deviceLink'
+import { fulfillLinkRequest } from '@/lib/recovery/deviceLinkChannel'
 import {
   createBackup,
   createLightBackup,
@@ -1703,7 +1704,11 @@ export function SettingsPage() {
                     .then(() => setDeviceMsg('Appareil lié ✅ — vos messages sont de nouveau lisibles.'))
                     .catch((e: unknown) => setDeviceMsg(`Échec : ${(e as Error).message}`))
                 } else {
-                  setDeviceMsg('QR code non reconnu.')
+                  // QR affiché par un nouvel appareil (page de connexion) → on lui
+                  // transmet la session + les clés.
+                  void fulfillLinkRequest(text)
+                    .then(() => setDeviceMsg('Code transmis ✅ — le nouvel appareil est connecté.'))
+                    .catch((e: unknown) => setDeviceMsg(`Échec : ${(e as Error).message}`))
                 }
               }}
             />
