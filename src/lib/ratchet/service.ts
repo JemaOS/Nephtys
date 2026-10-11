@@ -136,20 +136,22 @@ export async function encryptForPeer(
     const bundle = await deps.loadPeerBundle(peerId);
     if (!bundle) throw new Error('Ratchet: bundle du pair indisponible');
 
-    // Fiabilité : on n'utilise PAS de one-time prekey à l'init (source des
-    // échecs « one-time prekey indisponible »). X3DH reste valide sans OPK ;
-    // la forward secrecy est ensuite assurée par le Double Ratchet.
+    // One-time prekey : si le pair en publie une, on l'utilise (forward secrecy
+    // dès l'init, comme Signal). Sinon le chemin reste valide sans OPK.
+    // Capturer AVANT de marquer consommée (l'objet bundle peut être muté).
+    const usedOneTimePreKey: string | null = bundle.oneTimePreKey ?? null;
     // Hybride post-quantique : si le pair publie une clé ML-KEM (dont la
     // signature couvre la clé), on l'utilise. Sinon, chemin X3DH classique.
-    const init = await x3dhInitiate(localKeys.identityKeyPair, { ...toBundle(bundle), oneTimePreKey: null });
+    const init = await x3dhInitiate(localKeys.identityKeyPair, {
+      ...toBundle(bundle),
+      oneTimePreKey: usedOneTimePreKey,
+    });
     session = await initSenderSession(
       init.rootKey,
       bundle.signedPreKey,
       init.associatedData,
       init.ratchetKeyPair,
     );
-    // Capturer AVANT de marquer consommée (l'objet bundle peut être muté).
-    const usedOneTimePreKey: string | null = null;
     if (usedOneTimePreKey) {
       await deps.markOneTimePreKeyUsed(peerId, usedOneTimePreKey);
     }

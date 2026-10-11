@@ -73,11 +73,11 @@ describe('ratchet service (X3DH + Double Ratchet end-to-end)', () => {
     const msg = await encryptForPeer(deps, 'alice', 'conv', 'bob', 'bonjour');
     expect(msg.envelope.type).toBe('ratchet-init');
     expect(msg.envelope.identityKey).toBe(users.alice.local.identityKeyPair.publicKey);
-    // Init SANS one-time prekey (fiabilité) → usedOneTimePreKey null.
-    expect(msg.envelope.usedOneTimePreKey).toBeNull();
+    // One-time prekey utilisée (forward secrecy dès l'init).
+    expect(msg.envelope.usedOneTimePreKey).toBe(bobOpk);
     expect(msg.content).not.toContain('bonjour');
-    // La one-time prekey de Bob n'est PAS consommée (init sans OPK).
-    expect(users.bob.bundle.oneTimePreKey).toBe(bobOpk);
+    // La one-time prekey de Bob est marquée consommée.
+    expect(users.bob.bundle.oneTimePreKey).toBeNull();
 
     const text = await decryptFromPeer(deps, 'bob', 'conv', msg.envelope, msg.content);
     expect(text).toBe('bonjour');
