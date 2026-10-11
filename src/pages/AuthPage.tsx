@@ -55,6 +55,7 @@ export function AuthPage() {
   const { t, lang, setLang } = useI18n()
   const navigate = useNavigate()
   const [mode, setMode] = useState<AuthMode>('signin')
+  const [linkHint, setLinkHint] = useState(false)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -188,6 +189,12 @@ export function AuthPage() {
 
         {/* Auth Form */}
         <div className="bg-bg-surface rounded-3xl p-3 sm:p-3.5 lg:p-3.5 space-y-1.5 sm:space-y-2 lg:space-y-2.5">
+          {linkHint && (
+            <div className="rounded-xl bg-[#7578db]/10 border border-[#7578db]/30 p-2 text-[10px] lg:text-xs text-text-secondary">
+              Pour lier cet appareil : connectez-vous avec <b>le même compte</b>, puis <b>scannez
+              le QR code</b> de votre autre appareil (ou saisissez votre phrase de récupération).
+            </div>
+          )}
           <div className="text-center">
             <h2 className="text-sm sm:text-base lg:text-lg font-semibold text-text-primary mb-0.5">
               {getAuthTitle(mode, t)}
@@ -278,6 +285,13 @@ export function AuthPage() {
             className="text-[10px] lg:text-xs text-accent hover:underline block w-full"
           >
             Utiliser en mode privé (sans compte)
+          </button>
+          <button
+            type="button"
+            onClick={() => { setMode('signin'); setLinkHint(true) }}
+            className="text-[10px] lg:text-xs text-accent hover:underline block w-full"
+          >
+            Lier un nouvel appareil (QR)
           </button>
         </div>
 
