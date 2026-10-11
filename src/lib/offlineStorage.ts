@@ -5,6 +5,13 @@
 // Permet de stocker les messages localement pour le mode hors ligne
 // Optimized for PWA performance with non-blocking initialization
 // Uses localStorage as a fast synchronous cache layer for instant display
+//
+// Chiffrement au repos : toutes les valeurs persistées (IndexedDB + cache
+// localStorage) passent par `sealAtRest` à l'écriture et `openAtRest` à la
+// lecture (voir atRestCrypto.ts). Les entrées historiques non chiffrées
+// restent lisibles telles quelles (rétrocompatibilité).
+
+import { sealAtRest, openAtRest, isAtRestBox } from './atRestCrypto';
 
 const DB_NAME = 'nephtys-offline-db';
 const DB_VERSION = 3; // v3: store `media` (blobs média déchiffrés, cache durable)
@@ -21,6 +28,46 @@ const LS_CACHE_MAX_AGE = 24 * 60 * 60 * 1000; // 24 hours max cache age
 
 // Timeout for IndexedDB operations
 const DB_TIMEOUT = 3000;
+
+// Champ portant la boîte chiffrée dans un enregistrement IndexedDB.
+const SEALED_FIELD = '__atrest';
+
+// Champs conservés « en clair » à côté de la boîte chiffrée : ils servent de
+// keyPath et d'index IndexedDB. Sans eux, les stores (keyPath: 'id'/'tempId')
+// et les index ('conversation_id', 'created_at', 'username') ne fonctionneraient
+// plus et les requêtes getAll(conversationId) échoueraient.
+const MESSAGE_KEY_FIELDS = ['id', 'conversation_id', 'created_at'] as const;
+const CONVERSATION_KEY_FIELDS = ['id'] as const;
+const PENDING_KEY_FIELDS = ['tempId', 'conversation_id'] as const;
+const PROFILE_KEY_FIELDS = ['id', 'username'] as const;
+
+/**
+ * Chiffre un enregistrement à stocker. En cas d'indisponibilité du chiffrement
+ * (`sealAtRest` renvoie alors la valeur brute), on stocke l'enregistrement
+ * inchangé afin de ne jamais régresser ni corrompre les données.
+ */
+async function sealRecord(record: any, plainFields: readonly string[]): Promise<any> {
+  if (!record || typeof record !== 'object') return record;
+
+  const sealed = await sealAtRest(record);
+  if (!isAtRestBox(sealed)) return record;
+
+  const shadow: Record<string, unknown> = { [SEALED_FIELD]: sealed };
+  for (const field of plainFields) shadow[field] = record[field];
+  return shadow;
+}
+
+/**
+ * Déchiffre un enregistrement lu. Renvoie la valeur historique brute si elle
+ * n'est pas chiffrée, et `undefined` si une boîte est indéchiffrable (la clé au
+ * repos a été perdue) : les appelants doivent alors l'ignorer proprement.
+ */
+async function openRecord(stored: any): Promise<any> {
+  if (stored && typeof stored === 'object' && SEALED_FIELD in stored) {
+    return openAtRest(stored[SEALED_FIELD]);
+  }
+  return stored;
+}
 
 export interface OfflineMessage {
   id: string;
@@ -82,6 +129,10 @@ class OfflineStorage {
     profiles: new Map()
   };
 
+  // Déchiffrement asynchrone du cache localStorage chiffré (l'API
+  // localStorage est synchrone, or `openAtRest` est asynchrone).
+  private lsHydration: Promise<void> | null = null;
+
   constructor() {
     // Load from localStorage immediately (synchronous, survives page refresh)
     this.loadFromLocalStorage();
@@ -124,11 +175,19 @@ class OfflineStorage {
       }
       
       const cached = localStorage.getItem(LS_CONVERSATIONS_KEY);
-      if (cached) {
-        const conversations = JSON.parse(cached);
-        if (Array.isArray(conversations) && conversations.length > 0) {
-          this.memoryCache.conversations = conversations;
-        }
+      if (!cached) {
+        return;
+      }
+
+      const parsed = JSON.parse(cached);
+      if (isAtRestBox(parsed)) {
+        // Cache chiffré : le déchiffrement est asynchrone (l'API localStorage
+        // est synchrone, `openAtRest` ne l'est pas). On hydrate la mémoire dès
+        // que possible ; d'ici là `getConversations` retombe sur IndexedDB.
+        this.hydrateLocalStorage(parsed);
+      } else if (Array.isArray(parsed) && parsed.length > 0) {
+        // Entrée historique en clair (rétrocompatibilité) : rien à déchiffrer.
+        this.memoryCache.conversations = parsed;
       }
     } catch {
       // Clear corrupted cache
@@ -140,10 +199,22 @@ class OfflineStorage {
       }
     }
   }
+
+  // Déchiffre le cache localStorage en tâche de fond et alimente la mémoire.
+  private hydrateLocalStorage(raw: unknown): void {
+    this.lsHydration = (async () => {
+      const conversations = await openAtRest(raw);
+      if (Array.isArray(conversations) && conversations.length > 0) {
+        this.memoryCache.conversations = conversations;
+      }
+    })().catch(() => {
+      // Cache illisible (clé au repos perdue) : on ignore, IndexedDB prendra le relais.
+    });
+  }
   
   // Save conversations to localStorage (for instant load on page refresh)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private saveToLocalStorage(conversations: any[]): void {
+  private async saveToLocalStorage(conversations: any[]): Promise<void> {
     try {
       // Only save essential data to keep localStorage small
       // Strip out large fields like lastMessage content to save space
@@ -173,7 +244,11 @@ class OfflineStorage {
         } : undefined
       }));
       
-      const json = JSON.stringify(minimalConversations);
+      // Chiffré au repos (une seule boîte pour tout le tableau). Si le
+      // chiffrement est indisponible, `sealAtRest` renvoie le tableau brut et
+      // le cache reste lisible comme avant.
+      const sealed = await sealAtRest(minimalConversations);
+      const json = JSON.stringify(sealed);
       
       // Check size (localStorage has ~5MB limit)
       if (json.length > 2 * 1024 * 1024) { // 2MB limit for safety
@@ -296,11 +371,13 @@ class OfflineStorage {
     if (!ready) {
       return;
     }
-    
+
+    const sealed = await sealRecord(message, MESSAGE_KEY_FIELDS);
+
     return new Promise((resolve) => {
       const transaction = this.db!.transaction([MESSAGES_STORE], 'readwrite');
       const store = transaction.objectStore(MESSAGES_STORE);
-      const request = store.put(message);
+      const request = store.put(sealed);
 
       request.onsuccess = () => resolve();
       request.onerror = () => {
@@ -331,12 +408,19 @@ class OfflineStorage {
     if (!ready) {
       return;
     }
-    
+
+    // Chiffrement par enregistrement (une boîte par message) : nécessaire pour
+    // conserver la clé `id` et l'index `conversation_id` en clair, utilisés par
+    // getMessages / clearConversationMessages.
+    const sealed = await Promise.all(
+      messages.map(message => sealRecord(message, MESSAGE_KEY_FIELDS))
+    );
+
     return new Promise((resolve) => {
       const transaction = this.db!.transaction([MESSAGES_STORE], 'readwrite');
       const store = transaction.objectStore(MESSAGES_STORE);
 
-      messages.forEach(message => store.put(message));
+      sealed.forEach(record => store.put(record));
 
       transaction.oncomplete = () => resolve();
       transaction.onerror = () => {
@@ -362,7 +446,13 @@ class OfflineStorage {
       const index = store.index('conversation_id');
       const request = index.getAll(conversationId);
 
-      request.onsuccess = () => resolve(request.result || []);
+      request.onsuccess = async () => {
+        const raw = request.result || [];
+        // Déchiffre chaque message ; on écarte les boîtes illisibles ou les
+        // entrées historiques invalides sans casser la conversation.
+        const opened = await Promise.all(raw.map(openRecord));
+        resolve(opened.filter((m): m is OfflineMessage => m != null));
+      };
       request.onerror = () => {
         resolve([]);
       };
@@ -476,11 +566,13 @@ class OfflineStorage {
     if (!ready) {
       return;
     }
-    
+
+    const sealed = await sealRecord(message, PENDING_KEY_FIELDS);
+
     return new Promise((resolve) => {
       const transaction = this.db!.transaction([PENDING_STORE], 'readwrite');
       const store = transaction.objectStore(PENDING_STORE);
-      const request = store.put(message);
+      const request = store.put(sealed);
 
       request.onsuccess = () => resolve();
       request.onerror = () => {
@@ -500,7 +592,11 @@ class OfflineStorage {
       const store = transaction.objectStore(PENDING_STORE);
       const request = store.getAll();
 
-      request.onsuccess = () => resolve(request.result || []);
+      request.onsuccess = async () => {
+        const raw = request.result || [];
+        const opened = await Promise.all(raw.map(openRecord));
+        resolve(opened.filter((m): m is PendingMessage => m != null));
+      };
       request.onerror = () => {
         resolve([]);
       };
@@ -532,11 +628,13 @@ class OfflineStorage {
     if (!ready) {
       return;
     }
-    
+
+    const sealed = await sealRecord(conversation, CONVERSATION_KEY_FIELDS);
+
     return new Promise((resolve) => {
       const transaction = this.db!.transaction([CONVERSATIONS_STORE], 'readwrite');
       const store = transaction.objectStore(CONVERSATIONS_STORE);
-      const request = store.put(conversation);
+      const request = store.put(sealed);
 
       request.onsuccess = () => resolve();
       request.onerror = () => {
@@ -552,13 +650,17 @@ class OfflineStorage {
     
     // Also save to localStorage for instant load on page refresh
     // This is synchronous and survives page refresh
-    this.saveToLocalStorage(conversations);
-    
+    await this.saveToLocalStorage(conversations);
+
     const ready = await this.ensureReady();
     if (!ready) {
       return;
     }
-    
+
+    const sealed = await Promise.all(
+      conversations.map(conversation => sealRecord(conversation, CONVERSATION_KEY_FIELDS))
+    );
+
     return new Promise((resolve) => {
       const transaction = this.db!.transaction([CONVERSATIONS_STORE], 'readwrite');
       const store = transaction.objectStore(CONVERSATIONS_STORE);
@@ -567,7 +669,7 @@ class OfflineStorage {
       store.clear();
 
       // Add all new conversations
-      conversations.forEach(conversation => store.put(conversation));
+      sealed.forEach(conversation => store.put(conversation));
 
       transaction.oncomplete = () => {
         resolve();
@@ -586,24 +688,36 @@ class OfflineStorage {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async getConversations(): Promise<any[]> {
+    // Attendre l'hydratation du cache localStorage chiffré avant de décider
+    // de retomber (ou non) sur IndexedDB.
+    if (this.lsHydration) {
+      try {
+        await this.lsHydration;
+      } catch {
+        // Ignoré : le cache mémoire restera vide et IndexedDB prend le relais.
+      }
+    }
+
     // First, check memory cache (instant)
     if (this.memoryCache.conversations !== null) {
       return this.memoryCache.conversations;
     }
-    
+
     const ready = await this.ensureReady();
     if (!ready) {
       return [];
     }
-    
+
     return new Promise((resolve) => {
       const transaction = this.db!.transaction([CONVERSATIONS_STORE], 'readonly');
       const store = transaction.objectStore(CONVERSATIONS_STORE);
       const request = store.getAll();
 
-      request.onsuccess = () => {
-        const result = request.result || [];
-        // Update memory cache
+      request.onsuccess = async () => {
+        const raw = request.result || [];
+        const opened = await Promise.all(raw.map(openRecord));
+        const result = opened.filter(c => c != null);
+        // Update memory cache (déchiffré)
         this.memoryCache.conversations = result;
         resolve(result);
       };
@@ -618,6 +732,7 @@ class OfflineStorage {
     // Clear memory cache
     this.memoryCache.conversations = null;
     this.memoryCache.messages.clear();
+    this.lsHydration = null;
     
     // Clear localStorage cache
     try {
@@ -674,12 +789,16 @@ class OfflineStorage {
     if (!ready) {
       return;
     }
-    
+
+    const sealed = await Promise.all(
+      profiles.map(profile => sealRecord(profile, PROFILE_KEY_FIELDS))
+    );
+
     return new Promise((resolve) => {
       const transaction = this.db!.transaction([PROFILES_STORE], 'readwrite');
       const store = transaction.objectStore(PROFILES_STORE);
 
-      profiles.forEach(profile => store.put(profile));
+      sealed.forEach(profile => store.put(profile));
 
       transaction.oncomplete = () => {
         resolve();
@@ -736,12 +855,13 @@ class OfflineStorage {
       const store = transaction.objectStore(PROFILES_STORE);
       const request = store.get(userId);
 
-      request.onsuccess = () => {
-        if (request.result) {
-          // Update memory cache
-          this.memoryCache.profiles.set(userId, request.result);
+      request.onsuccess = async () => {
+        const opened = (await openRecord(request.result)) as CachedProfile | undefined;
+        if (opened) {
+          // Update memory cache (déchiffré)
+          this.memoryCache.profiles.set(userId, opened);
         }
-        resolve(request.result || null);
+        resolve(opened || null);
       };
       request.onerror = () => resolve(null);
     });
@@ -775,11 +895,12 @@ class OfflineStorage {
       
       for (const userId of missingIds) {
         const request = store.get(userId);
-        request.onsuccess = () => {
-          if (request.result) {
-            result.set(userId, request.result);
-            // Update memory cache
-            this.memoryCache.profiles.set(userId, request.result);
+        request.onsuccess = async () => {
+          const opened = (await openRecord(request.result)) as CachedProfile | undefined;
+          if (opened) {
+            result.set(userId, opened);
+            // Update memory cache (déchiffré)
+            this.memoryCache.profiles.set(userId, opened);
           }
           completed++;
           if (completed === missingIds.length) {
