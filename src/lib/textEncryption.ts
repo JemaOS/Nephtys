@@ -35,7 +35,7 @@
 import { supabase } from './supabase';
 import { encryptMedia, decryptMedia, cryptoB64 } from './mediaEncryption';
 import { fetchX25519PublicKeys, getLocalX25519KeyPair } from './e2eeX25519';
-import { wrapKeyForRecipientX25519, unwrapKeyFromSenderX25519 } from './x25519';
+import { wrapKeyForRecipientX25519, unwrapKeyFromSenderX25519, keyWrapAad } from './x25519';
 import { isRatchetEnvelope, tryDecryptWithRatchet } from './ratchet/chatIntegration';
 import { getLocalRatchetKeys } from './ratchet/keyStore';
 import { findVerifiedSender, sealSenderForMembers } from './messaging/sealedSender';
@@ -218,6 +218,7 @@ export async function createTextKeysForMessage(params: {
         senderX25519.privateKey,
         senderX25519.publicKey,
         recipientX25519,
+        keyWrapAad(senderX25519.publicKey),
       );
       rows.push({
         message_id: messageId,
@@ -313,7 +314,7 @@ async function unwrapKeyRowForUser(
   };
   if (caches.x25519 === undefined) caches.x25519 = await getLocalX25519KeyPair(userId);
   if (!caches.x25519) throw new Error('Clé X25519 locale indisponible');
-  return await unwrapKeyFromSenderX25519(wrapped, caches.x25519.privateKey);
+  return await unwrapKeyFromSenderX25519(wrapped, caches.x25519.privateKey, keyWrapAad(keyRow.sender_public_key));
 }
 
 /**

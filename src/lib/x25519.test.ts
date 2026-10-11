@@ -7,6 +7,7 @@ import {
   untagX25519,
   wrapKeyForRecipientX25519,
   unwrapKeyFromSenderX25519,
+  keyWrapAad,
 } from './x25519';
 
 describe('x25519', () => {
@@ -56,5 +57,32 @@ describe('x25519', () => {
     );
 
     await expect(unwrapKeyFromSenderX25519(wrapped, eve.privateKey)).rejects.toBeTruthy();
+  });
+
+  it('lie l’enveloppe à un AAD et la déchiffre avec le même AAD', async () => {
+    const alice = generateX25519KeyPair();
+    const bob = generateX25519KeyPair();
+    const rawKey = crypto.getRandomValues(new Uint8Array(32));
+    const aad = keyWrapAad(alice.publicKey);
+    const wrapped = await wrapKeyForRecipientX25519(rawKey, alice.privateKey, alice.publicKey, bob.publicKey, aad);
+    const unwrapped = await unwrapKeyFromSenderX25519(wrapped, bob.privateKey, aad);
+    expect(Array.from(unwrapped)).toEqual(Array.from(rawKey));
+  });
+
+  it('rejette un déchiffrement avec un AAD différent', async () => {
+    const alice = generateX25519KeyPair();
+    const bob = generateX25519KeyPair();
+    const rawKey = crypto.getRandomValues(new Uint8Array(32));
+    const wrapped = await wrapKeyForRecipientX25519(rawKey, alice.privateKey, alice.publicKey, bob.publicKey, keyWrapAad(alice.publicKey));
+    await expect(unwrapKeyFromSenderX25519(wrapped, bob.privateKey, keyWrapAad('x25519:autre'))).rejects.toBeTruthy();
+  });
+
+  it('déchiffre toujours les enveloppes historiques SANS AAD (repli)', async () => {
+    const alice = generateX25519KeyPair();
+    const bob = generateX25519KeyPair();
+    const rawKey = crypto.getRandomValues(new Uint8Array(32));
+    const legacy = await wrapKeyForRecipientX25519(rawKey, alice.privateKey, alice.publicKey, bob.publicKey);
+    const unwrapped = await unwrapKeyFromSenderX25519(legacy, bob.privateKey, keyWrapAad(alice.publicKey));
+    expect(Array.from(unwrapped)).toEqual(Array.from(rawKey));
   });
 });

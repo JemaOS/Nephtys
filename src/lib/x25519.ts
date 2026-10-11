@@ -120,17 +120,32 @@ export interface X25519WrappedKey {
   senderPublicKey: string;
 }
 
+/**
+ * AAD des enveloppes de clé : lie le ciphertext à la clé publique de
+ * l'expéditeur déclarée. Empêche de rejouer une enveloppe sous une autre clé
+ * d'expéditeur. Rétrocompatible : les enveloppes historiques SANS AAD restent
+ * déchiffrables (repli dans `unwrapKeyFromSenderX25519`).
+ */
+export const KEYWRAP_AAD_PREFIX = 'nephtys-keywrap-v1|';
+
+export function keyWrapAad(senderPublicKey: string): string {
+  return `${KEYWRAP_AAD_PREFIX}${senderPublicKey}`;
+}
+
 /** Enveloppe une clé AES brute pour un destinataire via X25519. */
 export async function wrapKeyForRecipientX25519(
   rawKey: Uint8Array,
   senderPrivateKeyB64: string,
   senderPublicKey: string,
   recipientPublicKey: string,
+  aad?: string,
 ): Promise<X25519WrappedKey> {
   const sharedKey = await deriveSharedAesKey(senderPrivateKeyB64, recipientPublicKey);
   const iv = crypto.getRandomValues(new Uint8Array(12));
+  const params: AesGcmParams = { name: 'AES-GCM', iv: iv as BufferSource };
+  if (aad) params.additionalData = new TextEncoder().encode(aad) as BufferSource;
   const encrypted = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv: iv as BufferSource },
+    params,
     sharedKey,
     rawKey as BufferSource,
   );
@@ -145,12 +160,29 @@ export async function wrapKeyForRecipientX25519(
 export async function unwrapKeyFromSenderX25519(
   wrapped: X25519WrappedKey,
   myPrivateKeyB64: string,
+  aad?: string,
 ): Promise<Uint8Array> {
   const sharedKey = await deriveSharedAesKey(myPrivateKeyB64, wrapped.senderPublicKey);
+  const iv = fromBase64(wrapped.iv) as BufferSource;
+  const ct = fromBase64(wrapped.encryptedKey) as BufferSource;
+
+  if (aad) {
+    try {
+      const plain = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv, additionalData: new TextEncoder().encode(aad) as BufferSource },
+        sharedKey,
+        ct,
+      );
+      return new Uint8Array(plain);
+    } catch {
+      // Repli : enveloppe historique émise SANS AAD.
+    }
+  }
+
   const plain = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv: fromBase64(wrapped.iv) as BufferSource },
+    { name: 'AES-GCM', iv },
     sharedKey,
-    fromBase64(wrapped.encryptedKey) as BufferSource,
+    ct,
   );
   return new Uint8Array(plain);
 }
