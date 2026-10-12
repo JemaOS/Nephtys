@@ -12,6 +12,7 @@
 
 import nacl from 'tweetnacl';
 import { sha256 } from '@noble/hashes/sha2.js';
+import { decodeTransportBlock } from '../simplexweb/browser-smp-core.mjs';
 import type { QueueCredentials, StoredEnvelope } from './relayCore';
 import type { RelayOp, RelayResponse, RelayWire } from './wire';
 
@@ -115,38 +116,10 @@ class SmpV9Connection {
   async waitResponse(): Promise<any[]> { return this.decode(await this.nextBlock()); }
 
   decode(block: Uint8Array): any[] {
-    const L = (block[0] << 8) | block[1];
-    const p = block.subarray(2, 2 + L);
-    const count = p[0];
-    let off = 1;
-    const out: any[] = [];
-    for (let i = 0; i < count; i++) {
-      const len = (p[off] << 8) | p[off + 1]; off += 2;
-      const tx = p.subarray(off, off + len); off += len;
-      let o = 0;
-      o += 1 + tx[o]; o += 1 + tx[o]; o += 1 + tx[o];
-      out.push(this.parseCommand(tx.subarray(o)));
-    }
-    return out;
-  }
-
-  private parseCommand(bytes: Uint8Array): any {
-    const type = new TextDecoder().decode(bytes.subarray(0, 3));
-    if (type === 'IDS') {
-      let o = 4;
-      const sl = bytes[o]; o += 1; const rcvId = bytes.subarray(o, o + sl); o += sl;
-      const dl = bytes[o]; o += 1; const sndId = bytes.subarray(o, o + dl); o += dl;
-      const dhl = bytes[o]; o += 1; const rcvPublicDhKey = bytes.subarray(o, o + dhl);
-      return { type: 'IDS', rcvId, sndId, rcvPublicDhKey };
-    }
-    if (type === 'MSG') {
-      let o = 4;
-      const ml = bytes[o]; o += 1; const msgId = bytes.subarray(o, o + ml);
-      return { type: 'MSG', msgId, body: bytes.subarray(o) };
-    }
-    if (type === 'ERR') return { type: 'ERR', text: new TextDecoder().decode(bytes.slice(0, 40)) };
-    if (type === 'OK' || type === 'SUB') return { type: 'OK' };
-    return { type };
+    // Décodeur éprouvé de la lib, avec la VERSION NÉGOCIÉE (v9..v15) — l'IDS et
+    // les commandes diffèrent selon la version.
+    const txns = decodeTransportBlock(this.version, block, { kind: 'broker', sessionId: this.sessionId }) as any[];
+    return txns.map(t => t.message ?? t);
   }
 
   close(): void { try { this.ws?.close(); } catch { /* ignore */ } }
@@ -250,8 +223,9 @@ const txns = await conn.command(sig, corrId, rcvId, cmd);
       if (t.type !== 'MSG') continue;
       const plain = nacl.box.open(t.body, t.msgId, srvDhPub, rcvDhPriv);
       if (!plain) continue;
-      // RcvMsgBody : SystemTime(12) + MsgFlags(1) + ' ' + body
-      const body = plain.subarray(14);
+      // Plaintext = word16(RcvMsgBody len) ‖ header(10) ‖ body ‖ '#' padding.
+      const rl = (plain[0] << 8) | plain[1];
+      const body = plain.subarray(12, 2 + rl);
       out.push({ id: b64u(t.msgId), ciphertext: b64u(body), ts: Date.now(), expiresAt: 0 });
     }
     return { ok: true, result: out };

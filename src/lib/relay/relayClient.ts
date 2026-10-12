@@ -433,7 +433,10 @@ export function getSimplexV9BridgeUrl(): string {
   } catch {
     // localStorage indisponible
   }
-  return (import.meta.env.VITE_SIMPLEX_V9_BRIDGE_URL as string | undefined)?.trim() ?? '';
+  return (
+    (import.meta.env.VITE_SIMPLEX_V9_BRIDGE_URL as string | undefined)?.trim() ||
+    'wss://78-232-3-78.sslip.io/simplex'
+  );
 }
 
 /** Enregistre l'URL du pont SimpleX v9. */
@@ -448,19 +451,24 @@ export function setSimplexV9BridgeUrl(url: string): void {
   instance = null;
 }
 
-/** Vrai si le transport SimpleX v9 est actif (toggle + URL de pont). */
+/**
+ * Vrai si le transport SimpleX est actif. **Activé par défaut** (le mode privé
+ * route via le réseau SimpleX officiel) ; l'utilisateur peut le désactiver
+ * explicitement (valeur '0'), ou le désactiver en vidant l'URL du pont.
+ */
 export function isSimplexV9Enabled(): boolean {
   try {
-    return localStorage.getItem(SIMPLEX_V9_KEY) === '1' && Boolean(getSimplexV9BridgeUrl());
+    const v = localStorage.getItem(SIMPLEX_V9_KEY);
+    const on = v === null ? true : v === '1';
+    return on && Boolean(getSimplexV9BridgeUrl());
   } catch {
-    return false;
+    return Boolean(getSimplexV9BridgeUrl());
   }
 }
 
 export function setSimplexV9Enabled(enabled: boolean): void {
   try {
-    if (enabled) localStorage.setItem(SIMPLEX_V9_KEY, '1');
-    else localStorage.removeItem(SIMPLEX_V9_KEY);
+    localStorage.setItem(SIMPLEX_V9_KEY, enabled ? '1' : '0');
   } catch {
     // localStorage indisponible
   }
@@ -491,8 +499,15 @@ export function getPrivateMessenger(): PrivateMessenger {
     } else if (mode === 'simplex-agent') {
       wire = new AgentRelayWire(AGENT_URL);
     } else if (isSimplexV9Enabled()) {
-      // Relais SimpleX SMP v9 via le pont WS↔TLS natif (server/simplex-bridge).
-      wire = new SmpV9Wire({ bridgeUrl: getSimplexV9BridgeUrl() });
+      // Réseau SimpleX (protocole SMP v9..v15) via le pont WS↔TLS natif, avec
+      // repli sur le relais aveugle si le pont/le serveur SimpleX est injoignable.
+      const fw = new FailoverRelayWire(
+        new SmpV9Wire({ bridgeUrl: getSimplexV9BridgeUrl() }),
+        new SupabaseRelayWire(),
+        active => { for (const cb of transportListeners) cb(active); },
+      );
+      failoverWire = fw;
+      wire = fw;
     } else if (hasCustomRelay()) {
       wire = new WebSocketWire(getRelayUrl());
     } else {
