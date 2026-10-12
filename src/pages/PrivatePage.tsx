@@ -17,9 +17,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getPeerConnectionConfig, hasTurnServer, isRelayOnlyCallsEnabled } from '@/lib/iceServers'
-import { isCoverTrafficEnabled } from '@/lib/privacyPrefs'
+import { isCoverTrafficEnabled, setCoverTrafficEnabled } from '@/lib/privacyPrefs'
+import { useI18n, tStatic } from '@/i18n'
 import { SafeQrCode } from '@/components/SafeQrCode'
-import { ArrowLeft, Copy, Lock, Paperclip, Plus, Send, ShieldCheck, SlidersHorizontal, Trash2, X } from 'lucide-react'
+import {
+  ArrowLeft,
+  ChevronDown,
+  Copy,
+  EyeOff,
+  Lock,
+  Paperclip,
+  Plus,
+  RefreshCw,
+  Send,
+  ShieldCheck,
+  SlidersHorizontal,
+  Trash2,
+  X,
+} from 'lucide-react'
 import { MainLayout } from '@/components/MainLayout'
 import { useAuth } from '@/context/AuthContext'
 import {
@@ -28,8 +43,15 @@ import {
   getRelayLabel,
   setRelayUrl,
   isTorRelayEnabled,
+  setTorRelayEnabled,
   isDecentralizedRelayEnabled,
+  setDecentralizedRelayEnabled,
+  getRelayMode,
+  setRelayMode,
+  getAvailableRelays,
   getRelayPool,
+  setRelayPool,
+  type RelayMode,
 } from '@/lib/relay/relayClient'
 import { getGroupMessenger } from '@/lib/relay/groupClient'
 import type { GroupRecord } from '@/lib/relay/groupMessenger'
@@ -40,6 +62,7 @@ import { isCallSignal } from '@/lib/relay/callSignaling'
 import { IdbStatusStore } from '@/lib/relay/statusIdbStore'
 import { encryptAndUploadFile, downloadAndDecryptFile, sanitizeFileName, type FileDescriptor } from '@/lib/relay/fileTransfer'
 import type { PrivateConnectionRecord } from '@/lib/relay/connectionStore'
+
 interface ChatItem {
   id: string
   text: string
@@ -60,8 +83,82 @@ function AnonymousShell({ children }: { readonly children: ReactNode }) {
   return <div className="h-screen-safe flex flex-col bg-bg-primary overflow-hidden">{children}</div>
 }
 
+/** Bouton-disclosure repliable (options secondaires masquées par défaut). */
+function Disclosure({
+  label,
+  open,
+  onToggle,
+  icon,
+  children,
+}: {
+  readonly label: string
+  readonly open: boolean
+  readonly onToggle: () => void
+  readonly icon?: ReactNode
+  readonly children: ReactNode
+}) {
+  return (
+    <div className="rounded-2xl bg-bg-surface">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        className="w-full flex items-center justify-between gap-2 px-4 py-3 rounded-2xl text-sm text-text-secondary hover:text-text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7578db]"
+      >
+        <span className="flex items-center gap-2">{icon}{label}</span>
+        <ChevronDown size={16} className={`shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && <div className="px-4 pb-4 space-y-2">{children}</div>}
+    </div>
+  )
+}
+
+/** Interrupteur accessible (libellé + état) — `role="switch"`/`aria-checked`. */
+function Toggle({
+  label,
+  checked,
+  onChange,
+  icon,
+}: {
+  readonly label: string
+  readonly checked: boolean
+  readonly onChange: (next: boolean) => void
+  readonly icon?: ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-pressed={checked}
+      onClick={() => onChange(!checked)}
+      className={`flex items-center gap-2 px-2.5 py-1.5 rounded-full text-[11px] font-medium border transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7578db] ${
+        checked
+          ? 'bg-[#7578db]/20 border-[#7578db]/40 text-text-primary'
+          : 'bg-bg-primary border-bg-hover text-text-secondary hover:text-text-primary'
+      }`}
+    >
+      {icon}
+      <span>{label}</span>
+      <span
+        aria-hidden
+        className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${
+          checked ? 'bg-[#7578db]' : 'bg-bg-hover'
+        }`}
+      >
+        <span
+          className={`inline-block h-3 w-3 rounded-full bg-white transition-transform ${
+            checked ? 'translate-x-3.5' : 'translate-x-0.5'
+          }`}
+        />
+      </span>
+    </button>
+  )
+}
+
 export function PrivatePage() {
   const navigate = useNavigate()
+  const { t } = useI18n()
   const { user, loading } = useAuth()
   const isAnonymous = !user
   // Interface distincte : shell anonyme (sans compte) vs shell de l'app connectée.
@@ -109,23 +206,19 @@ export function PrivatePage() {
   const [callConv, setCallConv] = useState<string | null>(null)
   const [mediaError, setMediaError] = useState<string | null>(null)
 
-  // Bandeau relais COHÉRENT (Connexions + Groupes) : indique toujours quel
-  // relais est utilisé (défaut automatique / personnalisé / décentralisé).
-  const relayBanner = useMemo(() => {
-    if (isDecentralizedRelayEnabled()) {
-      return `réseau décentralisé (${getRelayPool().length} relais)`;
-    }
-    const custom = getRelayUrl();
-    return custom ? `relais personnalisé ${custom}` : 'relais par défaut (automatique)';
-  }, [])
-  const relayBannerNode = (
-    <div className="rounded-xl bg-amber-500/10 border border-amber-500/30 p-3 text-xs text-amber-300 [.light_&]:bg-amber-100 [.light_&]:border-amber-300 [.light_&]:text-amber-900">
-      Relais : <b>{relayBanner}</b> — modifiable dans Paramètres → Serveurs et réseaux.
-    </div>
+  // Contrôles de la connexion active (relais / Tor / incognito).
+  const [relayModeState, setRelayModeState] = useState<RelayMode>(() => getRelayMode())
+  const [torOn, setTorOn] = useState<boolean>(() => isTorRelayEnabled())
+  const [coverOn, setCoverOn] = useState<boolean>(() => isCoverTrafficEnabled())
+  const [currentRelay, setCurrentRelay] = useState<string>(() =>
+    getRelayMode() === 'manual' ? (getRelayPool()[0] ?? '') : '',
   )
+  // Réglages capturés avant l'activation d'Incognito, pour les restaurer à l'arrêt.
+  const incognitoPrevRef = useRef<{ tor: boolean; cover: boolean; mode: RelayMode } | null>(null)
 
   // Onglets : une seule section à la fois (écran plus lisible, moins chargé).
   const [tab, setTab] = useState<'connections' | 'groups' | 'status'>('connections')
+  const [showJoin, setShowJoin] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false)
   const localMediaRef = useRef<MediaStream | null>(null)
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null)
@@ -139,7 +232,7 @@ export function PrivatePage() {
       if (localVideoRef.current) localVideoRef.current.srcObject = stream
       return stream
     } catch (e) {
-      setMediaError(`Micro/caméra indisponible — ${(e as Error).message}`)
+      setMediaError(tStatic('pvMediaError', { message: (e as Error).message }))
       return null
     }
   }, [])
@@ -175,12 +268,12 @@ export function PrivatePage() {
     // Fail-closed : un appel WebRTC (ICE) contourne le transport Tor et expose
     // l'adresse IP réelle de l'appareil. En mode Tor, on refuse l'appel.
     if (isTorRelayEnabled()) {
-      setMediaError('Appels désactivés en mode Tor : WebRTC exposerait votre IP réelle.')
+      setMediaError(tStatic('pvCallDisabledTor'))
       return
     }
     // Fail-closed IP : sans cred TURN, l'appel replierait en P2P direct → refus.
     if (isRelayOnlyCallsEnabled() && !hasTurnServer()) {
-      setMediaError('Appel refusé : aucun relais TURN disponible (votre IP serait exposée en P2P).')
+      setMediaError(tStatic('pvNoTurn'))
       return
     }
     setMediaError(null)
@@ -193,7 +286,7 @@ export function PrivatePage() {
     if (!callConv) return
     // Fail-closed IP : si aucun TURN n'est disponible, accepter exposerait l'IP.
     if (isRelayOnlyCallsEnabled() && !hasTurnServer()) {
-      setMediaError('Appel refusé : aucun relais TURN disponible (votre IP serait exposée en P2P).')
+      setMediaError(tStatic('pvNoTurn'))
       await privateCall.reject(callConv)
       return
     }
@@ -331,9 +424,7 @@ export function PrivatePage() {
       await refresh()
       openConnection(id)
     } catch (e) {
-      setError(
-        `Impossible de créer la connexion. Le relais est-il démarré ? (${relayUrl}) — ${(e as Error).message}`,
-      )
+      setError(tStatic('pvCreateError', { url: relayUrl, message: (e as Error).message }))
     } finally {
       setBusy(false)
     }
@@ -350,7 +441,7 @@ export function PrivatePage() {
       await refresh()
       openConnection(id)
     } catch (e) {
-      setError(`Lien invalide ou relais injoignable — ${(e as Error).message}`)
+      setError(tStatic('pvJoinError', { message: (e as Error).message }))
     } finally {
       setBusy(false)
     }
@@ -364,7 +455,7 @@ export function PrivatePage() {
       await messenger.send(active, text)
       setMessages(prev => [...prev, { id: `${Date.now()}-${prev.length}`, text, mine: true }])
     } catch (e) {
-      setError(`Envoi impossible — ${(e as Error).message}`)
+      setError(tStatic('pvSendError', { message: (e as Error).message }))
     }
   }, [draft, active, messenger])
 
@@ -382,7 +473,7 @@ export function PrivatePage() {
           { id: `out-file-${Date.now()}-${prev.length}`, text: `\u0000NPT-FILE:${JSON.stringify(descriptor)}`, mine: true },
         ])
       } catch (e) {
-        setError(`Envoi du fichier impossible — ${(e as Error).message}`)
+        setError(tStatic('pvUploadError', { message: (e as Error).message }))
       } finally {
         setUploading(false)
       }
@@ -404,9 +495,92 @@ export function PrivatePage() {
       a.remove()
       setTimeout(() => URL.revokeObjectURL(url), 10_000)
     } catch (e) {
-      setError(`Téléchargement impossible — ${(e as Error).message}`)
+      setError(tStatic('pvDownloadError', { message: (e as Error).message }))
     }
   }, [])
+
+  // ─── Contrôles relais / Tor / incognito ─────────────────────────────
+  /** Relais courant, affiché de façon lisible. */
+  const relayDisplay = useMemo(
+    () =>
+      relayModeState === 'auto'
+        ? t('pvRelayCurrentAuto', { count: getAvailableRelays().length })
+        : currentRelay || t('pvRelayCurrentNone'),
+    [relayModeState, currentRelay, t],
+  )
+
+  const applyRelayMode = useCallback((mode: RelayMode) => {
+    // Le pool décentralisé doit être actif pour que la sélection soit honorée.
+    setRelayMode(mode)
+    setDecentralizedRelayEnabled(true)
+    setRelayModeState(mode)
+    if (mode === 'manual') {
+      const next = getRelayPool()[0] ?? getAvailableRelays()[0] ?? ''
+      if (next) setRelayPool(next)
+      setCurrentRelay(next)
+    } else {
+      setCurrentRelay('')
+    }
+  }, [])
+
+  /** Passe au relais suivant du pool (sélection unique, mode manuel). */
+  const changeRelay = useCallback(() => {
+    const pool = getAvailableRelays()
+    if (pool.length === 0) return
+    const idx = pool.indexOf(currentRelay)
+    const next = pool[(idx + 1) % pool.length]
+    setRelayMode('manual')
+    setDecentralizedRelayEnabled(true)
+    setRelayModeState('manual')
+    setRelayPool(next)
+    setCurrentRelay(next)
+  }, [currentRelay])
+
+  const toggleTor = useCallback((next: boolean) => {
+    setTorRelayEnabled(next)
+    // isTorRelayEnabled s'auto-répare (aucune adresse .onion → reste désactivé) :
+    // on relit l'état effectif pour ne pas afficher un « Tor actif » mensonger.
+    setTorOn(isTorRelayEnabled())
+  }, [])
+
+  /**
+   * Incognito : un seul interrupteur pour le trio de protection des métadonnées
+   * (routage Tor + trafic de couverture + relais automatique).
+   * ON  → active le trio. OFF → restaure les réglages précédents capturés à
+   * l'activation (Tor, couverture, mode de relais) ; à défaut, revient aux
+   * valeurs par défaut. Les réglages individuels restent en « Options avancées ».
+   */
+  const toggleIncognito = useCallback((on: boolean) => {
+    if (on) {
+      incognitoPrevRef.current = {
+        tor: isTorRelayEnabled(),
+        cover: isCoverTrafficEnabled(),
+        mode: getRelayMode(),
+      }
+      setTorRelayEnabled(true)
+      setCoverTrafficEnabled(true)
+      setRelayMode('auto')
+      setDecentralizedRelayEnabled(true)
+      setTorOn(isTorRelayEnabled())
+      setCoverOn(true)
+      setRelayModeState('auto')
+      setCurrentRelay('')
+    } else {
+      const prev = incognitoPrevRef.current
+      incognitoPrevRef.current = null
+      const target = prev ?? { tor: false, cover: true, mode: 'auto' as RelayMode }
+      setTorRelayEnabled(target.tor)
+      setCoverTrafficEnabled(target.cover)
+      setRelayMode(target.mode)
+      setDecentralizedRelayEnabled(target.mode === 'auto')
+      setTorOn(isTorRelayEnabled())
+      setCoverOn(target.cover)
+      setRelayModeState(target.mode)
+      setCurrentRelay(target.mode === 'manual' ? (getRelayPool()[0] ?? '') : '')
+    }
+  }, [])
+
+  const incognitoOn = torOn && coverOn && relayModeState === 'auto'
 
   // ─── Groupes privés ─────────────────────────────────────────────────
   const refreshGroups = useCallback(async () => {
@@ -437,12 +611,12 @@ export function PrivatePage() {
     setGroupBusy(true)
     setGroupError(null)
     try {
-      const { record, invite } = await groupMessenger.create('Groupe privé')
+      const { record, invite } = await groupMessenger.create(tStatic('pvGroupName'))
       setGroupInvite(invite)
       await refreshGroups()
       openGroup(record.groupId)
     } catch (e) {
-      setGroupError(`Création du groupe impossible — ${(e as Error).message}`)
+      setGroupError(tStatic('pvGroupCreateError', { message: (e as Error).message }))
     } finally {
       setGroupBusy(false)
     }
@@ -458,7 +632,7 @@ export function PrivatePage() {
       await refreshGroups()
       openGroup(rec.groupId)
     } catch (e) {
-      setGroupError(`Impossible de rejoindre — ${(e as Error).message}`)
+      setGroupError(tStatic('pvGroupJoinError', { message: (e as Error).message }))
     } finally {
       setGroupBusy(false)
     }
@@ -472,7 +646,7 @@ export function PrivatePage() {
       await groupMessenger.send(activeGroupId, text)
       setGroupMessages(prev => [...prev, { id: `gout-${Date.now()}-${prev.length}`, text, mine: true }])
     } catch (e) {
-      setGroupError(`Envoi impossible — ${(e as Error).message}`)
+      setGroupError(tStatic('pvGroupSendError', { message: (e as Error).message }))
     }
   }, [groupDraft, activeGroupId, groupMessenger])
 
@@ -503,6 +677,11 @@ export function PrivatePage() {
     [messenger, active, refresh],
   )
 
+  const closeConnection = useCallback(() => {
+    activeRef.current = null
+    setActive(null)
+  }, [])
+
   const handleCopy = useCallback(async () => {
     if (!invite) return
     try {
@@ -514,13 +693,68 @@ export function PrivatePage() {
     }
   }, [invite])
 
+  // Bandeau relais (Connexions + Groupes) : indique toujours le relais effectif.
+  const relayInfo = isDecentralizedRelayEnabled()
+    ? t('pvRelayDecentralized', { count: getRelayPool().length })
+    : getRelayUrl()
+      ? t('pvRelayCustom', { url: getRelayUrl() })
+      : t('pvRelayDefault')
+  const relayBannerNode = (
+    <div className="rounded-xl bg-bg-surface px-3 py-2 text-[11px] text-text-tertiary">
+      {t('pvRelayPrefix')} <span className="text-text-secondary break-all">{relayInfo}</span> — {t('pvRelaySettingsHint')}
+    </div>
+  )
+
   if (loading) {
     return (
       <div className="h-screen-safe flex items-center justify-center bg-bg-primary">
-        <div className="text-sm text-text-secondary">Chargement…</div>
+        <div className="text-sm text-text-secondary">{t('pvLoading')}</div>
       </div>
     )
   }
+
+  const segClass = (on: boolean) =>
+    `px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7578db] ${
+      on ? 'bg-[#7578db] text-white' : 'text-text-secondary hover:text-text-primary'
+    }`
+  const chipClass =
+    'flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[11px] font-medium border border-bg-hover bg-bg-primary text-text-secondary hover:text-text-primary transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7578db]'
+
+  const inviteCard = invite && (
+    <div className="rounded-2xl bg-bg-surface p-4 flex flex-col items-center gap-3">
+      <div className="w-full flex items-center justify-between">
+        <span className="text-xs text-text-secondary">{t('pvInviteTitle')}</span>
+        <button
+          type="button"
+          onClick={() => setInvite(null)}
+          className="p-1 rounded-lg hover:bg-bg-hover text-text-tertiary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7578db]"
+          aria-label={t('close')}
+        >
+          <X size={16} />
+        </button>
+      </div>
+      <SafeQrCode value={invite} size={180} />
+      <div className="w-full flex items-center gap-2">
+        <input
+          readOnly
+          value={invite}
+          className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-bg-primary text-xs text-text-secondary font-mono truncate"
+        />
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="flex items-center gap-1 px-3 py-2 rounded-lg bg-bg-hover text-xs text-text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7578db]"
+        >
+          <Copy size={14} /> {copied ? t('pvCopied') : t('pvCopy')}
+        </button>
+      </div>
+      <p className="text-[11px] text-text-tertiary text-center">{t('pvInviteHint')}</p>
+    </div>
+  )
+
+  const errorBox = error && (
+    <div className="rounded-xl bg-red-500/10 border border-red-500/20 p-3 text-xs text-red-400">{error}</div>
+  )
 
   return (
     <Shell>
@@ -531,8 +765,8 @@ export function PrivatePage() {
             <button
               type="button"
               onClick={() => navigate('/chats')}
-              className="p-2 rounded-lg hover:bg-bg-hover transition-colors"
-              aria-label="Retour"
+              className="p-2 rounded-lg hover:bg-bg-hover transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7578db]"
+              aria-label={t('back')}
             >
               <ArrowLeft size={20} />
             </button>
@@ -540,10 +774,8 @@ export function PrivatePage() {
           <div className="flex items-center gap-2 flex-1 min-w-0">
             <Lock size={20} className="text-[#7578db] shrink-0" />
             <div className="min-w-0">
-              <h1 className="text-base font-semibold text-text-primary">Connexions privées</h1>
-              <p className="text-xs text-text-secondary truncate">
-                Sans compte, sans métadonnées — via un relais indépendant
-              </p>
+              <h1 className="text-base font-semibold text-text-primary">{t('pvTitle')}</h1>
+              <p className="text-xs text-text-secondary truncate">{t('pvSubtitle')}</p>
             </div>
           </div>
           {isAnonymous && (
@@ -552,24 +784,26 @@ export function PrivatePage() {
               onClick={() => navigate('/auth')}
               className="shrink-0 px-3 py-1.5 rounded-lg border border-bg-hover text-xs text-text-primary hover:bg-bg-hover transition-colors"
             >
-              Se connecter
+              {t('pvSignIn')}
             </button>
           )}
         </div>
 
         {/* Onglets */}
         <div className="px-4 pt-3">
-          <div className="flex gap-1 p-1 rounded-xl bg-bg-surface">
+          <div className="flex gap-1 p-1 rounded-xl bg-bg-surface" role="tablist">
             {([
-              { id: 'connections', label: 'Connexions' },
-              { id: 'groups', label: 'Groupes' },
-              { id: 'status', label: 'Statuts' },
+              { id: 'connections', label: t('pvTabConnections') },
+              { id: 'groups', label: t('pvTabGroups') },
+              { id: 'status', label: t('pvTabStatus') },
             ] as const).map(item => (
               <button
                 key={item.id}
                 type="button"
+                role="tab"
+                aria-selected={tab === item.id}
                 onClick={() => setTab(item.id)}
-                className={`flex-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                className={`flex-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7578db] ${
                   tab === item.id ? 'bg-[#7578db] text-white' : 'text-text-secondary hover:text-text-primary'
                 }`}
               >
@@ -583,7 +817,7 @@ export function PrivatePage() {
           {callState === 'ringing' ? (
             <div className="rounded-xl bg-[#7578db]/20 border border-[#7578db]/40 p-3 space-y-2">
               <div className="text-sm text-text-primary">
-                Appel entrant{callConv ? ` (${callConv})` : ''} — sonnerie
+                {t('pvIncomingCall', { conv: callConv ? ` (${callConv})` : '' })}
               </div>
               <div className="flex gap-2">
                 <button
@@ -591,14 +825,14 @@ export function PrivatePage() {
                   onClick={acceptCall}
                   className="flex-1 px-3 py-2 rounded-lg bg-green-500/20 text-green-300 text-sm font-medium"
                 >
-                  Accepter
+                  {t('pvAccept')}
                 </button>
                 <button
                   type="button"
                   onClick={rejectCall}
                   className="flex-1 px-3 py-2 rounded-lg bg-red-500/20 text-red-300 text-sm font-medium"
                 >
-                  Refuser
+                  {t('pvDecline')}
                 </button>
               </div>
               {mediaError && <p className="text-xs text-red-400">{mediaError}</p>}
@@ -606,13 +840,13 @@ export function PrivatePage() {
           ) : callState !== 'idle' && callState !== 'ended' && (
             <div className="rounded-xl bg-[#7578db]/20 border border-[#7578db]/40 p-3 space-y-2">
               <div className="flex items-center justify-between text-sm text-text-primary">
-                <span>Appel — {callState}{callConv ? ` (${callConv})` : ''}</span>
+                <span>{t('pvCallState', { state: callState, conv: callConv ? ` (${callConv})` : '' })}</span>
                 <button
                   type="button"
                   onClick={() => callConv && privateCall.end(callConv)}
                   className="px-2 py-1 rounded-lg bg-red-500/20 text-red-300 text-xs"
                 >
-                  Raccrocher
+                  {t('pvHangUp')}
                 </button>
               </div>
               <div className="relative rounded-lg overflow-hidden bg-black aspect-video">
@@ -622,85 +856,90 @@ export function PrivatePage() {
               {mediaError && <p className="text-xs text-red-400">{mediaError}</p>}
             </div>
           )}
+
           {tab === 'connections' && (
             <>
               {relayBannerNode}
-              {invite && (
-                <div className="rounded-2xl bg-bg-surface p-4 flex flex-col items-center gap-3">
-                  <div className="w-full flex items-center justify-between">
-                    <span className="text-xs text-text-secondary">Invitation à partager</span>
-                    <button
-                      type="button"
-                      onClick={() => setInvite(null)}
-                      className="p-1 rounded-lg hover:bg-bg-hover text-text-tertiary"
-                      aria-label="Fermer"
-                    >
-                      <X size={16} />
-                    </button>
-                  </div>
-                  <SafeQrCode value={invite} size={180} />
-                  <div className="w-full flex items-center gap-2">
-                    <input
-                      readOnly
-                      value={invite}
-                      className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-bg-primary text-xs text-text-secondary font-mono truncate"
+              {inviteCard}
+
+              {/* Création : une action principale, le reste replié (aucun empilement). */}
+              {!active && (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleCreate}
+                    disabled={busy}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-[#7578db] text-white text-sm font-medium hover:opacity-90 disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7578db]"
+                  >
+                    <Plus size={16} /> {t('pvCreateConnection')}
+                  </button>
+
+                  <Disclosure label={t('pvJoinDisclosure')} open={showJoin} onToggle={() => setShowJoin(v => !v)}>
+                    <textarea
+                      value={joinLink}
+                      onChange={e => setJoinLink(e.target.value)}
+                      placeholder={t('pvJoinPlaceholder')}
+                      rows={2}
+                      className="w-full px-3 py-2 rounded-xl bg-bg-primary text-xs text-text-primary font-mono resize-none outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7578db]"
                     />
                     <button
                       type="button"
-                      onClick={handleCopy}
-                      className="flex items-center gap-1 px-3 py-2 rounded-lg bg-bg-hover text-xs text-text-primary"
+                      onClick={handleJoin}
+                      disabled={busy || !joinLink.trim()}
+                      className="w-full px-3 py-2 rounded-xl bg-bg-hover text-text-primary text-sm font-medium hover:brightness-110 disabled:opacity-50"
                     >
-                      <Copy size={14} /> {copied ? 'Copié' : 'Copier'}
+                      {t('pvJoinAction')}
                     </button>
-                  </div>
-                  <p className="text-[11px] text-text-tertiary text-center">
-                    Transmettez ce lien/QR de vive voix ou par un canal de confiance.
-                  </p>
-                </div>
+                  </Disclosure>
+
+                  <Disclosure
+                    label={t('pvAdvanced')}
+                    open={showAdvanced}
+                    onToggle={() => setShowAdvanced(v => !v)}
+                    icon={<SlidersHorizontal size={14} />}
+                  >
+                    <p className="text-[11px] text-text-tertiary">
+                      {t('pvTransport')} : <span className="text-text-secondary break-all">{getRelayLabel()}</span>
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <input
+                        value={relayInput}
+                        onChange={e => setRelayInput(e.target.value)}
+                        placeholder={t('pvRelayUrlPlaceholder')}
+                        aria-label={t('pvRelayUrlLabel')}
+                        className="flex-1 min-w-0 px-2 py-1 rounded-lg bg-bg-primary text-[11px] text-text-secondary font-mono"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          // Ne recharger QUE si l'URL a été acceptée (wss:// requis
+                          // hors loopback/.onion) — sinon on affiche un message.
+                          if (setRelayUrl(relayInput)) {
+                            globalThis.location.reload()
+                          } else {
+                            setError(tStatic('relayInvalidUrl'))
+                          }
+                        }}
+                        className="px-2 py-1 rounded-lg bg-bg-hover text-[11px] text-text-primary shrink-0"
+                      >
+                        {t('pvApply')}
+                      </button>
+                    </div>
+                  </Disclosure>
+                </>
               )}
 
-              <button
-                type="button"
-                onClick={handleCreate}
-                disabled={busy}
-                className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-[#7578db] text-white text-sm font-medium hover:opacity-90 disabled:opacity-50"
-              >
-                <Plus size={16} /> Créer une connexion privée
-              </button>
-
-              <div className="space-y-2">
-                <textarea
-                  value={joinLink}
-                  onChange={e => setJoinLink(e.target.value)}
-                  placeholder="Collez ici le lien d'invitation reçu"
-                  rows={2}
-                  className="w-full px-3 py-2 rounded-xl bg-bg-surface text-xs text-text-primary font-mono resize-none outline-none"
-                />
-                <button
-                  type="button"
-                  onClick={handleJoin}
-                  disabled={busy || !joinLink.trim()}
-                  className="w-full px-3 py-2 rounded-xl bg-bg-hover text-text-primary text-sm font-medium hover:brightness-110 disabled:opacity-50"
-                >
-                  Rejoindre
-                </button>
-              </div>
-
-              {error && (
-                <div className="rounded-xl bg-red-500/10 border border-red-500/20 p-3 text-xs text-red-400">
-                  {error}
-                </div>
-              )}
+              {errorBox}
 
               <section className="space-y-2">
-                <h2 className="text-xs font-semibold uppercase tracking-wide text-text-tertiary">Mes connexions</h2>
-                {connections.length === 0 && (
-                  <p className="text-sm text-text-tertiary">Aucune connexion pour l'instant.</p>
-                )}
+                <h2 className="text-xs font-semibold uppercase tracking-wide text-text-tertiary">{t('pvMyConnections')}</h2>
+                {connections.length === 0 && <p className="text-sm text-text-tertiary">{t('pvNoConnections')}</p>}
                 {connections.map(conn => (
                   <div
                     key={conn.conversationId}
-                    className="flex items-center justify-between gap-2 rounded-xl bg-bg-surface px-3 py-2"
+                    className={`flex items-center justify-between gap-2 rounded-xl px-3 py-2 ${
+                      active === conn.conversationId ? 'bg-[#7578db]/10 ring-1 ring-[#7578db]/30' : 'bg-bg-surface'
+                    }`}
                   >
                     <button
                       type="button"
@@ -714,7 +953,7 @@ export function PrivatePage() {
                       type="button"
                       onClick={() => handleForget(conn.conversationId)}
                       className="p-2 rounded-lg hover:bg-bg-hover text-text-tertiary"
-                      aria-label="Oublier"
+                      aria-label={t('pvForget')}
                     >
                       <Trash2 size={15} />
                     </button>
@@ -724,49 +963,8 @@ export function PrivatePage() {
 
               <p className="flex items-center gap-1.5 text-[11px] text-text-tertiary">
                 <ShieldCheck size={13} className="text-[#7578db] shrink-0" />
-                Chiffré de bout en bout — le relais ne voit ni votre identité ni vos contacts.
+                {t('pvE2eeNote')}
               </p>
-
-              <div>
-                <button
-                  type="button"
-                  onClick={() => setShowAdvanced(v => !v)}
-                  className="flex items-center gap-2 text-xs text-text-tertiary hover:text-text-secondary"
-                >
-                  <SlidersHorizontal size={13} /> Options avancées
-                </button>
-                {showAdvanced && (
-                  <div className="mt-2 space-y-2 rounded-xl bg-bg-surface p-3">
-                    <p className="text-[11px] text-text-tertiary">
-                      Transport : <span className="text-text-secondary">{getRelayLabel()}</span>
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <input
-                        value={relayInput}
-                        onChange={e => setRelayInput(e.target.value)}
-                        placeholder="wss://… (vide = réseau chiffré)"
-                        aria-label="URL du relais"
-                        className="flex-1 min-w-0 px-2 py-1 rounded-lg bg-bg-primary text-[11px] text-text-secondary font-mono"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          // Ne recharger QUE si l'URL a été acceptée (wss:// requis
-                          // hors loopback/.onion) — sinon on affiche un message.
-                          if (setRelayUrl(relayInput)) {
-                            globalThis.location.reload()
-                          } else {
-                            setError('URL de relais refusée : wss:// requis (hors loopback/.onion).')
-                          }
-                        }}
-                        className="px-2 py-1 rounded-lg bg-bg-hover text-[11px] text-text-primary shrink-0"
-                      >
-                        Appliquer
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
             </>
           )}
 
@@ -779,7 +977,7 @@ export function PrivatePage() {
                 disabled={groupBusy}
                 className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-[#7578db] text-white text-sm font-medium disabled:opacity-50"
               >
-                <Plus size={16} /> Créer un groupe privé
+                <Plus size={16} /> {t('pvCreateGroup')}
               </button>
 
               {groupInvite && (
@@ -787,29 +985,29 @@ export function PrivatePage() {
                   <SafeQrCode value={groupInvite} size={160} />
                   <div className="w-full flex items-center gap-2">
                     <input readOnly value={groupInvite} className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-bg-primary text-[11px] font-mono text-text-secondary truncate" />
-                    <button type="button" onClick={() => navigator.clipboard?.writeText(groupInvite)} className="px-3 py-2 rounded-lg bg-bg-hover text-xs text-text-primary">Copier</button>
+                    <button type="button" onClick={() => navigator.clipboard?.writeText(groupInvite)} className="px-3 py-2 rounded-lg bg-bg-hover text-xs text-text-primary">{t('pvCopy')}</button>
                   </div>
                 </div>
               )}
 
               <div className="space-y-2">
-                <textarea value={groupJoinLink} onChange={e => setGroupJoinLink(e.target.value)} placeholder="Collez le lien d'invitation au groupe" rows={2} className="w-full px-3 py-2 rounded-xl bg-bg-surface text-xs text-text-primary font-mono resize-none outline-none" />
-                <button type="button" onClick={handleJoinGroup} disabled={groupBusy || !groupJoinLink.trim()} className="w-full px-3 py-2 rounded-xl bg-bg-hover text-text-primary text-sm font-medium disabled:opacity-50">Rejoindre</button>
+                <textarea value={groupJoinLink} onChange={e => setGroupJoinLink(e.target.value)} placeholder={t('pvGroupJoinPlaceholder')} rows={2} className="w-full px-3 py-2 rounded-xl bg-bg-surface text-xs text-text-primary font-mono resize-none outline-none" />
+                <button type="button" onClick={handleJoinGroup} disabled={groupBusy || !groupJoinLink.trim()} className="w-full px-3 py-2 rounded-xl bg-bg-hover text-text-primary text-sm font-medium disabled:opacity-50">{t('pvJoinAction')}</button>
               </div>
 
               {groupError && <div className="rounded-xl bg-red-500/10 border border-red-500/20 p-3 text-xs text-red-400">{groupError}</div>}
 
               <section className="space-y-2">
-                <h2 className="text-xs font-semibold uppercase tracking-wide text-text-tertiary">Mes groupes</h2>
-                {groups.length === 0 && <p className="text-sm text-text-tertiary">Aucun groupe pour l'instant.</p>}
+                <h2 className="text-xs font-semibold uppercase tracking-wide text-text-tertiary">{t('pvMyGroups')}</h2>
+                {groups.length === 0 && <p className="text-sm text-text-tertiary">{t('pvNoGroups')}</p>}
                 {groups.map(g => (
                   <div key={g.groupId} className="flex items-center justify-between gap-2 rounded-xl bg-bg-surface px-3 py-2">
                     <button type="button" onClick={() => openGroup(g.groupId)} className="flex items-center gap-2 text-sm text-text-primary min-w-0">
                       <Lock size={15} className="text-[#7578db] shrink-0" />
                       <span className="truncate">{g.name}</span>
-                      <span className="text-[10px] text-text-tertiary shrink-0">{g.members.length + 1} membres</span>
+                      <span className="text-[10px] text-text-tertiary shrink-0">{t('pvMembers', { count: g.members.length + 1 })}</span>
                     </button>
-                    <button type="button" onClick={() => handleForgetGroup(g.groupId)} className="p-2 rounded-lg hover:bg-bg-hover text-text-tertiary" aria-label="Oublier"><Trash2 size={15} /></button>
+                    <button type="button" onClick={() => handleForgetGroup(g.groupId)} className="p-2 rounded-lg hover:bg-bg-hover text-text-tertiary" aria-label={t('pvForget')}><Trash2 size={15} /></button>
                   </div>
                 ))}
               </section>
@@ -822,7 +1020,7 @@ export function PrivatePage() {
                 <input
                   value={statusDraft}
                   onChange={e => setStatusDraft(e.target.value)}
-                  placeholder="Écrire un statut…"
+                  placeholder={t('pvPublishStatus')}
                   className="flex-1 min-w-0 px-3 py-2 rounded-xl bg-bg-surface text-sm text-text-primary outline-none"
                 />
                 <button
@@ -831,16 +1029,16 @@ export function PrivatePage() {
                   disabled={!statusDraft.trim()}
                   className="px-3 py-2 rounded-xl bg-[#7578db] text-white text-sm font-medium disabled:opacity-50"
                 >
-                  Publier
+                  {t('pvPublish')}
                 </button>
               </div>
-              <p className="text-[11px] text-text-tertiary">Diffusés à vos connexions, chiffrés, expirés après 24 h.</p>
-              {statuses.length === 0 && <p className="text-sm text-text-tertiary">Aucun statut actif.</p>}
+              <p className="text-[11px] text-text-tertiary">{t('pvStatusHint')}</p>
+              {statuses.length === 0 && <p className="text-sm text-text-tertiary">{t('pvNoStatus')}</p>}
               {statuses.map(s => (
                 <div key={s.id} className="rounded-xl bg-bg-surface px-3 py-2">
                   <div className="flex items-center justify-between text-[10px] text-text-tertiary">
-                    <span className="truncate">{s.conversationId === 'moi' ? 'moi' : s.conversationId}</span>
-                    <span>{Math.max(0, Math.round((s.expiresAt - Date.now()) / 3_600_000))} h restantes</span>
+                    <span className="truncate">{s.conversationId === 'moi' ? t('pvMe') : s.conversationId}</span>
+                    <span>{t('pvHoursLeft', { count: Math.max(0, Math.round((s.expiresAt - Date.now()) / 3_600_000)) })}</span>
                   </div>
                   <p className="text-sm text-text-primary whitespace-pre-wrap break-words">{s.text}</p>
                 </div>
@@ -849,37 +1047,67 @@ export function PrivatePage() {
           )}
         </div>
 
-        {/* Chat 1:1 */}
+        {/* Chat 1:1 + contrôles compacts de la connexion */}
         {tab === 'connections' && active && (
           <div className="border-t border-bg-hover bg-bg-secondary">
-            <div className="px-4 py-2 text-xs text-text-secondary flex items-center justify-between gap-2">
-              <span className="flex items-center gap-2"><Lock size={13} className="text-[#7578db]" /> {active}</span>
-              <button
-                type="button"
-                onClick={() => active && startCall()}
-                disabled={isTorRelayEnabled()}
-                title={isTorRelayEnabled() ? 'Appels désactivés en mode Tor (fuite d\u2019IP WebRTC)' : undefined}
-                className="px-2 py-1 rounded-lg bg-bg-hover text-text-primary text-xs disabled:opacity-40 disabled:cursor-not-allowed"
-                aria-label="Appeler"
-              >
-                Appeler
-              </button>
+            <div className="px-4 py-2.5 space-y-2 border-b border-bg-hover">
+              <div className="flex items-center justify-between gap-2">
+                <span className="flex items-center gap-2 text-xs text-text-secondary min-w-0">
+                  <Lock size={13} className="text-[#7578db] shrink-0" />
+                  <span className="truncate">{active}</span>
+                </span>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => active && startCall()}
+                    disabled={torOn}
+                    title={torOn ? t('pvCallTorTooltip') : undefined}
+                    className="px-2.5 py-1 rounded-lg bg-bg-hover text-text-primary text-xs disabled:opacity-40 disabled:cursor-not-allowed"
+                    aria-label={t('pvCall')}
+                  >
+                    {t('pvCall')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={closeConnection}
+                    className="p-1.5 rounded-lg hover:bg-bg-hover text-text-tertiary"
+                    aria-label={t('pvCloseConnection')}
+                  >
+                    <X size={15} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Contrôles compacts : relais + Tor + incognito (une seule rangée repliable). */}
+              <div className="flex flex-wrap items-center gap-2">
+                <div role="group" aria-label={t('pvRelayControl')} className="flex items-center rounded-full bg-bg-primary p-0.5">
+                  <button type="button" aria-pressed={relayModeState === 'auto'} onClick={() => applyRelayMode('auto')} className={segClass(relayModeState === 'auto')}>
+                    {t('pvRelayAuto')}
+                  </button>
+                  <button type="button" aria-pressed={relayModeState === 'manual'} onClick={() => applyRelayMode('manual')} className={segClass(relayModeState === 'manual')}>
+                    {t('pvRelayChoose')}
+                  </button>
+                </div>
+                <button type="button" onClick={changeRelay} className={chipClass}>
+                  <RefreshCw size={13} /> {t('pvRelayChange')}
+                </button>
+                <span className="text-[11px] text-text-tertiary truncate max-w-[45%]" title={relayDisplay}>{relayDisplay}</span>
+                <Toggle label={t('torLabel')} checked={torOn} onChange={toggleTor} />
+                <Toggle label={t('pvIncognito')} checked={incognitoOn} onChange={toggleIncognito} icon={<EyeOff size={13} />} />
+              </div>
+              {incognitoOn && <p className="text-[11px] text-[#a5a7ff]">{t('pvIncognitoDesc')}</p>}
+              {torOn && <p className="text-[11px] text-text-tertiary">{t('torActiveHint')}</p>}
             </div>
+
             <div className="h-56 overflow-auto px-4 py-2 space-y-2">
-              {messages.length === 0 && (
-                <p className="text-xs text-text-tertiary">
-                  Aucun message. Les messages privés ne sont pas conservés par le relais.
-                </p>
-              )}
+              {messages.length === 0 && <p className="text-xs text-text-tertiary">{t('pvNoMessages')}</p>}
               {messages.map(item => {
                 const file = parseFileMessage(item.text) as FileDescriptor | null
                 return (
                   <div
                     key={item.id}
                     className={`max-w-[75%] px-3 py-2 rounded-2xl text-sm ${
-                      item.mine
-                        ? 'ml-auto bg-[#7578db] text-white'
-                        : 'mr-auto bg-bg-surface text-text-primary'
+                      item.mine ? 'ml-auto bg-[#7578db] text-white' : 'mr-auto bg-bg-surface text-text-primary'
                     }`}
                   >
                     {file ? (
@@ -891,7 +1119,7 @@ export function PrivatePage() {
                         <Paperclip size={14} />
                         <span className="truncate max-w-[180px]">{file.name}</span>
                         <span className="opacity-70 text-[10px]">
-                          {Math.max(1, Math.round(file.size / 1024))} Ko
+                          {t('pvKb', { count: Math.max(1, Math.round(file.size / 1024)) })}
                         </span>
                       </button>
                     ) : (
@@ -917,7 +1145,7 @@ export function PrivatePage() {
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploading}
                 className="p-2 rounded-xl bg-bg-hover text-text-primary disabled:opacity-50"
-                aria-label="Joindre un fichier"
+                aria-label={t('pvAttachFile')}
               >
                 <Paperclip size={18} />
               </button>
@@ -930,7 +1158,7 @@ export function PrivatePage() {
                     handleSend()
                   }
                 }}
-                placeholder="Message privé chiffré…"
+                placeholder={t('pvPrivateMessagePlaceholder')}
                 className="flex-1 px-3 py-2 rounded-xl bg-bg-primary text-sm text-text-primary"
               />
               <button
@@ -938,7 +1166,7 @@ export function PrivatePage() {
                 onClick={handleSend}
                 disabled={!draft.trim()}
                 className="p-2 rounded-xl bg-[#7578db] text-white disabled:opacity-50"
-                aria-label="Envoyer"
+                aria-label={t('send')}
               >
                 <Send size={18} />
               </button>
@@ -950,17 +1178,17 @@ export function PrivatePage() {
         {tab === 'groups' && activeGroupId && (
           <div className="border-t border-bg-hover bg-bg-secondary">
             <div className="px-4 py-2 text-xs text-text-secondary flex items-center gap-2">
-              <Lock size={13} className="text-[#7578db]" /> groupe {activeGroupId}
+              <Lock size={13} className="text-[#7578db]" /> {t('pvGroupLabel', { id: activeGroupId })}
             </div>
             <div className="h-56 overflow-auto px-4 py-2 space-y-2">
-              {groupMessages.length === 0 && <p className="text-xs text-text-tertiary">Aucun message.</p>}
+              {groupMessages.length === 0 && <p className="text-xs text-text-tertiary">{t('pvNoMessagesShort')}</p>}
               {groupMessages.map(m => (
                 <div key={m.id} className={`max-w-[75%] px-3 py-2 rounded-2xl text-sm ${m.mine ? 'ml-auto bg-[#7578db] text-white' : 'mr-auto bg-bg-surface text-text-primary'}`}>{m.text}</div>
               ))}
             </div>
             <div className="flex items-center gap-2 px-4 py-3 border-t border-bg-hover">
-              <input value={groupDraft} onChange={e => setGroupDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendGroup() } }} placeholder="Message de groupe chiffré…" className="flex-1 px-3 py-2 rounded-xl bg-bg-primary text-sm text-text-primary" />
-              <button type="button" onClick={handleSendGroup} disabled={!groupDraft.trim()} className="p-2 rounded-xl bg-[#7578db] text-white disabled:opacity-50" aria-label="Envoyer"><Send size={18} /></button>
+              <input value={groupDraft} onChange={e => setGroupDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendGroup() } }} placeholder={t('pvGroupMessagePlaceholder')} className="flex-1 px-3 py-2 rounded-xl bg-bg-primary text-sm text-text-primary" />
+              <button type="button" onClick={handleSendGroup} disabled={!groupDraft.trim()} className="p-2 rounded-xl bg-[#7578db] text-white disabled:opacity-50" aria-label={t('send')}><Send size={18} /></button>
             </div>
           </div>
         )}
