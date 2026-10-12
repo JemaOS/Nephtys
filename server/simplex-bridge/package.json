@@ -1,0 +1,14 @@
+{
+  "name": "nephtys-simplex-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Pont WebSocket <-> TLS natif SMP (SimpleX) pour le mode privé Nephtys.",
+  "license": "AGPL-3.0-only",
+  "scripts": {
+    "start": "node index.mjs"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
