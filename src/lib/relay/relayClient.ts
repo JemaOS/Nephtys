@@ -539,7 +539,7 @@ export function getSmpBridgeUrl(): string {
   return (
     (import.meta.env.VITE_SMP_V9_BRIDGE_URL as string | undefined)?.trim() ||
     (import.meta.env.VITE_SMP_BRIDGE_URL as string | undefined)?.trim() ||
-    'wss://78-232-3-78.sslip.io/smp'
+    'wss://78-232-3-78.sslip.io/simplex'
   );
 }
 
