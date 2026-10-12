@@ -44,7 +44,6 @@ import {
   setRelayUrl,
   isTorRelayEnabled,
   setTorRelayEnabled,
-  isDecentralizedRelayEnabled,
   setDecentralizedRelayEnabled,
   getRelayMode,
   setRelayMode,
@@ -725,18 +724,6 @@ export function PrivatePage() {
     }
   }, [invite])
 
-  // Bandeau relais (Connexions + Groupes) : indique toujours le relais effectif.
-  const relayInfo = isDecentralizedRelayEnabled()
-    ? t('pvRelayDecentralized', { count: getRelayPool().length })
-    : getRelayUrl()
-      ? t('pvRelayCustom', { url: getRelayUrl() })
-      : t('pvRelayDefault')
-  const relayBannerNode = (
-    <div className="rounded-xl bg-bg-surface px-3 py-2 text-[11px] text-text-tertiary">
-      {t('pvRelayPrefix')} <span className="text-text-secondary break-all">{relayInfo}</span> — {t('pvRelaySettingsHint')}
-    </div>
-  )
-
   if (loading) {
     return (
       <div className="h-screen-safe flex items-center justify-center bg-bg-primary">
@@ -891,7 +878,6 @@ export function PrivatePage() {
 
           {tab === 'connections' && (
             <>
-              {relayBannerNode}
               {inviteCard}
 
               {/* Création : une action principale, le reste replié (aucun empilement). */}
@@ -1002,7 +988,6 @@ export function PrivatePage() {
 
           {tab === 'groups' && (
             <>
-              {relayBannerNode}
               <button
                 type="button"
                 onClick={handleCreateGroup}
