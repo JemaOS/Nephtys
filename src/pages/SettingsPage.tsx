@@ -45,6 +45,7 @@ import {
   getSmpV9Host,
   setSmpV9Host
 } from '@/lib/relay/relayClient'
+import { getXftpFileServer, setXftpFileServer, XFTP_SERVER_PRESETS } from '@/lib/relay/xftpClient'
 import { isRelayOnlyCallsEnabled, setRelayOnlyCallsEnabled, getIceServers } from '@/lib/iceServers'
 import { isCoverTrafficEnabled, setCoverTrafficEnabled } from '@/lib/privacyPrefs'
 import { isSendJitterEnabled, setSendJitterEnabled } from '@/lib/sendJitter'
@@ -182,6 +183,8 @@ export function SettingsPage() {
   const [smpV9Url, setSmpV9Url] = useState<string>(() => getSmpV9BridgeUrl())
   const [smpV9HostDraft, setSmpV9HostDraft] = useState<string>(() => getSmpV9Host())
   const [smpV9HostSel, setSmpV9HostSel] = useState<string>(() => getSmpV9Host())
+  const [xftpServer, setXftpServer] = useState<string>(() => getXftpFileServer())
+  const [xftpDraft, setXftpDraft] = useState<string>(() => getXftpFileServer())
   const [relayMode, setRelayMode] = useState<RelayMode>(() => getRelayMode())
   const [availableRelays, setAvailableRelays] = useState<string[]>(() => getAvailableRelays())
   const [iceServerCount, setIceServerCount] = useState<number>(() => getIceServers().length)
@@ -668,6 +671,12 @@ export function SettingsPage() {
   const handleSaveSmpV9Url = () => {
     setSmpV9BridgeUrl(smpV9Url)
     setSmpV9Url(getSmpV9BridgeUrl())
+  }
+
+  const handlePickXftp = (address: string) => {
+    setXftpFileServer(address)
+    setXftpServer(address)
+    setXftpDraft(address)
   }
 
   const handleToggleCover = () => {
@@ -1716,6 +1725,39 @@ export function SettingsPage() {
                   </div>
                 </div>
               )}
+              <div className="flex items-center justify-between">
+                <div className="pr-4">
+                  <div className="text-text-primary">Serveur de fichiers</div>
+                  <div className="text-sm text-text-secondary">Serveur XFTP pour l'envoi de fichiers (chiffrés de bout en bout).</div>
+                </div>
+              </div>
+              <div className="max-h-40 overflow-y-auto rounded-xl bg-bg-surface">
+                {XFTP_SERVER_PRESETS.map(addr => (
+                  <button
+                    key={addr}
+                    type="button"
+                    onClick={() => handlePickXftp(addr)}
+                    className={`w-full text-left px-3 py-2 text-[11px] font-mono border-b border-bg-hover last:border-0 truncate ${xftpServer === addr ? 'text-accent' : 'text-text-secondary'}`}
+                  >
+                    {xftpServer === addr ? '● ' : '○ '}{addr.replace(/^xftp:\/\/[^@]*@/, '')}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  value={xftpDraft}
+                  onChange={e => setXftpDraft(e.target.value)}
+                  placeholder="xftp://<clé>@hôte"
+                  className="flex-1 min-w-0 px-2 py-1 rounded-lg bg-bg-surface text-[11px] font-mono text-text-secondary"
+                />
+                <button
+                  type="button"
+                  onClick={() => handlePickXftp(xftpDraft)}
+                  className="px-2 py-1 rounded-lg bg-bg-hover text-xs text-text-primary shrink-0"
+                >
+                  Utiliser
+                </button>
+              </div>
               <button
                 type="button"
                 onClick={handleResetNetwork}
