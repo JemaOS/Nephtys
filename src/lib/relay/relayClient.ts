@@ -533,6 +533,27 @@ export function setSmpV9Host(host: string): void {
 }
 
 /**
+ * Répare une URL de pont héritée : l'ancien défaut visait `/smp`, qui n'est PAS
+ * le pont WS (c'est l'endpoint HTTP Tor `/smp/up|down`). Le chemin réel est
+ * `/simplex`. On réécrit ce chemin exact (`/smp` → `/simplex`) pour ne pas
+ * bloquer les utilisateurs ayant enregistré cet ancien défaut en localStorage.
+ * Les autres chemins/hôtes ne sont jamais modifiés (config custom respectée).
+ */
+function repairSmpBridgeUrl(url: string): string {
+  const trimmed = url.trim();
+  try {
+    const u = new URL(trimmed);
+    if (u.pathname.replace(/\/+$/, '') === '/smp') {
+      u.pathname = '/simplex';
+      return u.toString();
+    }
+  } catch {
+    // URL invalide → renvoyée telle quelle
+  }
+  return trimmed;
+}
+
+/**
  * URL du **pont** WebSocket↔TLS auto-hébergé (ex. `wss://vps/smp`).
  *
  * **Transport interne uniquement** : le pont est invisible par construction et
@@ -545,14 +566,21 @@ export function setSmpV9Host(host: string): void {
 export function getSmpBridgeUrl(): string {
   try {
     const o = localStorage.getItem(SMP_V9_URL_KEY);
-    if (o) return o.trim();
+    if (o) {
+      const repaired = repairSmpBridgeUrl(o);
+      // Migration best-effort : on corrige la valeur périmée une fois pour toutes.
+      if (repaired !== o.trim()) {
+        try { localStorage.setItem(SMP_V9_URL_KEY, repaired); } catch { /* ignore */ }
+      }
+      return repaired;
+    }
   } catch {
     // localStorage indisponible
   }
-  return (
+  return repairSmpBridgeUrl(
     (import.meta.env.VITE_SMP_V9_BRIDGE_URL as string | undefined)?.trim() ||
-    (import.meta.env.VITE_SMP_BRIDGE_URL as string | undefined)?.trim() ||
-    'wss://78-232-3-78.sslip.io/simplex'
+      (import.meta.env.VITE_SMP_BRIDGE_URL as string | undefined)?.trim() ||
+      'wss://78-232-3-78.sslip.io/simplex',
   );
 }
 
