@@ -227,7 +227,11 @@ export function getOnionRelayUrl(): string {
     // localStorage indisponible
   }
   const envUrl = import.meta.env.VITE_SMP_RELAY_ONION_URL as string | undefined;
-  return envUrl ? normalizeOnionWsUrl(envUrl) : '';
+  if (envUrl) return normalizeOnionWsUrl(envUrl);
+  // Défaut : relais `.onion` auto-hébergé (transport Tor WASM + XFTP), pour que
+  // le mode Tor fonctionne sans configuration. Surchargeable (réglage local ou
+  // VITE_SMP_RELAY_ONION_URL).
+  return normalizeOnionWsUrl('n72u6is62nlvsqb7dw3uif47jsto2b2ylrww676majsed2dj3grdwsyd.onion');
 }
 
 /**

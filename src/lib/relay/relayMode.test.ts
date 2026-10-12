@@ -38,27 +38,22 @@ describe('normalizeOnionWsUrl', () => {
 });
 
 describe('préférence Tor', () => {
-  it('active/désactive et persiste la préférence (uniquement avec un `.onion`)', () => {
-    // Sans `.onion`, l'état « Tor » n'a aucun effet : il reste inactif
-    // (auto-réparation) même si l'utilisateur l'a demandé.
-    expect(isTorRelayEnabled()).toBe(false);
-    setTorRelayEnabled(true);
-    expect(isTorRelayEnabled()).toBe(false);
-
-    // Avec une vraie destination `.onion`, la préférence tient.
-    setOnionRelayUrl(V3);
+  it('active/désactive la préférence (un `.onion` est fourni par défaut)', () => {
+    // Un relais `.onion` est fourni par défaut → activer Tor a un effet réel.
+    expect(getOnionRelayUrl()).toMatch(/^ws:\/\/.+\.onion/);
     setTorRelayEnabled(true);
     expect(isTorRelayEnabled()).toBe(true);
     setTorRelayEnabled(false);
     expect(isTorRelayEnabled()).toBe(false);
   });
 
-  it('se désactive si l’adresse `.onion` disparaît', () => {
+  it('une adresse `.onion` explicite remplace le défaut ; la vider revient au défaut', () => {
     setOnionRelayUrl(V3);
-    setTorRelayEnabled(true);
-    expect(isTorRelayEnabled()).toBe(true);
+    expect(getOnionRelayUrl()).toBe(`ws://${V3}`);
     setOnionRelayUrl('');
-    expect(isTorRelayEnabled()).toBe(false);
+    // Retour au relais `.onion` par défaut (non vide, différent de l'override).
+    expect(getOnionRelayUrl()).toMatch(/^ws:\/\/.+\.onion/);
+    expect(getOnionRelayUrl()).not.toBe(`ws://${V3}`);
   });
 
   it('enregistre puis normalise l’adresse .onion', () => {
@@ -66,20 +61,21 @@ describe('préférence Tor', () => {
     expect(getOnionRelayUrl()).toBe(`ws://${V3}`);
   });
 
-  it('efface l’adresse .onion quand la valeur est vide', () => {
-    setOnionRelayUrl(V3);
-    setOnionRelayUrl('');
-    expect(getOnionRelayUrl()).toBe('');
+  it('persiste le mode Tor à travers un rechargement (localStorage)', () => {
+    setTorRelayEnabled(true);
+    expect(localStorage.getItem('nephtys_tor_enabled')).toBe('1');
+    expect(isTorRelayEnabled()).toBe(true);
   });
 });
 
-describe('entrée Tor (passerelle par défaut, `.onion` prioritaire)', () => {
+describe('entrée Tor (`.onion` prioritaire, passerelle en repli)', () => {
   it('dérive la passerelle Tor depuis le relais SMP', () => {
     expect(getTorGatewayUrl()).toMatch(/^wss?:\/\/.+\/tor$/);
   });
 
-  it('utilise la passerelle Tor quand aucun `.onion` n’est configuré (un clic)', () => {
-    expect(getTorRelayUrl()).toBe(getTorGatewayUrl());
+  it('utilise le `.onion` (par défaut) prioritairement à la passerelle', () => {
+    expect(getTorRelayUrl()).toBe(getOnionRelayUrl());
+    expect(getTorRelayUrl()).toMatch(/^ws:\/\/.+\.onion/);
     expect(isTorAvailable()).toBe(true);
   });
 
