@@ -13,7 +13,7 @@
 # distant À TRAVERS Tor. Voir l'aide affichée en fin de script.
 #
 # Prérequis : VPS Debian/Ubuntu, accès root, relais SMP déjà à l'écoute en local
-#             (par défaut ws://127.0.0.1:8765 — voir server/smp-broker/index.mjs).
+#             (par défaut ws://127.0.0.1:8765 — un relais local sur SMP_PORT).
 #
 # Usage :
 #   sudo SMP_PORT=8765 bash server/tor/setup.sh
