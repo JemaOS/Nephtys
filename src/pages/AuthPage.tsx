@@ -173,7 +173,7 @@ export function AuthPage() {
         <p className="text-xs text-text-secondary text-center">
           {linking ? 'Connexion en cours…' : 'En attente du scan…'}
         </p>
-        {linkError && <p className="text-xs text-amber-300 text-center max-w-xs">{linkError}</p>}
+        {linkError && <p className="text-xs text-amber-300 [.light_&]:text-amber-700 text-center max-w-xs">{linkError}</p>}
       </div>
     )
   }

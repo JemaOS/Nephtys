@@ -119,7 +119,7 @@ export function PrivatePage() {
     return custom ? `relais personnalisé ${custom}` : 'relais par défaut (automatique)';
   }, [])
   const relayBannerNode = (
-    <div className="rounded-xl bg-amber-500/10 border border-amber-500/30 p-3 text-xs text-amber-300">
+    <div className="rounded-xl bg-amber-500/10 border border-amber-500/30 p-3 text-xs text-amber-300 [.light_&]:bg-amber-100 [.light_&]:border-amber-300 [.light_&]:text-amber-900">
       Relais : <b>{relayBanner}</b> — modifiable dans Paramètres → Serveurs et réseaux.
     </div>
   )
