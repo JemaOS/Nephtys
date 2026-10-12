@@ -475,6 +475,16 @@ export class PrivateMessenger {
     await this.store.remove(conversationId);
   }
 
+  /** Renomme localement une connexion (nom affiché, jamais transmis au pair). */
+  async rename(conversationId: string, label: string): Promise<void> {
+    const record = await this.store.load(conversationId);
+    if (!record) return;
+    const trimmed = label.trim();
+    if (trimmed) record.label = trimmed;
+    else delete record.label;
+    await this.store.save(record);
+  }
+
   /**
    * Crée une connexion privée : génère les files du relais + des clés locales,
    * et renvoie le lien d'invitation à transmettre hors-bande.

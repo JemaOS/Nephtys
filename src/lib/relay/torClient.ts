@@ -13,6 +13,7 @@
  
 
 import { createTorSmpWebSocketImpl } from './torSmpTransport';
+import { netLog } from './netLog';
 
 /**
  * Adresse KPS de la passerelle Tor (`ip:port:certhash`). Surchargeable par
@@ -56,6 +57,8 @@ let torClientPromise: Promise<any> | null = null;
 /** Bootstrap (mémoïsé) du client Tor WASM. */
 export function getTorClient(): Promise<any> {
   if (!torClientPromise) {
+    const t0 = Date.now();
+    netLog({ layer: 'tor', op: 'bootstrap', status: 'start', endpoint: torGatewayAddress() });
     torClientPromise = (async () => {
       const mod: any = await import('tor-js');
       mod.setWasmUrl?.('/tor_js_bg.wasm');
@@ -65,10 +68,16 @@ export function getTorClient(): Promise<any> {
       });
       await client.ready();
       return client;
-    })().catch((e) => {
-      torClientPromise = null;
-      throw e;
-    });
+    })()
+      .then(client => {
+        netLog({ layer: 'tor', op: 'bootstrap', status: 'ok', endpoint: torGatewayAddress(), ms: Date.now() - t0 });
+        return client;
+      })
+      .catch((e) => {
+        torClientPromise = null;
+        netLog({ layer: 'tor', op: 'bootstrap', status: 'fail', endpoint: torGatewayAddress(), detail: (e as Error)?.message, ms: Date.now() - t0 });
+        throw e;
+      });
   }
   return torClientPromise;
 }

@@ -22,6 +22,7 @@ const routeImporters: Record<string, () => Promise<unknown>> = {
   '/calls': () => import('@/pages/CallsPage'),
   '/archived': () => import('@/pages/ArchivedPage'),
   '/settings': () => import('@/pages/SettingsPage'),
+  '/network': () => import('@/pages/NetworkPage'),
 }
 
 export function prefetchRoute(path: string): void {

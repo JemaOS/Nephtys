@@ -56,6 +56,17 @@ export class IdbStatusStore {
     return activeStatuses(await this.all());
   }
 
+  /** Supprime un statut par son identifiant. */
+  async remove(id: string): Promise<void> {
+    const db = await openDb();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE, 'readwrite');
+      tx.objectStore(STORE).delete(id);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
   /** Supprime les statuts expirés. */
   async prune(now = Date.now()): Promise<void> {
     const db = await openDb();

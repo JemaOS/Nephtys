@@ -22,12 +22,14 @@ import { useI18n, tStatic } from '@/i18n'
 import { SafeQrCode } from '@/components/SafeQrCode'
 import {
   ArrowLeft,
+  Check,
   ChevronDown,
   Copy,
   EyeOff,
   Loader2,
   Lock,
   Paperclip,
+  Pencil,
   Plus,
   RefreshCw,
   Send,
@@ -207,6 +209,8 @@ export function PrivatePage() {
   const statusStore = useMemo(() => new IdbStatusStore(), [])
   const [statuses, setStatuses] = useState<StatusRecord[]>([])
   const [statusDraft, setStatusDraft] = useState('')
+  const [renamingId, setRenamingId] = useState<string | null>(null)
+  const [renameDraft, setRenameDraft] = useState('')
 
   // Appel privé (signalisation WebRTC via le canal chiffré)
   const [callState, setCallState] = useState<CallState>('idle')
@@ -726,6 +730,24 @@ export function PrivatePage() {
     [messenger, active, refresh],
   )
 
+  const handleRename = useCallback(
+    async (conversationId: string) => {
+      await messenger.rename(conversationId, renameDraft)
+      setRenamingId(null)
+      setRenameDraft('')
+      await refresh()
+    },
+    [messenger, renameDraft, refresh],
+  )
+
+  const handleDeleteStatus = useCallback(
+    async (id: string) => {
+      await statusStore.remove(id)
+      await refreshStatuses()
+    },
+    [statusStore, refreshStatuses],
+  )
+
   const closeConnection = useCallback(() => {
     activeRef.current = null
     setActive(null)
@@ -1020,22 +1042,57 @@ export function PrivatePage() {
                       active === conn.conversationId ? 'bg-[#7578db]/10 ring-1 ring-[#7578db]/30' : 'bg-bg-surface'
                     }`}
                   >
-                    <button
-                      type="button"
-                      onClick={() => openConnection(conn.conversationId)}
-                      className="flex items-center gap-2 text-sm text-text-primary min-w-0"
-                    >
-                      <Lock size={15} className="text-[#7578db] shrink-0" />
-                      <span className="truncate">{conn.conversationId}</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleForget(conn.conversationId)}
-                      className="p-2 rounded-lg hover:bg-bg-hover text-text-tertiary"
-                      aria-label={t('pvForget')}
-                    >
-                      <Trash2 size={15} />
-                    </button>
+                    {renamingId === conn.conversationId ? (
+                      <input
+                        autoFocus
+                        value={renameDraft}
+                        onChange={e => setRenameDraft(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') void handleRename(conn.conversationId)
+                          else if (e.key === 'Escape') { setRenamingId(null); setRenameDraft('') }
+                        }}
+                        placeholder={t('pvRenamePlaceholder')}
+                        className="flex-1 min-w-0 px-2 py-1 rounded-lg bg-bg-primary text-sm text-text-primary outline-none"
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => openConnection(conn.conversationId)}
+                        className="flex items-center gap-2 text-sm text-text-primary min-w-0"
+                      >
+                        <Lock size={15} className="text-[#7578db] shrink-0" />
+                        <span className="truncate">{conn.label ?? conn.conversationId}</span>
+                      </button>
+                    )}
+                    <div className="flex items-center gap-1 shrink-0">
+                      {renamingId === conn.conversationId ? (
+                        <button
+                          type="button"
+                          onClick={() => handleRename(conn.conversationId)}
+                          className="p-2 rounded-lg hover:bg-bg-hover text-[#7578db]"
+                          aria-label={t('pvRename')}
+                        >
+                          <Check size={15} />
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => { setRenamingId(conn.conversationId); setRenameDraft(conn.label ?? '') }}
+                          className="p-2 rounded-lg hover:bg-bg-hover text-text-tertiary"
+                          aria-label={t('pvRename')}
+                        >
+                          <Pencil size={15} />
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleForget(conn.conversationId)}
+                        className="p-2 rounded-lg hover:bg-bg-hover text-text-tertiary"
+                        aria-label={t('pvForget')}
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </section>
@@ -1116,7 +1173,17 @@ export function PrivatePage() {
                 <div key={s.id} className="rounded-xl bg-bg-surface px-3 py-2">
                   <div className="flex items-center justify-between text-[10px] text-text-tertiary">
                     <span className="truncate">{s.conversationId === 'moi' ? t('pvMe') : s.conversationId}</span>
-                    <span>{t('pvHoursLeft', { count: Math.max(0, Math.round((s.expiresAt - Date.now()) / 3_600_000)) })}</span>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <span>{t('pvHoursLeft', { count: Math.max(0, Math.round((s.expiresAt - Date.now()) / 3_600_000)) })}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteStatus(s.id)}
+                        className="p-1 rounded-lg hover:bg-bg-hover text-text-tertiary"
+                        aria-label={t('pvDeleteStatus')}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
                   </div>
                   <p className="text-sm text-text-primary whitespace-pre-wrap break-words">{s.text}</p>
                 </div>

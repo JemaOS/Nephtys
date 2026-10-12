@@ -16,6 +16,7 @@ import { sha256 } from '@noble/hashes/sha2.js';
 import { decodeTransportBlock } from '../smpweb/browser-smp-core.mjs';
 import type { QueueCredentials, StoredEnvelope } from './relayCore';
 import type { RelayOp, RelayResponse, RelayWire } from './wire';
+import { netLog } from './netLog';
 
 const BLOCK = 16384;
 const PAD = 0x23;
@@ -233,10 +234,22 @@ export class SmpV9Wire implements RelayWire {
   }
 
   async request(op: RelayOp): Promise<RelayResponse> {
+    const t0 = Date.now();
     try {
-      return await this.persistentConn.run(conn => this.dispatch(conn, op));
+      const resp = await this.persistentConn.run(conn => this.dispatch(conn, op));
+      netLog({
+        layer: 'smp-v9',
+        op: op.op,
+        status: resp.ok ? 'ok' : 'fail',
+        endpoint: this.url,
+        detail: resp.ok ? undefined : resp.error,
+        ms: Date.now() - t0,
+      });
+      return resp;
     } catch (e) {
-      return { ok: false, error: (e as Error).message };
+      const msg = (e as Error).message;
+      netLog({ layer: 'smp-v9', op: op.op, status: 'fail', endpoint: this.url, detail: msg, ms: Date.now() - t0 });
+      return { ok: false, error: msg };
     }
   }
 

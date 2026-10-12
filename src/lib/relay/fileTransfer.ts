@@ -20,6 +20,7 @@ import { supabase } from '../supabase';
 import { isAnonRelayConsentGranted } from './supabaseRelayWire';
 import { bytesToBase64, base64ToBytes, randomBytes } from '../ratchet/primitives';
 import { uploadFileToXftp, downloadFileFromXftp, getXftpFileServer, assertAllowedXftpServer } from './xftpClient';
+import { netLog } from './netLog';
 
 export const FILE_BUCKET = 'anon_files';
 export const FILE_CHUNK_SIZE = 256 * 1024; // 256 KiB
@@ -283,7 +284,18 @@ async function fetchSignedChunkUrls(prefix: string, indices: number[]): Promise<
 
 export async function downloadAndDecryptFile(desc: FileDescriptor): Promise<Blob> {
   // Descripteur XFTP (v2) : le fichier vit sur un serveur XFTP (HTTP/2).
-  if (desc.v === 2) return await downloadXftpDescriptor(desc);
+  if (desc.v === 2) {
+    const t0 = Date.now();
+    const server = (desc as { server?: string }).server;
+    try {
+      const blob = await downloadXftpDescriptor(desc);
+      netLog({ layer: 'xftp', op: 'download', status: 'ok', endpoint: server, ms: Date.now() - t0 });
+      return blob;
+    } catch (e) {
+      netLog({ layer: 'xftp', op: 'download', status: 'fail', endpoint: server, detail: (e as Error).message, ms: Date.now() - t0 });
+      throw e;
+    }
+  }
   await ensureAnonymousFileAccess();
   const { key, ivBase } = validateDescriptor(desc);
   const parts: BlobPart[] = [];
@@ -353,8 +365,16 @@ export async function uploadFileXftp(file: Blob, onProgress?: (f: number) => voi
   const mime = typeof named.type === 'string' && named.type ? named.type : 'application/octet-stream';
   const bytes = await readBlobBytes(file);
   onProgress?.(0.5);
-  const { recipientDescription } = await uploadFileToXftp(server, bytes, name);
+  const t0 = Date.now();
+  let recipientDescription: unknown = null;
+  try {
+    ({ recipientDescription } = await uploadFileToXftp(server, bytes, name));
+  } catch (e) {
+    netLog({ layer: 'xftp', op: 'upload', status: 'fail', endpoint: server, detail: (e as Error).message, ms: Date.now() - t0 });
+    throw e;
+  }
   onProgress?.(1);
+  netLog({ layer: 'xftp', op: 'upload', status: 'ok', endpoint: server, detail: `${bytes.length} o`, ms: Date.now() - t0 });
   return { v: 2, kind: 'xftp', server, name, mime, size: bytes.length, desc: recipientDescription };
 }
 

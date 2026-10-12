@@ -30,6 +30,7 @@ import {
 import { decryptRcvMessageBody } from '@/lib/smpweb/browser-smp-agent.mjs';
 import type { RelayOp, RelayResponse, RelayWire } from './wire';
 import type { QueueCredentials, StoredEnvelope } from './relayCore';
+import { netLog } from './netLog';
 
 const TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const READ_TIMEOUT_MS = 300;
@@ -217,6 +218,7 @@ export class SmpRelayWire implements RelayWire {
   }
 
   async request(op: RelayOp): Promise<RelayResponse> {
+    const t0 = Date.now();
     const run = this.chain.then(
       () => this.doRequest(op),
       () => this.doRequest(op),
@@ -225,7 +227,16 @@ export class SmpRelayWire implements RelayWire {
       () => undefined,
       () => undefined,
     );
-    return run;
+    const resp = await run;
+    netLog({
+      layer: 'smp',
+      op: op.op,
+      status: resp.ok ? 'ok' : 'fail',
+      endpoint: this.opts.url,
+      detail: resp.ok ? undefined : resp.error,
+      ms: Date.now() - t0,
+    });
+    return resp;
   }
 
   private async doRequest(op: RelayOp): Promise<RelayResponse> {

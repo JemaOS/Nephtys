@@ -24,6 +24,8 @@ export interface PendingInit {
 
 export interface PrivateConnectionRecord {
   conversationId: string;
+  /** Nom local (pseudo) donné par l'utilisateur — jamais transmis au pair. */
+  label?: string;
   relay: RelayConnection;
   localKeys: LocalRatchetKeys;
   session: SessionState | null;

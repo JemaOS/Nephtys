@@ -16,6 +16,7 @@
 import { supabaseAnon } from '../supabase';
 import type { QueueCredentials, StoredEnvelope } from './relayCore';
 import type { RelayOp, RelayResponse, RelayWire } from './wire';
+import { netLog } from './netLog';
 
 const ANON_CONSENT_KEY = 'nephtys_anon_relay_consent';
 
@@ -122,6 +123,20 @@ export class SupabaseRelayWire implements RelayWire {
   }
 
   async request(op: RelayOp): Promise<RelayResponse> {
+    const t0 = Date.now();
+    const resp = await this.run(op);
+    netLog({
+      layer: 'supabase',
+      op: op.op,
+      status: resp.ok ? 'ok' : 'fail',
+      endpoint: SUPABASE_RELAY_ID,
+      detail: resp.ok ? undefined : resp.error,
+      ms: Date.now() - t0,
+    });
+    return resp;
+  }
+
+  private async run(op: RelayOp): Promise<RelayResponse> {
     const denied = await this.ensureAnonymous();
     if (denied) return denied;
 

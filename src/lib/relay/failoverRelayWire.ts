@@ -24,6 +24,7 @@
  */
 
 import type { RelayOp, RelayResponse, RelayWire } from './wire';
+import { netLog } from './netLog';
 
 const PRIMARY_COOLDOWN_MS = 30_000;
 
@@ -100,6 +101,7 @@ export class FailoverRelayWire implements RelayWire {
   private markPrimaryDown(reason?: string): void {
     // Échec du relais prioritaire → repli TEMPORAIRE pour les NOUVELLES files.
     console.warn('[relay] relais prioritaire indisponible → repli temporaire:', reason);
+    netLog({ layer: 'relay', op: 'fallback', status: 'fallback', detail: reason });
     this.primaryFailed = true;
     this.retryPrimaryAt = Date.now() + PRIMARY_COOLDOWN_MS;
     this.onFallbackChange?.(true);
