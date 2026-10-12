@@ -1,14 +1,15 @@
 // Copyright (c) 2025 Jema Technology.
 // Distributed under the license specified in the project root.
 //
-// Transport SMP v9 « natif » — implémente le protocole SMP v9 tel qu'il a
-// été **prouvé** de bout en bout (scripts/smp-v9-flow.mjs) :
-//   handshake v9 (keyHash=sha256(CA) + authPubKey) → NEW→IDS → SUB/GET→OK →
-//   SEND→MSG → déchiffrement Layer B (nacl.box).
+// Transport SMP (v9..v15) « natif » — implémente le protocole SMP tel qu'il a
+// été prouvé de bout en bout : handshake (keyHash=sha256(CA)) → NEW→IDS →
+// SUB/GET→OK → SEND→MSG → déchiffrement Layer B (nacl.box).
 // Il parle à un serveur SMP via le **pont** WebSocket↔TLS natif
 // (server/smp-bridge) : le navigateur ne peut pas ouvrir du TLS natif.
 //
-// Expose la surface `RelayWire` (createQueue/send/read/ack/delete).
+// PERF : une **connexion persistante par relais** (handshake une seule fois)
+// est réutilisée pour toutes les opérations, qui sont **sérialisées** (le
+// protocole SMP n'est pas concurrency-safe sur une même connexion).
 
 import nacl from 'tweetnacl';
 import { sha256 } from '@noble/hashes/sha2.js';
@@ -18,7 +19,6 @@ import type { RelayOp, RelayResponse, RelayWire } from './wire';
 
 const BLOCK = 16384;
 const PAD = 0x23;
-const V = 9;
 const te = new TextEncoder();
 
 const small = (b: Uint8Array): Uint8Array => { const o = new Uint8Array(1 + b.length); o[0] = b.length; o.set(b, 1); return o; };
@@ -29,13 +29,33 @@ const unb64u = (s: string): Uint8Array => { let b = s.replaceAll('-', '+').repla
 const x25519Spki = (pk: Uint8Array): Uint8Array => concat(new Uint8Array([0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x6e, 0x03, 0x21, 0x00]), pk);
 const ed25519Spki = (pk: Uint8Array): Uint8Array => concat(new Uint8Array([0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x03, 0x21, 0x00]), pk);
 
+/** Relais SMP publics par défaut (sélectionnables dans Serveurs et réseaux). */
+export const SMP_RELAY_PRESETS: string[] = [
+  'smp10.simplex.im',
+  'smp11.simplex.im',
+  'smp12.simplex.im',
+  'smp14.simplex.im',
+  'smp15.simplex.im',
+  'smp16.simplex.im',
+  'smp17.simplex.im',
+  'smp18.simplex.im',
+  'smp19.simplex.im',
+  'smp4.simplex.im',
+  'smp5.simplex.im',
+  'smp6.simplex.im',
+  'smp8.simplex.im',
+  'smp9.simplex.im',
+];
+
 export interface SmpV9Options {
   /** URL du pont WebSocket (ex. wss://vps/smp). */
   bridgeUrl: string;
+  /** Hôte du serveur SMP cible (ex. smp10.simplex.im) ; transmis au pont. */
+  host?: string;
   timeoutMs?: number;
 }
 
-/** Connexion SMP v9 : handshake + encodage/décodage des blocs. */
+/** Connexion SMP : handshake d'un côté, encodage/décodage des blocs de l'autre. */
 class SmpV9Connection {
   private ws: WebSocket | null = null;
   private buf = new Uint8Array(0);
@@ -43,10 +63,12 @@ class SmpV9Connection {
   sessionId = new Uint8Array(0);
   serverAuthPub = new Uint8Array(0);
   keyHash = new Uint8Array(32);
-  /** Version négociée avec le serveur (min(maxServeur, 15)). */
   version = 9;
+  private opened = false;
 
   constructor(private readonly url: string, private readonly timeoutMs: number) {}
+
+  get isOpen(): boolean { return this.opened && !!this.ws && this.ws.readyState === 1; }
 
   async open(): Promise<void> {
     this.ws = new WebSocket(this.url);
@@ -55,13 +77,14 @@ class SmpV9Connection {
       this.buf = concat(this.buf, new Uint8Array(e.data as ArrayBuffer));
       for (const w of [...this.waiters]) w();
     };
-    await new Promise<void>((res, rej) => { this.ws!.onopen = () => res(); this.ws!.onerror = () => rej(new Error('SMP v9 : pont injoignable')); });
+    this.ws.onclose = () => { this.opened = false; };
+    await new Promise<void>((res, rej) => { this.ws!.onopen = () => res(); this.ws!.onerror = () => rej(new Error('SMP : pont injoignable')); });
     const hello = this.parseHello(await this.nextBlock());
     this.sessionId = hello.sessionId;
     this.serverAuthPub = hello.authPub;
-    this.keyHash = sha256(hello.caCert); // keyHash = sha256(DER du certificat CA)
-    // Négociation : on parle jusqu'à 15 (v14+ = relais officiels).
+    this.keyHash = sha256(hello.caCert);
     this.version = Math.min(hello.max, 15);
+    this.opened = true;
   }
 
   private parseHello(block: Uint8Array) {
@@ -74,7 +97,6 @@ class SmpV9Connection {
     const count = p[off]; off += 1;
     const certs: Uint8Array[] = [];
     for (let i = 0; i < count; i++) { const len = (p[off] << 8) | p[off + 1]; off += 2; certs.push(p.subarray(off, off + len)); off += len; }
-    // v14+ seulement : authPubKey (Large) + proxy. En dessous, pas de auth key.
     let authPub = new Uint8Array(0);
     if (max >= 14) {
       const authLen = (p[off] << 8) | p[off + 1]; off += 2;
@@ -86,19 +108,19 @@ class SmpV9Connection {
   private nextBlock(timeout = this.timeoutMs): Promise<Uint8Array> {
     return new Promise((res, rej) => {
       const read = () => { if (this.buf.length >= BLOCK) { const b = this.buf.subarray(0, BLOCK); this.buf = this.buf.subarray(BLOCK); cl(); res(b); } };
-      const t = setTimeout(() => { cl(); rej(new Error('SMP v9 : timeout')); }, timeout);
+      const t = setTimeout(() => { cl(); rej(new Error('SMP : timeout')); }, timeout);
       const cl = () => { clearTimeout(t); const i = this.waiters.indexOf(read); if (i >= 0) this.waiters.splice(i, 1); };
       this.waiters.push(read); read();
     });
   }
 
-  async handshake(authPubSpki: Uint8Array): Promise<void> {
-    // v9 : [v9][keyHash][authPubKey]. v14+ : [v][keyHash]['F'] (proxy=false,
-    // sans authPubKey → pas de chiffrement de bloc).
+  /** Handshake v14+ : [v][keyHash]['F'] (sans clé client → pas de chiffrement de bloc). */
+  async handshake(): Promise<void> {
     const payload = this.version >= 14
       ? concat(new Uint8Array([(this.version >> 8) & 0xff, this.version & 0xff]), small(this.keyHash), new Uint8Array([0x46]))
-      : concat(new Uint8Array([0, this.version]), small(this.keyHash), small(authPubSpki));
+      : concat(new Uint8Array([0, this.version]), small(this.keyHash), small(x25519Spki(nacl.box.keyPair().publicKey)));
     this.ws!.send(padBlock(payload));
+    await new Promise(r => setTimeout(r, 200));
   }
 
   async command(auth: Uint8Array, corrId: Uint8Array, entityId: Uint8Array, cmd: Uint8Array): Promise<any[]> {
@@ -107,7 +129,6 @@ class SmpV9Connection {
     return this.decode(await this.nextBlock());
   }
 
-  /** Envoie sans attendre de réponse (pour SEND sans accusé de réception garanti). */
   send(auth: Uint8Array, corrId: Uint8Array, entityId: Uint8Array, cmd: Uint8Array): void {
     const body = concat(small(auth), small(corrId), small(entityId), cmd);
     this.ws!.send(padBlock(concat(new Uint8Array([1]), new Uint8Array([(body.length >>> 8) & 0xff, body.length & 0xff]), body)));
@@ -116,83 +137,116 @@ class SmpV9Connection {
   async waitResponse(): Promise<any[]> { return this.decode(await this.nextBlock()); }
 
   decode(block: Uint8Array): any[] {
-    // Décodeur éprouvé de la lib, avec la VERSION NÉGOCIÉE (v9..v15) — l'IDS et
-    // les commandes diffèrent selon la version.
     const txns = decodeTransportBlock(this.version, block, { kind: 'broker', sessionId: this.sessionId }) as any[];
     return txns.map(t => t.message ?? t);
   }
 
-  close(): void { try { this.ws?.close(); } catch { /* ignore */ } }
+  close(): void { try { this.ws?.close(); } catch { /* ignore */ } this.opened = false; }
 }
 
 /**
- * Wire SMP v9 : mappe le protocole SMP sur `RelayWire`.
- * Jetons opaques :
- *   queueId (rcv) : rcvId
- *   sendKey       : sndId du pair (pour SEND)
- *   rcvKey        : authPriv || rcvDhPriv || srvDhPub  (pour GET/ACK + déchiffrement)
+ * Gestionnaire de connexion persistante par relais : handshake une seule fois,
+ * requêtes **sérialisées** (chaîne de promesses). Se reconnecte si la connexion
+ * est tombée.
  */
+class PersistentSmp {
+  private conn: SmpV9Connection | null = null;
+  private chain: Promise<unknown> = Promise.resolve();
+
+  constructor(private readonly url: string, private readonly timeout: number) {}
+
+  run<T>(fn: (c: SmpV9Connection) => Promise<T>): Promise<T> {
+    const exec = async (): Promise<T> => {
+      const c = await this.ensure();
+      try {
+        return await fn(c);
+      } catch (e) {
+        this.reset();
+        throw e;
+      }
+    };
+    const p = this.chain.then(exec);
+    this.chain = p.catch(() => { /* la suivante repart proprement */ });
+    return p;
+  }
+
+  private async ensure(): Promise<SmpV9Connection> {
+    if (this.conn?.isOpen) return this.conn;
+    const c = new SmpV9Connection(this.url, this.timeout);
+    await c.open();
+    await c.handshake();
+    this.conn = c;
+    return c;
+  }
+
+  private reset(): void { try { this.conn?.close(); } catch { /* ignore */ } this.conn = null; }
+}
+
 export class SmpV9Wire implements RelayWire {
+  /**
+   * Connexion persistante PAR INSTANCE (un wire = un pair) : jamais partagée
+   * entre deux clients distincts, mais réutilisée pour toutes les opérations
+   * d'un même client (handshake une seule fois).
+   */
+  private persistent: PersistentSmp | null = null;
+
   constructor(private readonly opts: SmpV9Options) {}
 
   private get timeout(): number { return this.opts.timeoutMs ?? 15_000; }
 
-  async request(op: RelayOp): Promise<RelayResponse> {
-    const conn = new SmpV9Connection(this.opts.bridgeUrl, this.timeout);
+  /** URL effective du pont, avec l'hôte SMP cible en paramètre. */
+  private get url(): string {
+    const base = this.opts.bridgeUrl;
+    if (!this.opts.host) return base;
     try {
-      await conn.open();
-
-      if (op.op === 'createQueue') {
-        const auth = nacl.box.keyPair();
-        await conn.handshake(x25519Spki(auth.publicKey));
-        await new Promise(r => setTimeout(r, 250));
-        return await this.createQueue(conn, auth);
-      }
-
-      if (op.op === 'send') {
-        // SEND : pas d'auth, handshake avec une clé jetable.
-        const throwaway = nacl.box.keyPair();
-        await conn.handshake(x25519Spki(throwaway.publicKey));
-        await new Promise(r => setTimeout(r, 250));
-        return await this.doSend(conn, op);
-      }
-
-      // read/ack/delete : handshake jetable ; la signature Ed25519 est dans le jeton.
-      const throwaway = nacl.box.keyPair();
-      await conn.handshake(x25519Spki(throwaway.publicKey));
-      await new Promise(r => setTimeout(r, 250));
-
-      switch (op.op) {
-        case 'read': return await this.doRead(conn, op);
-        case 'ack': return await this.doAck(conn, op);
-        case 'delete': return await this.doDelete(conn, op);
-        default: return { ok: false, error: `SMP v9 : op ${(op as { op: string }).op} non gérée` };
-      }
-    } catch (e) {
-      return { ok: false, error: (e as Error).message };
-    } finally {
-      conn.close();
+      const u = new URL(base);
+      u.searchParams.set('host', this.opts.host);
+      return u.toString();
+    } catch {
+      return base;
     }
   }
 
-private async createQueue(conn: SmpV9Connection, auth: nacl.BoxKeyPair): Promise<RelayResponse> {
+  private get persistentConn(): PersistentSmp {
+    if (!this.persistent) this.persistent = new PersistentSmp(this.url, this.timeout);
+    return this.persistent;
+  }
+
+  async request(op: RelayOp): Promise<RelayResponse> {
+    try {
+      return await this.persistentConn.run(conn => this.dispatch(conn, op));
+    } catch (e) {
+      return { ok: false, error: (e as Error).message };
+    }
+  }
+
+  private async dispatch(conn: SmpV9Connection, op: RelayOp): Promise<RelayResponse> {
+    switch (op.op) {
+      case 'createQueue': return await this.createQueue(conn);
+      case 'send': return await this.doSend(conn, op);
+      case 'read': return await this.doRead(conn, op);
+      case 'ack': return await this.doAck(conn, op);
+      case 'delete': return await this.doDelete(conn, op);
+      default: return { ok: false, error: `SMP : op ${(op as { op: string }).op} non gérée` };
+    }
+  }
+
+  private async createQueue(conn: SmpV9Connection): Promise<RelayResponse> {
     const ed = nacl.sign.keyPair();
     const x = nacl.box.keyPair();
-    // File « contact » : accepte les SEND **non signés** (aucun SKEY requis).
-    //   v15 : QueueReqData = '1C0' (contact) ; v14 : 'F' ; v9 : 'F'.
+    // File « contact » : accepte les SEND non signés (aucun SKEY requis).
     const reqData = conn.version >= 15 ? te.encode('1C0') : te.encode('F');
     const cmd = concat(te.encode('NEW '), small(ed25519Spki(ed.publicKey)), small(x25519Spki(x.publicKey)), te.encode('0S'), reqData);
     const corrId = nacl.randomBytes(24);
     const txns = await conn.command(nacl.sign.detached(concat(small(conn.sessionId), small(corrId), small(new Uint8Array(0)), cmd), ed.secretKey), corrId, new Uint8Array(0), cmd);
     const ids = txns.find(t => t.type === 'IDS');
-    if (!ids) return { ok: false, error: `SMP v9 : IDS absent (reçu: ${txns.map(t => t.type).join(',') || 'vide'})` };
+    if (!ids) return { ok: false, error: `SMP : IDS absent (reçu: ${txns.map(t => t.type).join(',') || 'vide'})` };
     const creds: QueueCredentials = {
       queueId: b64u(ids.rcvId),
       sendKey: b64u(ids.sndId),
       rcvKey: b64u(concat(ed.secretKey, x.secretKey, ids.rcvPublicDhKey.subarray(-32))),
-      relay: this.opts.bridgeUrl,
+      relay: this.url,
     };
-    void auth;
     return { ok: true, result: creds };
   }
 
@@ -200,12 +254,11 @@ private async createQueue(conn: SmpV9Connection, auth: nacl.BoxKeyPair): Promise
     const sndId = unb64u(op.queueKey);
     const cmd = concat(te.encode('SEND '), te.encode('F '), unb64u(op.ciphertext));
     const corrId = nacl.randomBytes(24);
-    // File contact : SEND NON signé (auth vide).
     conn.send(new Uint8Array(0), corrId, sndId, cmd);
     const txns = await conn.waitResponse();
     return txns.some(t => t.type === 'OK') || txns.some(t => t.type === 'MSG')
       ? { ok: true, result: { id: b64u(corrId) } }
-      : { ok: false, error: txns[0]?.text ?? 'SMP v9 : SEND refusé' };
+      : { ok: false, error: txns[0]?.text ?? 'SMP : SEND refusé' };
   }
 
   private async doRead(conn: SmpV9Connection, op: Extract<RelayOp, { op: 'read' }>): Promise<RelayResponse> {
@@ -217,7 +270,7 @@ private async createQueue(conn: SmpV9Connection, auth: nacl.BoxKeyPair): Promise
     const cmd = te.encode('GET');
     const corrId = nacl.randomBytes(24);
     const sig = nacl.sign.detached(concat(small(conn.sessionId), small(corrId), small(rcvId), cmd), edSecret);
-const txns = await conn.command(sig, corrId, rcvId, cmd);
+    const txns = await conn.command(sig, corrId, rcvId, cmd);
     const out: StoredEnvelope[] = [];
     for (const t of txns) {
       if (t.type !== 'MSG') continue;
@@ -254,4 +307,3 @@ const txns = await conn.command(sig, corrId, rcvId, cmd);
     return { ok: true, result: true };
   }
 }
-

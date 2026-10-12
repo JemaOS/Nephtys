@@ -40,7 +40,10 @@ import {
   isSmpV9Enabled,
   setSmpV9Enabled,
   getSmpV9BridgeUrl,
-  setSmpV9BridgeUrl
+  setSmpV9BridgeUrl,
+  getSmpRelayPresets,
+  getSmpV9Host,
+  setSmpV9Host
 } from '@/lib/relay/relayClient'
 import { isRelayOnlyCallsEnabled, setRelayOnlyCallsEnabled, getIceServers } from '@/lib/iceServers'
 import { isCoverTrafficEnabled, setCoverTrafficEnabled } from '@/lib/privacyPrefs'
@@ -177,6 +180,8 @@ export function SettingsPage() {
   const [relayPoolInput, setRelayPoolInput] = useState<string>(() => getRelayPoolInput())
   const [smpV9, setSmpV9] = useState<boolean>(() => isSmpV9Enabled())
   const [smpV9Url, setSmpV9Url] = useState<string>(() => getSmpV9BridgeUrl())
+  const [smpV9HostDraft, setSmpV9HostDraft] = useState<string>(() => getSmpV9Host())
+  const [smpV9HostSel, setSmpV9HostSel] = useState<string>(() => getSmpV9Host())
   const [relayMode, setRelayMode] = useState<RelayMode>(() => getRelayMode())
   const [availableRelays, setAvailableRelays] = useState<string[]>(() => getAvailableRelays())
   const [iceServerCount, setIceServerCount] = useState<number>(() => getIceServers().length)
@@ -615,6 +620,7 @@ export function SettingsPage() {
     setRelayPoolInput('')
     setSmpV9Enabled(false)
     setSmpV9BridgeUrl('')
+    setSmpV9Host('')
     setSelectedRelays([])
     globalThis.location.reload()
   }
@@ -1664,20 +1670,50 @@ export function SettingsPage() {
                 </button>
               </div>
               {smpV9 && (
-                <div className="flex items-center gap-2">
-                  <input
-                    value={smpV9Url}
-                    onChange={e => setSmpV9Url(e.target.value)}
-                    placeholder="wss://votre-vps/smp"
-                    className="flex-1 min-w-0 px-2 py-1 rounded-lg bg-bg-surface text-[11px] font-mono text-text-secondary"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleSaveSmpV9Url}
-                    className="px-2 py-1 rounded-lg bg-bg-hover text-xs text-text-primary shrink-0"
-                  >
-                    Enregistrer
-                  </button>
+                <div className="space-y-2">
+                  <div className="text-sm text-text-secondary">Relais de messages :</div>
+                  <div className="max-h-56 overflow-y-auto rounded-xl bg-bg-surface">
+                    {getSmpRelayPresets().map(host => (
+                      <button
+                        key={host}
+                        type="button"
+                        onClick={() => { setSmpV9Host(host); setSmpV9HostSel(host) }}
+                        className={`w-full text-left px-3 py-2 text-xs font-mono border-b border-bg-hover last:border-0 ${smpV9HostSel === host ? 'text-accent' : 'text-text-secondary'}`}
+                      >
+                        {smpV9HostSel === host ? '● ' : '○ '}{host}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      value={smpV9HostDraft}
+                      onChange={e => setSmpV9HostDraft(e.target.value)}
+                      placeholder="smp.exemple.org"
+                      className="flex-1 min-w-0 px-2 py-1 rounded-lg bg-bg-surface text-[11px] font-mono text-text-secondary"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => { setSmpV9Host(smpV9HostDraft); setSmpV9HostSel(smpV9HostDraft) }}
+                      className="px-2 py-1 rounded-lg bg-bg-hover text-xs text-text-primary shrink-0"
+                    >
+                      Utiliser
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      value={smpV9Url}
+                      onChange={e => setSmpV9Url(e.target.value)}
+                      placeholder="wss://votre-vps/smp"
+                      className="flex-1 min-w-0 px-2 py-1 rounded-lg bg-bg-surface text-[11px] font-mono text-text-secondary"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleSaveSmpV9Url}
+                      className="px-2 py-1 rounded-lg bg-bg-hover text-xs text-text-primary shrink-0"
+                    >
+                      Enregistrer
+                    </button>
+                  </div>
                 </div>
               )}
               <button

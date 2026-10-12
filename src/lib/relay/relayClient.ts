@@ -12,7 +12,7 @@ import { WebSocketWire, isAllowedRelayUrl, type RelayWire } from './wire';
 import { SupabaseRelayWire } from './supabaseRelayWire';
 import { AgentRelayWire } from './agentRelayWire';
 import { SmpRelayWire } from './smpRelayWire';
-import { SmpV9Wire } from './smpV9Wire';
+import { SmpV9Wire, SMP_RELAY_PRESETS } from './smpV9Wire';
 import { createTorWebSocketImpl } from './torClient';
 import { FailoverRelayWire } from './failoverRelayWire';
 import { MultiRelayWire } from './multiRelayWire';
@@ -424,6 +424,35 @@ export function hasExternalRelayConfigured(): boolean {
 
 const SMP_V9_KEY = 'nephtys_smp_v9_enabled';
 const SMP_V9_URL_KEY = 'nephtys_smp_v9_bridge_url';
+const SMP_V9_HOST_KEY = 'nephtys_smp_v9_host';
+
+/** Relais SMP proposés par défaut (sélectionnables dans Serveurs et réseaux). */
+export function getSmpRelayPresets(): string[] {
+  return SMP_RELAY_PRESETS;
+}
+
+/** Relais SMP sélectionné (host), défaut = premier preset. */
+export function getSmpV9Host(): string {
+  try {
+    const o = localStorage.getItem(SMP_V9_HOST_KEY);
+    if (o) return o;
+  } catch {
+    // localStorage indisponible
+  }
+  return (import.meta.env.VITE_SMP_RELAY_HOST as string | undefined)?.trim() || SMP_RELAY_PRESETS[0];
+}
+
+/** Sélectionne le relais SMP. Prend effet à la prochaine connexion. */
+export function setSmpV9Host(host: string): void {
+  try {
+    const h = host.trim();
+    if (h) localStorage.setItem(SMP_V9_HOST_KEY, h);
+    else localStorage.removeItem(SMP_V9_HOST_KEY);
+  } catch {
+    // localStorage indisponible
+  }
+  instance = null;
+}
 
 /** URL du pont WebSocket SMP (ex. wss://vps/smp). */
 export function getSmpV9BridgeUrl(): string {
@@ -501,8 +530,8 @@ export function getPrivateMessenger(): PrivateMessenger {
     } else if (isSmpV9Enabled()) {
       // Réseau SMP (protocole SMP v9..v15) via le pont WS↔TLS natif, avec
       // repli sur le relais aveugle si le pont/le serveur SMP est injoignable.
-      const fw = new FailoverRelayWire(
-        new SmpV9Wire({ bridgeUrl: getSmpV9BridgeUrl() }),
+const fw = new FailoverRelayWire(
+        new SmpV9Wire({ bridgeUrl: getSmpV9BridgeUrl(), host: getSmpV9Host() }),
         new SupabaseRelayWire(),
         active => { for (const cb of transportListeners) cb(active); },
       );
