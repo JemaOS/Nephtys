@@ -6,9 +6,11 @@ import { tStatic } from '@/i18n';
 
 const searilizeError = (error: any) => {
   if (error instanceof Error) {
-    return error.message + '\n' + error.stack;
+    // La stack trace (chemins, internals du bundle) n'est exposée qu'en dev.
+    return import.meta.env.DEV ? error.message + '\n' + error.stack : error.message;
   }
-  return JSON.stringify(error, null, 2);
+  // Objet non-Error : sérialisation détaillée uniquement en dev.
+  return import.meta.env.DEV ? JSON.stringify(error, null, 2) : '';
 };
 
 export class ErrorBoundary extends React.Component<
@@ -65,9 +67,11 @@ export class ErrorBoundary extends React.Component<
           >
             {tStatic('refresh')}
           </button>
-          <pre className="mt-8 text-xs text-gray-500 max-w-lg overflow-auto p-4 bg-black/50 rounded">
-            {searilizeError(this.state.error)}
-          </pre>
+          {searilizeError(this.state.error) ? (
+            <pre className="mt-8 text-xs text-gray-500 max-w-lg overflow-auto p-4 bg-black/50 rounded">
+              {searilizeError(this.state.error)}
+            </pre>
+          ) : null}
         </div>
       );
     }

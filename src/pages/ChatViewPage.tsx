@@ -8,7 +8,7 @@ import { useI18n, tStatic } from '@/i18n'
 import { useTheme } from '@/context/ThemeContext'
 import { MainLayout } from '@/components/MainLayout'
 import { supabase, Message, Conversation, Profile, sendBroadcastMessage } from '@/lib/supabase'
-import { signFieldsBatch, resolveMediaUrl, extractStoragePath } from '@/lib/mediaUrl'
+import { signFieldsBatch, resolveMediaUrl, extractStoragePath, buildOpaqueMediaPath } from '@/lib/mediaUrl'
 import { createMediaKeysForMessage, fetchMediaRawKey, uploadEncryptedMedia } from '@/lib/encryptedMediaService'
 import {
   encryptText,
@@ -21,6 +21,8 @@ import {
   UNDECRYPTABLE_PLACEHOLDER,
   getCachedDecryptedText,
   cacheDecryptedText,
+  retryPendingDecryption,
+  getPendingDecryptionIds,
   type EncryptedTextPayload,
 } from '@/lib/textEncryption'
 import { markOwnMessage, isOwnMessage } from '@/lib/ownMessages'
@@ -680,6 +682,59 @@ export function ChatViewPage() {
     })
   }, [filteredMessages, messages, isSearching])
 
+  // ── Re-tentative de déchiffrement (message reçu AVANT ses clés) ───────────
+  // `textEncryption` conserve le ciphertext d'un message indéchiffrable et
+  // expose `retryPendingDecryption`/`getPendingDecryptionIds`. Sans appel, un
+  // message dont les clés enveloppées (`message_text_keys`) arrivent APRÈS
+  // restait bloqué sur le cadenas jusqu'à un rechargement. On planifie ici une
+  // re-tentative avec un backoff court après chaque échec, et on ré-injecte le
+  // clair dès qu'il arrive (jamais de ciphertext à l'écran).
+  const decryptionRetryTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
+
+  const refreshDecryptedMessage = useCallback((id: string, text: string) => {
+    setMessages(prev => prev.map(m => (
+      m.id === id ? ({ ...m, content: text, is_text_encrypted: false } as Message) : m
+    )))
+  }, [])
+
+  const scheduleDecryptionRetry = useCallback((id: string) => {
+    const uid = user?.id
+    if (!uid || decryptionRetryTimersRef.current.has(id)) return
+    const MAX_ATTEMPTS = 6
+    const attemptRetry = async (attempt: number): Promise<void> => {
+      if (attempt > 0) {
+        await new Promise<void>(resolve => {
+          const timer = setTimeout(resolve, Math.min(1000 * 2 ** (attempt - 1), 30000))
+          decryptionRetryTimersRef.current.set(id, timer)
+        })
+      }
+      decryptionRetryTimersRef.current.delete(id)
+      let text: string | null = null
+      try {
+        text = await retryPendingDecryption(id, uid)
+      } catch {
+        text = null
+      }
+      if (text !== null) {
+        refreshDecryptedMessage(id, text)
+        return
+      }
+      if (attempt < MAX_ATTEMPTS) await attemptRetry(attempt + 1)
+    }
+    void attemptRetry(0)
+  }, [user?.id, refreshDecryptedMessage])
+
+  // Planifie la re-tentative de TOUS les messages en attente (couvre aussi les
+  // ids hors du fil courant). Idempotent : dédupliqué par id.
+  const schedulePendingDecryptionRetries = useCallback(() => {
+    for (const id of getPendingDecryptionIds()) scheduleDecryptionRetry(id)
+  }, [scheduleDecryptionRetry])
+
+  useEffect(() => () => {
+    decryptionRetryTimersRef.current.forEach(timer => clearTimeout(timer))
+    decryptionRetryTimersRef.current.clear()
+  }, [])
+
   // Helper function to get sender info for a message (works for both direct and group conversations)
   const getSenderInfo = useCallback((senderId: string): { name: string; avatar?: string } => {
     // If it's the current user
@@ -905,7 +960,20 @@ export function ChatViewPage() {
     }
     
     if (!error && data) {
-      setCallLogs(data)
+      // 20261035 : caller_id/callee_id sont des pseudonymes serveur. On déduit
+      // le sens (sortant/entrant) du pseudonyme de l'utilisateur courant, comme
+      // dans CallsPage.
+      let myRef: string | null = null
+      try {
+        const { data: ref } = await supabase.rpc('current_user_ref')
+        myRef = typeof ref === 'string' ? ref : null
+      } catch {
+        // pas de RPC (migration non appliquée) → repli « entrant »
+      }
+      setCallLogs(data.map((c: any) => ({
+        ...c,
+        is_outgoing: !!myRef && c.caller_id === myRef,
+      })))
     }
   }
 
@@ -1045,6 +1113,10 @@ export function ChatViewPage() {
         console.warn('[E2EE] decrypt realtime échoué, message conservé:', e)
       }
     }
+    // Message toujours indéchiffrable (clés enveloppées pas encore arrivées) :
+    // on planifie une re-tentative avec backoff → dès que la clé arrive, le
+    // clair remplace le cadenas sans attendre un rechargement.
+    if ((newMsg as any).is_text_encrypted) schedulePendingDecryptionRetries()
 
     // Signer les paths storage (bucket privé) avant injection dans le state.
     // On skip la signature pour les médias chiffrés E2EE (télécharge auto via fetchAndDecryptMedia).
@@ -1117,7 +1189,7 @@ export function ChatViewPage() {
     if (user && !isOwnMessage(newMsg.id) && newMsg.sender_id !== user.id) {
       handleNewMessageNotification(newMsg, newMsg.sender_id ?? '')
     }
-  }, [user, handleNewMessageNotification])
+  }, [user, handleNewMessageNotification, schedulePendingDecryptionRetries])
 
   // Ref stable pour le handler realtime : le canal ne doit PAS se re-souscrire
   // à chaque changement d'identité du callback (sinon statut CLOSED/SUBSCRIBED
@@ -1154,6 +1226,8 @@ export function ChatViewPage() {
           console.warn('[E2EE] decrypt UPDATE échoué, message conservé:', e)
         }
       }
+      // Toujours indéchiffrable → re-tentative avec backoff (clés en route).
+      if ((updatedMsg as any).is_text_encrypted) schedulePendingDecryptionRetries()
     }
 
     // Signe les paths storage (médias non chiffrés) comme à l'injection INSERT.
@@ -1195,7 +1269,7 @@ export function ChatViewPage() {
       }
       return updateMessageInList(prev, updatedMsg)
     })
-  }, [user])
+  }, [user, schedulePendingDecryptionRetries])
 
   const handleMessageUpdateRef = useRef(handleMessageUpdate)
   useEffect(() => {
@@ -2019,6 +2093,9 @@ export function ChatViewPage() {
       if (user) {
 await decryptMessageRows(validData as any[], user.id)
           for (let i = 0; i < validData.length; i++) ((validData as any[])[i]) = { ...(validData as any[])[i] }
+          // Messages indéchiffrables (clés pas encore arrivées) : re-tentative
+          // planifiée avec backoff (cf. schedulePendingDecryptionRetries).
+          schedulePendingDecryptionRetries()
       }
 
       // ── Local-first : le serveur ne garde pas tout (rétention type
@@ -2155,6 +2232,8 @@ await decryptMessageRows(validData as any[], user.id)
         // → `MessageItem` (React.memo) ne re-rendait pas et gardait le ciphertext
         // déjà affiché. On force de NOUVELLES références pour les lignes déchiffrées.
         for (let i = 0; i < validData.length; i++) ((validData as any[])[i]) = { ...(validData as any[])[i] }
+        // Indéchiffrables (clés pas encore arrivées) → re-tentative avec backoff.
+        schedulePendingDecryptionRetries()
         }
 
         // Prepend older messages to the list
@@ -2857,7 +2936,9 @@ await decryptMessageRows(validData as any[], user.id)
       } else {
         fileExtension = 'webm'
       }
-      const fileName = `${user.id}/${Date.now()}.${fileExtension}`
+      // Chemin OPAQUE (ni uid, ni horodatage) : sealed sender préservé pour le
+      // vocal, comme pour images/vidéos/documents (cf. buildOpaqueMediaPath).
+      const fileName = buildOpaqueMediaPath(conversationId!, fileExtension)
 
       // E2EE : on chiffre le vocal AVANT l'upload (comme images/vidéos/docs).
       // Le bucket ne contient qu'un blob opaque ; la clé AES est enveloppée par
@@ -4047,6 +4128,7 @@ await decryptMessageRows(validData as any[], user.id)
       {showMediaUploader && (
         <Suspense fallback={null}>
         <MediaUploader
+          conversationId={conversationId!}
           onMediaSelect={(file, type) => console.log('Media selected:', file.name, type)}
           onUploadComplete={handleMediaUploadComplete}
           onMultipleUploadComplete={handleMultipleUploadComplete}

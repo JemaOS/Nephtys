@@ -5,7 +5,7 @@
  * anti-DDoS / anti-flood multi-couches :
  *
  *   1. Validation stricte des entrées (longueur, regex)
- *   2. Rate limiting par IP NON falsifiable (dernier hop de x-forwarded-for)
+ *   2. Rate limiting par IP vue par l'edge de confiance (`cf-connecting-ip`)
  *   3. Rate limiting par username (et variante canonique) — non spoofable
  *   4. Rate limiting GLOBAL (toutes IP confondues) — borne l'abus distribué
  *   5. CORS restreint aux origines autorisées
@@ -14,6 +14,20 @@
  * Toutes les vérifications sont effectuées AVANT tout appel à
  * l'API admin Supabase, ce qui évite la création massive de comptes
  * et la saturation du serveur.
+ *
+ * ⚠️ AVERTISSEMENT — NE PAS SE REPOSER SUR CE SEUL RATE-LIMIT :
+ *   Les en-têtes d'IP sur les Edge Functions Supabase ne sont PAS garantis
+ *   « infalsifiables » par la documentation (contrairement à `Sb-Forwarded-For`
+ *   côté Supabase Auth, opt-in et réservé aux clés secrètes). `cf-connecting-ip`
+ *   est ce qui s'en rapproche le plus (écrit par l'edge Cloudflare qui frontale
+ *   Supabase, non contrôlable par le client), mais le contrôle par IP reste au
+ *   mieux « best effort ».
+ *   PLUS IMPORTANT : un attaquant peut appeler DIRECTEMENT GoTrue
+ *   (`/auth/v1/signup`, `/auth/v1/token?grant_type=password`) en contournant
+ *   totalement cette fonction — ce n'est PAS corrigeable ici. Le rate-limit
+ *   NATIF de Supabase Auth doit donc IMPÉRATIVEMENT rester activé (voire
+ *   renforcé) pour doubler cette protection. Les limites ci-dessous ne
+ *   protègent que le chemin qui PASSE par cette edge function.
  * ----------------------------------------------------------------------
  */
 
@@ -79,28 +93,21 @@ function buildCorsHeaders(origin: string | null): Record<string, string> {
 }
 
 /**
- * Récupère l'IP du client de façon NON FALSIFIABLE.
+ * Récupère l'IP du client telle que vue par l'edge de confiance.
  *
- * ⚠️ Sécurité : `cf-connecting-ip`, `x-real-ip`, `x-client-ip` et les premières
- * entrées de `x-forwarded-for` sont directement contrôlables par le client (il
- * peut injecter ces en-têtes dans sa requête HTTP). On ne s'y fie donc PAS :
- * un attaquant les ferait varier à chaque requête pour contourner le quota IP.
+ * `cf-connecting-ip` est écrit par l'edge Cloudflare qui frontale Supabase : sa
+ * valeur n'est PAS contrôlable par le client (Cloudflare (ré)écrit l'en-tête sur
+ * le tronçon edge→origine). On l'utilise donc EXCLUSIVEMENT.
  *
- * Sur Supabase Edge Functions, la requête traverse le proxy de la plateforme,
- * qui AJOUTE l'adresse du pair qu'il observe à la FIN de `x-forwarded-for`.
- * Les valeurs éventuellement forgées par le client restent donc en tête de la
- * liste : le DERNIER hop est la source la plus fiable disponible.
- *
- * Si aucun `x-forwarded-for` exploitable n'est présent, on retourne 'unknown'
- * (bucket commun : ces appelants partagent un même quota, jamais l'illimité).
+ * On ne retombe PAS sur `x-forwarded-for` : sur les Edge Functions sa chaîne est
+ * au mieux « best effort » et son DERNIER hop n'est PAS garanti non forgeable
+ * (cf. avertissement en tête de fichier). En l'absence d'en-tête de confiance on
+ * retourne 'unknown' (bucket commun : ces appelants partagent un même quota,
+ * jamais l'illimité). L'IP est hashée avant stockage.
  */
 function extractClientIp(req: Request): string {
-    const xff = req.headers.get('x-forwarded-for');
-    if (xff) {
-        const hops = xff.split(',').map((hop) => hop.trim()).filter((hop) => hop.length > 0);
-        const last = hops.length > 0 ? hops[hops.length - 1] : '';
-        if (last) return last;
-    }
+    const cfIp = req.headers.get('cf-connecting-ip');
+    if (cfIp && cfIp.trim().length > 0) return cfIp.trim();
     return 'unknown';
 }
 

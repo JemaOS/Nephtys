@@ -15,12 +15,14 @@
  * EXACT fourni par l'appelant. Sans le préfixe, aucune découverte n'est possible.
  *
  * Route      : POST /functions/v1/anon-files-download
- * Auth       : JWT Supabase requis — rôles `authenticated` (utilisateur
- *              connecté) OU `anon` (mode privé anonyme, clé publique). Le rôle
- *              `service_role` et tout rôle inconnu sont refusés. La
- *              confidentialité NE repose PAS sur le rôle mais sur le préfixe
- *              aléatoire (capacité) : sans le préfixe exact, rien n'est
- *              découvrable.
+ * Auth       : JWT Supabase requis ET VÉRIFIÉ — rôles `authenticated`
+ *              (utilisateur connecté, validé via GoTrue `auth.getUser`) OU
+ *              `anon` (le jeton est comparé à la clé anon du projet
+ *              `SUPABASE_ANON_KEY` : un JWT `anon` forgé ne peut pas la
+ *              reproduire). Le rôle `service_role` et tout rôle inconnu sont
+ *              refusés. La confidentialité NE repose PAS sur le rôle mais sur
+ *              le préfixe aléatoire (capacité) : sans le préfixe exact, rien
+ *              n'est découvrable.
  * Body JSON  : { "prefix": string, "chunks": number[] }
  *              ou { "prefix": string, "chunk": number } (un seul chunk).
  * Réponse    : 200 { "chunks": [{ "index": n, "url": "<signed-url>" }] }
@@ -31,8 +33,9 @@
  *   • service_role UNIQUEMENT côté serveur (env SUPABASE_SERVICE_ROLE_KEY) pour
  *     `createSignedUrl(\`${prefix}/${i}\`, 60)` — la clé n'est jamais renvoyée ;
  *   • validation stricte (PREFIX_RE, index entiers bornés, ≤ 64 par appel) ;
- *   • rate-limit glissant : par utilisateur (role authenticated, vérifié via
- *     GoTrue) ou par IP non falsifiable (role anon, clé publique partagée) ;
+ *   • rate-limit glissant : par utilisateur (role `authenticated`, vérifié via
+ *     GoTrue) ou par IP vue par l'edge de confiance (`cf-connecting-ip`, role
+ *     `anon`, clé publique partagée) ;
  *   • FAIL CLOSED : le moindre chunk absent ⇒ 404, aucune URL partielle.
  * ----------------------------------------------------------------------
  */
@@ -92,8 +95,9 @@ function json(
 
 // ─── Auth ─────────────────────────────────────────────────────────────
 
-/** Décode le payload d'un JWT (base64url) sans vérifier la signature (déjà
- *  validée par `auth.getUser`). Sert uniquement à contrôler le rôle. */
+/** Décode le payload d'un JWT (base64url) sans vérifier la signature. Le rôle
+ *  ainsi lu ne sert QU'À AIGUILLER le traitement : il n'est jamais cru en soi
+ *  (chaque branche VÉRIFIE ensuite réellement le jeton — cf. handler). */
 function decodeJwtPayload(token: string): Record<string, unknown> | null {
   const parts = token.split('.')
   if (parts.length !== 3 || !parts[1]) return null
@@ -113,25 +117,32 @@ function bearerToken(req: Request): string {
   return header.toLowerCase().startsWith('bearer ') ? header.slice(7).trim() : ''
 }
 
-/**
- * Rôle attendu : `authenticated` (utilisateur vérifié via GoTrue) OU `anon`
- * (mode privé anonyme). `service_role` et tout rôle inconnu sont refusés.
- */
-const ALLOWED_ROLES = new Set(['authenticated', 'anon'])
+/** Comparaison de chaînes à temps constant (vérification de la clé anon). */
+function timingSafeEqual(a: string, b: string): boolean {
+  const ab = new TextEncoder().encode(a)
+  const bb = new TextEncoder().encode(b)
+  if (ab.length !== bb.length) return false
+  let diff = 0
+  for (let i = 0; i < ab.length; i++) diff |= ab[i] ^ bb[i]
+  return diff === 0
+}
 
 /**
- * IP du client NON falsifiable (dernier hop de `x-forwarded-for`). Les en-têtes
- * `cf-connecting-ip` / `x-real-ip` / le premier hop de XFF sont contrôlables par
- * le client : on les ignore. Sert uniquement de clé de rate-limit pour le rôle
- * `anon` (pas d'utilisateur à qui se rattacher).
+ * IP du client telle que vue par l'edge de confiance.
+ *
+ * `cf-connecting-ip` est écrit par l'edge Cloudflare qui frontale Supabase :
+ * sa valeur n'est PAS contrôlable par le client (Cloudflare (ré)écrit cet
+ * en-tête sur le tronçon edge→origine). On l'utilise donc EXCLUSIVEMENT.
+ *
+ * On ne retombe PAS sur `x-forwarded-for` : sur les Edge Functions sa chaîne
+ * est au mieux « best effort » et son DERNIER hop n'est PAS garanti non
+ * forgeable (un client le ferait varier pour contourner le quota). En
+ * l'absence d'en-tête de confiance on retourne 'unknown' (bucket commun, jamais
+ * l'illimité). La valeur est hashée avant usage.
  */
 function extractClientIp(req: Request): string {
-  const xff = req.headers.get('x-forwarded-for')
-  if (xff) {
-    const hops = xff.split(',').map((h) => h.trim()).filter((h) => h.length > 0)
-    const last = hops.length > 0 ? hops[hops.length - 1] : ''
-    if (last) return last
-  }
+  const cfIp = req.headers.get('cf-connecting-ip')
+  if (cfIp && cfIp.trim().length > 0) return cfIp.trim()
   return 'unknown'
 }
 
@@ -236,17 +247,9 @@ Deno.serve(async (req) => {
     return json({ error: { code: 'CONFIG_ERROR', message: 'Service indisponible.' } }, 500, cors)
   }
 
-  // ── Authentification (JWT `authenticated` OU `anon`) ──────────────────
+  // ── Authentification (JWT réellement VÉRIFIÉ : `authenticated` OU `anon`) ─
   const token = bearerToken(req)
   if (!token) {
-    return json({ error: { code: 'UNAUTHORIZED', message: 'Authentification requise.' } }, 401, cors)
-  }
-  // Contrôle du rôle AVANT tout appel réseau : refuse `service_role` et tout
-  // rôle inconnu. `anon` (mode privé anonyme) est autorisé car la
-  // confidentialité repose sur la capacité = préfixe, pas sur le rôle.
-  const claims = decodeJwtPayload(token)
-  const role = claims && typeof claims.role === 'string' ? claims.role : ''
-  if (!role || !ALLOWED_ROLES.has(role)) {
     return json({ error: { code: 'UNAUTHORIZED', message: 'Authentification requise.' } }, 401, cors)
   }
 
@@ -254,9 +257,19 @@ Deno.serve(async (req) => {
     auth: { persistSession: false, autoRefreshToken: false },
   })
 
+  // Le rôle lu dans le payload (non signé) ne sert qu'à AIGUILLER : chaque
+  // branche VÉRIFIE ensuite réellement le jeton.
+  //   • `authenticated` → validité/signature confirmées par GoTrue (getUser) ;
+  //   • `anon`          → le jeton DOIT être EXACTEMENT la clé anon du projet
+  //                       (`SUPABASE_ANON_KEY`) : un JWT `anon` forgé ne peut
+  //                       pas reproduire cette chaîne ;
+  //   • tout autre rôle (dont `service_role`) → refusé.
+  const claims = decodeJwtPayload(token)
+  const role = claims && typeof claims.role === 'string' ? claims.role : ''
+
   // ── Clé de rate-limit ─────────────────────────────────────────────────
   // authenticated → utilisateur vérifié via GoTrue (quota par compte).
-  // anon          → clé publique partagée : quota par IP non falsifiable.
+  // anon          → clé publique partagée : quota par IP vue par l'edge.
   let rateLimitKey: string
   if (role === 'authenticated') {
     try {
@@ -268,8 +281,20 @@ Deno.serve(async (req) => {
     } catch {
       return json({ error: { code: 'UNAUTHORIZED', message: 'Session invalide.' } }, 401, cors)
     }
-  } else {
+  } else if (role === 'anon') {
+    const anonKey = Deno.env.get('SUPABASE_ANON_KEY')
+    if (!anonKey) {
+      // FAIL CLOSED : sans clé anon de référence, aucun jeton `anon` n'est
+      // vérifiable (le mode privé anonyme serait non authentifiable).
+      console.error('[anon-files-download] SUPABASE_ANON_KEY manquant')
+      return json({ error: { code: 'CONFIG_ERROR', message: 'Service indisponible.' } }, 500, cors)
+    }
+    if (!timingSafeEqual(token, anonKey)) {
+      return json({ error: { code: 'UNAUTHORIZED', message: 'Authentification requise.' } }, 401, cors)
+    }
     rateLimitKey = `anon:${await sha256(extractClientIp(req))}`
+  } else {
+    return json({ error: { code: 'UNAUTHORIZED', message: 'Authentification requise.' } }, 401, cors)
   }
 
   // ── Rate-limit ────────────────────────────────────────────────────────

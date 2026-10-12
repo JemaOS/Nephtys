@@ -225,4 +225,83 @@ ORDER BY n.nspname;
 SELECT position('pg_advisory_xact_lock' in prosrc) > 0 AS has_advisory_lock
 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
 WHERE n.nspname = 'public' AND p.proname = 'check_and_record_rate_limit';
+
+-- ============================================================================
+-- 9) Vérifications des correctifs 20261036 (items #1, #3, #4)
+-- ============================================================================
+
+-- 9a) conversation_members INSERT : UNE seule policy `cm_insert_creator_or_admin`
+--     (créateur OU admin/owner), SANS branche « membre quelconque ».
+--     ATTENDU : 1 ligne ; la requête suivante (« is_conversation_member » seul)
+--     doit renvoyer 0 ligne.
+SELECT policyname, cmd, roles::text AS roles, with_check
+FROM pg_policies
+WHERE schemaname = 'public' AND tablename = 'conversation_members'
+  AND cmd = 'INSERT'
+ORDER BY policyname;
+
+SELECT policyname, with_check
+FROM pg_policies
+WHERE schemaname = 'public' AND tablename = 'conversation_members'
+  AND cmd = 'INSERT'
+  AND with_check ILIKE '%is_conversation_member%'
+ORDER BY policyname;
+
+-- 9a-bis) Trigger BEFORE INSERT qui force le rôle : ATTENDU 1 ligne + true.
+SELECT tgname, pg_get_triggerdef(t.oid) AS definition
+FROM pg_trigger t
+JOIN pg_class c     ON c.oid = t.tgrelid
+JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE n.nspname = 'public' AND c.relname = 'conversation_members'
+  AND NOT t.tgisinternal
+  AND tgname = 'trg_cm_force_member_role';
+
+SELECT position('NEW.role := ''member''' in prosrc) > 0 AS forces_member_role
+FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+WHERE n.nspname = 'private' AND p.proname = 'force_member_role_on_insert';
+
+-- 9a-ter) Conversation non créateur sans rôle admin : la policy admin/owner
+--     helper doit exister et être exécutable par authenticated.
+SELECT p.proname,
+       p.prosecdef                                                AS security_definer,
+       has_function_privilege('authenticated', p.oid, 'EXECUTE')  AS auth_can_execute
+FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+WHERE n.nspname = 'private' AND p.proname = 'is_conversation_admin';
+
+-- 9b) one_time_prekeys SELECT : owner-only.
+--     ATTENDU : 1 ligne `otpk_select_own` (qual = user_id = auth.uid()) ;
+--     la 2e requête (lecture `is_used = false` d'autrui) = 0 ligne.
+SELECT policyname, cmd, qual
+FROM pg_policies
+WHERE schemaname = 'public' AND tablename = 'one_time_prekeys'
+  AND cmd = 'SELECT'
+ORDER BY policyname;
+
+SELECT policyname, qual
+FROM pg_policies
+WHERE schemaname = 'public' AND tablename = 'one_time_prekeys'
+  AND cmd = 'SELECT'
+  AND qual ILIKE '%is_used%'
+ORDER BY policyname;
+
+-- 9b-bis) RPC de revendication atomique d'une OPK d'un pair.
+--     ATTENDU : security_definer = true, anon_can_execute = false,
+--               auth_can_execute = true.
+SELECT p.proname,
+       p.prosecdef                                                AS security_definer,
+       p.proconfig                                                AS settings,
+       has_function_privilege('anon', p.oid, 'EXECUTE')           AS anon_can_execute,
+       has_function_privilege('authenticated', p.oid, 'EXECUTE')  AS auth_can_execute
+FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+WHERE n.nspname = 'public' AND p.proname = 'claim_one_time_prekey';
+
+-- 9c) Denylist UPDATE `messages` : les 4 colonnes ajoutées (item #4) doivent
+--     être présentes. ATTENDU : les 4 booléens = true.
+SELECT
+  position('NEW.created_at' in prosrc) > 0 AS has_created_at,
+  position('NEW.updated_at' in prosrc) > 0 AS has_updated_at,
+  position('NEW.is_starred' in prosrc) > 0 AS has_is_starred,
+  position('NEW.is_pinned'  in prosrc) > 0 AS has_is_pinned
+FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+WHERE n.nspname = 'private' AND p.proname = 'restrict_member_message_update';
 -- ============================================================================

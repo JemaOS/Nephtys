@@ -221,7 +221,9 @@ export async function fetchX25519PublicKeys(userIds: string[]): Promise<Map<stri
     const keyChanged = !!pin && pin.key !== key;
 
     if (sig && signer) {
-      if (!verifyX25519PublicKeySignature(signer, key!, sig)) {
+      // La signature est liée au COMPTE (`p.id`) : recopier le tuple
+      // (clé+sig+signataire) d'Alice dans la ligne de Bob échoue ici.
+      if (!verifyX25519PublicKeySignature(signer, key!, sig, p.id)) {
         // Signature invalide → clé possiblement substituée : on REJETTE.
         console.warn('[e2ee] signature X25519 invalide pour', p.id);
         notify('nephtys:x25519-sig-invalid', { peerId: p.id });
@@ -300,7 +302,7 @@ export async function installX25519KeyPair(
     x25519_public_key_updated_at: new Date().toISOString(),
   };
   if (signing?.privateKey) {
-    update.x25519_public_key_sig = signX25519PublicKey(signing.privateKey, keyPair.publicKey);
+    update.x25519_public_key_sig = signX25519PublicKey(signing.privateKey, keyPair.publicKey, userId);
     update.x25519_signing_key = signing.publicKey;
   }
   // Stockage local D'ABORD (chiffrement au repos strict : échec explicite) pour
@@ -326,7 +328,7 @@ export async function publishX25519Signature(userId: string): Promise<boolean> {
     .from('profiles')
     .update({
       x25519_public_key: local.publicKey,
-      x25519_public_key_sig: signX25519PublicKey(signing.privateKey, local.publicKey),
+      x25519_public_key_sig: signX25519PublicKey(signing.privateKey, local.publicKey, userId),
       x25519_signing_key: signing.publicKey,
     })
     .eq('id', userId);

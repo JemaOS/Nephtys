@@ -18,6 +18,7 @@ const DocumentPreviewModal = lazy(() =>
 import { useI18n } from '@/i18n';
 import { AudioPreviewPlayer, EmojiPicker, StickerPicker } from './MediaUploaderComponents';
 import { uploadEncryptedMedia } from '@/lib/encryptedMediaService';
+import { buildOpaqueMediaPath } from '@/lib/mediaUrl';
 import { fetchGifItems } from '@/lib/gifProviders';
 
 // Helper function to get file extension
@@ -91,13 +92,6 @@ export type MediaFileType = 'image' | 'video' | 'file' | 'audio';
 // Type alias for file type categories (used in getFileType return type)
 type FileTypeCategory = 'image' | 'video' | 'file' | 'audio';
 
-// Helper function to get folder name based on file type - extracted to avoid ternary nest
-const getFolderForFileType = (type: MediaFileType): string => {
-  if (type === 'image') return 'images';
-  if (type === 'video') return 'videos';
-  return 'documents';
-}
-
 // Module-level helper: Check if video needs compression
 const checkVideoNeedsCompression = async (previewUrl: string): Promise<boolean> => {
   return new Promise<boolean>((resolve) => {
@@ -151,6 +145,9 @@ export interface UploadCompleteParams {
 }
 
 interface MediaUploaderProps {
+  /** Id de la conversation : sert à construire des chemins Storage OPAQUES
+   *  (sealed sender) — cf. buildOpaqueMediaPath. */
+  conversationId: string;
   onMediaSelect: (selectedFile: globalThis.File, type: MediaFileType) => void;
   onUploadComplete: (fileData: UploadedFileData) => void;
   onMultipleUploadComplete?: (files: UploadedFileData[]) => void;
@@ -160,6 +157,7 @@ interface MediaUploaderProps {
 }
 
 export const MediaUploader: React.FC<MediaUploaderProps> = ({
+  conversationId,
   onMediaSelect,
   onUploadComplete,
   onMultipleUploadComplete,
@@ -454,9 +452,9 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
     }
     
     // E2EE : on chiffre AVANT l'upload. Le serveur ne voit que des octets aléatoires.
-    const folder = getFolderForFileType(type);
-    const safeName = file.name.replaceAll(/[^a-zA-Z0-9.-]/g, "_");
-    const pathPrefix = `${userId}/${folder}/${Date.now()}_${safeName}`;
+    // Chemin OPAQUE : ni uid, ni horodatage, ni nom d'origine dans le nom
+    // d'objet (sealed sender préservé) → cf. buildOpaqueMediaPath.
+    const pathPrefix = buildOpaqueMediaPath(conversationId, getFileExtension(file.name));
 
     let uploadedFile: UploadedFileData;
     try {
@@ -584,9 +582,8 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
     }
     
     // E2EE : chiffrement avant upload
-    const folder = getFolderForFileType(type);
-    const safeName = file.name.replaceAll(/[^a-zA-Z0-9.-]/g, "_");
-    const pathPrefix = `${userId}/${folder}/${Date.now()}_${safeName}`;
+    // Chemin OPAQUE : ni uid, ni horodatage, ni nom d'origine (sealed sender).
+    const pathPrefix = buildOpaqueMediaPath(conversationId, getFileExtension(file.name));
 
     let uploadedFile: UploadedFileData;
     try {
@@ -763,8 +760,8 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
 
       // Upload the document
       setDocumentUploadPhase('uploading');
-      const folder = 'documents';
-      const fileName = `${user.id}/${folder}/${Date.now()}_${documentFile.name.replaceAll(/[^a-zA-Z0-9.-]/g, '_')}`;
+      // Chemin OPAQUE : ni uid, ni horodatage, ni nom d'origine (sealed sender).
+      const fileName = buildOpaqueMediaPath(conversationId, getFileExtension(documentFile.name));
 
       // Simulate progress for better UX
       const progressInterval = setInterval(() => {
@@ -859,8 +856,8 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       }
       
       const fileToUpload = processedImage?.blob || editedFile;
-      const folder = 'images';
-      const uploadFileName = `${user.id}/${folder}/${Date.now()}_${fileName.replaceAll(/[^a-zA-Z0-9.-]/g, '_')}`;
+      // Chemin OPAQUE : ni uid, ni horodatage, ni nom d'origine (sealed sender).
+      const uploadFileName = buildOpaqueMediaPath(conversationId, getFileExtension(fileName) || 'png');
 
       setUploadPhase('uploading');
       setUploadProgress(0);

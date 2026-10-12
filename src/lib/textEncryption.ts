@@ -38,7 +38,7 @@ import { fetchX25519PublicKeys, getLocalX25519KeyPair } from './e2eeX25519';
 import { wrapKeyForRecipientX25519, unwrapKeyFromSenderX25519, keyWrapAad } from './x25519';
 import { isRatchetEnvelope, tryDecryptWithRatchet } from './ratchet/chatIntegration';
 import { getLocalRatchetKeys } from './ratchet/keyStore';
-import { findVerifiedSenderIdentity, sealSenderForMembers, sealedContentHash, isAfterV2Sunset, type SealedSenderContext, type SealedSenderIdentity } from './messaging/sealedSender';
+import { findVerifiedSenderIdentity, sealSenderForMembers, sealedContentHash, shouldRejectUnboundV2, type SealedSenderContext, type SealedSenderIdentity } from './messaging/sealedSender';
 
 // Paliers (buckets) de rembourrage. Un message est rembourré à la BORNE
 // SUPÉRIEURE de paliers fixes : tous les messages qui tombent dans le même
@@ -380,6 +380,8 @@ interface PendingDecryption {
   sender_id?: string;
   sender_sealed?: unknown;
   conversation_id?: string;
+  /** Conservé pour la règle de bascule v2 (date inconnue ⇒ v2 refusée). */
+  created_at?: string;
 }
 
 const pendingDecryptions = new Map<string, PendingDecryption>();
@@ -392,6 +394,7 @@ function rememberPendingDecryption(row: {
   sender_id?: unknown;
   sender_sealed?: unknown;
   conversation_id?: unknown;
+  created_at?: unknown;
 }): void {
   if (!row || typeof row.id !== 'string' || typeof row.content !== 'string') return;
   pendingDecryptions.set(row.id, {
@@ -402,6 +405,7 @@ function rememberPendingDecryption(row: {
     sender_id: typeof row.sender_id === 'string' ? row.sender_id : undefined,
     sender_sealed: row.sender_sealed,
     conversation_id: typeof row.conversation_id === 'string' ? row.conversation_id : undefined,
+    created_at: typeof row.created_at === 'string' ? row.created_at : undefined,
   });
 }
 
@@ -441,6 +445,7 @@ export async function retryPendingDecryption(id: string, userId: string): Promis
     sender_id: pending.sender_id,
     sender_sealed: pending.sender_sealed,
     conversation_id: pending.conversation_id,
+    created_at: pending.created_at,
   };
   const [decrypted] = await decryptMessageRows([row], userId);
   if (decrypted && decrypted.content !== UNDECRYPTABLE_PLACEHOLDER) {
@@ -521,7 +526,11 @@ async function unwrapKeyRowForUser(
   };
   if (caches.x25519 === undefined) caches.x25519 = await getLocalX25519KeyPair(userId);
   if (!caches.x25519) throw new Error('Clé X25519 locale indisponible');
-  return await unwrapKeyFromSenderX25519(wrapped, caches.x25519.privateKey, keyWrapAad(senderPublicKey));
+  // Lecture d'historique : les enveloppes antérieures à l'AAD restent
+  // déchiffrables, mais cette tolérance est EXPLICITE (pas de repli silencieux).
+  return await unwrapKeyFromSenderX25519(wrapped, caches.x25519.privateKey, keyWrapAad(senderPublicKey), {
+    allowLegacyNoAad: true,
+  });
 }
 
 // ─── Repli robuste : clé d'expéditeur via un MEMBRE de la conversation ─
@@ -593,6 +602,7 @@ export async function tryUnwrapWithMemberKeys(
         { encryptedKey: keyRow.encrypted_key, iv: keyRow.iv, senderPublicKey: publicKey },
         myPrivateKey,
         keyWrapAad(publicKey),
+        { allowLegacyNoAad: true },
       );
       return { rawKey, senderId: memberId, senderPublicKey: publicKey };
     } catch {
@@ -914,7 +924,10 @@ export async function decryptMessageRow<T extends {
  * la date de bascule, les blobs v2 (ou sans `v`) — non liés au message, donc
  * rejouables — sont REFUSÉS (l'expéditeur n'est pas attribué). Les messages
  * antérieurs restent résolus en v2 (rétrocompatibilité de l'historique).
- * `created_at` absent → refus non appliqué (on ne peut pas prouver le contraire).
+ * FAIL-CLOSED : si `created_at` est ABSENT ou illisible, on ne peut pas prouver
+ * que le message précède la bascule → la v2 est AUSSI refusée (cf.
+ * `shouldRejectUnboundV2`). Les requêtes qui alimentent ce chemin doivent
+ * sélectionner `created_at`.
  */
 export async function resolveSealedSenders(
   rows: Array<{
@@ -990,7 +1003,7 @@ export async function resolveSealedSenders(
         r.sender_sealed as string[],
         getSigningKey,
         context,
-        { rejectUnboundV2: isAfterV2Sunset(r.created_at) },
+        { rejectUnboundV2: shouldRejectUnboundV2(r.created_at) },
       );
       if (resolved) {
         r.sender_id = resolved.senderId;
@@ -1004,8 +1017,9 @@ export async function resolveSealedSenders(
 }
 
 /**
- * Scelle l'identité de l'expéditeur (v3, liée au message) puis l'attache à la
- * ligne `messages` déjà insérée (`sender_sealed`). À appeler APRÈS l'insertion
+ * Scelle l'identité de l'expéditeur (v4 si des clés d'identité sont
+ * transportées, sinon v3 — liée au message) puis l'attache à la ligne
+ * `messages` déjà insérée (`sender_sealed`). À appeler APRÈS l'insertion
  * (l'`id` du message n'est connu qu'à ce moment). Best-effort : retourne `null`
  * si le scellement ou l'attache échoue (le message conserve alors `sender_id`
  * côté client ; le déchiffrement n'en dépend jamais).
@@ -1038,9 +1052,32 @@ export async function sealSenderForMessage(params: {
 }
 
 /**
+ * Re-scelle l'identité de l'expéditeur APRÈS ÉDITION d'un message.
+ *
+ * Le hash du contenu porté par la signature v3/v4 (`sha256(messages.content)`)
+ * est invalidé dès que `content` change : sans re-scellement, l'attribution de
+ * l'expéditeur (sealed sender) est PERDUE pour le message édité. À appeler après
+ * avoir persisté le NOUVEAU `content` (ciphertext/légende), avec ce même
+ * contenu — la clé de message et le ciphertext sont par ailleurs ré-émis par le
+ * flux d'édition habituel.
+ *
+ * Délègue à `sealSenderForMessage` : reconstruit les blobs v4 (clés d'identité
+ * couvertes) pour tous les membres et ré-écrit `messages.sender_sealed`.
+ */
+export async function resealSenderForEditedMessage(params: {
+  messageId: string;
+  senderId: string;
+  conversationId: string;
+  content: string;
+}): Promise<string[] | null> {
+  return sealSenderForMessage(params);
+}
+
+/**
  * Construit les blobs sealed sender de l'expéditeur pour tous les membres
- * d'une conversation (v3 : signature liée au contexte du message − id,
- * conversation et hash du contenu − pour rendre le blob non rejouable).
+ * d'une conversation (v4 : signature liée au contexte du message − id,
+ * conversation et hash du contenu − ET aux clés d'identité `xk`/`ik`
+ * transportées, pour rendre le blob non rejouable et non substituable).
  * Retourne `null` si impossible → le message conserve `sender_id` en clair.
  */
 export async function buildSenderSealed(

@@ -609,6 +609,11 @@ Deno.serve(async (req) => {
     }
 
     // ── Authentification : JWT utilisateur OBLIGATOIRE (pas anon/service)
+    // `getUser` n'accepte qu'un JWT porteur d'un utilisateur (`sub`) : la clé
+    // anon (publique) et la clé service_role sont dépourvues de `sub` et
+    // échouent ici → AUCUN chemin anonyme n'existe (vérifié : le seul appelant
+    // réseau autorisé ensuite est l'anti-SSRF ci-dessous). Le repli anon client
+    // (linkPreview.ts) aboutit donc à un 401 et bascule sur oEmbed navigateur.
     const token = bearerToken(req);
     if (!token) {
         return jsonResponse({ error: { code: 'UNAUTHORIZED', message: 'Authentification requise.' } }, 401, cors);

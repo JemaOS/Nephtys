@@ -170,6 +170,14 @@ export function AuthPage() {
         <div className="bg-white p-4 rounded-2xl shadow-lg">
           <SafeQrCode value={linkReq.payload} size={220} />
         </div>
+        <div className="flex flex-col items-center gap-1">
+          <p className="text-xs text-text-secondary text-center">
+            Code de confirmation à saisir sur l'autre appareil :
+          </p>
+          <p className="text-2xl font-mono font-bold tracking-[0.35em] text-text-primary" aria-label="Code de confirmation">
+            {linkReq.code}
+          </p>
+        </div>
         <p className="text-xs text-text-secondary text-center">
           {linking ? 'Connexion en cours…' : 'En attente du scan…'}
         </p>

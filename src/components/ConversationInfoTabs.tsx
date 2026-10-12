@@ -470,18 +470,21 @@ export const LinksTab: React.FC<LinksTabProps> = ({
           <p className="text-xs text-text-secondary mb-2">
             {formatDate(message.created_at)}
           </p>
-          {urls.map((url) => (
-            <a
-              key={url}
-              href={url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-2 text-accent hover:underline text-sm mb-1"
-            >
-              <ExternalLink size={14} />
-              <span className="truncate">{url}</span>
-            </a>
-          ))}
+          {urls
+            .map((url) => safeHttpUrl(url))
+            .filter((url): url is string => url !== null)
+            .map((url) => (
+              <a
+                key={url}
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 text-accent hover:underline text-sm mb-1"
+              >
+                <ExternalLink size={14} />
+                <span className="truncate">{url}</span>
+              </a>
+            ))}
           {message.content && (
             <p className="text-xs text-text-secondary mt-2 line-clamp-2">
               {message.content}

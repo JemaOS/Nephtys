@@ -47,7 +47,8 @@ const setCache = <T,>(key: string, data: T) => {
 interface CallLog {
   id: string
   conversation_id: string
-  caller_id: string
+  // Pseudonymes serveur (plus d'UUID de profil) : voir migration 20261035.
+  caller_id: string | null
   callee_id: string | null
   type: 'audio' | 'video'
   status: 'initiated' | 'answered' | 'missed' | 'rejected' | 'ended'
@@ -56,6 +57,10 @@ interface CallLog {
   duration: number | null
   caller_profile?: any
   callee_profile?: any
+  // Profil du pair (appel 1:1), dérivé des membres de la conversation.
+  other_profile?: any
+  // Vrai si l'appel courant a été initié par l'utilisateur (caller_id = mon pseudonyme).
+  is_outgoing?: boolean
   // Group call info
   is_group_call?: boolean
   conversation_name?: string
@@ -463,77 +468,91 @@ export function CallsPage() {
   }
 
   // Extract call data fetching to helper function
-  const fetchCallData = async (userId: string, userConversationIds: string[]) => {
-    // Fetch direct calls
-    const { data: directCalls, error: directError } = await supabase
+  // Anonymat : on ne peut plus filtrer par caller_id/callee_id (pseudonymes
+  // inconnus du client). On récupère les appels des conversations de
+  // l'utilisateur — la RLS (membre de la conversation) scoping déjà la lecture.
+  const fetchCallData = async (userConversationIds: string[]) => {
+    if (userConversationIds.length === 0) {
+      return { calls: [] as any[], error: null as any }
+    }
+    const { data, error } = await supabase
       .from('call_logs')
       .select('*')
-      .or(`caller_id.eq.${userId},callee_id.eq.${userId}`)
+      .in('conversation_id', userConversationIds)
       .order('started_at', { ascending: false })
-      .limit(100)
-    
-    // Fetch group calls
-    let groupCalls: any[] = []
-    if (userConversationIds.length > 0) {
-      const { data: conversationCalls, error: groupError } = await supabase
-        .from('call_logs')
-        .select('*')
-        .in('conversation_id', userConversationIds)
-        .order('started_at', { ascending: false })
-        .limit(200)
-      
-      if (!groupError && conversationCalls) {
-        groupCalls = conversationCalls.filter(call => call.caller_id === call.callee_id)
-      }
-    }
-    
-    // Merge calls
-    const allCallsMap = new Map<string, any>()
-    if (directCalls) {
-      directCalls.forEach(call => allCallsMap.set(call.id, call))
-    }
-    groupCalls.forEach(call => allCallsMap.set(call.id, call))
-    
-    return {
-      calls: Array.from(allCallsMap.values())
-        .sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime())
-        .slice(0, 100),
-      error: directError
+      .limit(200)
+
+    return { calls: (data ?? []) as any[], error }
+  }
+
+  // Récupère le pseudonyme (opaque) de l'utilisateur courant, pour savoir si
+  // un appel est sortant (caller_id === mon pseudonyme).
+  const fetchMyUserRef = async (): Promise<string | null> => {
+    try {
+      const { data, error } = await supabase.rpc('current_user_ref')
+      if (error) return null
+      return typeof data === 'string' ? data : null
+    } catch {
+      return null
     }
   }
 
-  // Extract user and conversation ID collection to helper
-  const collectUserAndConversationIds = (callsData: any[]) => {
-    const userIds = new Set<string>()
+  // Collecte des ids de conversation + détection des appels de groupe
+  // (caller_id === callee_id, marqueur conservé par la migration 20261035).
+  const collectCallConversationIds = (callsData: any[]) => {
+    const conversationIds = new Set<string>()
     const groupCallConversationIds = new Set<string>()
-    
+
     callsData.forEach(call => {
-      userIds.add(call.caller_id)
-      if (call.callee_id) {
-        userIds.add(call.callee_id)
-      }
-      if (call.caller_id === call.callee_id) {
+      if (call.conversation_id) conversationIds.add(call.conversation_id)
+      if (call.caller_id && call.caller_id === call.callee_id) {
         groupCallConversationIds.add(call.conversation_id)
       }
     })
-    
-    return { userIds, groupCallConversationIds }
+
+    return { conversationIds, groupCallConversationIds }
   }
 
-  // Extract profile enrichment to helper
-  const enrichCallsWithProfiles = async (callsData: any[], userIds: Set<string>, groupCallConversationIds: Set<string>) => {
-    // Fetch profiles
-    const { data: profiles } = await supabase
-      .from('profiles')
-      .select('*')
-      .in('id', Array.from(userIds))
+  // Enrichit les appels : le pair d'un appel 1:1 est déduit des membres de la
+  // conversation (aucun UUID de profil n'est stocké dans call_logs).
+  const enrichCallsWithProfiles = async (
+    callsData: any[],
+    conversationIds: Set<string>,
+    groupCallConversationIds: Set<string>,
+    myRef: string | null
+  ) => {
+    const convIds = Array.from(conversationIds)
 
-    // Signer les avatars (bucket privé)
-    await signFieldsBatch(profiles as any[] | null, ['avatar_url'])
+    // Membres de toutes les conversations → pair (1:1) par conversation.
+    const peerByConversation = new Map<string, string>()
+    const peerIds = new Set<string>()
+    if (convIds.length > 0) {
+      const { data: members } = await supabase
+        .from('conversation_members')
+        .select('conversation_id, user_id')
+        .in('conversation_id', convIds)
+      for (const m of members ?? []) {
+        if (m.user_id && m.user_id !== user?.id) {
+          if (!peerByConversation.has(m.conversation_id)) {
+            peerByConversation.set(m.conversation_id, m.user_id)
+          }
+          peerIds.add(m.user_id)
+        }
+      }
+    }
 
-    const profileMap = new Map(profiles?.map(p => [p.id, p]) || [])
+    // Profils des pairs.
+    let profileMap = new Map<string, any>()
+    if (peerIds.size > 0) {
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('*')
+        .in('id', Array.from(peerIds))
+      await signFieldsBatch(profiles as any[] | null, ['avatar_url'])
+      profileMap = new Map(profiles?.map(p => [p.id, p]) || [])
+    }
 
-    // Fetch conversations
+    // Conversations de groupe (pour le nom/avatar + le marqueur).
     let conversationMap = new Map<string, { name: string; avatar_url: string | null }>()
     if (groupCallConversationIds.size > 0) {
       const { data: conversations } = await supabase
@@ -547,13 +566,19 @@ export function CallsPage() {
 
     // Enrich calls
     return callsData.map(call => {
-      const isGroupCall = call.caller_id === call.callee_id
+      const isGroupCall = !!call.caller_id && call.caller_id === call.callee_id
       const conversationInfo = conversationMap.get(call.conversation_id)
-      
+      const peerId = peerByConversation.get(call.conversation_id)
+      const peerProfile = peerId ? profileMap.get(peerId) ?? null : null
+
       return {
         ...call,
-        caller_profile: profileMap.get(call.caller_id) || null,
-        callee_profile: call.callee_id ? profileMap.get(call.callee_id) : null,
+        // Le pair est renseigné quel que soit le sens de l'appel : l'UI lit
+        // caller_profile/callee_profile selon is_outgoing.
+        caller_profile: isGroupCall ? null : peerProfile,
+        callee_profile: isGroupCall ? null : peerProfile,
+        other_profile: isGroupCall ? null : peerProfile,
+        is_outgoing: !isGroupCall && !!myRef && call.caller_id === myRef,
         is_group_call: isGroupCall,
         conversation_name: isGroupCall ? (conversationInfo?.name || 'Groupe') : null,
         conversation_avatar: isGroupCall ? conversationInfo?.avatar_url : null,
@@ -581,8 +606,11 @@ export function CallsPage() {
       const userConversationIds = memberConversations?.map(m => m.conversation_id) || []
       console.log('📞 User is member of conversations:', userConversationIds.length)
       
-      // Fetch calls
-      const { calls: callsData, error } = await fetchCallData(user.id, userConversationIds)
+      // Fetch calls + pseudonyme de l'utilisateur courant (pour le sens)
+      const [{ calls: callsData, error }, myRef] = await Promise.all([
+        fetchCallData(userConversationIds),
+        fetchMyUserRef(),
+      ])
 
       if (error) {
         console.error('Error loading calls:', error)
@@ -598,10 +626,10 @@ export function CallsPage() {
       }
 
       // Collect IDs
-      const { userIds, groupCallConversationIds } = collectUserAndConversationIds(callsData)
+      const { conversationIds, groupCallConversationIds } = collectCallConversationIds(callsData)
 
       // Enrich with profiles
-      const enrichedCalls = await enrichCallsWithProfiles(callsData, userIds, groupCallConversationIds)
+      const enrichedCalls = await enrichCallsWithProfiles(callsData, conversationIds, groupCallConversationIds, myRef)
 
       setCalls(enrichedCalls)
       setCache('calls', enrichedCalls)
@@ -1025,7 +1053,7 @@ export function CallsPage() {
       }
       
       // For direct calls, search by user name
-      const otherProfile = call.caller_id === currentUserId ? call.callee_profile : call.caller_profile
+      const otherProfile = call.other_profile
       const name = otherProfile?.display_name || otherProfile?.username || ''
       return name.toLowerCase().includes(lowerQuery)
     })
@@ -1062,8 +1090,8 @@ export function CallsPage() {
     if (call.is_group_call) {
       return call.conversation_name || t('groupFallback')
     }
-    const isOutgoing = call.caller_id === userId
-    const otherProfile = isOutgoing ? call.callee_profile : call.caller_profile
+    const isOutgoing = call.is_outgoing ?? false
+    const otherProfile = call.other_profile ?? (isOutgoing ? call.callee_profile : call.caller_profile)
     return otherProfile?.display_name || otherProfile?.username || t('userFallback')
   }
 
@@ -1071,8 +1099,8 @@ export function CallsPage() {
     if (call.is_group_call) {
       return call.conversation_avatar
     }
-    const isOutgoing = call.caller_id === userId
-    const otherProfile = isOutgoing ? call.callee_profile : call.caller_profile
+    const isOutgoing = call.is_outgoing ?? false
+    const otherProfile = call.other_profile ?? (isOutgoing ? call.callee_profile : call.caller_profile)
     return otherProfile?.avatar_url
   }
 
@@ -1081,7 +1109,7 @@ export function CallsPage() {
     if (call.is_group_call) {
       return t('groupCallLabel');
     }
-    const isOutgoing = call.caller_id === userId;
+    const isOutgoing = call.is_outgoing ?? false;
     return isOutgoing ? t('outgoingCall') : t('incomingCall');
   }
 
@@ -1136,8 +1164,8 @@ export function CallsPage() {
     if (call.is_group_call) {
       return call.conversation_id;
     }
-    const isOutgoing = call.caller_id === userId;
-    return isOutgoing ? call.callee_profile?.id : call.caller_profile?.id;
+    const isOutgoing = call.is_outgoing ?? false;
+    return (call.other_profile ?? (isOutgoing ? call.callee_profile : call.caller_profile))?.id;
   }
 
   // Helper: Check if call is favorite
@@ -1151,8 +1179,8 @@ export function CallsPage() {
     if (call.is_group_call) {
       toggleFavorite(call.conversation_id, true);
     } else {
-      const isOut = call.caller_id === userId;
-      const otherProfile = isOut ? call.callee_profile : call.caller_profile;
+      const isOut = call.is_outgoing ?? false;
+      const otherProfile = call.other_profile ?? (isOut ? call.callee_profile : call.caller_profile);
       if (otherProfile) {
         toggleFavorite(otherProfile.id, false);
       }

@@ -35,14 +35,30 @@
  * sur un autre message (id / conversation / contenu différent) échoue donc à la
  * vérification → l'expéditeur usurpé n'est PAS attribué.
  *
- * ⚠️ BASCULE v2 → v3 (`V2_SUNSET_ISO`) : la v2 n'est pas liée au message, donc
- * REJOUABLE (un membre peut recopier le scellé d'un autre dans un nouveau
- * message). Passé `V2_SUNSET_ISO`, un message dont `created_at` est ≥ la bascule
- * REFUSE un blob v2 (ou sans `v`, considéré comme v2) : l'expéditeur n'est PAS
- * attribué. Les messages ANTÉRIEURS restent lus via la v2 (rétrocompatibilité de
- * l'historique). L'appelant active ce refus par
- * `findVerifiedSenderIdentity(..., { rejectUnboundV2: true })` (voir aussi
- * `isAfterV2Sunset`). `created_at` absent/illisible → refus non appliqué.
+ * ⚠️ CLÉS D'IDENTITÉ NON LIÉES (v3 → v4) : la v3 transporte `xk` (clé X25519 de
+ * l'expéditeur) et `ik` (clé d'identité ratchet) DANS le payload scellé, mais sa
+ * signature ne les couvre PAS : un membre malveillant qui peut ré-émettre un
+ * blob vers le destinataire peut garder la signature valide et substituer `xk`/
+ * `ik`. La **v4** couvre AUSSI ces clés :
+ *
+ *   payload signé = JSON { v:4, s: senderId, sig, xk, ik }
+ *   sigMsg        = "nephtys-sealed-sender-v4|" + conversationId + "|"
+ *                   + messageId + "|" + sha256hex(content) + "|" + xk + "|" + ik
+ *
+ * Une v4 dont `xk`/`ik` a été modifié échoue à la vérification. La lecture des
+ * v3 (déjà publiées, clés non couvertes) et v2 reste assurée (rétrocompatibilité
+ * de l'historique) ; seules les nouvelles émissions sont en v4.
+ *
+ * ⚠️ BASCULE v2 → v3/v4 (`V2_SUNSET_ISO`) : la v2 n'est pas liée au message,
+ * donc REJOUABLE (un membre peut recopier le scellé d'un autre dans un nouveau
+ * message). Un message dont `created_at` est ≥ la bascule REFUSE un blob v2 (ou
+ * sans `v`, considéré comme v2) : l'expéditeur n'est PAS attribué. Les messages
+ * ANTÉRIEURS restent lus via la v2 (rétrocompatibilité de l'historique).
+ * FAIL-CLOSED : si `created_at` est ABSENT ou illisible, on ne peut PAS prouver
+ * que le message précède la bascule → la v2 est également REFUSÉE. L'appelant
+ * active ce refus par `resolveSealedSenders`, qui calcule
+ * `rejectUnboundV2: shouldRejectUnboundV2(created_at)` ; les requêtes qui
+ * alimentent ce chemin DOIVENT donc sélectionner `created_at`.
  *
  * Module PUR (aucune dépendance Supabase/IndexedDB) → testable en isolation.
  *
@@ -55,9 +71,11 @@ import { untagX25519 } from '../x25519';
 const HKDF_INFO = 'nephtys-sealed-sender-v1';
 const SIG_DOMAIN_V2 = 'nephtys-sealed-sender-sig-v1';
 const SIG_DOMAIN_V3 = 'nephtys-sealed-sender-v3';
+const SIG_DOMAIN_V4 = 'nephtys-sealed-sender-v4';
 const BOX_VERSION = 1;
 const PAYLOAD_VERSION_V2 = 2;
 const PAYLOAD_VERSION_V3 = 3;
+const PAYLOAD_VERSION_V4 = 4;
 const EPH_PUB_LEN = 32;
 const IV_LEN = 12;
 const HEADER_LEN = 1 + EPH_PUB_LEN + IV_LEN;
@@ -81,13 +99,30 @@ export const V2_SUNSET_ISO =
 
 /**
  * `createdAt` correspond-il à un message créé à/après la bascule v2 ?
- * `false` si la date est absente ou illisible (on ne peut pas prouver que le
- * message est postérieur → on reste rétrocompatible avec l'historique).
+ * `false` si la date est absente ou illisible (cette fonction répond à la seule
+ * question « est-ce PROUVÉ après la bascule ? »). Pour la DÉCISION d'accepter un
+ * blob v2, utiliser `shouldRejectUnboundV2` (fail-closed sur date inconnue).
  */
 export function isAfterV2Sunset(createdAt: string | null | undefined): boolean {
   if (typeof createdAt !== 'string' || createdAt.length === 0) return false;
   const t = Date.parse(createdAt);
   if (Number.isNaN(t)) return false;
+  return t >= Date.parse(V2_SUNSET_ISO);
+}
+
+/**
+ * Faut-il REFUSER un blob v2 (non lié au message, donc rejouable) pour un
+ * message donné ?
+ *
+ * FAIL-CLOSED : refuse si le message est à/après la bascule, MAIS AUSSI si la
+ * date est ABSENTE ou illisible — on ne peut pas prouver que le message précède
+ * la bascule, donc on n'accepte pas la v2. Les appelants doivent sélectionner
+ * `created_at` dans leurs requêtes pour que l'historique réel reste résolu.
+ */
+export function shouldRejectUnboundV2(createdAt: string | null | undefined): boolean {
+  if (typeof createdAt !== 'string' || createdAt.trim() === '') return true;
+  const t = Date.parse(createdAt);
+  if (Number.isNaN(t)) return true;
   return t >= Date.parse(V2_SUNSET_ISO);
 }
 
@@ -166,9 +201,10 @@ export interface SealedSenderContext {
  * Confiance : ces champs voyagent dans un payload AES-GCM que SEUL le
  * destinataire peut ouvrir (ECDH clé éphémère ↔ clé publique du destinataire),
  * et dont l'émetteur est authentifié par la signature Ed25519 qui lie `senderId`
- * au contexte du message. Un tiers ne peut donc ni les lire ni les altérer.
- * (Ils ne sont volontairement pas couverts par la signature v3 afin de rester
- * rétrocompatible avec les blobs v3 émis avant cette évolution.)
+ * au contexte du message. En **v4**, la signature couvre AUSSI ces clés : un
+ * tierce partie qui peut ré-émettre un blob (membre de la conversation) ne peut
+ * donc pas les substituer. Les blobs v3 (clés non couvertes) restent lus pour
+ * l'historique, mais toute NOUVELLE émission portant des clés est en v4.
  */
 export interface SealedSenderIdentity {
   /** Clé publique X25519 de l'expéditeur (taguée `x25519:`). */
@@ -198,6 +234,23 @@ function sigMessageV3(context: SealedSenderContext): Uint8Array {
   );
 }
 
+/**
+ * Message signé v4 : comme la v3 (contexte du message), PLUS les clés
+ * d'identité transportées (`xk`/`ik`). Un MITM ne peut donc plus remplacer
+ * l'une de ces clés en conservant une signature valide. Les champs absents sont
+ * représentés par la chaîne vide ; leur position fixe + les séparateurs `|`
+ * rendent le message non ambigu.
+ */
+function sigMessageV4(
+  context: SealedSenderContext,
+  x25519Key: string | null | undefined,
+  identityKey: string | null | undefined,
+): Uint8Array {
+  return utf8(
+    `${SIG_DOMAIN_V4}|${context.conversationId}|${context.messageId}|${context.contentHash}|${x25519Key ?? ''}|${identityKey ?? ''}`,
+  );
+}
+
 // ─── Scellement ───────────────────────────────────────────────────────
 
 /**
@@ -206,10 +259,11 @@ function sigMessageV3(context: SealedSenderContext): Uint8Array {
  * @param recipientPublicKey clé publique X25519 du destinataire (taguée ou brute)
  * @param senderId           identifiant de l'expéditeur à cacher au serveur
  * @param signingPrivateKey  clé privée Ed25519 de l'expéditeur (authentifie le scellé)
- * @param context            contexte du message (v3) → lie la signature au message
+ * @param context            contexte du message → lie la signature au message
  *                           courant et empêche le rejeu. Omis → v2 (rétrocompat).
  * @param identity           clés publiques d'identité de l'expéditeur transportées
- *                           dans le payload (au lieu d'être stockées en clair).
+ *                           dans le payload. Leur présence déclenche la **v4**
+ *                           (elles sont alors COUVERTES par la signature).
  * @returns base64 du blob scellé (opaque pour le serveur)
  */
 export async function sealSenderForRecipient(
@@ -219,17 +273,26 @@ export async function sealSenderForRecipient(
   context?: SealedSenderContext,
   identity?: SealedSenderIdentity,
 ): Promise<string> {
-  const payloadObj: Record<string, unknown> = context
-    ? {
-        v: PAYLOAD_VERSION_V3,
-        s: senderId,
-        sig: toBase64(ed25519.sign(sigMessageV3(context), fromBase64(signingPrivateKey))),
-      }
-    : {
-        v: PAYLOAD_VERSION_V2,
-        s: senderId,
-        sig: toBase64(ed25519.sign(sigMessageV2(senderId), fromBase64(signingPrivateKey))),
-      };
+  const hasIdentity = !!(identity?.x25519Key || identity?.identityKey);
+  let version: number;
+  let message: Uint8Array;
+  if (context && hasIdentity) {
+    // v4 : la signature couvre le contexte ET les clés d'identité (xk/ik).
+    version = PAYLOAD_VERSION_V4;
+    message = sigMessageV4(context, identity?.x25519Key, identity?.identityKey);
+  } else if (context) {
+    // v3 : contexte seul (aucune clé d'identité à couvrir).
+    version = PAYLOAD_VERSION_V3;
+    message = sigMessageV3(context);
+  } else {
+    version = PAYLOAD_VERSION_V2;
+    message = sigMessageV2(senderId);
+  }
+  const payloadObj: Record<string, unknown> = {
+    v: version,
+    s: senderId,
+    sig: toBase64(ed25519.sign(message, fromBase64(signingPrivateKey))),
+  };
   if (identity?.x25519Key) payloadObj.xk = identity.x25519Key;
   if (identity?.identityKey) payloadObj.ik = identity.identityKey;
   const payload = JSON.stringify(payloadObj);
@@ -279,7 +342,10 @@ export async function openSealedSender(
 export interface SealedSenderPayload {
   senderId: string;
   signature: string;
-  /** Version du payload : 2 (historique) ou 3 (lié au contexte du message). */
+  /**
+   * Version du payload : 2 (historique), 3 (lié au contexte du message) ou
+   * 4 (contexte + clés d'identité `xk`/`ik` couvertes par la signature).
+   */
   version: number;
   /** Clé publique X25519 de l'expéditeur transportée dans le payload (v3+). */
   x25519Key?: string;
@@ -298,7 +364,7 @@ export function parseSealedSenderPayload(raw: string): SealedSenderPayload | nul
     const o = JSON.parse(raw);
     if (o && typeof o.s === 'string' && typeof o.sig === 'string') {
       const v = typeof o.v === 'number' ? o.v : PAYLOAD_VERSION_V2;
-      if (v === PAYLOAD_VERSION_V2 || v === PAYLOAD_VERSION_V3) {
+      if (v === PAYLOAD_VERSION_V2 || v === PAYLOAD_VERSION_V3 || v === PAYLOAD_VERSION_V4) {
         return {
           senderId: o.s,
           signature: o.sig,
@@ -316,9 +382,13 @@ export function parseSealedSenderPayload(raw: string): SealedSenderPayload | nul
 
 /**
  * Vérifie la signature Ed25519 du payload avec la clé publique de l'expéditeur.
- * Pour un payload **v3**, le `context` est requis : la signature couvre le
- * contexte du message, donc sans contexte (ou avec un contexte différent) la
- * vérification échoue → rejeu rejeté.
+ *
+ * • **v4** : `context` requis ; la signature couvre le contexte ET les clés
+ *   d'identité (`xk`/`ik`) transportées → les modifier invalide la vérification.
+ * • **v3** : `context` requis ; la signature couvre le contexte du message.
+ * • **v2** : signature sur le seul `senderId`.
+ * Dans tous les cas, sans contexte (ou avec un contexte différent) une v3/v4
+ * échoue → rejeu rejeté.
  */
 export function verifySealedSender(
   payload: SealedSenderPayload,
@@ -327,7 +397,10 @@ export function verifySealedSender(
 ): boolean {
   try {
     let message: Uint8Array;
-    if (payload.version >= PAYLOAD_VERSION_V3) {
+    if (payload.version >= PAYLOAD_VERSION_V4) {
+      if (!context) return false;
+      message = sigMessageV4(context, payload.x25519Key, payload.identityKey);
+    } else if (payload.version >= PAYLOAD_VERSION_V3) {
       if (!context) return false;
       message = sigMessageV3(context);
     } else {
@@ -349,9 +422,10 @@ export function verifySealedSender(
 export interface FindVerifiedSenderOptions {
   /**
    * Refuse les payloads **v2** (ou sans `v`) : non liés au contexte du message,
-   * ils sont rejouables. À activer pour les messages créés APRÈS
-   * `V2_SUNSET_ISO` (cf. `isAfterV2Sunset`). Les v3 restent acceptés si le
-   * contexte du message vérifie.
+   * ils sont rejouables. À activer pour tout message non prouvé antérieur à
+   * `V2_SUNSET_ISO` — c'est-à-dire via `shouldRejectUnboundV2` (fail-closed :
+   * date absente/illisible ⇒ refus). Les v3/v4 restent acceptés si le contexte
+   * du message vérifie.
    */
   rejectUnboundV2?: boolean;
 }
@@ -363,8 +437,8 @@ export interface FindVerifiedSenderOptions {
  * `identityKey` : le destinataire récupère la clé EXACTE utilisée à l'émission,
  * même après une rotation de clé de l'expéditeur.
  *
- * `options.rejectUnboundV2` refuse les blobs v2/v-absent (rejouables) — utilisé
- * pour les messages postérieurs à `V2_SUNSET_ISO`.
+ * `options.rejectUnboundV2` refuse les blobs v2/v-absent (rejouables) — calculé
+ * via `shouldRejectUnboundV2(created_at)` (fail-closed si la date est inconnue).
  */
 export async function findVerifiedSenderIdentity(
   myPrivateKeyB64: string,

@@ -70,7 +70,7 @@ vi.mock('@/lib/e2eeX25519', () => ({
 import { resolveSealedSenders, decryptMessageRows, encryptText } from './textEncryption';
 
 describe('resolveSealedSenders — serveur aveugle à l\'expéditeur (Phase 1c)', () => {
-  it('résout sender_id NULL via les blobs sealed', async () => {
+  it('résout sender_id NULL via un blob v2 historique (created_at antérieur à la bascule)', async () => {
     const alice = generateX25519KeyPair();      // destinataire (lecteur)
     const bobSign = generateSigningKeyPair();    // expéditeur B
     const bobId = 'bob-id';
@@ -78,8 +78,10 @@ describe('resolveSealedSenders — serveur aveugle à l\'expéditeur (Phase 1c)'
     h.signingKeys[bobId] = bobSign.publicKey;
 
     const blob = await sealSenderForRecipient(alice.publicKey, bobId, bobSign.privateKey);
-    const rows: Array<{ sender_id: string | null; sender_sealed?: unknown }> = [
-      { sender_id: null, sender_sealed: [blob] },
+    // Historique : `created_at` DOIT être fourni (et antérieur à la bascule)
+    // pour qu'un blob v2 reste résolu (date inconnue ⇒ refus).
+    const rows: Array<{ sender_id: string | null; created_at?: string; sender_sealed?: unknown }> = [
+      { sender_id: null, created_at: '2026-09-01T00:00:00Z', sender_sealed: [blob] },
     ];
 
     await resolveSealedSenders(rows, 'alice-id');
@@ -94,10 +96,23 @@ describe('resolveSealedSenders — serveur aveugle à l\'expéditeur (Phase 1c)'
     h.recipient = { publicKey: alice.publicKey, privateKey: alice.privateKey };
     h.signingKeys[victimId] = victimSign.publicKey; // clé publiée de la victime
 
-    // L'attaquant scelle « victim » mais signe avec SA clé → vérif échoue.
-    const forged = await sealSenderForRecipient(alice.publicKey, victimId, attackerSign.privateKey);
-    const rows: Array<{ sender_id: string | null; sender_sealed?: unknown }> = [
-      { sender_id: null, sender_sealed: [forged] },
+    // L'attaquant scelle « victim » (blob v3, contexte du message) mais signe
+    // avec SA clé → la vérification contre la clé PUBLIÉE de la victime échoue.
+    const content = 'CIPHER';
+    const context = {
+      conversationId: 'conv-1',
+      messageId: 'msg-1',
+      contentHash: await sealedContentHash(content),
+    };
+    const forged = await sealSenderForRecipient(alice.publicKey, victimId, attackerSign.privateKey, context);
+    const rows: Array<{
+      id: string;
+      conversation_id: string;
+      content: string;
+      sender_id: string | null;
+      sender_sealed?: unknown;
+    }> = [
+      { id: 'msg-1', conversation_id: 'conv-1', content, sender_id: null, sender_sealed: [forged] },
     ];
 
     await resolveSealedSenders(rows, 'alice-id');
@@ -223,6 +238,36 @@ describe('resolveSealedSenders — bascule v2 → v3 (V2_SUNSET_ISO)', () => {
 
     await resolveSealedSenders(rows, 'alice-id');
     expect(rows[0].sender_id).toBe(bobId);
+  });
+
+  it('REFUSE un blob v2 quand created_at est ABSENT (date inconnue ⇒ refus, fail-closed)', async () => {
+    const alice = generateX25519KeyPair();
+    const bobSign = generateSigningKeyPair();
+    const bobId = 'bob-id';
+    h.recipient = { publicKey: alice.publicKey, privateKey: alice.privateKey };
+    h.signingKeys[bobId] = bobSign.publicKey;
+
+    // Scellé v2 (sans contexte) : rejouable. Aucun `created_at` fourni → on ne
+    // peut pas prouver que le message précède la bascule → refus.
+    const blobV2 = await sealSenderForRecipient(alice.publicKey, bobId, bobSign.privateKey);
+    const rows: Array<{
+      id: string;
+      conversation_id: string;
+      content: string;
+      sender_id: string | null;
+      sender_sealed?: unknown;
+    }> = [
+      {
+        id: 'msg-unknown-date',
+        conversation_id: 'conv-1',
+        content: 'CIPHER',
+        sender_id: null,
+        sender_sealed: [blobV2],
+      },
+    ];
+
+    await resolveSealedSenders(rows, 'alice-id');
+    expect(rows[0].sender_id).toBeNull();
   });
 });
 

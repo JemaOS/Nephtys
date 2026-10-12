@@ -80,11 +80,23 @@ export function deriveX25519PublicKey(privateKeyB64: string): string {
 }
 
 // ─── Signature de la clé publique X25519 (anti-MITM) ──────────────────
+//
+// v1 (legacy) : `ctx || key` — lie la clé au seul PORTEUR de la clé de
+// signature, PAS au compte. Un serveur peut donc recopier le tuple
+// (clé + sig + signataire) d'Alice dans la ligne de Bob : la signature reste
+// vérifiée et Bob se retrouve avec la clé d'Alice.
+//
+// v2 (liée au compte) : `ctx | userId | key` — la signature couvre aussi le
+// `userId` propriétaire de la ligne. Recopier le tuple d'Alice sous l'id de Bob
+// échoue alors à la vérification. Les signatures v1 déjà publiées restent
+// acceptées (rétrocompatibilité de l'historique).
 
-const X25519_KEY_SIG_CONTEXT = 'nephtys-x25519-key-v1';
+const X25519_KEY_SIG_CONTEXT_V1 = 'nephtys-x25519-key-v1';
+const X25519_KEY_SIG_CONTEXT_V2 = 'nephtys-x25519-key-v2';
 
-function sigData(x25519PublicKey: string): Uint8Array {
-  const ctx = new TextEncoder().encode(X25519_KEY_SIG_CONTEXT);
+/** Message signé v1 (legacy) : `ctx || key` — octets EXACTS du format historique. */
+function sigDataV1(x25519PublicKey: string): Uint8Array {
+  const ctx = new TextEncoder().encode(X25519_KEY_SIG_CONTEXT_V1);
   const key = new TextEncoder().encode(x25519PublicKey);
   const out = new Uint8Array(ctx.length + key.length);
   out.set(ctx, 0);
@@ -93,22 +105,51 @@ function sigData(x25519PublicKey: string): Uint8Array {
 }
 
 /**
- * Signe la clé publique X25519 (taguée) avec une clé privée Ed25519 (seed 32 o
- * base64). La signature lie la clé X25519 au porteur de la clé de signature.
+ * Message signé v2 : `ctx | userId | key`. Les séparateurs `|` rendent le
+ * message non ambigu (ni les UUID de compte ni les clés taguées n'en contiennent).
  */
-export function signX25519PublicKey(signingPrivateKeyB64: string, x25519PublicKey: string): string {
-  const signature = ed25519.sign(sigData(x25519PublicKey), fromBase64(signingPrivateKeyB64));
+function sigDataV2(userId: string, x25519PublicKey: string): Uint8Array {
+  return new TextEncoder().encode(`${X25519_KEY_SIG_CONTEXT_V2}|${userId}|${x25519PublicKey}`);
+}
+
+/**
+ * Signe la clé publique X25519 (taguée) avec une clé privée Ed25519 (seed 32 o
+ * base64). Si `userId` est fourni, la signature est en **v2** et LIE la clé au
+ * compte (recommandé) ; sinon en **v1** (legacy, non liée au compte).
+ */
+export function signX25519PublicKey(
+  signingPrivateKeyB64: string,
+  x25519PublicKey: string,
+  userId?: string,
+): string {
+  const message = userId ? sigDataV2(userId, x25519PublicKey) : sigDataV1(x25519PublicKey);
+  const signature = ed25519.sign(message, fromBase64(signingPrivateKeyB64));
   return toBase64(signature);
 }
 
-/** Vérifie la signature Ed25519 d'une clé publique X25519. */
+/**
+ * Vérifie la signature Ed25519 d'une clé publique X25519.
+ *
+ * Si `userId` est fourni, une signature **v2 liée à ce compte** est requise ;
+ * une signature **v1 legacy** (publiée avant le liage) reste acceptée pour ne
+ * pas invalider l'historique — mais elle est insensible au `userId` : un tuple
+ * v1 recopié d'Alice sous l'id de Bob vérifie donc encore (limitation assumée ;
+ * toutes les NOUVELLES signatures sont v2).
+ */
 export function verifyX25519PublicKeySignature(
   signingPublicKeyB64: string,
   x25519PublicKey: string,
   signatureB64: string,
+  userId?: string,
 ): boolean {
   try {
-    return ed25519.verify(fromBase64(signatureB64), sigData(x25519PublicKey), fromBase64(signingPublicKeyB64));
+    const sig = fromBase64(signatureB64);
+    const pub = fromBase64(signingPublicKeyB64);
+    if (userId) {
+      if (ed25519.verify(sig, sigDataV2(userId, x25519PublicKey), pub)) return true;
+      return ed25519.verify(sig, sigDataV1(x25519PublicKey), pub);
+    }
+    return ed25519.verify(sig, sigDataV1(x25519PublicKey), pub);
   } catch {
     return false;
   }
@@ -158,13 +199,26 @@ export interface X25519WrappedKey {
 /**
  * AAD des enveloppes de clé : lie le ciphertext à la clé publique de
  * l'expéditeur déclarée. Empêche de rejouer une enveloppe sous une autre clé
- * d'expéditeur. Rétrocompatible : les enveloppes historiques SANS AAD restent
- * déchiffrables (repli dans `unwrapKeyFromSenderX25519`).
+ * d'expéditeur. Les enveloppes historiques SANS AAD restent déchiffrables, mais
+ * UNIQUEMENT si l'appelant l'autorise EXPLICITEMENT via
+ * `UnwrapKeyOptions.allowLegacyNoAad` (plus de repli silencieux).
  */
 export const KEYWRAP_AAD_PREFIX = 'nephtys-keywrap-v1|';
 
 export function keyWrapAad(senderPublicKey: string): string {
   return `${KEYWRAP_AAD_PREFIX}${senderPublicKey}`;
+}
+
+/** Options de déchiffrement d'une clé enveloppée X25519. */
+export interface UnwrapKeyOptions {
+  /**
+   * Autorise EXPLICITEMENT le repli sur une enveloppe historique émise SANS AAD
+   * (antérieure à l'introduction de l'AAD). Par défaut `false` : lorsque `aad`
+   * est fourni, une enveloppe n'est JAMAIS déchiffrée sans lui — aucun repli
+   * silencieux qui affaiblirait le binding. Les lectures d'historique passent
+   * `true` ; les nouveaux chemins peuvent rester stricts (`false`).
+   */
+  allowLegacyNoAad?: boolean;
 }
 
 /** Enveloppe une clé AES brute pour un destinataire via X25519. */
@@ -191,11 +245,18 @@ export async function wrapKeyForRecipientX25519(
   };
 }
 
-/** Déchiffre une clé enveloppée X25519. */
+/**
+ * Déchiffre une clé enveloppée X25519.
+ *
+ * Si `aad` est fourni, le déchiffrement est STRICTEMENT lié à cet AAD : un échec
+ * n'est PAS retenté « sans AAD » (ce repli n'a lieu que si
+ * `options.allowLegacyNoAad === true`, pour les enveloppes historiques).
+ */
 export async function unwrapKeyFromSenderX25519(
   wrapped: X25519WrappedKey,
   myPrivateKeyB64: string,
   aad?: string,
+  options?: UnwrapKeyOptions,
 ): Promise<Uint8Array> {
   const sharedKey = await deriveSharedAesKey(myPrivateKeyB64, wrapped.senderPublicKey);
   const iv = fromBase64(wrapped.iv) as BufferSource;
@@ -209,8 +270,11 @@ export async function unwrapKeyFromSenderX25519(
         ct,
       );
       return new Uint8Array(plain);
-    } catch {
-      // Repli : enveloppe historique émise SANS AAD.
+    } catch (err) {
+      // Pas de repli systématique : on ne tente « sans AAD » que si l'appelant
+      // l'a explicitement demandé (lecture d'un historique antérieur à l'AAD).
+      if (!options?.allowLegacyNoAad) throw err;
+      // Repli EXPLICITE : enveloppe historique émise SANS AAD.
     }
   }
 

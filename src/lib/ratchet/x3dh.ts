@@ -53,6 +53,40 @@ export interface X3DHInitResult {
   mlKemCiphertext?: string | null;
 }
 
+/**
+ * Downgrade post-quantique détecté : une clé ML-KEM était attendue (le pair en
+ * publiait une, ou la signature/bundle en annonçait une) mais elle est absente.
+ */
+export class PqDowngradeError extends Error {
+  constructor(message = 'X3DH: downgrade post-quantique détecté (clé ML-KEM absente)') {
+    super(message);
+    this.name = 'PqDowngradeError';
+  }
+}
+
+/**
+ * Downgrade détecté **côté émetteur** : on savait que le pair publiait une clé
+ * ML-KEM (épinglée), mais son bundle n'en porte plus. On REFUSE d'établir une
+ * session non-PQ en silence (forward secrecy post-quantique perdue).
+ */
+export class PqSenderDowngradeError extends PqDowngradeError {
+  constructor(
+    message = "X3DH: le pair ne publie plus de clé ML-KEM alors qu'il en publiait (downgrade post-quantique à l'émission)",
+  ) {
+    super(message);
+    this.name = 'PqSenderDowngradeError';
+  }
+}
+
+export interface X3dhInitiateOptions {
+  /**
+   * Exige une clé ML-KEM dans le bundle du pair : si absente alors qu'elle est
+   * requise (pair épinglé comme PQ-capable), l'initiation ÉCHOUE explicitement
+   * (`PqSenderDowngradeError`) au lieu de retomber silencieusement en X25519.
+   */
+  requireMlKem?: boolean;
+}
+
 export function generateIdentityKeyPair(): IdentityKeyPair {
   return generateX25519KeyPair();
 }
@@ -119,9 +153,17 @@ function associatedData(initiatorIdentity: string, responderIdentity: string): U
 export async function x3dhInitiate(
   myIdentity: IdentityKeyPair,
   bundle: PreKeyBundle,
+  opts: X3dhInitiateOptions = {},
 ): Promise<X3DHInitResult> {
   if (!verifyPreKey(bundle)) {
     throw new Error('X3DH: signature de signed prekey invalide');
+  }
+
+  // Fail-closed anti-downgrade côté ÉMETTEUR : si le pair est connu comme
+  // PQ-capable (clé ML-KEM épinglée) mais que son bundle n'en porte plus, on
+  // refuse d'établir une session classique silencieuse.
+  if (opts.requireMlKem && !bundle.mlKemPublicKey) {
+    throw new PqSenderDowngradeError();
   }
 
   const ratchetKeyPair = generateX25519KeyPair();

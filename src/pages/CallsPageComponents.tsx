@@ -8,7 +8,8 @@ import { useI18n, tStatic } from '@/i18n'
 export interface CallLog {
   id: string
   conversation_id: string
-  caller_id: string
+  // Pseudonymes serveur (plus d'UUID de profil) : voir migration 20261035.
+  caller_id: string | null
   callee_id: string | null
   type: 'audio' | 'video'
   status: 'initiated' | 'answered' | 'missed' | 'rejected' | 'ended'
@@ -17,6 +18,8 @@ export interface CallLog {
   duration: number | null
   caller_profile?: any
   callee_profile?: any
+  other_profile?: any
+  is_outgoing?: boolean
   is_group_call?: boolean
   conversation_name?: string
   conversation_avatar?: string
@@ -25,7 +28,9 @@ export interface CallLog {
 // Helper to get display name and avatar
 const getCallDisplayInfo = (call: any, user: any) => {
   const isGroupCall = call.is_group_call
-  const isOutgoing = call.caller_id === user?.id
+  // Sens déduit du pseudonyme de l'utilisateur courant (is_outgoing), plus
+  // disponible côté serveur depuis 20261035.
+  const isOutgoing = !!call.is_outgoing
   
   let displayName: string
   let avatarUrl: string | null | undefined
@@ -34,7 +39,7 @@ const getCallDisplayInfo = (call: any, user: any) => {
     displayName = call.conversation_name || tStatic('groupFallback')
     avatarUrl = call.conversation_avatar
   } else {
-    const otherProfile = isOutgoing ? call.callee_profile : call.caller_profile
+    const otherProfile = call.other_profile ?? (isOutgoing ? call.callee_profile : call.caller_profile)
     displayName = otherProfile?.display_name || otherProfile?.username || tStatic('userFallback')
     avatarUrl = otherProfile?.avatar_url
   }
@@ -114,7 +119,7 @@ export const CallItem = ({
   selectedCall: {
     id: string;
     conversation_id: string;
-    caller_id: string;
+    caller_id: string | null;
     callee_id: string | null;
     type: 'audio' | 'video';
     status: 'initiated' | 'answered' | 'missed' | 'rejected' | 'ended';

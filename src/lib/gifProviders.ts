@@ -2,17 +2,27 @@
 // Distributed under the license specified in the root directory of this project.
 
 /**
- * Fournisseurs d'images animées (GIF / stickers) avec **chaîne de fallbacks**.
+ * Fournisseurs d'images animées (GIF / stickers).
  *
- * On essaie, dans l'ordre, plusieurs sources jusqu'à obtenir des résultats :
- *   1. Tenor API v2 (clé privée `VITE_TENOR_API_KEY`, si fournie) ;
- *   2. Tenor API v1 — clés publiques (aucune clé perso requise) ;
- *   3. GIPHY API — clé publique bêta (aucune clé perso requise).
+ * ⚠️ ANONYMAT RÉSEAU : ces API tierces sont appelées DIRECTEMENT depuis le
+ * navigateur → elles voient l'IP + le texte recherché de l'utilisateur. Depuis
+ * 2026-10-35 :
+ *   • AUCUNE clé en dur n'est plus embarquée dans le bundle (les anciennes clés
+ *     publiques Tenor v1 / GIPHY étaient publiques mais associées à un quota
+ *     partagé et identifiaient l'app) ;
+ *   • la recherche est DÉSACTIVÉE en mode Tor strict (fuite d'IP → deanonymisation) ;
+ *   • il ne reste que Tenor v2 (clé PRIVÉE `VITE_TENOR_API_KEY`, si fournie) puis
+ *     Openverse (API publique sans clé, avec CORS).
  *
- * Si tout échoue, on renvoie `[]` (l'UI affiche « aucun résultat », jamais de
- * crash). Résultat normalisé au format attendu par l'UI :
+ * Limite résiduelle documentée : hors mode Tor, Openverse/Tenor voient toujours
+ * l'IP + la requête. Un vrai anonymat exigerait de PROXIFIER ces appels par une
+ * edge function (à faire si la fonctionnalité doit rester disponible en Tor).
+ *
+ * Résultat normalisé au format attendu par l'UI :
  * `{ id, content_description, media_formats: { gif, mediumgif, tinygif, nanogif, webp, tinywebp } }`.
  */
+
+import { isTorRelayEnabled } from '@/lib/relay/relayClient';
 
 export type GifKind = 'gif' | 'sticker';
 
@@ -25,50 +35,8 @@ export interface GifItem {
 const TENOR_V2_KEY = (import.meta.env.VITE_TENOR_API_KEY as string | undefined) || '';
 const TENOR_CLIENT_KEY = 'nephtys_app';
 
-// Clés PUBLIQUES (pas de compte requis) — plusieurs pour la redondance.
-const TENOR_V1_KEYS = ['LIVDSRZULELA', 'AABBCCDD'];
-const GIPHY_PUBLIC_KEYS = ['dc6zaTOxFJmzC'];
-
 function normTenorV2(r: any): GifItem {
   return r as GifItem;
-}
-
-function normTenorV1(r: any): GifItem {
-  if (r?.media_formats) return r as GifItem;
-  const media = r?.media?.[0] ?? {};
-  return {
-    id: String(r?.id ?? ''),
-    content_description: r?.content_description,
-    media_formats: {
-      gif: media.gif,
-      mediumgif: media.mediumgif,
-      tinygif: media.tinygif,
-      nanogif: media.nanogif,
-      webp: media.webp,
-      tinywebp: media.tinywebp,
-    },
-  };
-}
-
-function normGiphy(r: any): GifItem {
-  const img = r?.images ?? {};
-  const orig = img.original ?? {};
-  const fixed = img.fixed_height ?? {};
-  const small = img.fixed_height_small ?? {};
-  const preview = img.preview_gif ?? {};
-  const tinyUrl = small.url || preview.url || orig.url;
-  return {
-    id: String(r?.id ?? ''),
-    content_description: r?.title,
-    media_formats: {
-      gif: { url: orig.url },
-      mediumgif: { url: fixed.url || orig.url },
-      tinygif: { url: tinyUrl },
-      nanogif: { url: preview.url || tinyUrl },
-      webp: { url: orig.webp || orig.url },
-      tinywebp: { url: small.webp || tinyUrl },
-    },
-  };
 }
 
 /** Openverse (openverse.org) — API PUBLIQUE SANS CLÉ, avec CORS. */
@@ -118,12 +86,16 @@ function isTrending(query: string): boolean {
   return !query || query === 'trending';
 }
 
-/** Récupère GIF ou stickers via la chaîne de fournisseurs (fallbacks). */
+/** Récupère GIF ou stickers via les fournisseurs restants (sans clé en dur). */
 export async function fetchGifItems(kind: GifKind, query: string): Promise<GifItem[]> {
+  // Fail-closed en mode Tor : toute requête vers un tiers (Tenor/Openverse)
+  // exposerait l'IP réelle de l'appareil et la requête de l'utilisateur.
+  if (isTorRelayEnabled()) return [];
+
   const sticker = kind === 'sticker';
   const trending = isTrending(query);
 
-  // 1) Tenor v2 (clé privée)
+  // 1) Tenor v2 (clé PRIVÉE fournie par le déployeur — jamais en dur)
   if (TENOR_V2_KEY) {
     const base = trending
       ? `https://tenor.googleapis.com/v2/featured?key=${TENOR_V2_KEY}&client_key=${TENOR_CLIENT_KEY}&limit=20${sticker ? '&searchfilter=sticker' : ''}`
@@ -136,25 +108,6 @@ export async function fetchGifItems(kind: GifKind, query: string): Promise<GifIt
   {
     const items = await tryOpenverse(kind, query);
     if (items.length) return items;
-  }
-
-  // 3) Tenor v1 (clés publiques)
-  for (const key of TENOR_V1_KEYS) {
-    const base = trending
-      ? `https://g.tenor.com/v1/trending?key=${key}&limit=20${sticker ? '&searchfilter=sticker' : ''}`
-      : `https://g.tenor.com/v1/search?q=${encodeURIComponent(query)}&key=${key}&limit=20${sticker ? '&searchfilter=sticker' : ''}`;
-    const data = await tryJson(base);
-    if (data?.results?.length) return data.results.map(normTenorV1);
-  }
-
-  // 3) GIPHY (clé publique bêta)
-  for (const key of GIPHY_PUBLIC_KEYS) {
-    const path = sticker ? 'stickers' : 'gifs';
-    const base = trending
-      ? `https://api.giphy.com/v1/${path}/trending?api_key=${key}&limit=20&rating=pg-13`
-      : `https://api.giphy.com/v1/${path}/search?api_key=${key}&q=${encodeURIComponent(query)}&limit=20&rating=pg-13`;
-    const data = await tryJson(base);
-    if (data?.data?.length) return data.data.map(normGiphy);
   }
 
   return [];

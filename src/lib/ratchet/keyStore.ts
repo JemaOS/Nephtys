@@ -186,35 +186,39 @@ let opkClaimWarned = false;
  * consomme en une seule requête éviterait même le pré-SELECT.
  */
 async function claimOneTimePreKeyForPeer(peerId: string): Promise<string | null> {
-  const { data: candidates, error } = await supabase
+  // Chemin canonique : RPC atomique (sélection + consommation en UNE requête,
+  // SECURITY DEFINER, `FOR UPDATE SKIP LOCKED`). Indispensable depuis que la
+  // lecture directe des OPK d'autrui est fermée (RLS owner-only) : l'ancien
+  // pré-SELECT renverrait 0 ligne → X3DH sans OPK.
+  const { data, error } = await supabase.rpc('claim_one_time_prekey', { p_user_id: peerId });
+  if (!error) return (data as string | null) ?? null;
+
+  // Repli si le RPC n'existe pas (migration non appliquée) : on tente l'ancien
+  // chemin (qui ne fonctionnera que tant que la lecture directe est permise).
+  if (!opkClaimWarned) {
+    opkClaimWarned = true;
+    console.warn(
+      '[ratchet] RPC claim_one_time_prekey indisponible : repli sur la lecture directe (non atomique). ' +
+        "Applique la migration 20261036_fix_otpk_select_owner_and_claim_rpc.sql.",
+    );
+  }
+  const { data: candidates, error: selErr } = await supabase
     .from('one_time_prekeys')
     .select('id, public_key')
     .eq('user_id', peerId)
     .eq('is_used', false)
     .order('created_at', { ascending: true })
     .limit(10);
-  if (error || !candidates || candidates.length === 0) return null;
+  if (selErr || !candidates || candidates.length === 0) return null;
 
   for (const c of candidates as Array<{ id: string; public_key: string }>) {
-    const { data, error: rpcError } = await supabase.rpc('consume_one_time_prekey', {
+    const { data: consumed, error: rpcError } = await supabase.rpc('consume_one_time_prekey', {
       p_prekey_id: c.id,
     });
     if (rpcError) {
-      // RPC indisponible (migration non appliquée) : repli best-effort sur le
-      // premier candidat. Le marquage différé (`markOneTimePreKeyUsed`) reste
-      // tenté, mais la garantie d'atomicité est alors perdue → on le signale.
-      if (!opkClaimWarned) {
-        opkClaimWarned = true;
-        console.warn(
-          '[ratchet] RPC consume_one_time_prekey indisponible : revendication OPK non atomique. ' +
-            'Applique la migration 20261012_rls_otpk_consume_rpc.sql (et idéalement un RPC claim_one_time_prekey).',
-        );
-      }
       return c.public_key;
     }
-    // `data` = public_key si la consommation a gagné, `null` si un autre client
-    // a gagné la course entre-temps → on essaie le candidat suivant.
-    if (data === c.public_key) return c.public_key;
+    if (consumed === c.public_key) return c.public_key;
   }
   return null;
 }

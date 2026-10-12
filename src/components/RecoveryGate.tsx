@@ -12,7 +12,7 @@
 import { useState, type ReactNode } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { validateRecoveryPhrase, parseDeviceLink } from '@/lib/recovery/recoveryService';
-import { isDeviceLink, redeemDeviceLink } from '@/lib/recovery/deviceLink';
+import { isDeviceLink, redeemDeviceLink, describeDeviceLink } from '@/lib/recovery/deviceLink';
 import { QrScanner } from '@/components/QrScanner';
 import { RestoreBackupPrompt } from '@/components/RestoreBackupPrompt';
 
@@ -58,7 +58,7 @@ function ShowPhraseScreen({ phrase, onConfirm }: { readonly phrase: string; read
 }
 
 function EnterPhraseScreen({ onRecovered }: { readonly onRecovered: () => void }) {
-  const { completeRecovery, signOut } = useAuth();
+  const { completeRecovery, signOut, clearRecoveryRequired } = useAuth();
   const [phrase, setPhrase] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -122,9 +122,25 @@ function EnterPhraseScreen({ onRecovered }: { readonly onRecovered: () => void }
           onResult={(text) => {
             setScanning(false);
             if (isDeviceLink(text)) {
+              // Lien d'appareil NON authentifié : on exige une confirmation
+              // explicite du compte visé avant d'établir la session (sinon un
+              // QR forgé permettrait une fixation de session).
+              const target = describeDeviceLink(text);
+              const ok = globalThis.confirm(
+                `Cet appareil va se connecter au compte « ${target?.label ?? 'inconnu'} ». Confirmer ?`,
+              );
+              if (!ok) {
+                setError('Liaison annulée.');
+                return;
+              }
               setError(null);
               setBusy(true);
-              void redeemDeviceLink(text)
+              void redeemDeviceLink(text, { confirmed: true })
+                .then(() => {
+                  // La session et les clés sont installées : on lève l'exigence
+                  // de récupération, sinon l'app reste bloquée sur ce gate.
+                  clearRecoveryRequired();
+                })
                 .catch((e: unknown) => setError((e as Error).message))
                 .finally(() => setBusy(false));
               return;

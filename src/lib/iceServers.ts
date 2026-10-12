@@ -10,17 +10,29 @@
  * le **secret n'est jamais dans le bundle web** (fini l'abus d'identifiants).
  *
  * `getIceServers()` (synchrone) renvoie la config en cache ; `initIceServers()`
- * la récupère et la rafraîchit. Repli STUN tant que l'endpoint n'a pas répondu.
+ * la récupère et la rafraîchit. Repli STUN **de notre propre coturn** tant que
+ * l'endpoint n'a pas répondu (aucun STUN tiers : Google/Twilio retirés).
  */
 
 const TURN_CREDS_URL =
   (import.meta.env.VITE_TURN_CREDS_URL as string | undefined) || 'https://78-232-3-78.sslip.io/turn';
 
-const STUN_FALLBACK: RTCIceServer[] = [
-  { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:stun1.l.google.com:19302' },
-  { urls: 'stun:global.stun.twilio.com:3478' },
-];
+// Repli tant que l'endpoint `/turn` n'a pas répondu : STUN **de notre propre
+// coturn** uniquement (dérivé de l'hôte du endpoint). Aucun STUN tiers
+// (Google/Twilio) → un call P2P n'annonce pas l'IP à un tiers, et le relais
+// reste maîtrisé. Si l'hôte est introuvable, repli VIDE : on n'émet alors
+// aucun candidat srflx et le mode privé reste fail-closed (cf. hasTurnServer).
+const TURN_HOST: string | null = (() => {
+  try {
+    return new URL(TURN_CREDS_URL).hostname || null;
+  } catch {
+    return null;
+  }
+})();
+
+const STUN_FALLBACK: RTCIceServer[] = TURN_HOST
+  ? [{ urls: `stun:${TURN_HOST}:3478` }]
+  : [];
 
 let cachedIceServers: RTCIceServer[] = STUN_FALLBACK;
 let expiresAt = 0;

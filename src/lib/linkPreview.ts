@@ -129,6 +129,34 @@ export function extractDomain(url: string): string {
   }
 }
 
+// Paramètres de suivi/attribution retirés avant tout envoi au serveur (et
+// utilisés comme clé de cache) : l'edge ne voit donc pas les tokens de tracking.
+const TRACKING_PARAMS = new Set([
+  'gclid', 'fbclid', 'dclid', 'msclkid', 'mc_eid', 'igshid', 'ysclid',
+  'ref', 'ref_src', 'ref_url', 'spm', '_hsenc', '_hsmi',
+]);
+
+/**
+ * Nettoie une URL avant prévisualisation : supprime le fragment et les
+ * paramètres de suivi (`utm_*`, `fbclid`, `gclid`, …). Les paramètres
+ * fonctionnels sont conservés (ex. `?v=` YouTube, `?id=`).
+ */
+export function sanitizePreviewUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    u.hash = '';
+    for (const key of Array.from(u.searchParams.keys())) {
+      const k = key.toLowerCase();
+      if (k.startsWith('utm_') || TRACKING_PARAMS.has(k)) {
+        u.searchParams.delete(key);
+      }
+    }
+    return u.toString();
+  } catch {
+    return url;
+  }
+}
+
 // Cache local en mémoire pour éviter les fetches répétés sur le même URL
 // pendant la même session (ex: l'utilisateur efface puis retape le même lien).
 const memoryCache = new Map<string, { data: LinkPreviewData | null; expires: number }>();
@@ -148,9 +176,12 @@ async function fetchFromEdgeFunction(url: string): Promise<LinkPreviewData | nul
   try {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (SUPABASE_ANON_KEY) headers.apikey = SUPABASE_ANON_KEY;
-    // La fonction edge exige un JWT UTILISATEUR (anti-abus/SSRF) : on envoie
-    // le jeton de session. Repli sur la clé anon si non connecté (la fonction
-    // renvoie alors 401 → on retombe sur le fallback client, YouTube oEmbed).
+    // ATTRITION D'IDENTITÉ (documentée, non éliminée) : la fonction edge exige
+    // un JWT UTILISATEUR (anti-abus/SSRF, cf. supabase/functions/link-preview).
+    // Le fetch sortant est donc ATTRIBUÉ à l'utilisateur connecté côté serveur.
+    // Réduction possible : repli sur la clé anon (non identifiante) si aucune
+    // session — le serveur renvoie alors 401 et l'UI retombe sur un aperçu
+    // minimal (domaine seul). On n'envoie donc jamais d'identité sans session.
     try {
       const { data } = await supabase.auth.getSession();
       const token = data.session?.access_token ?? SUPABASE_ANON_KEY;
@@ -178,75 +209,46 @@ async function fetchFromEdgeFunction(url: string): Promise<LinkPreviewData | nul
 }
 
 /**
- * Fallback rapide : pour YouTube on peut utiliser oEmbed directement depuis le
- * navigateur (CORS ouvert, < 200ms). Utile si l'edge function est down.
- */
-async function fetchYouTubeOEmbedClient(url: string): Promise<LinkPreviewData | null> {
-  try {
-    const u = new URL(url);
-    const isYT =
-      u.hostname.endsWith('youtube.com') ||
-      u.hostname.endsWith('youtu.be') ||
-      u.hostname.endsWith('youtube-nocookie.com');
-    if (!isYT) return null;
-
-    const oembed = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
-    const res = await fetch(oembed);
-    if (!res.ok) return null;
-    const data = await res.json();
-    return {
-      url,
-      title: data.title || null,
-      description: null,
-      image: data.thumbnail_url || null,
-      siteName: data.author_name || 'YouTube',
-      domain: extractDomain(url),
-    };
-  } catch {
-    return null;
-  }
-}
-
-/**
  * Fetch Open Graph metadata for a URL.
  *
  * Stratégie :
- *   1. Cache mémoire (30 min) — instantané
- *   2. Edge function `link-preview` — rapide grâce au cache DB et au cas
- *      spécial YouTube oEmbed côté serveur
- *   3. Fallback YouTube oEmbed côté client si edge function indispo
+ *   1. Nettoyage de l'URL (strip `utm_*`/tracking + fragment) — l'edge ne voit
+ *      jamais les tokens de suivi.
+ *   2. Cache mémoire (30 min) — instantané
+ *   3. Edge function `link-preview` — rapide grâce au cache DB et au cas
+ *      spécial YouTube oEmbed CÔTÉ SERVEUR (le navigateur ne contacte JAMAIS
+ *      YouTube/Google directement : plus de fuite IP+URL vers des tiers).
  *   4. Sinon, on retourne un preview minimal avec juste le domaine pour
  *      que l'UI affiche QUELQUE CHOSE plutôt que rien
+ *
+ * NB : le fetch edge est attribué au JWT utilisateur (voir fetchFromEdgeFunction).
  */
 export async function fetchLinkPreview(url: string): Promise<LinkPreviewData | null> {
-  // 1) Cache mémoire
-  const cached = memoryCache.get(url);
+  // 1) Nettoyage (clé de cache + payload edge)
+  const cleanUrl = sanitizePreviewUrl(url);
+
+  // 2) Cache mémoire
+  const cached = memoryCache.get(cleanUrl);
   if (cached && cached.expires > Date.now()) {
     return cached.data;
   }
 
-  // 2) Edge function
-  let data = await fetchFromEdgeFunction(url);
-
-  // 3) Fallback YouTube côté client si pas de titre dans la réponse
-  if (!data?.title) {
-    const yt = await fetchYouTubeOEmbedClient(url);
-    if (yt?.title) data = yt;
-  }
+  // 3) Edge function (seule source distante — plus de fallback navigateur)
+  let data = await fetchFromEdgeFunction(cleanUrl);
 
   // 4) Fallback minimal — au moins le domaine s'affiche
   if (!data) {
     data = {
-      url,
+      url: cleanUrl,
       title: null,
       description: null,
       image: null,
       siteName: null,
-      domain: extractDomain(url),
+      domain: extractDomain(cleanUrl),
     };
   }
 
-  memoryCache.set(url, { data, expires: Date.now() + MEMORY_TTL_MS });
+  memoryCache.set(cleanUrl, { data, expires: Date.now() + MEMORY_TTL_MS });
   return data;
 }
 

@@ -13,6 +13,7 @@ import {
   findVerifiedSenderIdentity,
   sealedContentHash,
   isAfterV2Sunset,
+  shouldRejectUnboundV2,
   V2_SUNSET_ISO,
   type SealedSenderContext,
 } from './sealedSender';
@@ -300,5 +301,119 @@ describe('sealed sender — bascule v2 → v3 (V2_SUNSET_ISO)', () => {
       rejectUnboundV2: true,
     });
     expect(resolved?.senderId).toBe('dave');
+  });
+
+  it('shouldRejectUnboundV2 : date inconnue ⇒ REFUS (fail-closed)', () => {
+    // Postérieur / égal à la bascule → refus.
+    expect(shouldRejectUnboundV2('2026-10-12T00:00:00Z')).toBe(true);
+    expect(shouldRejectUnboundV2(new Date().toISOString())).toBe(true);
+    // Antérieur prouvé → accepté (rétrocompat historique).
+    expect(shouldRejectUnboundV2('2026-09-01T00:00:00Z')).toBe(false);
+    // Date INCONNUE (absente, vide, illisible) → refus : on ne peut PAS prouver
+    // que le message précède la bascule, donc on n'accepte pas un blob v2.
+    expect(shouldRejectUnboundV2(null)).toBe(true);
+    expect(shouldRejectUnboundV2(undefined)).toBe(true);
+    expect(shouldRejectUnboundV2('')).toBe(true);
+    expect(shouldRejectUnboundV2('   ')).toBe(true);
+    expect(shouldRejectUnboundV2('pas-une-date')).toBe(true);
+  });
+
+  it('REFUSE un blob v2 quand la date du message est inconnue (via shouldRejectUnboundV2)', async () => {
+    const alice = generateX25519KeyPair();
+    const dave = generateSigningKeyPair();
+    const blobV2 = await sealSenderForRecipient(alice.publicKey, 'dave', dave.privateKey);
+    const getSigningKey = async (id: string) => (id === 'dave' ? dave.publicKey : null);
+
+    const resolved = await findVerifiedSenderIdentity(alice.privateKey, [blobV2], getSigningKey, undefined, {
+      rejectUnboundV2: shouldRejectUnboundV2(undefined),
+    });
+    expect(resolved).toBeNull();
+  });
+});
+
+describe('sealed sender v4 — clés d\'identité couvertes par la signature', () => {
+  async function makeContext(): Promise<SealedSenderContext> {
+    return {
+      conversationId: 'conv-1',
+      messageId: 'msg-1',
+      contentHash: await sealedContentHash('ct'),
+    };
+  }
+
+  it('v4 : transporte xk/ik, les restitue APRÈS vérification et lie la signature', async () => {
+    const alice = generateX25519KeyPair();
+    const dave = generateSigningKeyPair();
+    const ctx = await makeContext();
+    const xk = generateX25519KeyPair().publicKey;
+    const ik = 'IDENTITY-X3DH-PUB-B64';
+
+    const blob = await sealSenderForRecipient(alice.publicKey, 'dave-id', dave.privateKey, ctx, {
+      x25519Key: xk,
+      identityKey: ik,
+    });
+    const raw = await openSealedSender(alice.privateKey, blob);
+    const payload = parseSealedSenderPayload(raw)!;
+    // Des clés d'identité sont transportées → payload v4 (elles sont couvertes).
+    expect(payload.version).toBe(4);
+    expect(verifySealedSender(payload, dave.publicKey, ctx)).toBe(true);
+
+    const getSigningKey = async (id: string) => (id === 'dave-id' ? dave.publicKey : null);
+    const resolved = await findVerifiedSenderIdentity(alice.privateKey, [blob], getSigningKey, ctx);
+    expect(resolved).toEqual({ senderId: 'dave-id', x25519Key: xk, identityKey: ik });
+  });
+
+  it('REJETTE un blob v4 dont xk a été remplacé (MITM, signature conservée)', async () => {
+    const alice = generateX25519KeyPair();
+    const dave = generateSigningKeyPair();
+    const ctx = await makeContext();
+    const xk = generateX25519KeyPair().publicKey;
+
+    const blob = await sealSenderForRecipient(alice.publicKey, 'dave-id', dave.privateKey, ctx, {
+      x25519Key: xk,
+    });
+    const payload = parseSealedSenderPayload(await openSealedSender(alice.privateKey, blob))!;
+    expect(payload.version).toBe(4);
+    expect(verifySealedSender(payload, dave.publicKey, ctx)).toBe(true);
+
+    // MITM : garde s/sig/v mais substitue xk par sa propre clé.
+    const forged = { ...payload, x25519Key: generateX25519KeyPair().publicKey };
+    expect(verifySealedSender(forged, dave.publicKey, ctx)).toBe(false);
+  });
+
+  it('REJETTE un blob v4 dont ik a été remplacé', async () => {
+    const alice = generateX25519KeyPair();
+    const dave = generateSigningKeyPair();
+    const ctx = await makeContext();
+
+    const blob = await sealSenderForRecipient(alice.publicKey, 'dave-id', dave.privateKey, ctx, {
+      x25519Key: generateX25519KeyPair().publicKey,
+      identityKey: 'ORIGINAL-IK',
+    });
+    const payload = parseSealedSenderPayload(await openSealedSender(alice.privateKey, blob))!;
+    expect(verifySealedSender(payload, dave.publicKey, ctx)).toBe(true);
+    expect(verifySealedSender({ ...payload, identityKey: 'EVIL-IK' }, dave.publicKey, ctx)).toBe(false);
+  });
+
+  it('REJETTE un blob v4 dont on retire xk (ou ik) — la signature couvre leur présence', async () => {
+    const alice = generateX25519KeyPair();
+    const dave = generateSigningKeyPair();
+    const ctx = await makeContext();
+    const blob = await sealSenderForRecipient(alice.publicKey, 'dave-id', dave.privateKey, ctx, {
+      x25519Key: generateX25519KeyPair().publicKey,
+      identityKey: 'IK',
+    });
+    const payload = parseSealedSenderPayload(await openSealedSender(alice.privateKey, blob))!;
+    expect(verifySealedSender({ ...payload, x25519Key: undefined }, dave.publicKey, ctx)).toBe(false);
+    expect(verifySealedSender({ ...payload, identityKey: undefined }, dave.publicKey, ctx)).toBe(false);
+  });
+
+  it('rétrocompat : un blob v3 (sans clés) reste en v3 et se vérifie', async () => {
+    const alice = generateX25519KeyPair();
+    const dave = generateSigningKeyPair();
+    const ctx = await makeContext();
+    const blob = await sealSenderForRecipient(alice.publicKey, 'dave', dave.privateKey, ctx);
+    const payload = parseSealedSenderPayload(await openSealedSender(alice.privateKey, blob))!;
+    expect(payload.version).toBe(3);
+    expect(verifySealedSender(payload, dave.publicKey, ctx)).toBe(true);
   });
 });

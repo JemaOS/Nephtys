@@ -12,6 +12,7 @@ import { signFieldsBatch, resolveMediaUrl, invalidateMediaUrl } from '@/lib/medi
 import { fetchAndDecryptMedia } from '@/lib/encryptedMediaService';
 import { MediaImg } from './MediaImg';
 import { OverviewTab, MembersTab, MediaTab, FilesTab, LinksTab } from './ConversationInfoTabs';
+import { extractUrls } from '@/lib/linkPreview';
 import { AddMemberModal } from './AddMemberModal';
 import { EphemeralDurationMenu } from './EphemeralDurationMenu';
 
@@ -374,14 +375,15 @@ export const ConversationInfo: React.FC<ConversationInfoProps> = ({
       ]);
       
       if (data) {
-        const urlRegex = /(https?:\/\/[^\s]+)/g;
         const messagesWithLinks = data
           .filter(message => !deletedForMe.has(message.id))
           .map(message => {
             // Remove GIF and Sticker markdown before extracting links
             // Pattern: [GIF](url) or [STICKER](url)
             const cleanContent = message.content?.replaceAll(/\[(GIF|STICKER)\]\([^)]+\)/g, '') || '';
-            const urls = cleanContent.match(urlRegex) || [];
+            // extractUrls() valide chaque URL via safeHttpUrl (http/https uniquement)
+            // → garde-fou partagé avec le rendu des messages.
+            const urls = extractUrls(cleanContent);
             return { message, urls };
           })
           .filter(item => item.urls.length > 0);

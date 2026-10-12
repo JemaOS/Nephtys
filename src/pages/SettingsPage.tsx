@@ -58,7 +58,7 @@ import {
 } from 'lucide-react'
 import { SafeQrCode } from '@/components/SafeQrCode'
 import { QrScanner } from '@/components/QrScanner'
-import { isDeviceLink, redeemDeviceLink } from '@/lib/recovery/deviceLink'
+import { isDeviceLink, redeemDeviceLink, describeDeviceLink } from '@/lib/recovery/deviceLink'
 import { fulfillLinkRequest } from '@/lib/recovery/deviceLinkChannel'
 import { encodeContactLink, isContactLink, parseContactLink, addContactAndOpenConversation } from '@/lib/contactLink'
 import {
@@ -1729,13 +1729,26 @@ export function SettingsPage() {
                     .then((convId) => { if (convId) navigate(`/chat/${convId}`); else setDeviceMsg('Contact ajouté ✅.') })
                     .catch((e: unknown) => setDeviceMsg(`Échec : ${(e as Error).message}`))
                 } else if (isDeviceLink(text)) {
-                  void redeemDeviceLink(text)
+                  // Lien d'appareil NON authentifié : confirmation explicite du
+                  // compte visé avant d'établir la session (anti-fixation).
+                  const target = describeDeviceLink(text)
+                  if (!globalThis.confirm(`Cet appareil va se connecter au compte « ${target?.label ?? 'inconnu'} ». Confirmer ?`)) {
+                    setDeviceMsg('Liaison annulée.')
+                    return
+                  }
+                  void redeemDeviceLink(text, { confirmed: true })
                     .then(() => setDeviceMsg('Appareil lié ✅.'))
                     .catch((e: unknown) => setDeviceMsg(`Échec : ${(e as Error).message}`))
                 } else {
                   // QR affiché par un nouvel appareil (page de connexion) → on lui
-                  // transmet la session + les clés.
-                  void fulfillLinkRequest(text)
+                  // transmet la session + les clés. Le code à 6 chiffres affiché
+                  // par le nouvel appareil authentifie le répondeur.
+                  const code = globalThis.prompt('Entrez le code à 6 chiffres affiché sur le nouvel appareil :')
+                  if (!code) {
+                    setDeviceMsg('Liaison annulée.')
+                    return
+                  }
+                  void fulfillLinkRequest(text, code)
                     .then(() => setDeviceMsg('Code transmis ✅ — le nouvel appareil est connecté.'))
                     .catch((e: unknown) => setDeviceMsg(`Échec : ${(e as Error).message}`))
                 }

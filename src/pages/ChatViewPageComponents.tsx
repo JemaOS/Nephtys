@@ -198,7 +198,7 @@ export const getEmojiSizeClass = (emojiCount: number): string => {
 export interface CallLog {
   id: string
   conversation_id: string
-  caller_id: string
+  caller_id: string | null
   callee_id: string | null
   type: 'audio' | 'video'
   status: 'initiated' | 'answered' | 'missed' | 'rejected' | 'ended'
@@ -206,6 +206,8 @@ export interface CallLog {
   ended_at: string | null
   duration: number | null
   participant_count: number | null
+  /** Sens déduit côté client (pseudonymes serveur depuis 20261035). */
+  is_outgoing?: boolean
 }
 
 export interface TimelineItem {
@@ -1170,8 +1172,8 @@ const TimelineItemComponent: React.FC<TimelineItemComponentProps> = React.memo((
   const { t } = useI18n()
   if (item.type === 'call') {
     const call = item.data as CallLog
-    const isOutgoing = call.caller_id === user?.id
-    const isGroupCall = call.caller_id === call.callee_id
+    const isOutgoing = call.is_outgoing ?? false
+    const isGroupCall = !!call.caller_id && call.caller_id === call.callee_id
     
     return (
       <CallMessage

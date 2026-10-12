@@ -86,12 +86,29 @@ describe('x25519', () => {
     await expect(unwrapKeyFromSenderX25519(wrapped, bob.privateKey, keyWrapAad('x25519:autre'))).rejects.toBeTruthy();
   });
 
-  it('déchiffre toujours les enveloppes historiques SANS AAD (repli)', async () => {
+  it('rejette par défaut une enveloppe sans AAD (pas de repli silencieux)', async () => {
+    const alice = generateX25519KeyPair();
+    const bob = generateX25519KeyPair();
+    const rawKey = crypto.getRandomValues(new Uint8Array(32));
+    // Enveloppe historique émise SANS AAD.
+    const legacy = await wrapKeyForRecipientX25519(rawKey, alice.privateKey, alice.publicKey, bob.publicKey);
+    // Sans opt-in explicite, fournir un AAD n'autorise PAS le repli sans AAD.
+    await expect(
+      unwrapKeyFromSenderX25519(legacy, bob.privateKey, keyWrapAad(alice.publicKey)),
+    ).rejects.toBeTruthy();
+  });
+
+  it('déchiffre les enveloppes historiques SANS AAD UNIQUEMENT si explicitement autorisé', async () => {
     const alice = generateX25519KeyPair();
     const bob = generateX25519KeyPair();
     const rawKey = crypto.getRandomValues(new Uint8Array(32));
     const legacy = await wrapKeyForRecipientX25519(rawKey, alice.privateKey, alice.publicKey, bob.publicKey);
-    const unwrapped = await unwrapKeyFromSenderX25519(legacy, bob.privateKey, keyWrapAad(alice.publicKey));
+    const unwrapped = await unwrapKeyFromSenderX25519(
+      legacy,
+      bob.privateKey,
+      keyWrapAad(alice.publicKey),
+      { allowLegacyNoAad: true },
+    );
     expect(Array.from(unwrapped)).toEqual(Array.from(rawKey));
   });
 
@@ -108,5 +125,35 @@ describe('x25519', () => {
     // Mauvais signataire → invalide.
     const otherSeed = crypto.getRandomValues(new Uint8Array(32));
     expect(verifyX25519PublicKeySignature(b64(ed25519.getPublicKey(otherSeed)), kp.publicKey, sig)).toBe(false);
+  });
+
+  it('lie la signature de clé au COMPTE : la clé d\'Alice est refusée sous l\'id de Bob', () => {
+    const aliceKey = generateX25519KeyPair();
+    const seed = crypto.getRandomValues(new Uint8Array(32));
+    const signerPriv = b64(seed);
+    const signerPub = b64(ed25519.getPublicKey(seed));
+
+    // Alice signe SA clé en étant liée à SON compte.
+    const sig = signX25519PublicKey(signerPriv, aliceKey.publicKey, 'alice-id');
+
+    // Vérifiée sous l'id d'Alice → OK.
+    expect(verifyX25519PublicKeySignature(signerPub, aliceKey.publicKey, sig, 'alice-id')).toBe(true);
+    // Recopiée sous l'id de Bob → REFUSÉE (le serveur ne peut pas substituer).
+    expect(verifyX25519PublicKeySignature(signerPub, aliceKey.publicKey, sig, 'bob-id')).toBe(false);
+    // Même la « bonne » clé mais un autre userId échoue.
+    expect(verifyX25519PublicKeySignature(signerPub, aliceKey.publicKey, sig, 'carol-id')).toBe(false);
+  });
+
+  it('accepte encore une signature v1 legacy (publiée avant le liage au compte)', () => {
+    const kp = generateX25519KeyPair();
+    const seed = crypto.getRandomValues(new Uint8Array(32));
+    const signerPriv = b64(seed);
+    const signerPub = b64(ed25519.getPublicKey(seed));
+
+    // v1 : pas de userId → signature non liée au compte (format historique).
+    const legacySig = signX25519PublicKey(signerPriv, kp.publicKey);
+    // Rétrocompat : acceptée même quand l'appelant fournit un userId.
+    expect(verifyX25519PublicKeySignature(signerPub, kp.publicKey, legacySig, 'alice-id')).toBe(true);
+    expect(verifyX25519PublicKeySignature(signerPub, kp.publicKey, legacySig)).toBe(true);
   });
 });

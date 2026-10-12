@@ -29,6 +29,8 @@ import {
   generateIdentityKeyPair,
   generateSigningKeyPair,
   generateOneTimePreKeys,
+  PqDowngradeError,
+  PqSenderDowngradeError,
   type PreKeyBundle,
   type RatchetHeader,
   type SessionState,
@@ -38,6 +40,16 @@ import {
 } from './index';
 import { generateX25519KeyPair } from './primitives';
 import { generateMlKemKeyPair, type MlKemKeyPair } from './pqKem';
+
+/**
+ * Erreurs de downgrade post-quantique, ré-exportées depuis `x3dh` pour rester
+ * la surface publique du service (`RatchetPqDowngradeError` couvre les deux
+ * sens : `instanceof` attrape aussi `RatchetPqSenderDowngradeError`).
+ */
+export {
+  PqDowngradeError as RatchetPqDowngradeError,
+  PqSenderDowngradeError as RatchetPqSenderDowngradeError,
+} from './x3dh';
 
 /** Bundle public d'un pair (avec une one-time prekey disponible). */
 export interface PeerBundle {
@@ -74,6 +86,14 @@ export interface RatchetServiceDeps {
   markOneTimePreKeyUsed(peerId: string, oneTimePreKey: string): Promise<void>;
   loadSession(userId: string, peerId: string): Promise<SessionState | null>;
   saveSession(userId: string, peerId: string, state: SessionState): Promise<void>;
+  /**
+   * Épingle (« ce contact a publié une clé PQ ») : mémorise qu'un pair était
+   * PQ-capable, pour détecter qu'il « perd » ensuite sa clé ML-KEM (downgrade
+   * à l'émission). Optionnel : sans ces hooks, la détection par épinglage est
+   * simplement inactive (rétrocompat tests / intégrations).
+   */
+  pinPeerPq?(userId: string, peerId: string): Promise<void>;
+  isPeerPqPinned?(userId: string, peerId: string): Promise<boolean>;
 }
 
 /**
@@ -115,8 +135,9 @@ export interface EncryptedRatchetMessage {
 // ─── Anti-downgrade post-quantique (ML-KEM) ────────────────────────────
 
 /**
- * Erreur levée quand un `ratchet-init` reçu tente de faire retomber une session
- * en mode X3DH **classique** (non PQ) alors que notre clé ML-KEM est publiée.
+ * Garde-fou **réception** : `RatchetPqDowngradeError` (alias de `PqDowngradeError`)
+ * est levée quand un `ratchet-init` reçu tente de faire retomber une session en
+ * mode X3DH **classique** (non PQ) alors que notre clé ML-KEM est publiée.
  *
  * Modèle de menace : un serveur ou un MITM peut retirer la partie post-quantique
  * d'une enveloppe (`pq` / `mlKemCiphertext`) pour « éteindre » silencieusement
@@ -130,16 +151,46 @@ export interface EncryptedRatchetMessage {
  * `ratchet-init` sans PQ dans ce cas est anormale → on REFUSE (fail-closed)
  * plutôt que d'établir une session en downgrade silencieux.
  *
- * NB : côté émetteur, la suppression de la clé PQ du bundle est déjà couverte
- * par `verifyPreKey` — la signature Ed25519 couvre `signedPreKey || mlKemPublicKey`
- * (`signPreKey`), donc un bundle trafiqué échoue à la vérification.
+ * Côté ÉMETTEUR, c'est `RatchetPqSenderDowngradeError` (sous-classe) qui couvre
+ * le cas symétrique : le pair épinglé ne publie plus de clé ML-KEM
+ * (cf. `pinPeerPq` / `x3dhInitiate({ requireMlKem })`).
  */
-export class RatchetPqDowngradeError extends Error {
-  constructor(
-    message = 'Ratchet: downgrade post-quantique détecté (ratchet-init sans ML-KEM alors que la clé PQ est publiée)',
-  ) {
-    super(message);
-    this.name = 'RatchetPqDowngradeError';
+
+// ─── Signalement de sécurité (downgrade PQ) ────────────────────────────
+
+export type RatchetSecurityEventType =
+  | 'pq-downgrade-send'
+  | 'pq-downgrade-receive'
+  | 'pq-unavailable-send';
+
+export interface RatchetSecurityEvent {
+  type: RatchetSecurityEventType;
+  userId: string;
+  peerId: string;
+  message: string;
+}
+
+type RatchetSecurityListener = (event: RatchetSecurityEvent) => void;
+const securityListeners = new Set<RatchetSecurityListener>();
+
+/**
+ * Abonne un écouteur aux signaux de sécurité ratchet (downgrade PQ…).
+ * Retourne une fonction de désabonnement. Les erreurs d'un écouteur ne doivent
+ * jamais interrompre la crypto → elles sont avalées.
+ */
+export function onRatchetSecurityEvent(listener: RatchetSecurityListener): () => void {
+  securityListeners.add(listener);
+  return () => securityListeners.delete(listener);
+}
+
+/** Émet un signal de sécurité (observable, jamais bloquant). */
+export function emitRatchetSecurityEvent(event: RatchetSecurityEvent): void {
+  for (const listener of securityListeners) {
+    try {
+      listener(event);
+    } catch {
+      // un écouteur défaillant ne casse pas le chemin cryptographique
+    }
   }
 }
 
@@ -161,7 +212,9 @@ export function assertPqNotDowngraded(
   envelope: RatchetEnvelope,
 ): void {
   if (localKeys?.mlKemKeyPair && lacksPqPart(envelope)) {
-    throw new RatchetPqDowngradeError();
+    throw new PqDowngradeError(
+      'Ratchet: downgrade post-quantique détecté (ratchet-init sans ML-KEM alors que la clé PQ est publiée)',
+    );
   }
 }
 
@@ -196,16 +249,51 @@ export async function encryptForPeer(
     const bundle = await deps.loadPeerBundle(peerId);
     if (!bundle) throw new Error('Ratchet: bundle du pair indisponible');
 
+    // ── Anti-downgrade post-quantique côté ÉMETTEUR ──────────────────────
+    // Si le pair est épinglé comme PQ-capable (il publiait une clé ML-KEM) mais
+    // que son bundle n'en porte PLUS, on REFUSE l'initiation classique (via
+    // `requireMlKem` → `x3dhInitiate`) au lieu de retomber silencieusement en
+    // X25519 (perte de la protection PQ). On SIGNALE aussi le downgrade.
+    const peerHasPq = !!bundle.mlKemPublicKey;
+    const pinnedPq = deps.isPeerPqPinned ? await deps.isPeerPqPinned(userId, peerId) : false;
+
+    if (!peerHasPq && !pinnedPq && localKeys.mlKemKeyPair) {
+      // Nous sommes PQ-capable mais le pair ne l'est pas : signal informatif
+      // (pas d'échec) — la session reste classique, mais plus silencieuse.
+      emitRatchetSecurityEvent({
+        type: 'pq-unavailable-send',
+        userId,
+        peerId,
+        message: 'Ratchet: pair sans clé ML-KEM, session établie sans protection post-quantique',
+      });
+    }
+
+    // Épingle le pair dès qu'on observe une clé ML-KEM (pour détecter plus tard
+    // qu'il « perd » sa capacité PQ).
+    if (peerHasPq && deps.pinPeerPq) {
+      await deps.pinPeerPq(userId, peerId);
+    }
+
     // One-time prekey : si le pair en publie une, on l'utilise (forward secrecy
     // dès l'init, comme Signal). Sinon le chemin reste valide sans OPK.
     // Capturer AVANT de marquer consommée (l'objet bundle peut être muté).
     const usedOneTimePreKey: string | null = bundle.oneTimePreKey ?? null;
     // Hybride post-quantique : si le pair publie une clé ML-KEM (dont la
-    // signature couvre la clé), on l'utilise. Sinon, chemin X3DH classique.
-    const init = await x3dhInitiate(localKeys.identityKeyPair, {
-      ...toBundle(bundle),
-      oneTimePreKey: usedOneTimePreKey,
-    });
+    // signature couvre la clé), on l'utilise. Sinon, chemin X3DH classique —
+    // MAIS fail-closed si le pair était épinglé PQ (`requireMlKem`).
+    let init;
+    try {
+      init = await x3dhInitiate(
+        localKeys.identityKeyPair,
+        { ...toBundle(bundle), oneTimePreKey: usedOneTimePreKey },
+        { requireMlKem: pinnedPq },
+      );
+    } catch (e) {
+      if (e instanceof PqSenderDowngradeError) {
+        emitRatchetSecurityEvent({ type: 'pq-downgrade-send', userId, peerId, message: e.message });
+      }
+      throw e;
+    }
     session = await initSenderSession(
       init.rootKey,
       bundle.signedPreKey,
@@ -247,6 +335,47 @@ export async function encryptForPeer(
  * Déchiffre un message de ratchet reçu. Si c'est un `ratchet-init` et qu'aucune
  * session n'existe, la session destinataire est créée via X3DH.
  */
+export interface DecryptFromPeerOptions {
+  /**
+   * Force la reconstruction de la session destinataire depuis un `ratchet-init`
+   * (signal explicite : l'appelant sait que la session locale doit être
+   * réinitialisée). Sans ce flag, une session existante n'est réécrite que sur
+   * détection d'une nouvelle clé de ratchet (ré-init côté pair), et jamais sur
+   * simple échec AEAD.
+   */
+  forceRebuild?: boolean;
+  /** Horloge injectable (ms) — défaut `Date.now`. Utile pour tester le rate-limit. */
+  now?: () => number;
+}
+
+/** Fenêtre de rate-limit des reconstructions d'init (ms). */
+const INIT_REBUILD_WINDOW_MS = 60_000;
+/** Nombre max de reconstructions d'init par fenêtre et par session. */
+const INIT_REBUILD_MAX = 4;
+const initRebuildHistory = new Map<string, number[]>();
+
+/**
+ * Autorise (et enregistre) la reconstruction d'une session EXISTANTE. Bornée
+ * pour empêcher qu'un flot de `ratchet-init` forgés/rejoués ne détruise la
+ * session en boucle (DoS d'état). Le tout premier build (aucune session) n'est
+ * PAS concerné.
+ */
+function allowInitRebuild(key: string, now: number): boolean {
+  const recent = (initRebuildHistory.get(key) ?? []).filter(t => now - t < INIT_REBUILD_WINDOW_MS);
+  if (recent.length >= INIT_REBUILD_MAX) {
+    initRebuildHistory.set(key, recent);
+    return false;
+  }
+  recent.push(now);
+  initRebuildHistory.set(key, recent);
+  return true;
+}
+
+/** Réinitialise le rate-limit des reconstructions (tests / « reset chiffrement »). */
+export function resetInitRebuildRateLimit(): void {
+  initRebuildHistory.clear();
+}
+
 export async function decryptFromPeer(
   deps: RatchetServiceDeps,
   userId: string,
@@ -255,13 +384,27 @@ export async function decryptFromPeer(
   content: string,
   senderId?: string | null,
   senderIdentityKey?: string | null,
+  opts?: DecryptFromPeerOptions,
 ): Promise<string> {
   const buildReceiverSession = async (): Promise<SessionState | null> => {
     const localKeys = await deps.loadLocalKeys(userId);
     if (!localKeys) return null;
     // Fail-closed : on ne construit JAMAIS une session destinataire en mode
-    // dégradé (sans ML-KEM) si nous avons publié une clé post-quantique.
-    assertPqNotDowngraded(localKeys, envelope);
+    // dégradé (sans ML-KEM) si nous avons publié une clé post-quantique. On
+    // SIGNALE toute tentative de downgrade (observable), avant de refuser.
+    try {
+      assertPqNotDowngraded(localKeys, envelope);
+    } catch (e) {
+      if (e instanceof PqDowngradeError) {
+        emitRatchetSecurityEvent({
+          type: 'pq-downgrade-receive',
+          userId,
+          peerId: senderId ?? 'inconnu',
+          message: e.message,
+        });
+      }
+      throw e;
+    }
     if (!envelope.ephemeralPublicKey) return null;
 
     // Identité de l'initiateur, par ordre de priorité :
@@ -299,13 +442,26 @@ export async function decryptFromPeer(
 
   let session = await deps.loadSession(userId, sessionId);
 
-  // (Re)construit la session destinaire depuis l'init si absente OU si l'init
-  // annonce une clé de ratchet différente de la session stockée (périmée).
+  // On ne reconstruit la session destinataire QUE si :
+  //   • aucune session n'existe (première réception) ; OU
+  //   • sur signal EXPLICITE de ré-initialisation : `forceRebuild`, ou une clé
+  //     de ratchet (éphémère) différente de celle stockée — preuve que le pair
+  //     a bien démarré une NOUVELLE session.
   if (envelope.type === 'ratchet-init') {
-    const stale = !!session && session.remoteRatchetPublicKey && session.remoteRatchetPublicKey !== envelope.ephemeralPublicKey;
-    if (!session || stale) {
-      const fresh = await buildReceiverSession();
-      if (fresh) session = fresh;
+    const stale =
+      !!session &&
+      !!session.remoteRatchetPublicKey &&
+      session.remoteRatchetPublicKey !== envelope.ephemeralPublicKey;
+    const wantsRebuild = !session || stale || opts?.forceRebuild === true;
+    if (wantsRebuild) {
+      // Le tout premier build est toujours autorisé. RÉÉCRIRE une session
+      // existante est borné (rate-limit) : un flot de `ratchet-init` forgés ou
+      // rejoués ne doit pas pouvoir détruire la session en boucle (DoS d'état).
+      const now = (opts?.now ?? Date.now)();
+      if (!session || allowInitRebuild(`${userId}|${sessionId}`, now)) {
+        const fresh = await buildReceiverSession();
+        if (fresh) session = fresh;
+      }
     }
   }
 
@@ -313,32 +469,17 @@ export async function decryptFromPeer(
     throw new Error('Ratchet: aucune session pour ce message');
   }
 
-  try {
-    const text = await ratchetDecrypt(session, {
-      header: envelope.header,
-      ivB64: envelope.iv,
-      ctB64: content,
-    });
-    await deps.saveSession(userId, sessionId, session);
-    return text;
-  } catch (e) {
-    // Sécurité fiabilité : si le déchiffrement échoue (session périmée /
-    // divergente) ET qu'un `ratchet-init` est fourni, on reconstruit la
-    // session depuis zéro (X3DH déterministe) et on réessaie une fois.
-    if (envelope.type === 'ratchet-init') {
-      const fresh = await buildReceiverSession();
-      if (fresh) {
-        const text = await ratchetDecrypt(fresh, {
-          header: envelope.header,
-          ivB64: envelope.iv,
-          ctB64: content,
-        });
-        await deps.saveSession(userId, sessionId, fresh);
-        return text;
-      }
-    }
-    throw e;
-  }
+  // Plus AUCUNE reconstruction sur échec AEAD : une session valide ne doit
+  // jamais être écrasée parce qu'un message (corrompu / rejoué / divergent) a
+  // échoué à se déchiffrer. La reprise éventuelle passe par le signal explicite
+  // ci-dessus (`forceRebuild` / nouvelle clé de ratchet), pas par un échec.
+  const text = await ratchetDecrypt(session, {
+    header: envelope.header,
+    ivB64: envelope.iv,
+    ctB64: content,
+  });
+  await deps.saveSession(userId, sessionId, session);
+  return text;
 }
 
 /** Indique si une enveloppe décrit un message de ratchet géré ici. */

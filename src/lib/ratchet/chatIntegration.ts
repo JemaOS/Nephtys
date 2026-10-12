@@ -13,7 +13,7 @@
 
 import { supabase } from '../supabase';
 import { getLocalRatchetKeys, loadPeerBundle, markOneTimePreKeyUsed } from './keyStore';
-import { loadSession, saveSession } from './sessionStore';
+import { loadSession, saveSession, pinPeerPq, isPeerPqPinned } from './sessionStore';
 import { getCachedPlaintext, setCachedPlaintext } from './decryptCache';
 import {
   decryptFromPeer,
@@ -30,6 +30,8 @@ const deps: RatchetServiceDeps = {
   markOneTimePreKeyUsed,
   loadSession,
   saveSession,
+  pinPeerPq,
+  isPeerPqPinned,
 };
 
 /**
@@ -86,14 +88,22 @@ export async function tryEncryptWithRatchet(
   const RATCHET_SEND_ENABLED = true;
   if (!RATCHET_SEND_ENABLED) return null;
 
+  let peerId: string | null = null;
   try {
-    const peerId = await directPeerId(userId, conversationId);
+    peerId = await directPeerId(userId, conversationId);
     if (!peerId) return null;
     if (!(await getLocalRatchetKeys(userId))) return null;
 
     const { content, envelope } = await encryptForPeer(deps, userId, conversationId, peerId, plaintext);
     return { content, encryptionMetadata: envelope };
   } catch (e) {
+    // Downgrade post-quantique côté ÉMETTEUR : on ne retombe PAS silencieusement
+    // en X25519. Le service a déjà émis un signal `pq-downgrade-send` ; on le
+    // relaie bruyamment pour qu'il soit visible (jamais avalé en silence).
+    if (e instanceof RatchetPqDowngradeError) {
+      console.error('[ratchet] DOWNGRADE post-quantique (émission) :', e.message);
+      return null;
+    }
     console.warn('[ratchet] chiffrement indisponible, repli sur X25519:', e);
     return null;
   }

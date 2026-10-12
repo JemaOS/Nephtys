@@ -259,6 +259,8 @@ async function resolveMediaRawKey(
         { encryptedKey: keyRow.encrypted_key, iv: keyRow.iv, senderPublicKey },
         myKeyPair.privateKey,
         keyWrapAad(senderPublicKey),
+        // Historique : enveloppes média antérieures à l'AAD → repli explicite.
+        { allowLegacyNoAad: true },
       );
     } catch {
       return null;

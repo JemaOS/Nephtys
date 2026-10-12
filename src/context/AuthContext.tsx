@@ -8,7 +8,7 @@ import { supabase, Profile } from '@/lib/supabase'
 import { initializePresence, cleanupPresence } from '@/hooks/usePresence'
 import { resolveMediaUrl } from '@/lib/mediaUrl'
 import { deleteMyMessages } from '@/lib/conversationService'
-import { setupRecoveryKeys, installKeysFromPhrase, hasLocalKeys, regenerateRecoveryKeys, verifyCurrentPhrase } from '@/lib/recovery/recoveryService'
+import { setupRecoveryKeys, installKeysFromPhrase, hasLocalKeys, regenerateRecoveryKeys, verifyCurrentPhrase, checkPhraseMatchesAccount } from '@/lib/recovery/recoveryService'
 import { getMFAChallenge, verifyMFAChallenge } from '@/lib/twoFactorAuth'
 import { clearLocalRatchetKeys } from '@/lib/ratchet/keyStore'
 import { clearUserSessions } from '@/lib/ratchet/sessionStore'
@@ -113,6 +113,8 @@ interface AuthContextType {
   recoveryRequired: boolean
   /** Confirme que l'utilisateur a sauvegardé la phrase. */
   confirmPhraseSaved: () => void
+  /** Lève l'exigence de récupération (ex. après une liaison d'appareil réussie). */
+  clearRecoveryRequired: () => void
   /** Restaure les clés depuis la phrase de récupération. */
   completeRecovery: (phrase: string) => Promise<void>
   /** Régénère les clés (nouvelle phrase) — exige la preuve de l'ancienne. */
@@ -362,6 +364,24 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
     }
   }, [applyMfaPending])
 
+  /**
+   * Expose un utilisateur APRÈS résolution du gate 2FA : `setUser` + cache +
+   * profil + présence + exigence de récupération. Aucun appelant ne doit
+   * exposer l'utilisateur avant que le second facteur soit évalué, sinon des
+   * routes protégées seraient montées en aal1.
+   */
+  const applyUser = useCallback((u: User) => {
+    setUser(u)
+    cacheUser(u)
+    loadProfile(u.id)
+    initializePresence(u.id)
+    // « Zéro serveur » : si l'appareil n'a pas les clés locales (nouvel
+    // appareil / IndexedDB vidé), exiger la phrase de récupération.
+    void hasLocalKeys(u.id)
+      .then(ok => { if (!ok) setRecoveryRequired(true) })
+      .catch(() => {})
+  }, [])
+
   useEffect(() => {
     // Get initial session with timeout and offline fallback
     const initAuth = async () => {
@@ -401,18 +421,7 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
             // l'état dès qu'elle aboutit).
             applyMfaPending({ status: 'unavailable' });
           }
-
-          setUser(session.user);
-          cacheUser(session.user);
-          // Load profile in background, don't block
-          loadProfile(session.user.id);
-          // Initialize presence tracking
-          initializePresence(session.user.id);
-          // « Zéro serveur » : si l'appareil n'a pas les clés locales (nouvel
-          // appareil / IndexedDB vidé), exiger la phrase de récupération.
-          void hasLocalKeys(session.user.id)
-            .then(ok => { if (!ok) setRecoveryRequired(true); })
-            .catch(() => {});
+          applyUser(session.user);
         } else if (cachedUser) {
           // Pas de session fraîche (hors-ligne / jeton expiré) : on affiche le
           // cache local. Aucun jeton valide n'est présent → pas de gate MFA.
@@ -445,32 +454,10 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       const newUser = session?.user ?? null;
-      setUser(newUser);
-      cacheUser(newUser);
-      
-      if (session?.user) {
-        loadProfile(session.user.id);
-        // Initialize presence tracking when user logs in
-        initializePresence(session.user.id);
-        void hasLocalKeys(session.user.id)
-          .then(ok => { if (!ok) setRecoveryRequired(true); })
-          .catch(() => {});
 
-        // Réévalue le gate 2FA sur les événements de (re)connexion. Sans cela,
-        // un rechargement (INITIAL_SESSION) ou un rafraîchissement de jeton
-        // (TOKEN_REFRESHED) laisserait passer une session de niveau aal1 sans
-        // le second facteur. Le flux `signIn` gère déjà le gate : on l'ignore
-        // ici pour éviter une double création de challenge.
-        if (
-          !mfaLoginFlowRef.current &&
-          authInitDoneRef.current &&
-          (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION')
-        ) {
-          // TOKEN_REFRESHED = événement de fond → pas de blocage sur erreur
-          // transitoire (failClosed = false).
-          void evaluateMfaGate(event !== 'TOKEN_REFRESHED')
-        }
-      } else {
+      if (!newUser) {
+        setUser(null);
+        cacheUser(null);
         setProfile(null);
         cacheProfile(null);
         // Cleanup presence when user logs out
@@ -478,7 +465,26 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
         applyMfaPending(null);
         mfaAttemptsRef.current = 0;
         writeMfaAttempts(0);
+        return;
       }
+
+      // Anti-bypass : on n'expose JAMAIS l'utilisateur avant que le gate 2FA ne
+      // soit résolu (setUser AVANT la résolution montait les routes en aal1).
+      // Le flux de connexion explicite (signIn) gère l'exposition lui-même
+      // après SA propre résolution du gate : on ne double pas ici.
+      if (mfaLoginFlowRef.current) return;
+
+      void (async () => {
+        if (
+          authInitDoneRef.current &&
+          (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION')
+        ) {
+          // TOKEN_REFRESHED = événement de fond → pas de blocage sur erreur
+          // transitoire (failClosed = false).
+          await evaluateMfaGate(event !== 'TOKEN_REFRESHED');
+        }
+        applyUser(newUser);
+      })();
     })
 
     return () => subscription.unsubscribe()
@@ -604,15 +610,18 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
         // restauration (multi-appareil) : sinon les conversations se chargent
         // avant que les clés (ratchet) soient en IndexedDB → « clés locales
         // absentes » → 🔒. Les fonctions ne lèvent jamais (try/catch interne).
-        const userId = data.data.session.user?.id
-        if (userId && !(await hasLocalKeys(userId))) {
-          setRecoveryRequired(true)
-        } else if (userId) {
-          // Best-effort : publier la signature Ed25519 de la clé X25519 déjà
-          // installée (authentifie les clés existantes sans rotation).
-          void import('@/lib/e2eeX25519')
-            .then(m => m.publishX25519Signature(userId))
-            .catch(() => {})
+        const sessionUser = data.data.session.user
+        const userId = sessionUser?.id
+        if (sessionUser) {
+          // Gate résolu : on expose enfin l'utilisateur (voir applyUser).
+          applyUser(sessionUser)
+          if (userId && (await hasLocalKeys(userId))) {
+            // Best-effort : publier la signature Ed25519 de la clé X25519 déjà
+            // installée (authentifie les clés existantes sans rotation).
+            void import('@/lib/e2eeX25519')
+              .then(m => m.publishX25519Signature(userId))
+              .catch(() => {})
+          }
         }
       } else {
         throw new Error(tStatic('authNoSession'))
@@ -883,9 +892,18 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
 
   const confirmPhraseSaved = () => setPendingPhrase(null)
 
+  const clearRecoveryRequired = useCallback(() => setRecoveryRequired(false), [])
+
   const completeRecovery = async (phrase: string) => {
     const uid = user?.id
     if (!uid) throw new Error('Non connecté')
+    // Vérifie la phrase contre les clés PUBLIQUES déjà publiées du compte AVANT
+    // toute (ré)installation : un simple porteur de session ne doit pas pouvoir
+    // substituer les clés avec une phrase arbitraire.
+    const check = await checkPhraseMatchesAccount(uid, phrase)
+    if (check.published && !check.matches) {
+      throw new Error(tStatic('recoveryPhraseMismatch'))
+    }
     await installKeysFromPhrase(uid, phrase)
     setRecoveryRequired(false)
   }
@@ -915,6 +933,14 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
       mfaAttemptsRef.current = 0
       writeMfaAttempts(0)
       applyMfaPending(null)
+      // Événement de connexion géré par signIn (mfaLoginFlowRef) : on expose
+      // maintenant la session, le second facteur étant résolu.
+      try {
+        const { data } = await supabase.auth.getSession()
+        if (data.session?.user) applyUser(data.session.user)
+      } catch {
+        // best effort : le refresh d'état exposera l'utilisateur
+      }
       return { success: true }
     }
     // Compteur persisté (sessionStorage) : un rechargement (F5) ne le
@@ -961,6 +987,7 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
     pendingPhrase,
     recoveryRequired,
     confirmPhraseSaved,
+    clearRecoveryRequired,
     completeRecovery,
     regenerateRecovery,
     mfaPending,

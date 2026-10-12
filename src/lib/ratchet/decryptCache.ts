@@ -18,7 +18,7 @@
  * l'app (offlineStorage), lui aussi chiffré au repos.
  */
 
-import { sealAtRest, openAtRest } from '../atRestCrypto';
+import { sealAtRestStrict, openAtRest } from '../atRestCrypto';
 
 const DB_NAME = 'nephtys-ratchet-decrypt';
 const STORE = 'plaintexts';
@@ -70,7 +70,12 @@ export async function setCachedPlaintext(
 ): Promise<void> {
   try {
     const db = await openDb();
-    const stored = await sealAtRest(payload);
+    // Le payload est du CLAIR déchiffré → chiffrement au repos STRICT : si le
+    // chiffrement est indisponible, `sealAtRestStrict` échoue et l'entrée n'est
+    // PAS écrite (fail-closed : jamais de clair brut sur disque). L'échec reste
+    // avalé (cache best-effort) : on n'échoue pas le déchiffrement, on renonce
+    // simplement à la mise en cache.
+    const stored = await sealAtRestStrict(payload);
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(STORE, 'readwrite');
       tx.objectStore(STORE).put(stored, cacheKey(userId, content));
@@ -78,6 +83,7 @@ export async function setCachedPlaintext(
       tx.onerror = () => reject(tx.error);
     });
   } catch {
-    // best effort : le cache ne doit jamais faire échouer le déchiffrement
+    // best effort : pas de cache (et surtout pas de clair en clair) si le
+    // chiffrement au repos est indisponible.
   }
 }

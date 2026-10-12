@@ -84,7 +84,7 @@ export const fetchUnreadCounts = async (conversationIds: string[], userId: strin
   // lus et on résout l'expéditeur côté client via les blobs sealed.
   const { data, error } = await supabase
     .from('messages')
-    .select('id, conversation_id, sender_id, content, sender_sealed')
+    .select('id, conversation_id, sender_id, content, sender_sealed, created_at')
     .in('conversation_id', conversationIds)
     .neq('status', 'read')
     .is('deleted_at', null)
@@ -98,6 +98,7 @@ export const fetchUnreadCounts = async (conversationIds: string[], userId: strin
     sender_id: string | null
     content: string
     sender_sealed?: unknown
+    created_at?: string
   }>
 
   await resolveSealedSenders(rows, userId)
@@ -128,7 +129,7 @@ export async function deleteMyMessages(userId: string): Promise<void> {
 
   const { data } = await supabase
     .from('messages')
-    .select('id, conversation_id, sender_id, content, sender_sealed')
+    .select('id, conversation_id, sender_id, content, sender_sealed, created_at')
     .in('conversation_id', convIds)
 
   const rows = (data ?? []) as Array<{
@@ -137,6 +138,7 @@ export async function deleteMyMessages(userId: string): Promise<void> {
     sender_id: string | null
     content: string
     sender_sealed?: unknown
+    created_at?: string
   }>
 
   await resolveSealedSenders(rows, userId)

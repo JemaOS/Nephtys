@@ -11,11 +11,14 @@
  * Cas d'usage :
  *   • avatars/<userId>/...    → URL signée (visible par tous les authentifiés)
  *   • groups/<convId>/...     → URL signée (visible par les membres de la conv)
+ *   • groups/<convId>/<opaque> → média de conversation OPAQUE (nouveau format,
+ *                                cf. buildOpaqueMediaPath — ni uid ni nom d'origine)
  *   • <userId>/<folder>/...   → URL signée (visible par les membres de la conv)
  *   • restored/<userId>/...   → URL signée (visible par le propriétaire)
  */
 
 import { supabase } from './supabase';
+import { randomBytes, bytesToBase64 } from './ratchet/primitives';
 
 const BUCKET = 'media';
 const SIGN_DURATION_SECONDS = 60 * 60; // 1 heure
@@ -49,6 +52,47 @@ export function extractStoragePath(urlOrPath: string): string {
 
   // Sinon : on suppose que c'est déjà un path
   return urlOrPath;
+}
+
+/**
+ * Identifiant opaque non devinable pour un nom d'objet (96 bits, base64url).
+ * Même génération que `lib/relay/fileTransfer.ts` (préfixe aléatoire).
+ */
+function opaqueObjectToken(): string {
+  return bytesToBase64(randomBytes(12))
+    .replaceAll('+', '-')
+    .replaceAll('/', '_')
+    .replaceAll('=', '');
+}
+
+/**
+ * Construit un chemin d'objet OPAQUE pour le bucket privé `media`.
+ *
+ * AVANT : `${userId}/${folder}/${Date.now()}_${safeName}` — le nom d'objet
+ *   contenait l'uploadeur (UUID), l'horodatage client et le nom d'origine : le
+ *   serveur Storage (et tout lecteur du path) savait QUI a envoyé, QUAND, et
+ *   quel fichier → le sealed sender était annulé pour médias/fichiers/vocaux.
+ *
+ * APRÈS : `groups/<conversationId>/<token>.<ext>` où `token` est aléatoire :
+ *   plus d'uid, plus d'horodatage, plus de nom d'origine. Le nom d'origine et
+ *   l'horodatage réels restent transmis dans les métadonnées du message
+ *   (`file_name` / payload chiffré), jamais dans le nom d'objet.
+ *
+ * Le préfixe `groups/<conversationId>/` est choisi car c'est le seul périmètre
+ * que les policies Storage du bucket `media` autorisent (INSERT/UPDATE/DELETE/
+ * SELECT « membre de la conversation », cf. 20261027/20261028) sans révéler
+ * l'uploadeur : l'upload, la lecture (URL signée) et la suppression continuent
+ * de fonctionner SANS migration. L'extension est conservée (whitelist MIME +
+ * inférence au téléchargement) mais date/nom ne sont plus exposés.
+ *
+ * L'id de conversation n'est pas un secret pour le serveur : il est déjà en
+ * clair sur `messages.conversation_id`, donc l'ajouter ici n'ajoute aucune
+ * fuite, alors qu'il permet le scoping « membres » des policies.
+ */
+export function buildOpaqueMediaPath(conversationId: string, ext?: string | null): string {
+  const safeExt = (ext ?? '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase().slice(0, 8);
+  const object = safeExt ? `${opaqueObjectToken()}.${safeExt}` : opaqueObjectToken();
+  return `groups/${conversationId}/${object}`;
 }
 
 /**

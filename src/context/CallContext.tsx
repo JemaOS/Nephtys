@@ -616,10 +616,11 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
         endCall()
       })
 
+      // Anonymat : on n'envoie AUCUN identifiant (ni caller_id ni callee_id).
+      // Le trigger `trg_call_logs_refs` (migration 20261035) dérive les
+      // pseudonymes côté serveur à partir de la session et de la conversation.
       const { data: callLogData, error: callLogError } = await supabase.from('call_logs').insert({
         conversation_id: conversationId,
-        caller_id: callerId,
-        callee_id: userId,
         type: config.video ? 'video' : 'audio',
         status: 'initiated',
       }).select()
@@ -739,10 +740,10 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
         conversation_id: incomingCallSignal.conversation_id,
       })
 
+      // Anonymat : aucun identifiant envoyé. Le trigger serveur déduit
+      // l'initiateur (le pair) du `status: 'answered'` et de la conversation.
       const { data: answerCallLogData, error: answerCallLogError } = await supabase.from('call_logs').insert({
         conversation_id: incomingCallSignal.conversation_id,
-        caller_id: incomingCallSignal.from,
-        callee_id: user?.id ?? "",
         type: config.video ? 'video' : 'audio',
         status: 'answered',
       }).select()
@@ -1083,7 +1084,7 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
       )
 
       // Log the call
-      await logGroupCall(conversationId, config.video, callerId)
+      await logGroupCall(conversationId, config.video)
     } catch (error) {
       console.error('Error starting group call:', error)
       setIsCalling(false)
@@ -1093,11 +1094,11 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
   }
 
   // Helper to log group call
-  const logGroupCall = async (conversationId: string, isVideo: boolean, callerId: string) => {
+  const logGroupCall = async (conversationId: string, isVideo: boolean) => {
+    // Anonymat : aucun identifiant envoyé. Le trigger serveur marque l'appel de
+    // groupe en posant caller_id = callee_id = pseudonyme de l'initiateur.
     const { data: callLogData, error: callLogError } = await supabase.from('call_logs').insert({
       conversation_id: conversationId,
-      caller_id: callerId,
-      callee_id: callerId,
       type: isVideo ? 'video' : 'audio',
       status: 'initiated',
     }).select()
@@ -1121,11 +1122,12 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
     
     if (conversationId && userId) {
       try {
+        // Anonymat : on ne filtre plus par caller_id (désormais un pseudonyme
+        // inconnu du client). La conversation la plus récente suffit.
         const { data: callLog } = await supabase
           .from('call_logs')
           .select('id')
           .eq('conversation_id', conversationId)
-          .eq('caller_id', userId)
           .order('started_at', { ascending: false })
           .limit(1)
           .maybeSingle()

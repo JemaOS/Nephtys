@@ -41,7 +41,17 @@ export const initializePresence = (userId: string) => {
 
   currentUserId = userId
 
-  // Create presence channel
+  // ⚠️ SÉCURITÉ — énumération cross-users (risque documenté volontairement).
+  // Ce canal `online-users` est un canal de présence PUBLIC partagé : il est
+  // keyé par `userId` et tout client authentifié du projet Supabase peut s'y
+  // abonner puis lire `presenceState()`, ce qui révèle QUI est en ligne (fuite
+  // d'existence/activité, cross-tenant). Le limiter aux conversations/contacts
+  // n'est PAS simple ici : il faudrait un canal par conversation (et connaître
+  // l'ensemble des contacts), ou activer l'autorisation Realtime de Supabase
+  // (canal privé + policies RLS sur `realtime.messages`), ce qui est une
+  // configuration serveur hors de ce hook. En attendant, on accepte ce risque
+  // et on ne propage aucune donnée sensible via la présence (uniquement des
+  // userId déjà visibles dans le graphe social de l'utilisateur).
   globalPresenceChannel = supabase.channel('online-users', {
     config: {
       presence: {

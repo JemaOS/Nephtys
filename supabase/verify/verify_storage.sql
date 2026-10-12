@@ -157,4 +157,50 @@ FROM pg_policies
 WHERE schemaname = 'storage' AND tablename = 'objects'
   AND policyname LIKE 'media%'
 ORDER BY policyname;
+
+-- ============================================================================
+-- 11) Vérifications des correctifs 20261036 (item #2 : anon_files)
+-- ============================================================================
+
+-- 11a) anon_files DELETE bucket-wide ABSENT (deny by default). ATTENDU : 0 ligne.
+SELECT policyname, cmd, qual
+FROM pg_policies
+WHERE schemaname = 'storage' AND tablename = 'objects'
+  AND cmd = 'DELETE'
+  AND (policyname LIKE 'anon_files%' OR coalesce(qual, '') ILIKE '%anon_files%')
+ORDER BY policyname;
+
+-- 11b) anon_files INSERT resserré : 1 ligne, with_check resserré à la capacité
+--      (regex de préfixe / foldername à un seul segment).
+--      ATTENDU : 1 ligne `anon_files_insert` avec with_check non trivial.
+SELECT policyname, cmd, with_check
+FROM pg_policies
+WHERE schemaname = 'storage' AND tablename = 'objects'
+  AND policyname = 'anon_files_insert';
+
+-- 11b-bis) Résidu INSERT bucket-only (sans contrainte de préfixe) interdit.
+--      ATTENDU : 0 ligne.
+SELECT policyname, with_check
+FROM pg_policies
+WHERE schemaname = 'storage' AND tablename = 'objects'
+  AND policyname = 'anon_files_insert'
+  AND with_check NOT ILIKE '%foldername%'
+  AND with_check NOT ILIKE '%A-Za-z0-9_-%';
+
+-- 11c) anon_files SELECT bucket-wide ABSENT (fin de l'énumération).
+--      ATTENDU : 0 ligne.
+SELECT policyname, cmd, qual
+FROM pg_policies
+WHERE schemaname = 'storage' AND tablename = 'objects'
+  AND cmd = 'SELECT'
+  AND (policyname LIKE 'anon_files%' OR coalesce(qual, '') ILIKE '%anon_files%')
+ORDER BY policyname;
+
+-- 11d) media : re-vérification post-20261036 (état final scopé).
+--      ATTENDU : 4 lignes (les 4 `media_*_scoped`).
+SELECT policyname, cmd
+FROM pg_policies
+WHERE schemaname = 'storage' AND tablename = 'objects'
+  AND policyname LIKE 'media%'
+ORDER BY policyname;
 -- ============================================================================
