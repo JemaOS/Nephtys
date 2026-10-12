@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { RelayCore, type StoredEnvelope } from './relayCore';
 import { LocalWire } from './wire';
-import { GroupMessenger, InMemoryGroupStore, type GroupRecord, type GroupMember } from './groupMessenger';
+import { GroupMessenger, InMemoryGroupStore, groupAdmins, type GroupRecord, type GroupMember } from './groupMessenger';
 import { generateGroupSigningPair, signGroupPayload } from './groupAuth';
 import { encryptGroupMessage, rotateGroupKeys } from './groupKeys';
 
@@ -206,8 +206,8 @@ describe('GroupMessenger — autorité admin & anti-rejeu (audit S1)', () => {
 
     const attacker = generateGroupSigningPair();
     const { state: rotated, keyB64: k1 } = rotateGroupKeys(record.keys);
-    // adminKey retirée → mode hérité tolérant, et enveloppe v1 (sans `v`).
-    const rec: GroupRecord = withKnownMember({ ...record, adminKey: undefined }, attacker.publicKey);
+    // adminKey/admins retirées → mode hérité tolérant, et enveloppe v1 (sans `v`).
+    const rec: GroupRecord = withKnownMember({ ...record, adminKey: undefined, admins: undefined }, attacker.publicKey);
     const stored = await forge({
       groupId: gid, from: attacker.publicKey, privateKey: attacker.privateKey,
       epoch: rec.keys.currentEpoch, keyB64: rec.keys.keys[String(rec.keys.currentEpoch)],
@@ -232,3 +232,110 @@ describe('GroupMessenger — autorité admin & anti-rejeu (audit S1)', () => {
     await expect(alice.removeMember(record.groupId, 'inviter')).rejects.toThrow(/administrateur/i);
   });
 });
+
+describe('GroupMessenger — ensemble d’admins, promotion & rotation (audit S2)', () => {
+  it('un admin promeut un membre → ce membre peut ensuite signer `members`/`rotate`', async () => {
+    const core = new RelayCore();
+    const creator = mk(core);
+    const alice = mk(core);
+    const { record, invite } = await creator.create('Team');
+    const gid = record.groupId;
+
+    const aRec = await alice.join(invite, 'Alice');
+    const unsubC = creator.subscribe(gid, () => {});
+    const unsubA = alice.subscribe(gid, () => {});
+    await waitFor(async () => (await memberCount(creator, gid)) >= 1);
+
+    const aliceKey = aRec.signing.publicKey;
+    await creator.promoteMember(gid, aliceKey);
+
+    // Alice apprend son nouveau rôle : l'ensemble d'admins est diffusé signé.
+    await waitFor(async () => groupAdmins(await recordOf(alice, gid)).includes(aliceKey));
+    expect(groupAdmins(await recordOf(creator, gid))).toContain(aliceKey);
+
+    // Alice, désormais admin, peut imposer un `rotate` signé : le créateur
+    // l'accepte (il fait partie du nouvel ensemble).
+    const rec = await recordOf(creator, gid);
+    const epoch = rec.keys.currentEpoch;
+    const { state: rotated, keyB64 } = rotateGroupKeys(rec.keys);
+    const stored = await forge({
+      groupId: gid, from: aliceKey, privateKey: aRec.signing.privateKey,
+      epoch, keyB64: rec.keys.keys[String(epoch)], seq: 7000,
+      payload: { type: 'rotate', epoch: rotated.currentEpoch, key: keyB64, v: 3 },
+    });
+    const out = await handleIncomingOf(creator)(rec, stored, () => {});
+    expect(out.keys.currentEpoch).toBe(rotated.currentEpoch);
+    expect(out.keys.keys[String(rotated.currentEpoch)]).toBe(keyB64);
+
+    // Et l'API d'administration ne la rejette plus (elle est admin).
+    await expect(alice.removeMember(gid, 'inviter')).resolves.toBeUndefined();
+    unsubC(); unsubA();
+  });
+
+  it('un non-admin ne peut pas promouvoir (API refusée, `promote` forgé ignoré)', async () => {
+    const core = new RelayCore();
+    const creator = mk(core);
+    const alice = mk(core);
+    const { record, invite } = await creator.create('Team');
+    const gid = record.groupId;
+    await alice.join(invite, 'Alice');
+    await expect(alice.promoteMember(gid, 'AAAA')).rejects.toThrow(/administrateur/i);
+
+    // Un membre connu non-admin qui forge un `promote` est ignoré.
+    const attacker = generateGroupSigningPair();
+    const rec = withKnownMember(await recordOf(creator, gid), attacker.publicKey);
+    const epoch = rec.keys.currentEpoch;
+    const stored = await forge({
+      groupId: gid, from: attacker.publicKey, privateKey: attacker.privateKey,
+      epoch, keyB64: rec.keys.keys[String(epoch)], seq: 6000,
+      payload: { type: 'promote', member: attacker.publicKey, admins: [rec.adminKey!, attacker.publicKey], v: 3 },
+    });
+    const out = await handleIncomingOf(creator)(rec, stored, () => {});
+    expect(groupAdmins(out)).not.toContain(attacker.publicKey);
+  });
+
+  it('on ne peut pas retirer le dernier admin', async () => {
+    const core = new RelayCore();
+    const creator = mk(core);
+    const { record } = await creator.create('Team');
+    const gid = record.groupId;
+    const adminKey = record.signing.publicKey;
+
+    await expect(creator.demoteAdmin(gid, adminKey)).rejects.toThrow(/dernier administrateur/i);
+
+    // Un `demote` forgé qui viderait l'ensemble d'admins est ignoré (jamais 0).
+    const rec = await recordOf(creator, gid);
+    const stored = await forge({
+      groupId: gid, from: adminKey, privateKey: record.signing.privateKey,
+      epoch: rec.keys.currentEpoch, keyB64: rec.keys.keys[String(rec.keys.currentEpoch)], seq: 8000,
+      payload: { type: 'demote', member: adminKey, admins: [], v: 3 },
+    });
+    const out = await handleIncomingOf(creator)(rec, stored, () => {});
+    expect(groupAdmins(out)).toContain(adminKey);
+    expect(groupAdmins(out).length).toBeGreaterThan(0);
+  });
+
+  it('un admin peut retirer un autre admin (l’ensemble est diffusé, jamais vide)', async () => {
+    const core = new RelayCore();
+    const creator = mk(core);
+    const alice = mk(core);
+    const { record, invite } = await creator.create('Team');
+    const gid = record.groupId;
+
+    const aRec = await alice.join(invite, 'Alice');
+    const unsubC = creator.subscribe(gid, () => {});
+    const unsubA = alice.subscribe(gid, () => {});
+    await waitFor(async () => (await memberCount(creator, gid)) >= 1);
+    const aliceKey = aRec.signing.publicKey;
+
+    await creator.promoteMember(gid, aliceKey);
+    await waitFor(async () => groupAdmins(await recordOf(alice, gid)).includes(aliceKey));
+
+    await creator.demoteAdmin(gid, aliceKey);
+    await waitFor(async () => !groupAdmins(await recordOf(alice, gid)).includes(aliceKey));
+    const c = await recordOf(creator, gid);
+    expect(groupAdmins(c)).toEqual([c.signing.publicKey]);
+    unsubC(); unsubA();
+  });
+});
+

@@ -2,7 +2,7 @@
 // Distributed under the license specified in the root directory of this project.
 
 import React, { useState } from 'react';
-import { UserPlus, UserMinus, Edit, Trash2, LogOut, Crown, Camera } from 'lucide-react';
+import { UserPlus, UserMinus, Edit, Trash2, LogOut, Crown, Camera, ShieldOff } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { invalidateMediaUrl } from '@/lib/mediaUrl';
 import { MediaImg } from './MediaImg';
@@ -101,6 +101,10 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({
       return;
     }
 
+    if (!confirm(t('promoteAdmin'))) {
+      return;
+    }
+
     try {
       const { error } = await supabase
         .from('conversation_members')
@@ -114,6 +118,32 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({
     } catch (error) {
       console.error('Error promoting member:', error);
       alert(t('promoteError'));
+    }
+  };
+
+  const handleDemoteAdmin = async (userId: string) => {
+    if (!isAdmin) {
+      alert(t('onlyAdminsCanRemoveMembers'));
+      return;
+    }
+
+    if (!confirm(`${t('remove')} — ${t('adminLabel')} ?`)) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('conversation_members')
+        .update({ role: 'member' })
+        .eq('conversation_id', conversationId)
+        .eq('user_id', userId);
+
+      if (!error) {
+        alert(t('memberRemovedSuccess'));
+      }
+    } catch (error) {
+      console.error('Error demoting admin:', error);
+      alert(t('memberRemoveError'));
     }
   };
 
@@ -368,6 +398,15 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({
                         title={t('promoteAdmin')}
                       >
                         <Crown size={16} className="text-primary-500" />
+                      </button>
+                    )}
+                    {member.role === 'admin' && (
+                      <button
+                        onClick={() => handleDemoteAdmin(member.user_id)}
+                        className="p-2 rounded-full hover:bg-amber-500/20 transition-colors"
+                        title={`${t('remove')} ${t('adminLabel')}`}
+                      >
+                        <ShieldOff size={16} className="text-amber-500" />
                       </button>
                     )}
                     <button

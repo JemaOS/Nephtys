@@ -18,15 +18,19 @@
  *     `members`** (signée admin), distribuées aux membres restants seulement
  *     (le retiré ne peut plus lire).
  *
- * Autorité (audit S1) :
- *   • Le groupe a un **admin** : la clé publique Ed25519 du créateur (transmise
- *     dans l'invitation). Les payloads de contrôle `members`/`rotate` ne sont
- *     appliqués que s'ils sont **signés par cet admin** ; un `text` reste
- *     accepté de tout membre connu. Les `join` sont gérés par l'admin seul.
- *   • Rétrocompatibilité : un groupe **sans admin déclaré** (`adminKey`
- *     absent — enregistrement/invitation d'une version antérieure) conserve
- *     l'ancien comportement tolérant : les payloads de contrôle d'un membre
- *     connu sont encore appliqués.
+ * Autorité (audit S1/S2) :
+ *   • Le groupe a un **ensemble d'admins** : au départ la clé publique Ed25519
+ *     du créateur (transmise dans l'invitation). Les payloads de contrôle
+ *     `members`/`rotate`/`promote`/`demote` ne sont appliqués que s'ils sont
+ *     **signés par l'un de ces admins** ; un `text` reste accepté de tout membre
+ *     connu. Les `join` sont gérés par un admin.
+ *   • Un admin peut **promouvoir** un membre (payload `promote`) ou **retirer**
+ *     un rôle admin (`demote`) ; l'ensemble résultant est diffusé signé et ne
+ *     peut jamais devenir vide.
+ *   • Rétrocompatibilité : un groupe **sans admin déclaré** (`adminKey`/`admins`
+ *     absents — enregistrement/invitation d'une version antérieure) conserve
+ *     l'ancien comportement tolérant. Un groupe v1/v2 à admin unique
+ *     (`adminKey`) est lu comme un ensemble d'un seul admin.
  *   • Anti-rejeu d'époque : un message de contenu (`text`) dont l'époque de
  *     chiffrement est **antérieure à l'époque courante connue** est refusé
  *     (un membre retiré qui détient encore une ancienne époque ne peut plus
@@ -77,16 +81,46 @@ export interface GroupRecord {
   /** Paire de signature Ed25519 locale (authentifie nos payloads). */
   signing: GroupSigningPair;
   /**
-   * Clé publique Ed25519 de l'**admin** du groupe (le créateur). Seuls les
-   * payloads `members`/`rotate` signés par cette clé sont appliqués.
-   * Absent (optionnel) pour les groupes créés avant l'introduction de
-   * l'autorité → comportement hérité tolérant (tout membre connu).
+   * Clé publique Ed25519 de l'admin **historique/principal** du groupe (le
+   * créateur). Conservé pour la rétrocompatibilité v1 : un groupe qui ne
+   * possède que ce champ reste piloté par un admin unique. Lorsqu'il est
+   * présent à côté d'`admins`, il reflète `admins[0]` (interop lecteurs v1).
    */
   adminKey?: string;
+  /**
+   * Ensemble des clés publiques Ed25519 des **admins** du groupe (audit S2).
+   * Les payloads de contrôle `members`/`rotate`/`promote`/`demote` ne sont
+   * appliqués que s'ils sont signés par **l'un** de ces admins. Repli sur
+   * `adminKey` (format v1, admin unique) puis sur l'ensemble vide (groupe
+   * hérité tolérant). Ne doit jamais être vide une fois établi.
+   */
+  admins?: string[];
   /** Compteur de séquence sortant (anti-rejeu). */
   sendSeq: number;
   /** Plus haut numéro de séquence reçu par émetteur (clé pub) → anti-rejeu. */
   peerSeqs: Record<string, number>;
+}
+
+/** Vue minimale portant l'autorité admin d'un groupe (admin unique OU ensemble). */
+export type GroupAuthority = Pick<GroupRecord, 'admins' | 'adminKey'>;
+
+/**
+ * Ensemble effectif des clés admin d'un groupe.
+ *   • `admins` (format v2/S2, plusieurs admins) s'il est non vide ;
+ *   • sinon repli sur `adminKey` (format v1, admin unique) ;
+ *   • sinon ensemble vide → groupe hérité tolérant (aucune autorité déclarée).
+ */
+export function groupAdmins(record: GroupAuthority): string[] {
+  if (Array.isArray(record.admins) && record.admins.length > 0) {
+    return record.admins.filter(k => typeof k === 'string' && k.length > 0);
+  }
+  if (typeof record.adminKey === 'string' && record.adminKey.length > 0) return [record.adminKey];
+  return [];
+}
+
+/** Vrai si `key` fait partie des admins déclarés du groupe. */
+export function isGroupAdmin(record: GroupAuthority, key: string): boolean {
+  return groupAdmins(record).includes(key);
 }
 
 // ─── Persistance ──────────────────────────────────────────────────────
@@ -125,6 +159,11 @@ interface Invite {
    * le groupe reste alors en mode hérité tolérant.
    */
   adminKey?: string;
+  /**
+   * Ensemble des admins (v2/S2). Optionnel : absent d'une invitation v1, ou
+   * d'une invitation v2 où l'admin est unique (`adminKey` seul).
+   */
+  admins?: string[];
 }
 
 export function encodeGroupInvite(invite: Invite): string {
@@ -154,8 +193,13 @@ function newGroupId(): string {
 type Payload =
   | { type: 'text'; text: string }
   | { type: 'join'; name: string; send: QueueRef }
-  | { type: 'members'; members: GroupMember[]; epoch: number; key: string; adminKey?: string; v?: number }
-  | { type: 'rotate'; epoch: number; key: string; v?: number };
+  | { type: 'members'; members: GroupMember[]; epoch: number; key: string; adminKey?: string; admins?: string[]; v?: number }
+  | { type: 'rotate'; epoch: number; key: string; v?: number }
+  // Audit S2 — gestion des admins (signés par un admin existant) :
+  //   • `promote` : ajoute `member` (clé de signature) à l'ensemble `admins` ;
+  //   • `demote`  : retire `member` ; `admins` reflète l'ensemble résultant.
+  | { type: 'promote'; member: string; admins: string[]; v?: number }
+  | { type: 'demote'; member: string; admins: string[]; v?: number };
 
 /**
  * Enveloppe signée d'un payload de groupe. `from` est la clé publique Ed25519
@@ -164,7 +208,13 @@ type Payload =
  *
  * `v` versionne l'enveloppe (absente en lecture = v1) ; la signature ne couvre
  * que `payload`, donc les anciens lecteurs restent compatibles.
+ *
+ * Versions : v1 = enveloppe héritée ; v2 = autorité admin (admin unique) ;
+ * v3 = ensemble d'admins (promotion/rétrogradation). Le champ `v` n'est pas
+ * contrôlé en lecture (tolérance ascendante) mais documente la capacité.
  */
+const ENVELOPE_VERSION = 3;
+
 interface SignedEnvelope {
   seq: number;
   from: string;
@@ -218,7 +268,7 @@ export class GroupMessenger {
     const from = record.signing.publicKey;
     const payloadJson = JSON.stringify(payload);
     const sig = signGroupPayload(record.groupId, seq, from, payloadJson, record.signing.privateKey);
-    const envelope: SignedEnvelope = { seq, from, sig, payload, v: 2 };
+    const envelope: SignedEnvelope = { seq, from, sig, payload, v: ENVELOPE_VERSION };
     const msg = await encryptGroupMessage(record.groupId, epoch, keyB64, JSON.stringify(envelope));
     return { packed: JSON.stringify(msg), seq };
   }
@@ -242,11 +292,13 @@ export class GroupMessenger {
     const record: GroupRecord = {
       groupId, name, mySend: send, myRcv: rcv, keys: state, members: [],
       signing, sendSeq: 0, peerSeqs: {}, adminKey: signing.publicKey,
+      admins: [signing.publicKey],
     };
     await this.store.save(record);
     const invite = encodeGroupInvite({
-      v: 2, groupId, name, send, epoch: 0, key: keyB64,
+      v: 3, groupId, name, send, epoch: 0, key: keyB64,
       signingKey: signing.publicKey, adminKey: signing.publicKey,
+      admins: [signing.publicKey],
     });
     return { record, invite };
   }
@@ -258,6 +310,9 @@ export class GroupMessenger {
     const { send, rcv } = await this.newQueueRefs();
     const keys = addEpochKey({ groupId: inv.groupId, currentEpoch: -1, keys: {} }, inv.epoch, inv.key);
     const signing = generateGroupSigningPair();
+    // Ensemble d'admins annoncé par l'invitation (v3), sinon repli sur `adminKey`
+    // (v2, admin unique) ; une invitation v1 (sans aucun) reste en mode hérité.
+    const invitedAdmins = inv.admins && inv.admins.length > 0 ? inv.admins : (inv.adminKey ? [inv.adminKey] : undefined);
     const record: GroupRecord = {
       groupId: inv.groupId,
       name: inv.name,
@@ -268,9 +323,10 @@ export class GroupMessenger {
       signing,
       sendSeq: 0,
       peerSeqs: {},
-      // v2 : l'admin est le créateur annoncé par l'invitation. Une invitation
+      // v2/v3 : l'admin est le créateur annoncé par l'invitation. Une invitation
       // v1 (sans `adminKey`) laisse le groupe en mode hérité tolérant.
-      adminKey: inv.adminKey,
+      adminKey: inv.adminKey ?? invitedAdmins?.[0],
+      admins: invitedAdmins,
     };
     const payload: Payload = { type: 'join', name: myName, send };
     // Le « join » est chiffré avec la clé de l'invitation (que seul l'invité connaît).
@@ -302,9 +358,14 @@ export class GroupMessenger {
   async removeMember(groupId: string, memberId: string): Promise<void> {
     const record = await this.store.load(groupId);
     if (!record) return;
-    if (record.adminKey && record.adminKey !== record.signing.publicKey) {
+    const admins = groupAdmins(record);
+    if (admins.length > 0 && !admins.includes(record.signing.publicKey)) {
       throw new Error('Seul l’administrateur du groupe peut retirer un membre.');
     }
+    // Ensemble d'admins à (ré)diffuser : on préserve l'existant, sinon on
+    // « établit » l'autorité sur soi-même (comme l'ancien adminKey pour un
+    // groupe hérité).
+    const nextAdmins = admins.length > 0 ? admins : [record.signing.publicKey];
     const { state: rotated, keyB64 } = rotateGroupKeys(record.keys);
     const pruned = pruneEpochKeys(rotated);
     const remaining = record.members.filter(m => m.id !== memberId);
@@ -320,8 +381,9 @@ export class GroupMessenger {
       members: list,
       epoch: pruned.currentEpoch,
       key: keyB64,
-      adminKey: record.adminKey ?? record.signing.publicKey,
-      v: 2,
+      adminKey: nextAdmins[0],
+      admins: nextAdmins,
+      v: 3,
     };
 
     // Distribue la nouvelle liste + clé aux membres RESTANTS, chiffrée avec
@@ -330,8 +392,54 @@ export class GroupMessenger {
     const oldEpoch = record.keys.currentEpoch;
     const oldKey = record.keys.keys[String(oldEpoch)];
     const { packed, seq } = await this.buildSigned(record, payload, oldEpoch, oldKey);
-    await this.store.save({ ...record, keys: pruned, members: remaining, sendSeq: seq });
+    await this.store.save({ ...record, keys: pruned, members: remaining, admins: nextAdmins, adminKey: nextAdmins[0], sendSeq: seq });
     for (const member of remaining) await this.rawSend(member.send, packed);
+  }
+
+  /**
+   * Promeut un membre en admin (audit S2). Réservé à un admin existant.
+   * `memberIdOrKey` accepte soit l'`id` d'un membre connu (résolu vers sa clé de
+   * signature), soit directement une clé de signature. Diffuse `promote` (signé)
+   * avec le nouvel ensemble d'admins à tous les membres.
+   */
+  async promoteMember(groupId: string, memberIdOrKey: string): Promise<void> {
+    const record = await this.store.load(groupId);
+    if (!record) throw new Error('Groupe introuvable.');
+    const admins = groupAdmins(record);
+    if (admins.length > 0 && !admins.includes(record.signing.publicKey)) {
+      throw new Error('Seul un administrateur du groupe peut promouvoir un membre.');
+    }
+    const key = record.members.find(m => m.id === memberIdOrKey)?.signingKey ?? memberIdOrKey;
+    if (!key) throw new Error('Membre introuvable ou sans clé de signature.');
+    const currentAdmins = admins.length > 0 ? admins : [record.signing.publicKey];
+    const nextAdmins = currentAdmins.includes(key) ? currentAdmins : [...currentAdmins, key];
+    const payload: Payload = { type: 'promote', member: key, admins: nextAdmins, v: 3 };
+    const { packed, seq } = await this.buildSigned(record, payload);
+    await this.store.save({ ...record, admins: nextAdmins, adminKey: nextAdmins[0], sendSeq: seq });
+    for (const member of record.members) await this.rawSend(member.send, packed);
+  }
+
+  /**
+   * Retire le rôle admin d'un autre admin (audit S2), ou transfère le sien.
+   * Réservé à un admin existant. Ne laisse **jamais zéro admin** : refuse de
+   * retirer le dernier. Diffuse `demote` (signé) avec l'ensemble résultant.
+   */
+  async demoteAdmin(groupId: string, adminIdOrKey: string): Promise<void> {
+    const record = await this.store.load(groupId);
+    if (!record) throw new Error('Groupe introuvable.');
+    const admins = groupAdmins(record);
+    if (admins.length === 0) throw new Error('Aucun administrateur déclaré pour ce groupe.');
+    if (!admins.includes(record.signing.publicKey)) {
+      throw new Error('Seul un administrateur du groupe peut retirer un rôle admin.');
+    }
+    const key = record.members.find(m => m.id === adminIdOrKey)?.signingKey ?? adminIdOrKey;
+    if (!admins.includes(key)) throw new Error('Ce membre n’est pas administrateur.');
+    const nextAdmins = admins.filter(k => k !== key);
+    if (nextAdmins.length === 0) throw new Error('Impossible de retirer le dernier administrateur.');
+    const payload: Payload = { type: 'demote', member: key, admins: nextAdmins, v: 3 };
+    const { packed, seq } = await this.buildSigned(record, payload);
+    await this.store.save({ ...record, admins: nextAdmins, adminKey: nextAdmins[0], sendSeq: seq });
+    for (const member of record.members) await this.rawSend(member.send, packed);
   }
 
   /** Écoute les messages du groupe (texte livré via `onText`). */
@@ -405,33 +513,39 @@ export class GroupMessenger {
       return record;
     }
 
-    // Authentification de l'émetteur puis autorité (audit S1) :
+    // Authentification de l'émetteur puis autorité (audit S1/S2) :
     //   • la signature Ed25519 (couvre groupId, seq, from, payload) authentifie
     //     `from` AVANT toute décision d'autorité ;
-    //   • `join` : nouvel émetteur inconnu → TOFU, mais seul l'admin du groupe
-    //     gère l'appartenance (les autres enregistrements l'ignorent) ;
+    //   • `join` : nouvel émetteur inconnu → TOFU, mais seuls des admins gèrent
+    //     l'appartenance (les autres enregistrements l'ignorent) ;
     //   • `text` : accepté de tout membre connu (ou soi) ;
-    //   • `members`/`rotate` : l'émetteur DOIT être l'admin déclaré. Si aucun
-    //     admin n'est déclaré (groupe hérité), un membre connu est accepté
-    //     (comportement tolérant documenté).
+    //   • `members`/`rotate`/`promote`/`demote` : l'émetteur DOIT être **l'un des
+    //     admins** déclarés. Si aucun admin n'est déclaré (groupe hérité), un
+    //     membre connu est accepté (comportement tolérant documenté).
     const payloadType = payload.type;
-    const isControl = payloadType === 'join' || payloadType === 'members' || payloadType === 'rotate';
+    const isControl = payloadType === 'join' || payloadType === 'members' || payloadType === 'rotate'
+      || payloadType === 'promote' || payloadType === 'demote';
+    const isAdminPayload = payloadType === 'members' || payloadType === 'rotate'
+      || payloadType === 'promote' || payloadType === 'demote';
     if (!verifyGroupPayload(record.groupId, envelope.seq, envelope.from, JSON.stringify(payload), envelope.sig)) {
       return record;
     }
 
     const isSelf = envelope.from === record.signing.publicKey;
     const knownMember = record.members.find(m => m.signingKey === envelope.from);
-    const adminDeclared = typeof record.adminKey === 'string' && record.adminKey.length > 0;
-    const isAdminEmitter = adminDeclared && envelope.from === record.adminKey;
+    const admins = groupAdmins(record);
+    const adminDeclared = admins.length > 0;
+    const isAdminEmitter = admins.includes(envelope.from);
 
     if (payloadType === 'join') {
-      // Seul l'admin (ou un groupe hérité) traite une demande d'adhésion.
-      if (adminDeclared && record.signing.publicKey !== record.adminKey) return record;
-    } else if (!isSelf && !knownMember) {
+      // Seul un admin (ou un groupe hérité) traite une demande d'adhésion.
+      if (adminDeclared && !admins.includes(record.signing.publicKey)) return record;
+    } else if (!isSelf && !knownMember && !(isAdminPayload && isAdminEmitter)) {
+      // Émetteur inconnu : refusé, SAUF s'il est admin (son autorité provient de
+      // l'ensemble d'admins, lui-même établi par des `promote` signés).
       return record;
-    } else if ((payloadType === 'members' || payloadType === 'rotate') && adminDeclared && !isAdminEmitter) {
-      return record; // tentative d'imposer une clé/liste sans l'autorité admin
+    } else if (isAdminPayload && adminDeclared && !isAdminEmitter) {
+      return record; // tentative d'imposer une clé/liste/role sans l'autorité admin
     }
 
     // Anti-rejeu : numéro de séquence strictement croissant par émetteur.
@@ -466,6 +580,7 @@ export class GroupMessenger {
 
       const { state: rotated, keyB64 } = rotateGroupKeys(withMember.keys);
       const pruned = pruneEpochKeys(rotated);
+      const replyAdmins = groupAdmins(withMember);
       const reply: Payload = {
         type: 'members',
         members: [
@@ -474,9 +589,10 @@ export class GroupMessenger {
         ],
         epoch: pruned.currentEpoch,
         key: keyB64,
-        // Annonce la clé admin pour que l'invité adopte la même autorité.
-        adminKey: withMember.adminKey ?? withMember.signing.publicKey,
-        v: 2,
+        // Annonce l'autorité admin pour que l'invité adopte le même ensemble.
+        adminKey: withMember.adminKey ?? replyAdmins[0] ?? withMember.signing.publicKey,
+        admins: replyAdmins.length > 0 ? replyAdmins : [withMember.signing.publicKey],
+        v: 3,
       };
       // Chiffrée avec l'époque de l'invité (qu'il possède forcément).
       const recvKey = withMember.keys.keys[String(parsed.epoch)];
@@ -493,15 +609,40 @@ export class GroupMessenger {
       return { ...withMember, keys: pruned, sendSeq: seq };
     }
     if (payload.type === 'members') {
-      // On apprend la liste complète + la clé courante. La source d'autorité
-      // est l'admin (payload signé par lui) : on adopte aussi sa clé admin.
+      // On apprend la liste complète + la clé courante. La source d'autorité est
+      // un admin (payload signé par lui) : on adopte aussi son ensemble d'admins.
       const others = payload.members.filter(m => m.send.queueId !== record.mySend.queueId);
       const keys = pruneEpochKeys(addEpochKey(base.keys, payload.epoch, payload.key));
       const adminKey = payload.adminKey ?? base.adminKey;
-      return { ...base, members: others, keys, adminKey };
+      let nextAdmins = groupAdmins(base);
+      if (Array.isArray(payload.admins) && payload.admins.length > 0) nextAdmins = payload.admins;
+      else if (nextAdmins.length === 0 && adminKey) nextAdmins = [adminKey];
+      return { ...base, members: others, keys, admins: nextAdmins.length > 0 ? nextAdmins : base.admins, adminKey };
     }
     if (payload.type === 'rotate') {
       return { ...base, keys: pruneEpochKeys(addEpochKey(base.keys, payload.epoch, payload.key)) };
+    }
+    if (payload.type === 'promote') {
+      // `promote` est strictement ADDITIF : l'ensemble diffusé doit contenir
+      // tous les admins actuels ET le membre promu (on ne peut pas rétrograder
+      // via un `promote`).
+      const current = groupAdmins(base);
+      const next = Array.isArray(payload.admins) && payload.admins.length > 0 ? payload.admins : current;
+      const additive = current.every(k => next.includes(k)) && next.includes(payload.member);
+      if (!additive) return base;
+      return { ...base, admins: next, adminKey: next[0] };
+    }
+    if (payload.type === 'demote') {
+      // `demote` retire un admin ; jamais zéro admin. Le retiré doit être un
+      // admin courant et disparaître de l'ensemble ; les admins restants doivent
+      // provenir de l'ensemble courant (pas d'injection d'admins arbitraires).
+      const current = groupAdmins(base);
+      const next = Array.isArray(payload.admins) ? payload.admins : [];
+      if (!current.includes(payload.member)) return base;
+      if (next.length === 0) return base;
+      if (next.includes(payload.member)) return base;
+      if (!next.every(k => current.includes(k))) return base;
+      return { ...base, admins: next, adminKey: next[0] };
     }
     return base;
   }
@@ -516,7 +657,12 @@ export function deserializeGroupRecord(json: string): GroupRecord {
   const raw = JSON.parse(json) as GroupRecord & { keys: string | GroupEpochKeys };
   const keys = typeof raw.keys === 'string' ? deserializeGroupKeys(raw.keys) : raw.keys;
   // Rétro-compatibilité : les enregistrements pré-authentification n'ont ni
-  // paire de signature ni compteurs → on les complète à la volée.
+  // paire de signature ni compteurs → on les complète à la volée. Un
+  // enregistrement v1/v2 (admin unique) voit son `adminKey` promu en ensemble
+  // `admins` d'un seul élément.
+  const admins = Array.isArray(raw.admins) && raw.admins.length > 0
+    ? raw.admins
+    : (typeof raw.adminKey === 'string' && raw.adminKey.length > 0 ? [raw.adminKey] : raw.admins);
   return {
     ...raw,
     keys,
@@ -524,5 +670,6 @@ export function deserializeGroupRecord(json: string): GroupRecord {
     sendSeq: raw.sendSeq ?? 0,
     peerSeqs: raw.peerSeqs ?? {},
     members: (raw.members ?? []).map(m => ({ ...m })),
+    admins,
   };
 }
