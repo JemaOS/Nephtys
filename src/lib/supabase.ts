@@ -48,6 +48,37 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
 })
 
+// Client ANONYME dédié au relais privé (files `anon_queue_*`).
+//
+// Objectif : le mode privé anonyme ne doit JAMAIS écrire sous l'identité du
+// compte connecté. Ce second client partage l'URL + la clé anon mais n'accède
+// à AUCUNE session : `persistSession:false` (rien en localStorage),
+// `autoRefreshToken:false` (aucun rafraîchissement) et
+// `detectSessionInUrl:false` (n'adopte jamais un lien d'auth). Les RPC passent
+// donc toujours sous le rôle `anon`, jamais `authenticated`.
+//
+// On réutilise la sérialisation de lock (même si aucune session n'est
+// persistée) pour ne pas réintroduire l'erreur Navigator LockManager.
+export const supabaseAnon = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: false,
+    autoRefreshToken: false,
+    detectSessionInUrl: false,
+    lock: serializedAuthLock,
+  },
+  realtime: {
+    params: {
+      heartbeat_interval: 30,
+      timeout: 60000,
+    },
+  },
+  global: {
+    headers: {
+      'x-client-info': 'nephtys-pwa',
+    },
+  },
+})
+
 // Database types
 export interface Profile {
   id: string

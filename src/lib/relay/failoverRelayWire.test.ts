@@ -3,6 +3,7 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { FailoverRelayWire } from './failoverRelayWire';
+import { RelayTransport } from './relayTransport';
 import type { RelayOp, RelayResponse, RelayWire } from './wire';
 
 const PRIMARY = 'wss://smp.example/';
@@ -11,6 +12,8 @@ const SECONDARY = 'supabase';
 class FakeWire implements RelayWire {
   calls: RelayOp[] = [];
   failCreate = false;
+  /** Échec « doux » : renvoie `ok:false` (comme un timeout SMP) sans throw. */
+  failCreateSoft = false;
   readonly relayIds: string[];
   constructor(readonly id: string) {
     this.relayIds = [id];
@@ -19,6 +22,9 @@ class FakeWire implements RelayWire {
     this.calls.push(op);
     if (op.op === 'createQueue') {
       if (this.failCreate) throw new Error('down');
+      if (this.failCreateSoft) {
+        return { ok: false, error: 'timed out waiting for SMP WebSocket frame' };
+      }
       return {
         ok: true,
         result: { queueId: `${this.id}#${this.calls.length}`, sendKey: 's', rcvKey: 'r', relay: this.id },
@@ -136,5 +142,38 @@ describe('FailoverRelayWire (repli temporaire, routage par file)', () => {
     await fw.request({ op: 'send', queueId: 'q', queueKey: 'k', ciphertext: 'c' });
     expect(primary.sends()).toHaveLength(1);
     expect(secondary.sends()).toHaveLength(0);
+  });
+
+  it('createConnection RÉUSSIT via le secondaire quand le primaire échoue (throw)', async () => {
+    const primary = new FakeWire(PRIMARY);
+    primary.failCreate = true;
+    const secondary = new FakeWire(SECONDARY);
+    const fw = new FailoverRelayWire(primary, secondary);
+    const transport = new RelayTransport(fw);
+
+    const { connection, invite } = await transport.createConnection();
+
+    // Les deux files de la connexion sont créées sur le secondaire (routage par tag).
+    expect(secondary.calls.filter(c => c.op === 'createQueue')).toHaveLength(2);
+    expect(connection.rcvQueue.relay).toBe(SECONDARY);
+    expect(connection.sendQueue.relay).toBe(SECONDARY);
+    expect(connection.rcvQueue.queueId).toBeTruthy();
+    expect(invite).toBeTruthy();
+    expect(fw.onFallback).toBe(true);
+  });
+
+  it('createConnection RÉUSSIT aussi quand le primaire renvoie ok:false (timeout SMP)', async () => {
+    const primary = new FakeWire(PRIMARY);
+    primary.failCreateSoft = true;
+    const secondary = new FakeWire(SECONDARY);
+    const fw = new FailoverRelayWire(primary, secondary);
+    const transport = new RelayTransport(fw);
+
+    const { connection } = await transport.createConnection();
+
+    expect(secondary.calls.filter(c => c.op === 'createQueue')).toHaveLength(2);
+    expect(connection.rcvQueue.relay).toBe(SECONDARY);
+    expect(connection.sendQueue.relay).toBe(SECONDARY);
+    expect(fw.onFallback).toBe(true);
   });
 });

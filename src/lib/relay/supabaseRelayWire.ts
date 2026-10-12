@@ -13,7 +13,7 @@
  * `queue_id` opaques et du ciphertext.
  */
 
-import { supabase } from '../supabase';
+import { supabaseAnon } from '../supabase';
 import type { QueueCredentials, StoredEnvelope } from './relayCore';
 import type { RelayOp, RelayResponse, RelayWire } from './wire';
 
@@ -53,31 +53,56 @@ const AUTH_DENIED =
   'relais Supabase refusé : une session connectée est active. Le mode privé anonyme ' +
   'n’utilise pas la session du compte sans consentement explicite.';
 
-interface SupabaseLike {
+/**
+ * Client Supabase minimal utilisé par le relais. Par défaut : `supabaseAnon`
+ * (SANS session) → toutes les RPC `anon_queue_*` s'exécutent sous le rôle
+ * `anon`, jamais liées au compte connecté.
+ */
+export interface SupabaseRelayClient {
+  rpc(
+    fn: string,
+    args?: Record<string, unknown>,
+  ): PromiseLike<{ data: unknown; error: { message: string } | null }>;
   auth?: { getSession?: () => Promise<{ data?: { session?: unknown } }> };
 }
 
 export interface SupabaseRelayOptions {
   /** Autorise explicitement l'usage de la session Supabase connectée. */
   allowAuthenticatedSession?: boolean;
+  /**
+   * Client Supabase à utiliser. Par défaut le client ANONYME sans session
+   * (`supabaseAnon`). N'injecter qu'un client **avec** session (ex. `supabase`)
+   * pour les cas de rétro-compatibilité : le garde-fou `ensureAnonymous` refuse
+   * alors l'usage sous l'identité du compte (sauf consentement explicite).
+   */
+  client?: SupabaseRelayClient;
 }
 
 export class SupabaseRelayWire implements RelayWire {
   private authChecked = false;
   private authAllowed = false;
+  private readonly client: SupabaseRelayClient;
 
-  constructor(private readonly options: SupabaseRelayOptions = {}) {}
+  constructor(private readonly options: SupabaseRelayOptions = {}) {
+    // Par défaut : client ANONYME (aucune session) → files créées sous `anon`,
+    // jamais rattachées au compte. Le garde-fou reste actif si un client AVEC
+    // session est explicitement injecté (rétro-compatibilité).
+    this.client = options.client ?? (supabaseAnon as unknown as SupabaseRelayClient);
+  }
 
   /**
-   * En mode privé/anon, refuse silencieusement l'usage de la session Supabase
-   * connectée (sauf consentement explicite) : aucune requête n'est émise sous
-   * l'identité du compte. Idempotent et mis en cache.
+   * En mode privé/anon, refuse silencieusement l'usage d'un client dont la
+   * session Supabase est connectée (sauf consentement explicite) : aucune
+   * requête n'est émise sous l'identité du compte. Idempotent et mis en cache.
+   *
+   * NB : avec le client ANONYME par défaut (`persistSession:false`), il n'y a
+   * jamais de session → toujours autorisé.
    */
   private async ensureAnonymous(): Promise<RelayResponse | null> {
     if (this.options.allowAuthenticatedSession || isAnonRelayConsentGranted()) return null;
     if (this.authChecked) return this.authAllowed ? null : { ok: false, error: AUTH_DENIED };
 
-    const auth = (supabase as SupabaseLike).auth;
+    const auth = this.client.auth;
     if (typeof auth?.getSession !== 'function') {
       // Client sans auth (tests) → autorisé.
       this.authChecked = true;
@@ -102,7 +127,7 @@ export class SupabaseRelayWire implements RelayWire {
 
     switch (op.op) {
       case 'createQueue': {
-        const { data, error } = await supabase.rpc('anon_queue_create');
+        const { data, error } = await this.client.rpc('anon_queue_create');
         if (error || !data) return { ok: false, error: error?.message ?? 'createQueue failed' };
         const creds = data as { queueId: string; sendToken: string; rcvToken: string };
         const result: QueueCredentials = {
@@ -117,7 +142,7 @@ export class SupabaseRelayWire implements RelayWire {
       }
 
       case 'send': {
-        const { error } = await supabase.rpc('anon_queue_send', {
+        const { error } = await this.client.rpc('anon_queue_send', {
           p_queue_id: op.queueId,
           p_send_token: op.queueKey,
           p_ciphertext: op.ciphertext,
@@ -127,7 +152,7 @@ export class SupabaseRelayWire implements RelayWire {
       }
 
       case 'read': {
-        const { data, error } = await supabase.rpc('anon_queue_read', {
+        const { data, error } = await this.client.rpc('anon_queue_read', {
           p_queue_id: op.queueId,
           p_rcv_token: op.queueKey,
           p_limit: op.limit ?? 100,
@@ -144,7 +169,7 @@ export class SupabaseRelayWire implements RelayWire {
       }
 
       case 'ack': {
-        const { error } = await supabase.rpc('anon_queue_ack', {
+        const { error } = await this.client.rpc('anon_queue_ack', {
           p_queue_id: op.queueId,
           p_rcv_token: op.queueKey,
           p_ids: op.ids,
@@ -154,7 +179,7 @@ export class SupabaseRelayWire implements RelayWire {
       }
 
       case 'delete': {
-        const { error } = await supabase.rpc('anon_queue_delete', {
+        const { error } = await this.client.rpc('anon_queue_delete', {
           p_queue_id: op.queueId,
           p_rcv_token: op.queueKey,
         });

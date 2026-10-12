@@ -11,7 +11,11 @@ import {
   getTorGatewayUrl,
   getTorRelayUrl,
   isTorAvailable,
+  createPrivateRelayWire,
 } from './relayClient';
+import { FailoverRelayWire } from './failoverRelayWire';
+import { SupabaseRelayWire } from './supabaseRelayWire';
+import { SmpRelayWire } from './smpRelayWire';
 
 const V3 = 'a'.repeat(56) + '.onion';
 const V2 = 'b'.repeat(16) + '.onion';
@@ -82,5 +86,27 @@ describe('entrée Tor (`.onion` prioritaire, passerelle en repli)', () => {
   it('préfère un `.onion` explicite quand il est configuré', () => {
     setOnionRelayUrl(V3);
     expect(getTorRelayUrl()).toBe(`ws://${V3}`);
+  });
+});
+
+describe('repli du transport privé (Tor → Supabase anon)', () => {
+  it('en Tor, le wire est un failover Tor (onion) → Supabase anon', () => {
+    setTorRelayEnabled(true);
+    setOnionRelayUrl(V3);
+    const { wire, failover } = createPrivateRelayWire();
+    // La branche Tor n'est plus fail-closed : elle bascule sur le relais
+    // anonyme Supabase si le client Tor WASM n'atteint pas l'`.onion`.
+    expect(failover).toBeInstanceOf(FailoverRelayWire);
+    expect(failover?.primaryWire).toBeInstanceOf(SmpRelayWire);
+    expect(failover?.secondaryWire).toBeInstanceOf(SupabaseRelayWire);
+    expect(wire).toBe(failover);
+  });
+
+  it('hors Tor (défaut), le repli secondaire est le relais Supabase anon', () => {
+    expect(isTorRelayEnabled()).toBe(false);
+    const { wire, failover } = createPrivateRelayWire();
+    expect(failover).toBeInstanceOf(FailoverRelayWire);
+    expect(failover?.secondaryWire).toBeInstanceOf(SupabaseRelayWire);
+    expect(wire).toBe(failover);
   });
 });

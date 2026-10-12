@@ -584,74 +584,109 @@ export function setSmpV9Enabled(enabled: boolean): void {
   instance = null;
 }
 
+export interface PrivateRelayWireSelection {
+  wire: RelayWire;
+  /** Repli actif (SMP/Tor → Supabase anon), pour l'UI de transport dégradé. */
+  failover: FailoverRelayWire | null;
+}
+
+/**
+ * Sélectionne le wire de transport privé selon la configuration courante
+ * (Tor, SMP, agent, réseau SMP v9, relais custom, défaut SMP → repli).
+ *
+ * Extrait de `getPrivateMessenger` pour être testable sans instancier le
+ * `PrivateMessenger` (IndexedDB, ratchet, …).
+ */
+export function createPrivateRelayWire(): PrivateRelayWireSelection {
+  const mode = import.meta.env.VITE_RELAY_MODE as string | undefined;
+  const smpUrl =
+    (import.meta.env.VITE_SMP_RELAY_URL as string | undefined) ?? 'wss://78-232-3-78.sslip.io/';
+  const smpKeyHash = import.meta.env.VITE_SMP_RELAY_KEY_HASH as string | undefined;
+  let wire: RelayWire;
+  let failover: FailoverRelayWire | null = null;
+
+  if (isTorRelayEnabled()) {
+    // Mode Tor WASM : client Tor DANS le navigateur (tor-js). Le transport
+    // SMP-over-Tor cible le **relais `.onion`** configuré
+    // (`getOnionRelayUrl` → `http://<…>.onion/smp/up|down`) — jamais le relais
+    // clearnet de l'opérateur.
+    //
+    // L'URL passée à `SmpRelayWire` n'est qu'un marqueur : le socket fantôme
+    // Tor ignore l'URL et utilise la `.onion` (ci-dessous, via la fabrique).
+    const onion = getOnionRelayUrl();
+    const torWire = new SmpRelayWire({
+      url: 'wss://tor.gateway/',
+      keyHash: '',
+      webSocketImplFactory: () => createTorWebSocketImpl(onion),
+    });
+    // REPLI (fail-over) : si le client Tor WASM n'atteint pas l'`.onion`
+    // (ex. `tor_circmgr::hspool … circuits failed`), la connexion privée
+    // reste FONCTIONNELLE via le relais anonyme Supabase (client `anon`,
+    // SANS session → files jamais liées au compte). Trade-off assumé : ce
+    // repli perd l'anonymat Tor, mais l'utilisateur en est averti — le signal
+    // « transport dégradé » est propagé via `onFallbackChange`
+    // (`isRelayFallbackActive` / `onRelayTransportChange`).
+    const fw = new FailoverRelayWire(
+      torWire,
+      new SupabaseRelayWire(),
+      active => { for (const cb of transportListeners) cb(active); },
+    );
+    failover = fw;
+    wire = fw;
+  } else if (mode === 'smp') {
+    // Relais SMP SMP (browser-profile) — OPTION EXPLICITE.
+    // ⚠️ WIP : l'adaptateur SmpRelayWire ne couvre pas encore le modèle de
+    // connexion à deux files du mode privé ; à finaliser avant usage prod.
+    wire = new SmpRelayWire({ url: smpUrl, keyHash: smpKeyHash });
+  } else if (mode === 'smp-agent') {
+    wire = new AgentRelayWire(AGENT_URL);
+  } else if (isSmpV9Enabled()) {
+    // Réseau SMP (protocole SMP v9..v15) via le pont WS↔TLS natif (transport
+    // interne, invisible), avec repli sur le relais aveugle si le pont/le
+    // serveur SMP est injoignable. Le secondaire est le client **anon** (sans
+    // session) → la connexion réussit même si le pont est down.
+    const fw = new FailoverRelayWire(
+      new SmpV9Wire({ bridgeUrl: getSmpBridgeUrl(), host: getSmpV9Host() }),
+      new SupabaseRelayWire(),
+      active => { for (const cb of transportListeners) cb(active); },
+    );
+    failover = fw;
+    wire = fw;
+  } else if (hasCustomRelay()) {
+    wire = new WebSocketWire(getRelayUrl());
+  } else {
+    // DÉFAUT : SMP (SMP browser-profile) PRIORITAIRE, repli automatique sur
+    // le relais aveugle Supabase (client anon) si le premier est injoignable →
+    // le mode privé fonctionne toujours. (Un relais local traînant est ignoré.)
+    const pool = getRelayPool();
+    const primaryWire =
+      isDecentralizedRelayEnabled() && pool.length > 1
+        // Réseau décentralisé : une file par relais (round-robin + repli).
+        ? new MultiRelayWire(
+            pool.map(url => ({ url, wire: new SmpRelayWire({ url, keyHash: smpKeyHash }) })),
+          )
+        // Relais décentralisé unique sélectionné : on l'utilise (sinon l'env
+        // par défaut était utilisé et la sélection était ignorée).
+        : new SmpRelayWire({
+            url: (isDecentralizedRelayEnabled() && pool[0]) || smpUrl,
+            keyHash: smpKeyHash,
+          });
+    const fw = new FailoverRelayWire(
+      primaryWire,
+      new SupabaseRelayWire(),
+      active => { for (const cb of transportListeners) cb(active); },
+    );
+    failover = fw;
+    wire = fw;
+  }
+
+  return { wire, failover };
+}
+
 export function getPrivateMessenger(): PrivateMessenger {
   if (!instance) {
-    const mode = import.meta.env.VITE_RELAY_MODE as string | undefined;
-    const smpUrl =
-      (import.meta.env.VITE_SMP_RELAY_URL as string | undefined) ?? 'wss://78-232-3-78.sslip.io/';
-    const smpKeyHash = import.meta.env.VITE_SMP_RELAY_KEY_HASH as string | undefined;
-    let wire: RelayWire;
-    if (isTorRelayEnabled()) {
-      // Mode Tor WASM : client Tor DANS le navigateur (tor-js). Le transport
-      // SMP-over-Tor cible le **relais `.onion`** configuré
-      // (`getOnionRelayUrl` → `http://<…>.onion/smp/up|down`) — jamais le relais
-      // clearnet de l'opérateur. Fail-closed : `isTorRelayEnabled()` implique une
-      // vraie destination `.onion` ; s'il en manque une, `createTorWebSocketImpl`
-      // refuse (aucun repli en clair, donc aucune exposition d'IP).
-      //
-      // L'URL passée à `SmpRelayWire` n'est qu'un marqueur : le socket fantôme
-      // Tor ignore l'URL et utilise la `.onion` (ci-dessous, via la fabrique).
-      const onion = getOnionRelayUrl();
-      wire = new SmpRelayWire({
-        url: 'wss://tor.gateway/',
-        keyHash: '',
-        webSocketImplFactory: () => createTorWebSocketImpl(onion),
-      });
-    } else if (mode === 'smp') {
-      // Relais SMP SMP (browser-profile) — OPTION EXPLICITE.
-      // ⚠️ WIP : l'adaptateur SmpRelayWire ne couvre pas encore le modèle de
-      // connexion à deux files du mode privé ; à finaliser avant usage prod.
-      wire = new SmpRelayWire({ url: smpUrl, keyHash: smpKeyHash });
-    } else if (mode === 'smp-agent') {
-      wire = new AgentRelayWire(AGENT_URL);
-    } else if (isSmpV9Enabled()) {
-      // Réseau SMP (protocole SMP v9..v15) via le pont WS↔TLS natif (transport
-      // interne, invisible), avec repli sur le relais aveugle si le pont/le
-      // serveur SMP est injoignable.
-      const fw = new FailoverRelayWire(
-        new SmpV9Wire({ bridgeUrl: getSmpBridgeUrl(), host: getSmpV9Host() }),
-        new SupabaseRelayWire(),
-        active => { for (const cb of transportListeners) cb(active); },
-      );
-      failoverWire = fw;
-      wire = fw;
-    } else if (hasCustomRelay()) {
-      wire = new WebSocketWire(getRelayUrl());
-    } else {
-      // DÉFAUT : SMP (SMP browser-profile) PRIORITAIRE, repli automatique sur
-      // le relais aveugle Supabase si le premier est injoignable → le mode privé
-      // fonctionne toujours. (Un relais local 127.0.0.1 traînant est ignoré.)
-      const pool = getRelayPool();
-      const primaryWire =
-        isDecentralizedRelayEnabled() && pool.length > 1
-          // Réseau décentralisé : une file par relais (round-robin + repli).
-          ? new MultiRelayWire(
-              pool.map(url => ({ url, wire: new SmpRelayWire({ url, keyHash: smpKeyHash }) })),
-            )
-          // Relais décentralisé unique sélectionné : on l'utilise (sinon l'env
-          // par défaut était utilisé et la sélection était ignorée).
-          : new SmpRelayWire({
-              url: (isDecentralizedRelayEnabled() && pool[0]) || smpUrl,
-              keyHash: smpKeyHash,
-            });
-      const fw = new FailoverRelayWire(
-        primaryWire,
-        new SupabaseRelayWire(),
-        active => { for (const cb of transportListeners) cb(active); },
-      );
-      failoverWire = fw;
-      wire = fw;
-    }
+    const { wire, failover } = createPrivateRelayWire();
+    failoverWire = failover;
     instance = new PrivateMessenger(
       wire,
       new IdbConnectionStore(),
