@@ -162,6 +162,13 @@ const ONION_URL_KEY = 'nephtys_smp_onion_url';
  * serveur). Invariant : « Tor activé » implique une adresse `.onion`
  * configurée. Si l'adresse a disparu, on **désactive proprement** (auto-
  * réparation) au lieu de retomber en clair tout en affichant un état « Tor ».
+ *
+ * NB honnêteté : l'invariant porte sur une **vraie destination `.onion`**
+ * (`getOnionRelayUrl`), PAS sur la passerelle clearnet `/tor`
+ * (`getTorGatewayUrl`), qui n'est qu'un signal de disponibilité et n'est pas
+ * utilisée comme endpoint de transport (cf. `getTorGatewayUrl`). Sans `.onion`,
+ * l'état « Tor » n'a donc **aucun effet** — on ne peut pas afficher « Tor
+ * actif » alors que le trafic partirait vers l'infra opérateur.
  */
 export function isTorRelayEnabled(): boolean {
   let enabled = false;
@@ -170,7 +177,7 @@ export function isTorRelayEnabled(): boolean {
   } catch {
     return false;
   }
-  if (enabled && !getTorRelayUrl()) {
+  if (enabled && !getOnionRelayUrl()) {
     try {
       localStorage.removeItem(TOR_ENABLED_KEY);
     } catch {
@@ -239,10 +246,15 @@ export function setOnionRelayUrl(url: string): void {
 }
 
 /**
- * URL de la passerelle Tor hébergée sur l'infra (WebSocket « clearnet » qui
- * relaie la session vers le relais distant À TRAVERS le réseau Tor). C'est ce
- * qui rend le mode Tor utilisable depuis un navigateur ordinaire, sans Tor
- * Browser ni réglage : le navigateur ne parle qu'à cette passerelle.
+ * URL de la passerelle Tor hébergée sur l'infra (WebSocket « clearnet »).
+ *
+ * ⚠️ HONNÊTETÉ / LIMITE CONNUE : cette URL n'est utilisée QUE pour un test de
+ * **disponibilité** (`isTorAvailable`). Elle n'est **jamais** un endpoint de
+ * transport : le mode Tor réel s'appuie sur le client Tor WASM du navigateur
+ * (`createTorWebSocketImpl`, cf. `getPrivateMessenger`), et le mode Tor
+ * n'entre en vigueur que si une **vraie destination `.onion`** est configurée
+ * (`isTorRelayEnabled`). Cette fonction est conservée pour l'UI/diagnostic et
+ * ne doit pas être présentée comme « Tor actif ».
  *
  * Priorité : `VITE_TOR_GATEWAY_URL` puis dérivation depuis `VITE_SMP_RELAY_URL`
  * (chemin `/tor`). Ex. `wss://relay.exemple/` → `wss://relay.exemple/tor`.
@@ -264,16 +276,23 @@ export function getTorGatewayUrl(): string {
 }
 
 /**
- * Point d'entrée Tor du mode privé. Priorité à une adresse `.onion` si elle est
- * fournie (Tor natif), sinon la **passerelle Tor** de l'infra : un clic depuis
- * n'importe quel navigateur, **sans logiciel externe ni Tor Browser**. Vide si
- * aucun point d'entrée n'est disponible.
+ * Point d'entrée Tor « de disponibilité » : une adresse `.onion` si elle est
+ * fournie, sinon la passerelle clearnet (cf. `getTorGatewayUrl`).
+ *
+ * ⚠️ Sert au **diagnostic/UI d'accessibilité** uniquement. Le transport Tor
+ * effectif est le client Tor WASM (`.onion` requis via `isTorRelayEnabled`) ;
+ * cette valeur NE pilote PAS le transport. Vide si rien n'est disponible.
  */
 export function getTorRelayUrl(): string {
   return getOnionRelayUrl() || getTorGatewayUrl();
 }
 
-/** Vrai si un point d'entrée Tor est disponible (`.onion` ou passerelle). */
+/**
+ * Vrai si un point d'entrée Tor est **disponible** (`.onion` OU passerelle
+ * clearnet). Attention : ce n'est qu'un signal de disponibilité ; « disponible »
+ * ne veut pas dire « actif » — l'activation réelle exige un `.onion`
+ * (`isTorRelayEnabled`).
+ */
 export function isTorAvailable(): boolean {
   return Boolean(getTorRelayUrl());
 }
@@ -572,6 +591,13 @@ export function getPrivateMessenger(): PrivateMessenger {
       // Mode Tor WASM : client Tor DANS le navigateur (tor-js) ; la passerelle
       // KPS du VPS ne relaie que des octets opaques. Fail-closed : aucun repli
       // en clair (donc aucune exposition d'IP si Tor échoue).
+      //
+      // `isTorRelayEnabled()` implique désormais une VRAIE destination `.onion`
+      // configurée (sinon l'état Tor est auto-désactivé, cf. plus haut) : on
+      // n'affiche donc pas « Tor actif » quand le trafic partirait vers l'infra
+      // opérateur. L'adresse `.onion` elle-même n'est pas encore utilisée comme
+      // endpoint du transport SMP-over-Tor (limite documentée), mais le trafic
+      // transite bien par les circuits Tor construits localement.
       wire = new SmpRelayWire({
         url: 'wss://tor.gateway/',
         keyHash: '',

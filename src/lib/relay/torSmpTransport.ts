@@ -14,6 +14,13 @@
  *     non-streamé : le corps streamé n'est pas supporté par tor-js navigateur).
  * Chaque bloc est encadré par une longueur 4 o (HTTP ne préserve pas les
  * frontières de messages).
+ *
+ * ⚠️ LIMITE CONNUE (honnêteté) : ce transport suppose que le relais exposé à
+ * `httpBase` serve bien les endpoints `GET /smp/down` et `POST /smp/up`. Ces
+ * endpoints ne sont pas fournis « côté client » de façon vérifiable ici : si le
+ * relais ne les implémente pas, le mode Tor échoue (fail-closed, aucun repli en
+ * clair). `httpBase` (cf. `torClient.torHttpBase`) est dérivé du relais
+ * clearnet ; l'adresse `.onion` configurée n'est pas utilisée comme endpoint.
  */
 
  
@@ -50,7 +57,8 @@ export function createTorSmpWebSocketImpl(opts: TorSmpTransportOptions): any {
     readyState = 0;
     binaryType = 'arraybuffer';
 
-    private readonly sessionId = `nep${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+    private readonly sessionId =
+      globalThis.crypto?.randomUUID?.() ?? `nep-${Date.now().toString(36)}`;
     private readonly listeners: Record<string, Set<(e: any) => void>> = {};
     private readonly abort = new AbortController();
     private buf: Uint8Array = new Uint8Array(0);

@@ -19,7 +19,7 @@
 import { supabase } from '../supabase';
 import { isAnonRelayConsentGranted } from './supabaseRelayWire';
 import { bytesToBase64, base64ToBytes, randomBytes } from '../ratchet/primitives';
-import { uploadFileToXftp, downloadFileFromXftp, getXftpFileServer } from './xftpClient';
+import { uploadFileToXftp, downloadFileFromXftp, getXftpFileServer, assertAllowedXftpServer } from './xftpClient';
 
 export const FILE_BUCKET = 'anon_files';
 export const FILE_CHUNK_SIZE = 256 * 1024; // 256 KiB
@@ -103,7 +103,12 @@ interface LocalFileDescriptor {
 export interface XftpFileDescriptor {
   v: 2;
   kind: 'xftp';
-  /** Adresse `xftp://<keyHash>@hôte` du serveur de fichiers. */
+  /**
+   * Adresse `xftp://<keyHash>@hôte` du serveur de fichiers. **Fournie par le
+   * pair** : elle est validée (whitelist de serveurs XFTP connus) avant tout
+   * téléchargement pour empêcher un pair de forcer une connexion vers un hôte
+   * arbitraire (fuite d'adresse IP / tracking).
+   */
   server: string;
   name: string;
   mime: string;
@@ -358,6 +363,10 @@ async function downloadXftpDescriptor(desc: XftpFileDescriptor): Promise<Blob> {
   if (typeof desc.server !== 'string' || !desc.server.startsWith('xftp://')) {
     throw new Error('descripteur XFTP invalide');
   }
+  // `desc.server` vient du pair : on n'accepte qu'un serveur XFTP connu AVANT
+  // d'ouvrir la moindre connexion (sinon fuite d'IP vers l'hôte choisi par le
+  // pair). `connectXftp` revalide (défense en profondeur).
+  assertAllowedXftpServer(desc.server);
   const bytes = await downloadFileFromXftp(desc.server, desc.desc);
   return new Blob([bytes as unknown as BlobPart], { type: desc.mime || 'application/octet-stream' });
 }

@@ -38,11 +38,26 @@ describe('normalizeOnionWsUrl', () => {
 });
 
 describe('préférence Tor', () => {
-  it('active/désactive et persiste la préférence', () => {
+  it('active/désactive et persiste la préférence (uniquement avec un `.onion`)', () => {
+    // Sans `.onion`, l'état « Tor » n'a aucun effet : il reste inactif
+    // (auto-réparation) même si l'utilisateur l'a demandé.
     expect(isTorRelayEnabled()).toBe(false);
+    setTorRelayEnabled(true);
+    expect(isTorRelayEnabled()).toBe(false);
+
+    // Avec une vraie destination `.onion`, la préférence tient.
+    setOnionRelayUrl(V3);
     setTorRelayEnabled(true);
     expect(isTorRelayEnabled()).toBe(true);
     setTorRelayEnabled(false);
+    expect(isTorRelayEnabled()).toBe(false);
+  });
+
+  it('se désactive si l’adresse `.onion` disparaît', () => {
+    setOnionRelayUrl(V3);
+    setTorRelayEnabled(true);
+    expect(isTorRelayEnabled()).toBe(true);
+    setOnionRelayUrl('');
     expect(isTorRelayEnabled()).toBe(false);
   });
 

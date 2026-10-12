@@ -304,4 +304,107 @@ SELECT
   position('NEW.is_pinned'  in prosrc) > 0 AS has_is_pinned
 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
 WHERE n.nspname = 'private' AND p.proname = 'restrict_member_message_update';
+
+-- ============================================================================
+-- 10) Vérifications du correctif 20261037_enforce_aal2 (à exécuter après)
+-- ============================================================================
+
+-- 10a) Helpers aal2 : SECURITY DEFINER, search_path défini, non exécutables
+--      par anon, exécutables par authenticated (requis pour l'évaluation RLS).
+--      ATTENDU : 2 lignes ; security_definer = true ; anon_can_execute = false ;
+--                auth_can_execute = true ; settings contient 'search_path='.
+SELECT p.proname,
+       p.prosecdef                                                AS security_definer,
+       p.proconfig                                                AS settings,
+       has_function_privilege('anon', p.oid, 'EXECUTE')           AS anon_can_execute,
+       has_function_privilege('authenticated', p.oid, 'EXECUTE')  AS auth_can_execute
+FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+WHERE n.nspname = 'private' AND p.proname IN ('requires_aal2', 'aal2_ok')
+ORDER BY p.proname;
+
+-- 10b) CŒUR DU CONTRÔLE : chaque policy sensible gatée doit référencer
+--      `aal2_ok` (dans USING ou WITH CHECK).
+--      ATTENDU : toutes les lignes ont has_aal2_ok = true (0 ligne à false).
+SELECT tablename, policyname, cmd,
+       (COALESCE(qual, '') ILIKE '%aal2_ok%'
+        OR COALESCE(with_check, '') ILIKE '%aal2_ok%') AS has_aal2_ok
+FROM pg_policies
+WHERE schemaname = 'public'
+  AND (
+        (tablename = 'messages'
+           AND policyname IN ('msg_select_member','msg_insert_sender_member',
+                              'messages_update_member','msg_delete_sender'))
+     OR (tablename = 'message_text_keys'
+           AND policyname IN ('mtk_select_recipient','mtk_insert_sender','mtk_delete_sender'))
+     OR (tablename = 'message_media_keys'
+           AND policyname IN ('mmk_select_recipient','mmk_insert_sender','mmk_delete_sender'))
+     OR (tablename = 'conversations'
+           AND policyname IN ('conv_select_member','conv_insert_creator',
+                              'conv_update_admin_or_creator','conv_delete_creator'))
+     OR (tablename = 'conversation_members'
+           AND policyname IN ('cm_select_member','cm_insert_creator_or_admin',
+                              'cm_update_self_or_admin',
+                              'cm_delete_self_or_creator','cm_delete_own_or_admin'))
+     OR (tablename = 'profiles'
+           AND policyname = 'profiles_select_discoverable_or_related')
+  )
+ORDER BY tablename, policyname;
+
+-- 10c) Résidu : polices sensibles `authenticated` SANS aal2_ok (divergence).
+--      ATTENDU : 0 ligne. (profiles : seules les écritures « son propre profil »
+--      sont légitimement hors périmètre → exclues ici, cf. cmd.)
+SELECT tablename, policyname, cmd, qual, with_check
+FROM pg_policies
+WHERE schemaname = 'public'
+  AND 'authenticated' = ANY (roles)
+  AND (
+        tablename IN ('messages', 'message_text_keys', 'message_media_keys',
+                      'conversations', 'conversation_members')
+        OR (tablename = 'profiles' AND cmd = 'SELECT')
+  )
+  AND COALESCE(qual, '')       NOT ILIKE '%aal2_ok%'
+  AND COALESCE(with_check, '') NOT ILIKE '%aal2_ok%'
+ORDER BY tablename, policyname;
+
+-- 10d) Comptes visés (2FA vérifiée) vs factoriels — contrôle d'existence.
+--      ATTENDU : uniquement des facteurs 'verified' (l'exigence aal2 ne
+--      s'applique QU'À ces comptes ; un compte sans ligne ici n'est pas gaté).
+SELECT status, count(*) AS factors
+FROM auth.mfa_factors
+GROUP BY status
+ORDER BY status;
+-- ============================================================================
+
+-- ============================================================================
+-- 11) Vérifications du correctif 20261038 (créateur conserve 'admin' à l'INSERT)
+-- ============================================================================
+
+-- 11a) Trigger BEFORE INSERT unique présent : ATTENDU 1 ligne
+--      `trg_cm_force_member_role`.
+SELECT tgname, pg_get_triggerdef(t.oid) AS definition
+FROM pg_trigger t
+JOIN pg_class c     ON c.oid = t.tgrelid
+JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE n.nspname = 'public' AND c.relname = 'conversation_members'
+  AND NOT t.tgisinternal
+  AND tgname = 'trg_cm_force_member_role';
+
+-- 11b) La fonction encode les DEUX branches (exemption créateur + repli
+--      'member') et les exemptions système. ATTENDU : les 3 booléens = true.
+SELECT
+  position('created_by' in prosrc) > 0             AS checks_creator,
+  position('NEW.role := ''member''' in prosrc) > 0 AS forces_member_fallback,
+  position('service_role' in prosrc) > 0           AS exempts_service_role
+FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+WHERE n.nspname = 'private' AND p.proname = 'force_member_role_on_insert';
+
+-- 11c) NON-RÉGRESSION : le trigger UPDATE anti-escalade doit SUBSISTER.
+--      ATTENDU : 1 ligne `trg_prevent_member_role_escalation`.
+SELECT tgname, pg_get_triggerdef(t.oid) AS definition
+FROM pg_trigger t
+JOIN pg_class c     ON c.oid = t.tgrelid
+JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE n.nspname = 'public' AND c.relname = 'conversation_members'
+  AND NOT t.tgisinternal
+  AND tgname = 'trg_prevent_member_role_escalation';
 -- ============================================================================
