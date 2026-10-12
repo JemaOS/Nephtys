@@ -78,7 +78,17 @@ class SmpV9Connection {
       for (const w of [...this.waiters]) w();
     };
     this.ws.onclose = () => { this.opened = false; };
-    await new Promise<void>((res, rej) => { this.ws!.onopen = () => res(); this.ws!.onerror = () => rej(new Error('SMP : pont injoignable')); });
+    // Délai d'attente SUR L'OUVERTURE : un pont qui ne répond pas (handshake WS
+    // bloqué, ex. mauvais chemin proxifié) laissait sinon la création pendre
+    // jusqu'au timeout TCP du navigateur (~1 min) avant tout repli. On borne par
+    // `timeoutMs` pour échouer vite et laisser le repli s'enclencher.
+    await new Promise<void>((res, rej) => {
+      const t = setTimeout(() => { try { this.ws?.close(); } catch { /* ignore */ } rej(new Error('SMP : pont injoignable (délai de connexion)')); }, this.timeoutMs);
+      const ok = () => { clearTimeout(t); res(); };
+      const ko = () => { clearTimeout(t); rej(new Error('SMP : pont injoignable')); };
+      this.ws!.onopen = ok;
+      this.ws!.onerror = ko;
+    });
     const hello = this.parseHello(await this.nextBlock());
     this.sessionId = hello.sessionId;
     this.serverAuthPub = hello.authPub;
