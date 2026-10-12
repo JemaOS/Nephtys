@@ -288,6 +288,40 @@ function defaultRelayUrl(): string {
   return (import.meta.env.VITE_SMP_RELAY_URL as string | undefined) ?? 'wss://78-232-3-78.sslip.io/';
 }
 
+/**
+ * Hôte du pont WS↔TLS auto-hébergé. Le pont est un **transport interne** : il
+ * ne doit JAMAIS apparaître côté utilisateur comme un « relais » (ni listé, ni
+ * proposé, ni affiché). Dérivé de l'URL de relais par défaut.
+ */
+function bridgeHost(): string {
+  try {
+    return new URL(defaultRelayUrl()).host.toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Vrai si `url` pointe vers le pont auto-hébergé. Sert à filtrer le pont des
+ * listes destinées à l'UI (`getAvailableRelays`).
+ *
+ * Distinction UI vs transport :
+ *  - **UI (visible)** : seuls de vrais serveurs SMP / relais non-pont
+ *    (`getAvailableRelays`, `getSmpRelayPresets`).
+ *  - **Transport (interne)** : le pont reste utilisé par `SmpV9Wire`
+ *    (`getSmpBridgeUrl`) et pour la passerelle Tor (`getTorGatewayUrl`), sans
+ *    jamais être exposé.
+ */
+export function isBridgeRelay(url: string): boolean {
+  const host = bridgeHost();
+  if (!host) return false;
+  try {
+    return new URL(url.trim()).host.toLowerCase() === host;
+  } catch {
+    return false;
+  }
+}
+
 /** Valeur brute du pool de relais (saisie UI ou `VITE_SMP_RELAY_URLS`). */
 export function getRelayPoolInput(): string {
   try {
@@ -342,9 +376,12 @@ export function setRelayMode(mode: RelayMode): void {
 
 /**
  * Relais disponibles connus (union dedupliquee, uniquement `wss://`) : relais
- * par defaut, `VITE_SMP_RELAY_URLS`, et le pool actuellement stocke. Base de la
- * liste « relais existants » proposee dans l'UI (data-driven : ajouter des
- * relais via env ne demande aucun changement de code).
+ * SMP / relais non-pont de `VITE_SMP_RELAY_URLS` et du pool actuellement stocke.
+ * Base de la liste « relais existants » proposee dans l'UI (data-driven :
+ * ajouter des relais via env ne demande aucun changement de code).
+ *
+ * Le **pont auto-hébergé** (`defaultRelayUrl()`) en est EXCLU : c'est un
+ * transport interne, jamais un « relais » visible par l'utilisateur.
  */
 export function getAvailableRelays(): string[] {
   const out: string[] = [];
@@ -352,10 +389,11 @@ export function getAvailableRelays(): string[] {
   const push = (raw: string): void => {
     const url = raw.trim();
     if (!/^wss:\/\//i.test(url) || seen.has(url)) return;
+    // Le pont est un transport interne : jamais proposé comme « relais » UI.
+    if (isBridgeRelay(url)) return;
     seen.add(url);
     out.push(url);
   };
-  push(defaultRelayUrl());
   const envUrls = import.meta.env.VITE_SMP_RELAY_URLS as string | undefined;
   if (envUrls) envUrls.split(/[\s,]+/).forEach(push);
   try {
@@ -368,9 +406,13 @@ export function getAvailableRelays(): string[] {
 }
 
 /**
- * Liste effective des relais. En mode 'auto' : tous les relais disponibles
- * (aucune saisie requise). En mode 'manual' : le pool saisi/env, sinon le
- * relais par defaut.
+ * Liste effective des relais pour le **transport** (pas une liste d'affichage).
+ * En mode 'auto' : tous les relais disponibles (jamais le pont, cf.
+ * `getAvailableRelays`). En mode 'manual' : le pool saisi/env, sinon le relais
+ * par defaut (pont interne, repli de transport).
+ *
+ * NB : alimente `getPrivateMessenger` ; l'UI ne doit pas afficher cette liste
+ * telle quelle (le pont peut y figurer comme repli de transport).
  */
 export function getRelayPool(): string[] {
   const raw =
@@ -454,8 +496,17 @@ export function setSmpV9Host(host: string): void {
   instance = null;
 }
 
-/** URL du pont WebSocket SMP (ex. wss://vps/smp). */
-export function getSmpV9BridgeUrl(): string {
+/**
+ * URL du **pont** WebSocket↔TLS auto-hébergé (ex. `wss://vps/smp`).
+ *
+ * **Transport interne uniquement** : le pont est invisible par construction et
+ * ne doit jamais être affiché comme un « relais » (`getAvailableRelays` l'exclut,
+ * l'UI ne le rend pas). Utilisé en interne par `SmpV9Wire` (`bridgeUrl`).
+ *
+ * Priorité : override local, puis `VITE_SMP_V9_BRIDGE_URL` / `VITE_SMP_BRIDGE_URL`,
+ * puis le pont auto-hébergé par défaut.
+ */
+export function getSmpBridgeUrl(): string {
   try {
     const o = localStorage.getItem(SMP_V9_URL_KEY);
     if (o) return o.trim();
@@ -464,8 +515,14 @@ export function getSmpV9BridgeUrl(): string {
   }
   return (
     (import.meta.env.VITE_SMP_V9_BRIDGE_URL as string | undefined)?.trim() ||
+    (import.meta.env.VITE_SMP_BRIDGE_URL as string | undefined)?.trim() ||
     'wss://78-232-3-78.sslip.io/smp'
   );
+}
+
+/** Alias interne de {@link getSmpBridgeUrl} (compat historique). */
+export function getSmpV9BridgeUrl(): string {
+  return getSmpBridgeUrl();
 }
 
 /** Enregistre l'URL du pont SMP v9. */
@@ -528,10 +585,11 @@ export function getPrivateMessenger(): PrivateMessenger {
     } else if (mode === 'smp-agent') {
       wire = new AgentRelayWire(AGENT_URL);
     } else if (isSmpV9Enabled()) {
-      // Réseau SMP (protocole SMP v9..v15) via le pont WS↔TLS natif, avec
-      // repli sur le relais aveugle si le pont/le serveur SMP est injoignable.
-const fw = new FailoverRelayWire(
-        new SmpV9Wire({ bridgeUrl: getSmpV9BridgeUrl(), host: getSmpV9Host() }),
+      // Réseau SMP (protocole SMP v9..v15) via le pont WS↔TLS natif (transport
+      // interne, invisible), avec repli sur le relais aveugle si le pont/le
+      // serveur SMP est injoignable.
+      const fw = new FailoverRelayWire(
+        new SmpV9Wire({ bridgeUrl: getSmpBridgeUrl(), host: getSmpV9Host() }),
         new SupabaseRelayWire(),
         active => { for (const cb of transportListeners) cb(active); },
       );

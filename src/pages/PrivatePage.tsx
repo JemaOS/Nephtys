@@ -48,9 +48,10 @@ import {
   setDecentralizedRelayEnabled,
   getRelayMode,
   setRelayMode,
-  getAvailableRelays,
   getRelayPool,
-  setRelayPool,
+  getSmpRelayPresets,
+  getSmpV9Host,
+  setSmpV9Host,
   type RelayMode,
 } from '@/lib/relay/relayClient'
 import { getGroupMessenger } from '@/lib/relay/groupClient'
@@ -206,15 +207,26 @@ export function PrivatePage() {
   const [callConv, setCallConv] = useState<string | null>(null)
   const [mediaError, setMediaError] = useState<string | null>(null)
 
-  // Contrôles de la connexion active (relais / Tor / incognito).
+  // Contrôles de la connexion active (relais SMP / Tor / incognito).
   const [relayModeState, setRelayModeState] = useState<RelayMode>(() => getRelayMode())
   const [torOn, setTorOn] = useState<boolean>(() => isTorRelayEnabled())
   const [coverOn, setCoverOn] = useState<boolean>(() => isCoverTrafficEnabled())
-  const [currentRelay, setCurrentRelay] = useState<string>(() =>
-    getRelayMode() === 'manual' ? (getRelayPool()[0] ?? '') : '',
+  // Relais SMP : le contrôle « Relais » opère sur les serveurs SMP (hosts), pas
+  // sur le pont de transport auto-hébergé (jamais exposé à l'utilisateur).
+  const smpPresets = useMemo(() => getSmpRelayPresets(), [])
+  const [smpHost, setSmpHost] = useState<string>(() => getSmpV9Host())
+  const [smpMode, setSmpMode] = useState<'auto' | 'manual'>(() =>
+    getSmpV9Host() === (getSmpRelayPresets()[0] ?? '') ? 'auto' : 'manual',
+  )
+  // Vrai dès qu'un changement de relais SMP attend un rechargement pour s'appliquer.
+  const [smpPending, setSmpPending] = useState(false)
+  // Liste des options du sélecteur (inclut un host personnalisé hors presets).
+  const smpOptions = useMemo(
+    () => (smpHost && !smpPresets.includes(smpHost) ? [smpHost, ...smpPresets] : smpPresets),
+    [smpHost, smpPresets],
   )
   // Réglages capturés avant l'activation d'Incognito, pour les restaurer à l'arrêt.
-  const incognitoPrevRef = useRef<{ tor: boolean; cover: boolean; mode: RelayMode } | null>(null)
+  const incognitoPrevRef = useRef<{ tor: boolean; cover: boolean; mode: RelayMode; smpHost: string } | null>(null)
 
   // Onglets : une seule section à la fois (écran plus lisible, moins chargé).
   const [tab, setTab] = useState<'connections' | 'groups' | 'status'>('connections')
@@ -499,42 +511,44 @@ export function PrivatePage() {
     }
   }, [])
 
-  // ─── Contrôles relais / Tor / incognito ─────────────────────────────
-  /** Relais courant, affiché de façon lisible. */
+  // ─── Contrôles relais SMP / Tor / incognito ─────────────────────────
+  /** Relais SMP courant, affiché de façon lisible (jamais le pont interne). */
   const relayDisplay = useMemo(
-    () =>
-      relayModeState === 'auto'
-        ? t('pvRelayCurrentAuto', { count: getAvailableRelays().length })
-        : currentRelay || t('pvRelayCurrentNone'),
-    [relayModeState, currentRelay, t],
+    () => t('pvSmpCurrent', { host: smpHost }),
+    [smpHost, t],
   )
 
-  const applyRelayMode = useCallback((mode: RelayMode) => {
-    // Le pool décentralisé doit être actif pour que la sélection soit honorée.
-    setRelayMode(mode)
-    setDecentralizedRelayEnabled(true)
-    setRelayModeState(mode)
-    if (mode === 'manual') {
-      const next = getRelayPool()[0] ?? getAvailableRelays()[0] ?? ''
-      if (next) setRelayPool(next)
-      setCurrentRelay(next)
-    } else {
-      setCurrentRelay('')
-    }
+  /** Sélectionne un serveur SMP (mémorisé) ; appliqué à la prochaine connexion. */
+  const selectSmpHost = useCallback((host: string, mode: 'auto' | 'manual') => {
+    const target = host.trim()
+    if (!target) return
+    setSmpV9Host(target)
+    setSmpHost(target)
+    setSmpMode(mode)
+    setSmpPending(true)
   }, [])
 
-  /** Passe au relais suivant du pool (sélection unique, mode manuel). */
-  const changeRelay = useCallback(() => {
-    const pool = getAvailableRelays()
-    if (pool.length === 0) return
-    const idx = pool.indexOf(currentRelay)
-    const next = pool[(idx + 1) % pool.length]
-    setRelayMode('manual')
-    setDecentralizedRelayEnabled(true)
-    setRelayModeState('manual')
-    setRelayPool(next)
-    setCurrentRelay(next)
-  }, [currentRelay])
+  /** « Automatique » (preset par défaut) ou bascule en sélection manuelle. */
+  const applySmpMode = useCallback(
+    (mode: 'auto' | 'manual') => {
+      if (mode === 'auto') {
+        const preset = smpPresets[0]
+        if (preset) selectSmpHost(preset, 'auto')
+        else setSmpMode('auto')
+      } else {
+        setSmpMode('manual')
+      }
+    },
+    [smpPresets, selectSmpHost],
+  )
+
+  /** Passe au serveur SMP suivant de la liste des presets (avec bouclage). */
+  const changeSmpHost = useCallback(() => {
+    if (smpPresets.length === 0) return
+    const idx = smpPresets.indexOf(smpHost)
+    const next = smpPresets[(idx + 1) % smpPresets.length]
+    selectSmpHost(next, 'manual')
+  }, [smpPresets, smpHost, selectSmpHost])
 
   const toggleTor = useCallback((next: boolean) => {
     setTorRelayEnabled(next)
@@ -556,6 +570,7 @@ export function PrivatePage() {
         tor: isTorRelayEnabled(),
         cover: isCoverTrafficEnabled(),
         mode: getRelayMode(),
+        smpHost: getSmpV9Host(),
       }
       setTorRelayEnabled(true)
       setCoverTrafficEnabled(true)
@@ -564,11 +579,23 @@ export function PrivatePage() {
       setTorOn(isTorRelayEnabled())
       setCoverOn(true)
       setRelayModeState('auto')
-      setCurrentRelay('')
+      // Relais automatique : serveur SMP par défaut (le plus neutre).
+      const preset = smpPresets[0]
+      if (preset) {
+        setSmpV9Host(preset)
+        setSmpHost(preset)
+        setSmpMode('auto')
+        setSmpPending(true)
+      }
     } else {
       const prev = incognitoPrevRef.current
       incognitoPrevRef.current = null
-      const target = prev ?? { tor: false, cover: true, mode: 'auto' as RelayMode }
+      const target = prev ?? {
+        tor: false,
+        cover: true,
+        mode: 'auto' as RelayMode,
+        smpHost: smpPresets[0] ?? '',
+      }
       setTorRelayEnabled(target.tor)
       setCoverTrafficEnabled(target.cover)
       setRelayMode(target.mode)
@@ -576,9 +603,14 @@ export function PrivatePage() {
       setTorOn(isTorRelayEnabled())
       setCoverOn(target.cover)
       setRelayModeState(target.mode)
-      setCurrentRelay(target.mode === 'manual' ? (getRelayPool()[0] ?? '') : '')
+      if (target.smpHost) {
+        setSmpV9Host(target.smpHost)
+        setSmpHost(target.smpHost)
+        setSmpMode(target.smpHost === (smpPresets[0] ?? '') ? 'auto' : 'manual')
+        setSmpPending(true)
+      }
     }
-  }, [])
+  }, [smpPresets])
 
   const incognitoOn = torOn && coverOn && relayModeState === 'auto'
 
@@ -1078,23 +1110,40 @@ export function PrivatePage() {
                 </div>
               </div>
 
-              {/* Contrôles compacts : relais + Tor + incognito (une seule rangée repliable). */}
+              {/* Contrôles compacts : relais SMP + Tor + incognito (une seule rangée). */}
               <div className="flex flex-wrap items-center gap-2">
                 <div role="group" aria-label={t('pvRelayControl')} className="flex items-center rounded-full bg-bg-primary p-0.5">
-                  <button type="button" aria-pressed={relayModeState === 'auto'} onClick={() => applyRelayMode('auto')} className={segClass(relayModeState === 'auto')}>
+                  <button type="button" aria-pressed={smpMode === 'auto'} onClick={() => applySmpMode('auto')} className={segClass(smpMode === 'auto')}>
                     {t('pvRelayAuto')}
                   </button>
-                  <button type="button" aria-pressed={relayModeState === 'manual'} onClick={() => applyRelayMode('manual')} className={segClass(relayModeState === 'manual')}>
+                  <button type="button" aria-pressed={smpMode === 'manual'} onClick={() => applySmpMode('manual')} className={segClass(smpMode === 'manual')}>
                     {t('pvRelayChoose')}
                   </button>
                 </div>
-                <button type="button" onClick={changeRelay} className={chipClass}>
+                <button type="button" onClick={changeSmpHost} className={chipClass}>
                   <RefreshCw size={13} /> {t('pvRelayChange')}
                 </button>
                 <span className="text-[11px] text-text-tertiary truncate max-w-[45%]" title={relayDisplay}>{relayDisplay}</span>
                 <Toggle label={t('torLabel')} checked={torOn} onChange={toggleTor} />
                 <Toggle label={t('pvIncognito')} checked={incognitoOn} onChange={toggleIncognito} icon={<EyeOff size={13} />} />
               </div>
+              {/* Sélection manuelle : liste des serveurs SMP (le cycle reste un raccourci). */}
+              {smpMode === 'manual' && smpOptions.length > 0 && (
+                <label className="flex items-center gap-2 text-[11px] text-text-tertiary">
+                  <span className="shrink-0">{t('pvRelayChoose')}</span>
+                  <select
+                    value={smpHost}
+                    onChange={e => selectSmpHost(e.target.value, 'manual')}
+                    aria-label={t('pvSmpSelectLabel')}
+                    className="flex-1 min-w-0 px-2 py-1 rounded-lg bg-bg-primary text-[11px] text-text-secondary font-mono focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7578db]"
+                  >
+                    {smpOptions.map(host => (
+                      <option key={host} value={host}>{host}</option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {smpPending && <p className="text-[11px] text-[#a5a7ff]">{t('pvRelayAppliesNext')}</p>}
               {incognitoOn && <p className="text-[11px] text-[#a5a7ff]">{t('pvIncognitoDesc')}</p>}
               {torOn && <p className="text-[11px] text-text-tertiary">{t('torActiveHint')}</p>}
             </div>

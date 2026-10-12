@@ -39,7 +39,6 @@ import {
   setDecentralizedRelayEnabled,
   isSmpV9Enabled,
   setSmpV9Enabled,
-  getSmpV9BridgeUrl,
   setSmpV9BridgeUrl,
   getSmpRelayPresets,
   getSmpV9Host,
@@ -180,7 +179,6 @@ export function SettingsPage() {
   const [decentralized, setDecentralized] = useState<boolean>(() => isDecentralizedRelayEnabled())
   const [relayPoolInput, setRelayPoolInput] = useState<string>(() => getRelayPoolInput())
   const [smpV9, setSmpV9] = useState<boolean>(() => isSmpV9Enabled())
-  const [smpV9Url, setSmpV9Url] = useState<string>(() => getSmpV9BridgeUrl())
   const [smpV9HostDraft, setSmpV9HostDraft] = useState<string>(() => getSmpV9Host())
   const [smpV9HostSel, setSmpV9HostSel] = useState<string>(() => getSmpV9Host())
   const [xftpServer, setXftpServer] = useState<string>(() => getXftpFileServer())
@@ -666,11 +664,6 @@ export function SettingsPage() {
     const next = !smpV9
     setSmpV9(next)
     setSmpV9Enabled(next)
-  }
-
-  const handleSaveSmpV9Url = () => {
-    setSmpV9BridgeUrl(smpV9Url)
-    setSmpV9Url(getSmpV9BridgeUrl())
   }
 
   const handlePickXftp = (address: string) => {
@@ -1570,104 +1563,8 @@ export function SettingsPage() {
               </div>
               <div className="flex items-center justify-between">
                 <div className="pr-4">
-                  <div className="text-text-primary">Réseau décentralisé</div>
-                  <div className="text-sm text-text-secondary">Répartir le mode privé sur plusieurs relais, avec repli automatique.</div>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleToggleDecentralized}
-                  aria-pressed={decentralized}
-                  className={`w-12 h-6 rounded-full relative shrink-0 transition-colors ${decentralized ? 'bg-accent' : 'bg-[#8696a0]'}`}
-                >
-                  <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${decentralized ? 'right-1' : 'left-1'}`}></div>
-                </button>
-              </div>
-              {decentralized && (
-                <div className="space-y-3 pt-1">
-                  <div role="group" aria-label="Choix du mode du réseau décentralisé" className="flex gap-1 p-1 rounded-xl bg-bg-surface">
-                    <button
-                      type="button"
-                      onClick={() => handleSelectRelayMode('auto')}
-                      aria-pressed={relayMode === 'auto'}
-                      className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-accent ${relayMode === 'auto' ? 'bg-[#7578db] text-white' : 'text-text-secondary'}`}
-                    >
-                      Automatique (recommandé)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleSelectRelayMode('manual')}
-                      aria-pressed={relayMode === 'manual'}
-                      className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-accent ${relayMode === 'manual' ? 'bg-[#7578db] text-white' : 'text-text-secondary'}`}
-                    >
-                      Choisir des relais
-                    </button>
-                  </div>
-
-                  {relayMode === 'auto' ? (
-                    <p className="text-sm text-text-secondary">
-                      Les relais sont choisis automatiquement ; repli automatique en cas d'indisponibilité.
-                    </p>
-                  ) : (
-                    <div className="space-y-2">
-                      <p className="text-xs text-text-secondary">Aucun relais coché = tous les relais disponibles.</p>
-                      <div className="space-y-1">
-                        {availableRelays.map(url => (
-                          <label key={url} className="flex items-center gap-2 px-2 py-1 rounded-lg bg-bg-surface cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={selectedRelays.includes(url)}
-                              onChange={() => handleToggleRelaySelected(url)}
-                              className="accent-[#7578db] outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                            />
-                            <span className="text-[11px] font-mono text-text-secondary break-all">{url}</span>
-                          </label>
-                        ))}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={handleSaveSelectedRelays}
-                        className="px-2 py-1 rounded-lg bg-bg-hover text-xs text-text-primary"
-                      >
-                        Enregistrer les relais
-                      </button>
-                    </div>
-                  )}
-
-                  <div>
-                    <button
-                      type="button"
-                      onClick={() => setShowAdvancedRelays(v => !v)}
-                      aria-expanded={showAdvancedRelays}
-                      className="flex items-center gap-1 text-xs text-text-secondary outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-lg"
-                    >
-                      <ChevronRight size={14} className={`transition-transform ${showAdvancedRelays ? 'rotate-90' : ''}`} />
-                      Avancé
-                    </button>
-                    {showAdvancedRelays && (
-                      <div className="mt-2 space-y-1">
-                        <textarea
-                          value={relayPoolInput}
-                          onChange={e => setRelayPoolInput(e.target.value)}
-                          rows={3}
-                          placeholder="wss://relais1.exemple/  wss://relais2.exemple/"
-                          className="w-full px-2 py-1 rounded-lg bg-bg-surface text-[11px] font-mono text-text-secondary resize-none outline-none"
-                        />
-                        <button
-                          type="button"
-                          onClick={handleSaveRelayPool}
-                          className="px-2 py-1 rounded-lg bg-bg-hover text-xs text-text-primary"
-                        >
-                          Enregistrer les relais
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-              <div className="flex items-center justify-between">
-                <div className="pr-4">
-                  <div className="text-text-primary">Réseau SMP</div>
-                  <div className="text-sm text-text-secondary">Utiliser les relais SMP via le pont (serveur(s) compatible(s) WS).</div>
+                  <div className="text-text-primary">Serveurs SMP</div>
+                  <div className="text-sm text-text-secondary">Choisir le serveur SMP utilisé par le mode privé.</div>
                 </div>
                 <button
                   type="button"
@@ -1706,21 +1603,6 @@ export function SettingsPage() {
                       className="px-2 py-1 rounded-lg bg-bg-hover text-xs text-text-primary shrink-0"
                     >
                       Utiliser
-                    </button>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <input
-                      value={smpV9Url}
-                      onChange={e => setSmpV9Url(e.target.value)}
-                      placeholder="wss://votre-vps/smp"
-                      className="flex-1 min-w-0 px-2 py-1 rounded-lg bg-bg-surface text-[11px] font-mono text-text-secondary"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleSaveSmpV9Url}
-                      className="px-2 py-1 rounded-lg bg-bg-hover text-xs text-text-primary shrink-0"
-                    >
-                      Enregistrer
                     </button>
                   </div>
                 </div>
