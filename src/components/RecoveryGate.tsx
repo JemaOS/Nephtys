@@ -14,6 +14,7 @@ import { useAuth } from '@/context/AuthContext';
 import { validateRecoveryPhrase, parseDeviceLink } from '@/lib/recovery/recoveryService';
 import { isDeviceLink, redeemDeviceLink } from '@/lib/recovery/deviceLink';
 import { QrScanner } from '@/components/QrScanner';
+import { RestoreBackupPrompt } from '@/components/RestoreBackupPrompt';
 
 function ShowPhraseScreen({ phrase, onConfirm }: { readonly phrase: string; readonly onConfirm: () => void }) {
   const [copied, setCopied] = useState(false);
@@ -56,7 +57,7 @@ function ShowPhraseScreen({ phrase, onConfirm }: { readonly phrase: string; read
   );
 }
 
-function EnterPhraseScreen() {
+function EnterPhraseScreen({ onRecovered }: { readonly onRecovered: () => void }) {
   const { completeRecovery, signOut } = useAuth();
   const [phrase, setPhrase] = useState('');
   const [busy, setBusy] = useState(false);
@@ -69,6 +70,10 @@ function EnterPhraseScreen() {
     setError(null);
     try {
       await completeRecovery(phrase);
+      // Récupération par phrase réussie : proposer la restauration d'une
+      // sauvegarde `.neph` (flux « façon WhatsApp ») au lieu d'entrer
+      // directement dans l'app.
+      onRecovered();
     } catch (e) {
       setError((e as Error)?.message ?? 'Phrase invalide.');
     } finally {
@@ -139,12 +144,20 @@ function EnterPhraseScreen() {
 }
 
 export function RecoveryGate({ children }: { readonly children: ReactNode }) {
-  const { pendingPhrase, recoveryRequired, confirmPhraseSaved } = useAuth();
+  const { pendingPhrase, recoveryRequired, confirmPhraseSaved, user } = useAuth();
+  // Après une récupération par phrase, on propose la restauration d'une
+  // sauvegarde `.neph` AVANT d'entrer dans l'app. Uniquement sur ce chemin :
+  // jamais après l'écran de phrase d'inscription, ni sur « même appareil ».
+  const [showRestorePrompt, setShowRestorePrompt] = useState(false);
   if (pendingPhrase) {
     return <ShowPhraseScreen phrase={pendingPhrase} onConfirm={confirmPhraseSaved} />;
   }
   if (recoveryRequired) {
-    return <EnterPhraseScreen />;
+    return <EnterPhraseScreen onRecovered={() => setShowRestorePrompt(true)} />;
+  }
+  // `user` absent → on ne propose rien et on laisse l'app se rendre normalement.
+  if (showRestorePrompt && user) {
+    return <RestoreBackupPrompt onContinue={() => setShowRestorePrompt(false)} />;
   }
   return <>{children}</>;
 }
