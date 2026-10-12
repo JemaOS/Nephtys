@@ -222,6 +222,16 @@ export class SmpV9Wire implements RelayWire {
     return this.persistent;
   }
 
+  /**
+   * Tags des files hébergées (routage par file) : l'URL effective du pont
+   * (avec `?host=`). Indispensable quand ce wire est le primaire/secondaire d'un
+   * `FailoverRelayWire` — sinon les files créées ici ne sont pas routables et
+   * `send`/`read` échouent (« relais inconnu »).
+   */
+  get relayIds(): string[] {
+    return [this.url];
+  }
+
   async request(op: RelayOp): Promise<RelayResponse> {
     try {
       return await this.persistentConn.run(conn => this.dispatch(conn, op));

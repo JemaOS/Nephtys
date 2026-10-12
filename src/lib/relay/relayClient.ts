@@ -632,16 +632,25 @@ export function createPrivateRelayWire(): PrivateRelayWireSelection {
       keyHash: '',
       webSocketImplFactory: () => createTorWebSocketImpl(onion),
     });
-    // REPLI (fail-over) : si le client Tor WASM n'atteint pas l'`.onion`
-    // (ex. `tor_circmgr::hspool … circuits failed`), la connexion privée
-    // reste FONCTIONNELLE via le relais anonyme Supabase (client `anon`,
-    // SANS session → files jamais liées au compte). Trade-off assumé : ce
-    // repli perd l'anonymat Tor, mais l'utilisateur en est averti — le signal
-    // « transport dégradé » est propagé via `onFallbackChange`
-    // (`isRelayFallbackActive` / `onRelayTransportChange`).
+    // CHAÎNE DE REPLI : le mode privé reste en **SMP** dès qu'un relais SMP est
+    // joignable ; Supabase n'est que le DERNIER recours :
+    //   1. SMP-over-Tor (relais `.onion`) — prioritaire pour ne pas exposer l'IP
+    //      tant que Tor fonctionne ;
+    //   2. SMP clair (réseau SMP anonyme via le pont `/simplex`) si l'`.onion`
+    //      est injoignable ;
+    //   3. relais aveugle Supabase (`anon`, sans session) en dernier recours.
+    // Chaque bascule est signalée comme « transport dégradé » via
+    // `onFallbackChange` (`isRelayFallbackActive` / `onRelayTransportChange`).
+    const clearnetSmp = new SmpV9Wire({ bridgeUrl: getSmpBridgeUrl(), host: getSmpV9Host() });
+    const inner = new FailoverRelayWire(
+      clearnetSmp,
+      new SupabaseRelayWire(),
+      active => { for (const cb of transportListeners) cb(active); },
+      { hedgeMs: PRIMARY_HEDGE_MS },
+    );
     const fw = new FailoverRelayWire(
       torWire,
-      new SupabaseRelayWire(),
+      inner,
       active => { for (const cb of transportListeners) cb(active); },
       { hedgeMs: PRIMARY_HEDGE_MS },
     );

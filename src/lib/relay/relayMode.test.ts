@@ -16,6 +16,7 @@ import {
 import { FailoverRelayWire } from './failoverRelayWire';
 import { SupabaseRelayWire } from './supabaseRelayWire';
 import { SmpRelayWire } from './smpRelayWire';
+import { SmpV9Wire } from './smpV9Wire';
 
 const V3 = 'a'.repeat(56) + '.onion';
 const V2 = 'b'.repeat(16) + '.onion';
@@ -89,16 +90,21 @@ describe('entrée Tor (`.onion` prioritaire, passerelle en repli)', () => {
   });
 });
 
-describe('repli du transport privé (Tor → Supabase anon)', () => {
-  it('en Tor, le wire est un failover Tor (onion) → Supabase anon', () => {
+describe('repli du transport privé (Tor → SMP clair → Supabase anon)', () => {
+  it('en Tor, le wire chaîne Tor (onion) → SMP clair → Supabase anon', () => {
     setTorRelayEnabled(true);
     setOnionRelayUrl(V3);
     const { wire, failover } = createPrivateRelayWire();
-    // La branche Tor n'est plus fail-closed : elle bascule sur le relais
-    // anonyme Supabase si le client Tor WASM n'atteint pas l'`.onion`.
+    // Chaîne de repli : SMP-over-Tor (`.onion`) prioritaire (pour ne pas exposer
+    // l'IP), puis SMP clair (réseau SMP anonyme) si l'`.onion` est injoignable,
+    // puis Supabase anon en DERNIER recours. Le mode privé reste donc en SMP dès
+    // qu'un relais SMP est joignable.
     expect(failover).toBeInstanceOf(FailoverRelayWire);
     expect(failover?.primaryWire).toBeInstanceOf(SmpRelayWire);
-    expect(failover?.secondaryWire).toBeInstanceOf(SupabaseRelayWire);
+    const inner = failover?.secondaryWire as FailoverRelayWire;
+    expect(inner).toBeInstanceOf(FailoverRelayWire);
+    expect(inner.primaryWire).toBeInstanceOf(SmpV9Wire);
+    expect(inner.secondaryWire).toBeInstanceOf(SupabaseRelayWire);
     expect(wire).toBe(failover);
   });
 

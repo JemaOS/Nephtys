@@ -13,6 +13,7 @@ type Behavior = 'ok' | 'failSoft' | 'hang';
 class FakeWire implements RelayWire {
   readonly relayIds: string[];
   calls = 0;
+  ops: RelayOp[] = [];
   constructor(
     readonly id: string,
     private readonly behavior: Behavior = 'ok',
@@ -21,6 +22,7 @@ class FakeWire implements RelayWire {
     this.relayIds = [id];
   }
   async request(op: RelayOp): Promise<RelayResponse> {
+    this.ops.push(op);
     if (op.op !== 'createQueue') return { ok: true, result: { id: 'x' } };
     this.calls += 1;
     if (this.behavior === 'hang') return await new Promise<RelayResponse>(() => { /* jamais */ });
@@ -76,5 +78,25 @@ describe('FailoverRelayWire — repli borné (hedgeMs)', () => {
     const res = (await fw.request({ op: 'createQueue' })).result as { relay?: string };
     expect(res.relay).toBe(SECONDARY);
     expect(fw.onFallback).toBe(true);
+  });
+
+  it('chaîne imbriquée (Tor → SMP clair → Supabase) : routage par file', async () => {
+    const tor = new FakeWire('wss://tor.gateway/');
+    const smp = new FakeWire('wss://pont.exemple/simplex?host=smp10.simplex.im');
+    const sb = new FakeWire('supabase');
+    const inner = new FailoverRelayWire(smp, sb, undefined, { hedgeMs: 0 });
+    const outer = new FailoverRelayWire(tor, inner, undefined, { hedgeMs: 0 });
+
+    // Les tags des files du secondaire imbriqué restent routables à travers le chaînage.
+    expect(outer.relayIds).toContain('wss://pont.exemple/simplex?host=smp10.simplex.im');
+    expect(outer.relayIds).toContain('supabase');
+
+    await outer.request({ op: 'send', queueId: 'q', queueKey: 'k', ciphertext: 'c', relay: 'wss://pont.exemple/simplex?host=smp10.simplex.im' });
+    expect(smp.ops.some(o => o.op === 'send')).toBe(true);
+    expect(sb.ops.some(o => o.op === 'send')).toBe(false);
+    expect(tor.ops.some(o => o.op === 'send')).toBe(false);
+
+    await outer.request({ op: 'send', queueId: 'q', queueKey: 'k', ciphertext: 'c', relay: 'supabase' });
+    expect(sb.ops.some(o => o.op === 'send')).toBe(true);
   });
 });

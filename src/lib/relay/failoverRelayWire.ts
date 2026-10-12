@@ -66,6 +66,16 @@ export class FailoverRelayWire implements RelayWire {
     return this.primaryFailed;
   }
 
+  /**
+   * Tags des files hébergées par ce chaînage (primaire + secondaire). Permet
+   * d'imbriquer un `FailoverRelayWire` comme secondaire d'un autre (ex. chaîne
+   * `<SMP-over-Tor> → <SMP clair → Supabase>`) tout en gardant le routage par
+   * file vers le bon relais.
+   */
+  get relayIds(): string[] {
+    return [...FailoverRelayWire.idsOf(this.primary), ...FailoverRelayWire.idsOf(this.secondary)];
+  }
+
   private static idsOf(wire: RelayWire): string[] {
     return (wire as RelayIdAware).relayIds ?? [];
   }
