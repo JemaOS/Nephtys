@@ -588,20 +588,20 @@ export function getPrivateMessenger(): PrivateMessenger {
     const smpKeyHash = import.meta.env.VITE_SMP_RELAY_KEY_HASH as string | undefined;
     let wire: RelayWire;
     if (isTorRelayEnabled()) {
-      // Mode Tor WASM : client Tor DANS le navigateur (tor-js) ; la passerelle
-      // KPS du VPS ne relaie que des octets opaques. Fail-closed : aucun repli
-      // en clair (donc aucune exposition d'IP si Tor échoue).
+      // Mode Tor WASM : client Tor DANS le navigateur (tor-js). Le transport
+      // SMP-over-Tor cible le **relais `.onion`** configuré
+      // (`getOnionRelayUrl` → `http://<…>.onion/smp/up|down`) — jamais le relais
+      // clearnet de l'opérateur. Fail-closed : `isTorRelayEnabled()` implique une
+      // vraie destination `.onion` ; s'il en manque une, `createTorWebSocketImpl`
+      // refuse (aucun repli en clair, donc aucune exposition d'IP).
       //
-      // `isTorRelayEnabled()` implique désormais une VRAIE destination `.onion`
-      // configurée (sinon l'état Tor est auto-désactivé, cf. plus haut) : on
-      // n'affiche donc pas « Tor actif » quand le trafic partirait vers l'infra
-      // opérateur. L'adresse `.onion` elle-même n'est pas encore utilisée comme
-      // endpoint du transport SMP-over-Tor (limite documentée), mais le trafic
-      // transite bien par les circuits Tor construits localement.
+      // L'URL passée à `SmpRelayWire` n'est qu'un marqueur : le socket fantôme
+      // Tor ignore l'URL et utilise la `.onion` (ci-dessous, via la fabrique).
+      const onion = getOnionRelayUrl();
       wire = new SmpRelayWire({
         url: 'wss://tor.gateway/',
         keyHash: '',
-        webSocketImplFactory: createTorWebSocketImpl,
+        webSocketImplFactory: () => createTorWebSocketImpl(onion),
       });
     } else if (mode === 'smp') {
       // Relais SMP SMP (browser-profile) — OPTION EXPLICITE.

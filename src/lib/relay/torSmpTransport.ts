@@ -3,30 +3,28 @@
 
 /**
  * Transport SMP « Tor WASM » — fait passer des blocs SMP (16384 o) par `tor-js`,
- * donc **via le réseau Tor**, circuits construits dans le navigateur. La
- * passerelle KPS du VPS ne relaie que des octets opaques.
+ * donc **via le réseau Tor**, circuits construits dans le navigateur.
  *
  * On n'adapte PAS le stack SMP : `connectBrowserSmpWebSocketTransport` accepte
  * un `WebSocketImpl` injectable. On fournit un socket fantôme de même surface
  * (readyState/binaryType/send/close/événements), adossé à tor-js :
  *   • down (serveur→client) : GET /smp/down  — réponse streamée (1 flux).
  *   • up   (client→serveur) : POST /smp/up   — **une trame par envoi** (body
- *     non-streamé : le corps streamé n'est pas supporté par tor-js navigateur).
+ *     non-streamé : résilient et borné côté relais).
  * Chaque bloc est encadré par une longueur 4 o (HTTP ne préserve pas les
- * frontières de messages).
+ * frontières de messages) ; le relais défait/refait cet encadrement.
  *
- * ⚠️ LIMITE CONNUE (honnêteté) : ce transport suppose que le relais exposé à
- * `httpBase` serve bien les endpoints `GET /smp/down` et `POST /smp/up`. Ces
- * endpoints ne sont pas fournis « côté client » de façon vérifiable ici : si le
- * relais ne les implémente pas, le mode Tor échoue (fail-closed, aucun repli en
- * clair). `httpBase` (cf. `torClient.torHttpBase`) est dérivé du relais
- * clearnet ; l'adresse `.onion` configurée n'est pas utilisée comme endpoint.
+ * `httpBase` est l'adresse du **relais `.onion`** configuré
+ * (`torClient.torHttpBase` dérive `http://<…>.onion` de `getOnionRelayUrl()`).
+ * Le mode Tor n'utilise JAMAIS le relais clearnet de l'opérateur : sans
+ * `.onion`, `createTorWebSocketImpl` refuse (fail-closed, aucun repli en clair).
  */
 
- 
-
 export interface TorSmpTransportOptions {
-  /** Base HTTP joignable via Tor (ex. https://relay.exemple). */
+  /**
+   * Base HTTP joignable via Tor — obligatoirement dérivée d'une adresse
+   * `.onion` (ex. `http://abc….onion`). Jamais le relais clearnet.
+   */
   httpBase: string;
   /** Instance TorClient de `tor-js` (déjà bootstrappée). */
   torClient: any;
@@ -47,6 +45,12 @@ function concat(a: Uint8Array, b: Uint8Array): Uint8Array {
  */
 export function createTorSmpWebSocketImpl(opts: TorSmpTransportOptions): any {
   const { httpBase, torClient } = opts;
+  if (!httpBase) {
+    throw new Error(
+      'TorSMP : base HTTP manquante (adresse `.onion` requise) — transport refusé, ' +
+      'aucun repli en clair.',
+    );
+  }
 
   return class TorSmpSocket {
     static readonly CONNECTING = 0;

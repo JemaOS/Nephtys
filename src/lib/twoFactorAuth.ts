@@ -220,42 +220,65 @@ export async function getMFAChallenge(): Promise<MfaChallengeResult> {
       return { status: 'unavailable', needsChallenge: false, error: aalError?.message ?? 'AAL indéterminé' }
     }
 
-    // If current level is aal1 but next level is aal2, user needs to verify 2FA
-    if (aalData.currentLevel === 'aal1' && aalData.nextLevel === 'aal2') {
-      // Get the first verified TOTP factor
-      const { data: factorsData, error: factorsError } = await supabase.auth.mfa.listFactors()
-      if (factorsError) {
-        // AAL exige aal2 mais on ne peut pas lister les facteurs → indéterminé.
-        console.error('[2FA] listFactors error:', factorsError)
-        return { status: 'unavailable', needsChallenge: false, error: factorsError.message }
-      }
-      const verifiedFactor = factorsData?.totp?.find((f: any) => f.status === 'verified')
-
-      if (!verifiedFactor) {
-        // Incohérence : aal2 réclamé mais aucun facteur vérifié listable.
-        // Prudence : on refuse de conclure « pas de 2FA ».
-        return { status: 'unavailable', needsChallenge: false, error: 'No verified factor available' }
-      }
-
-      // Create a challenge
-      const { data: challengeData, error: challengeError } = await supabase.auth.mfa.challenge({
-        factorId: verifiedFactor.id
-      })
-
-      if (challengeError || !challengeData) {
-        return { status: 'unavailable', needsChallenge: false, error: challengeError?.message }
-      }
-
-      return {
-        status: 'challenge',
-        needsChallenge: true,
-        factorId: verifiedFactor.id,
-        challengeId: challengeData.id
-      }
+    // Déjà en aal2 : aucune vérification supplémentaire requise, session sûre.
+    if (aalData.currentLevel === 'aal2') {
+      return { status: 'ok', needsChallenge: false }
     }
 
-    // AAL récupéré et aucune vérification supplémentaire requise.
-    return { status: 'ok', needsChallenge: false }
+    // currentLevel === 'aal1' (ou indéterminé, ex. claim absent).
+    //
+    // FILE T DE SÉCURITÉ « facteur 2FA vérifié + session aal1 » :
+    // `nextLevel` est calculé par supabase-js à partir des facteurs présents
+    // DANS LA SESSION (`user.factors`), qui peuvent être absents ou périmés
+    // (jeton rafraîchi, cache) alors qu'un facteur VÉRIFIÉ existe côté serveur.
+    // Dans ce cas `nextLevel` vaut à tort 'aal1' et la session reste en aal1 :
+    // les policies RLS `aal2_ok` renvoient alors 0 ligne / une erreur RLS (app
+    // vide) SANS jamais exiger le code. On liste donc les facteurs FRAÎCHEMENT
+    // via l'API MFA, indépendamment de `nextLevel` :
+    //   • facteur VÉRIFIÉ présent ET session aal1 → on FORCE un challenge
+    //     (le gate MFA s'affiche ; l'app reste bloquée jusqu'au code TOTP).
+    //   • AUCUN facteur vérifié → pas de 2FA → on laisse entrer (on ne bloque
+    //     JAMAIS un compte sans 2FA).
+    const serverRequires = aalData.nextLevel === 'aal2'
+    const { data: factorsData, error: factorsError } = await supabase.auth.mfa.listFactors()
+
+    if (factorsError) {
+      // Facteurs indéterminables. Si le serveur a déjà conclu qu'un second
+      // facteur est requis (`nextLevel === 'aal2'`), on reste fail-closed ;
+      // sinon on ne bloque pas un compte sans 2FA.
+      console.error('[2FA] listFactors error:', factorsError)
+      return serverRequires
+        ? { status: 'unavailable', needsChallenge: false, error: factorsError.message }
+        : { status: 'ok', needsChallenge: false }
+    }
+
+    const verifiedFactor = factorsData?.totp?.find((f: any) => f.status === 'verified')
+
+    if (!verifiedFactor) {
+      // Aucun facteur vérifié listable → pas de 2FA.
+      // Incohérence si `nextLevel` exigeait aal2 (aal2 réclamé mais aucun
+      // facteur vérifié) : prudence, on refuse de conclure « pas de 2FA ».
+      return serverRequires
+        ? { status: 'unavailable', needsChallenge: false, error: 'No verified factor available' }
+        : { status: 'ok', needsChallenge: false }
+    }
+
+    // Facteur vérifié MAIS session en aal1 → second facteur obligatoire.
+    // Create a challenge
+    const { data: challengeData, error: challengeError } = await supabase.auth.mfa.challenge({
+      factorId: verifiedFactor.id
+    })
+
+    if (challengeError || !challengeData) {
+      return { status: 'unavailable', needsChallenge: false, error: challengeError?.message }
+    }
+
+    return {
+      status: 'challenge',
+      needsChallenge: true,
+      factorId: verifiedFactor.id,
+      challengeId: challengeData.id
+    }
   } catch (err: any) {
     // Exception (ex. `supabase.auth.mfa` indisponible) → état d'erreur explicite.
     console.error('[2FA] Challenge error:', err)

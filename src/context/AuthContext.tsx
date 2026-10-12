@@ -40,7 +40,10 @@ export type MfaPendingState =
  *
  * 1. `getMFAChallenge()` renvoie un statut explicite.
  * 2. `ok` → aucun gate (session sûre).
- * 3. `challenge` → gate avec saisie du code.
+ * 3. `challenge` → gate avec saisie du code. Couvre AUSSI le filet de sécurité
+ *    « facteur 2FA vérifié MAIS session en aal1 » (détecté dans
+ *    `getMFAChallenge` via `listFactors`, même si `nextLevel` est périmé) :
+ *    on force le gate plutôt que d'afficher une app vide (RLS aal2 → 0 ligne).
  * 4. `unavailable` → on ne conclut JAMAIS « pas de 2FA » : on distingue via
  *    `listFactors()` :
  *      - Aucun facteur vérifié → l'utilisateur n'a pas de 2FA → on le laisse
@@ -479,8 +482,12 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
           authInitDoneRef.current &&
           (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION')
         ) {
-          // TOKEN_REFRESHED = événement de fond → pas de blocage sur erreur
-          // transitoire (failClosed = false).
+          // Filet de sécurité « facteur 2FA vérifié + session aal1 » (voir
+          // getMFAChallenge) : TOKEN_REFRESHED rejoue la détection APRÈS chaque
+          // rafraîchissement de jeton — un jeton repassé en aal1 refait surgir le
+          // gate au lieu d'afficher une app vide. TOKEN_REFRESHED = événement de
+          // fond → pas de blocage sur erreur transitoire (failClosed = false) ;
+          // un challenge définitif est toujours appliqué.
           await evaluateMfaGate(event !== 'TOKEN_REFRESHED');
         }
         applyUser(newUser);

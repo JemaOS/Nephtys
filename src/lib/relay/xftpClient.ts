@@ -14,7 +14,8 @@ import {
   uploadXftpWebFile,
   downloadXftpWebFile,
 } from '../smpweb/browser-xftp-web-client.mjs';
-import { isTorRelayEnabled } from './relayClient';
+import { isTorRelayEnabled, getOnionRelayUrl } from './relayClient';
+import { getTorClient, onionHttpBase } from './torClient';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -102,22 +103,71 @@ export function assertAllowedXftpServer(address: string): void {
   );
 }
 
+/**
+ * Fabrique un `fetchImpl` qui route les requêtes XFTP **à travers Tor**, via
+ * le relais `.onion` (`POST /xftp?host=…&port=…`). Le relais `.onion` ouvre la
+ * vraie connexion TLS vers le serveur XFTP : l'IP de l'utilisateur n'est jamais
+ * exposée au serveur XFTP, et le relais ne voit que du ciphertext XFTP (E2E).
+ *
+ * Aucune requête n'est jamais émise en direct vers le serveur XFTP quand Tor est
+ * actif : la seule sortie est `torClient.fetch` (circuit Tor).
+ */
+export function createXftpTorFetchImpl(onionWsUrl: string): typeof fetch {
+  const base = onionHttpBase(onionWsUrl);
+  if (!base) {
+    throw new Error(
+      'transfert XFTP refusé : Tor est actif sans adresse `.onion` valide ' +
+      '(aucune destination de secours, aucun repli en clair).',
+    );
+  }
+  const impl = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const raw =
+      typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.href
+          : (input as Request).url;
+    const target = new URL(raw);
+    const host = target.hostname;
+    const port = target.port || (target.protocol === 'http:' ? '80' : '443');
+    const headers: Record<string, string> = {};
+    new Headers(init?.headers).forEach((value, key) => { headers[key] = value; });
+    headers['x-xftp-host'] = host;
+    headers['x-xftp-port'] = port;
+    if (target.pathname && target.pathname !== '/') {
+      headers['x-xftp-path'] = `${target.pathname}${target.search}`;
+    }
+    const proxyUrl = `${base}/xftp?host=${encodeURIComponent(host)}&port=${encodeURIComponent(port)}`;
+    const torClient = await getTorClient();
+    return await torClient.fetch(proxyUrl, {
+      method: init?.method ?? 'GET',
+      headers,
+      body: init?.body ?? undefined,
+      signal: init?.signal ?? undefined,
+    });
+  };
+  return impl as unknown as typeof fetch;
+}
+
 /** Se connecte à un serveur XFTP (handshake HTTP/2 + identité vérifiée). */
 export async function connectXftp(address: string): Promise<any> {
   // 1) `desc.server` (pair-contrôlé) doit pointer un serveur XFTP connu, sans
   //    quoi aucun `fetch` n'est tenté (anti-fuite d'IP).
   assertAllowedXftpServer(address);
-  // 2) Tor actif ⇒ un `fetch` XFTP direct révélerait l'IP au serveur XFTP. Aucun
-  //    transport XFTP via Tor n'est câblé/vérifiable côté client : on refuse
-  //    (fail-closed) au lieu de fuir l'IP en clair.
-  if (isTorRelayEnabled()) {
-    throw new Error(
-      'transfert XFTP refusé : Tor est actif et aucun transport XFTP via Tor n’est ' +
-      'disponible (un transfert direct révélerait votre adresse IP au serveur). ' +
-      'Désactivez Tor pour échanger des fichiers.',
-    );
-  }
   const { keyHash, url } = parseAddress(address);
+  // 2) Tor actif ⇒ la connexion XFTP est routée **à travers Tor** via le relais
+  //    `.onion` (`/xftp`). Sans `.onion`, on refuse (fail-closed) plutôt que de
+  //    révéler l'IP en clair au serveur XFTP.
+  if (isTorRelayEnabled()) {
+    const onion = getOnionRelayUrl();
+    if (!onion) {
+      throw new Error(
+        'transfert XFTP refusé : Tor est actif mais aucune adresse `.onion` n’est ' +
+        'configurée (aucun repli en clair). Configurez le relais `.onion`.',
+      );
+    }
+    return await connectBrowserXftpWebClient({ url, keyHash, fetchImpl: createXftpTorFetchImpl(onion) });
+  }
   return await connectBrowserXftpWebClient({ url, keyHash });
 }
 

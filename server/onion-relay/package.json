@@ -1,0 +1,14 @@
+{
+  "name": "nephtys-onion-relay",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Relais HTTP exposé en service .onion : endpoints /smp/up + /smp/down (transport Tor WASM) et /xftp (transfert de fichiers via Tor).",
+  "license": "AGPL-3.0-only",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node index.mjs"
+  }
+}

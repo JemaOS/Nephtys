@@ -26,14 +26,29 @@ export function torGatewayAddress(): string {
 }
 
 /** Base HTTP joignable via Tor (endpoints /smp/up et /smp/down). */
-export function torHttpBase(): string {
-  const relay =
-    (import.meta.env.VITE_SMP_RELAY_URL as string | undefined) ?? 'wss://78-232-3-78.sslip.io/';
-  try {
-    return `https://${new URL(relay).host}`;
-  } catch {
-    return 'https://78-232-3-78.sslip.io';
-  }
+export function torHttpBase(onionWsUrl?: string): string {
+  const raw =
+    onionWsUrl ?? (import.meta.env.VITE_SMP_RELAY_ONION_URL as string | undefined) ?? '';
+  return onionHttpBase(raw);
+}
+
+/**
+ * Dérive `http://<…>.onion[/chemin]` d'une adresse `.onion` normalisée
+ * (`ws://x.onion`, `https://x.onion/chemin`, …). Renvoie `''` si l'entrée
+ * n'est pas une **vraie** adresse `.onion` (v3/v2).
+ *
+ * Sous Tor, le transport SMP ne cible QUE cette `.onion` : on ne retombe
+ * jamais sur le relais clearnet de l'opérateur (pas de fuite d'IP en cas
+ * d'échec). `''` ⇒ l'appelant doit refuser (fail-closed).
+ */
+export function onionHttpBase(onionWsUrl: string): string {
+  const value = (onionWsUrl ?? '').trim();
+  if (!value) return '';
+  const stripped = value.replace(/^[a-z]+:\/\//i, '').split('?')[0].split('#')[0];
+  const host = stripped.split('/')[0];
+  if (!/^[a-z2-7]{16,56}\.onion(?::\d+)?$/i.test(host)) return '';
+  const path = stripped.split('/').slice(1).join('/').replace(/\/+$/, '');
+  return `http://${host}${path ? `/${path}` : ''}`;
 }
 
 let torClientPromise: Promise<any> | null = null;
@@ -58,10 +73,24 @@ export function getTorClient(): Promise<any> {
   return torClientPromise;
 }
 
-/** Fabrique un `WebSocketImpl` (socket fantôme) adossé à `tor-js`. */
-export async function createTorWebSocketImpl(): Promise<any> {
+/**
+ * Fabrique un `WebSocketImpl` (socket fantôme) adossé à `tor-js`, ciblant le
+ * **relais `.onion`** configuré. `onionWsUrl` est l'adresse `.onion` résolue
+ * (cf. `getOnionRelayUrl`) ; à défaut, `VITE_SMP_RELAY_ONION_URL`.
+ *
+ * Fail-closed : sans adresse `.onion`, on **refuse** (aucun repli clearnet).
+ */
+export async function createTorWebSocketImpl(onionWsUrl?: string): Promise<any> {
+  const httpBase = torHttpBase(onionWsUrl);
+  if (!httpBase) {
+    throw new Error(
+      'Mode Tor actif sans adresse `.onion` configurée : transport SMP-over-Tor ' +
+      'refusé (aucun repli en clair vers le relais opérateur). ' +
+      'Configurez une adresse `.onion` du relais.',
+    );
+  }
   const torClient = await getTorClient();
-  return createTorSmpWebSocketImpl({ httpBase: torHttpBase(), torClient });
+  return createTorSmpWebSocketImpl({ httpBase, torClient });
 }
 
  
