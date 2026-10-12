@@ -225,13 +225,48 @@ describe('sealed sender — transport des clés d\'identité (anti-métadonnée)
 
 describe('sealed sender — bascule v2 → v3 (V2_SUNSET_ISO)', () => {
   it('isAfterV2Sunset : date postérieure = true, antérieure/absente = false', () => {
-    expect(V2_SUNSET_ISO).toBe('2026-11-01T00:00:00Z');
-    expect(isAfterV2Sunset('2026-11-01T00:00:00Z')).toBe(true);
-    expect(isAfterV2Sunset('2026-11-02T12:00:00+00:00')).toBe(true);
-    expect(isAfterV2Sunset('2026-10-31T23:59:59Z')).toBe(false);
+    // Défaut = date de mise en service de la v3 (PASSÉE) → la v2 est fermée
+    // pour tout message créé après cette date.
+    expect(V2_SUNSET_ISO).toBe('2026-10-12T00:00:00Z');
+    expect(isAfterV2Sunset('2026-10-12T00:00:00Z')).toBe(true);
+    expect(isAfterV2Sunset('2026-10-13T12:00:00+00:00')).toBe(true);
+    expect(isAfterV2Sunset(new Date().toISOString())).toBe(true);
+    expect(isAfterV2Sunset('2026-09-01T00:00:00Z')).toBe(false);
+    expect(isAfterV2Sunset('2026-10-11T23:59:59Z')).toBe(false);
     expect(isAfterV2Sunset(null)).toBe(false);
     expect(isAfterV2Sunset(undefined)).toBe(false);
     expect(isAfterV2Sunset('pas-une-date')).toBe(false);
+  });
+
+  it('REFUSE un blob v2 sur un message créé MAINTENANT (rejeu v2 fermé)', async () => {
+    const alice = generateX25519KeyPair();
+    const dave = generateSigningKeyPair();
+    // Blob v2 : pas de contexte → signature liée au seul senderId (rejouable).
+    const blobV2 = await sealSenderForRecipient(alice.publicKey, 'dave', dave.privateKey);
+    const getSigningKey = async (id: string) => (id === 'dave' ? dave.publicKey : null);
+
+    const createdAt = new Date().toISOString();
+    // Le défaut (date passée) classe un message d'aujourd'hui APRÈS la bascule…
+    expect(isAfterV2Sunset(createdAt)).toBe(true);
+    // …donc la v2 est refusée → expéditeur NON attribué.
+    const resolved = await findVerifiedSenderIdentity(alice.privateKey, [blobV2], getSigningKey, undefined, {
+      rejectUnboundV2: isAfterV2Sunset(createdAt),
+    });
+    expect(resolved).toBeNull();
+  });
+
+  it('ACCEPTE un blob v2 sur un message du 2026-09-01 (rétrocompat historique)', async () => {
+    const alice = generateX25519KeyPair();
+    const dave = generateSigningKeyPair();
+    const blobV2 = await sealSenderForRecipient(alice.publicKey, 'dave', dave.privateKey);
+    const getSigningKey = async (id: string) => (id === 'dave' ? dave.publicKey : null);
+
+    const createdAt = '2026-09-01T00:00:00Z';
+    expect(isAfterV2Sunset(createdAt)).toBe(false);
+    const resolved = await findVerifiedSenderIdentity(alice.privateKey, [blobV2], getSigningKey, undefined, {
+      rejectUnboundV2: isAfterV2Sunset(createdAt),
+    });
+    expect(resolved?.senderId).toBe('dave');
   });
 
   it('rejette un blob v2 quand rejectUnboundV2 (message postérieur)', async () => {

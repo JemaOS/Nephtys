@@ -5,7 +5,7 @@
 // et drainage borné multi-enveloppes par `read`. Le client SMP vendoré est
 // remplacé par un double de test (aucun broker requis).
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const h = vi.hoisted(() => ({
   messages: [] as Array<{ msgId: Uint8Array; body: Uint8Array }>,
@@ -94,9 +94,10 @@ describe('SmpRelayWire — tag du relais hôte', () => {
 describe('SmpRelayWire — drainage borné (débit)', () => {
   it('renvoie plusieurs enveloppes par read, dans l’ordre, sans perte ni doublon', async () => {
     const wire = new SmpRelayWire({ url: URL });
-    fill(25);
+    const total = MAX_READ_ENVELOPES + 5; // dépasse la borne → prouve le drainage borné
+    fill(total);
     const first = await read(wire);
-    expect(first).toHaveLength(MAX_READ_ENVELOPES); // borne N=20
+    expect(first).toHaveLength(MAX_READ_ENVELOPES); // borne N (défaut 100)
     // Ordre préservé et ids uniques.
     expect(first.map(e => e.id)).toEqual(
       Array.from({ length: MAX_READ_ENVELOPES }, (_, i) => Buffer.from([i + 1]).toString('base64url')),
@@ -105,14 +106,14 @@ describe('SmpRelayWire — drainage borné (débit)', () => {
 
     // Le reste n'a pas été perdu : il sort au tick suivant.
     const second = await read(wire);
-    expect(second).toHaveLength(25 - MAX_READ_ENVELOPES);
+    expect(second).toHaveLength(total - MAX_READ_ENVELOPES);
 
     // Plus rien.
     expect(await read(wire)).toEqual([]);
 
     // Aucun doublon sur l'ensemble des deux lectures.
     const all = [...first, ...second].map(e => e.id);
-    expect(new Set(all).size).toBe(25);
+    expect(new Set(all).size).toBe(total);
   });
 
   it('respecte une limite explicite (sous la borne) sans perdre le reste', async () => {
@@ -138,5 +139,38 @@ describe('SmpRelayWire — drainage borné (débit)', () => {
     });
     expect(ack.ok).toBe(true);
     expect(h.ackIds).toEqual(envs.map(e => e.id)); // un ack par id, ni plus ni moins
+  });
+});
+
+describe('SmpRelayWire — borne de drainage configurable (VITE_SMP_READ_MAX)', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  async function loadMax(value: string | undefined): Promise<number> {
+    vi.resetModules();
+    vi.stubEnv('VITE_SMP_READ_MAX', value);
+    const mod = await import('./smpRelayWire');
+    return mod.MAX_READ_ENVELOPES;
+  }
+
+  it('défaut = 100 quand VITE_SMP_READ_MAX est absent', async () => {
+    expect(await loadMax(undefined)).toBe(100);
+  });
+
+  it('respecte VITE_SMP_READ_MAX', async () => {
+    expect(await loadMax('5')).toBe(5);
+    expect(await loadMax('250')).toBe(250);
+  });
+
+  it('borne la valeur à [1, 1000]', async () => {
+    expect(await loadMax('9999')).toBe(1000);
+    expect(await loadMax('0')).toBe(1);
+    expect(await loadMax('-7')).toBe(1);
+  });
+
+  it('valeur non numérique → retombe sur le défaut', async () => {
+    expect(await loadMax('abc')).toBe(100);
   });
 });

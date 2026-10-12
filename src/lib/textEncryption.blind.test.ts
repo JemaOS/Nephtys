@@ -215,7 +215,7 @@ describe('resolveSealedSenders — bascule v2 → v3 (V2_SUNSET_ISO)', () => {
         id: 'msg-old',
         conversation_id: 'conv-1',
         content: 'CIPHER',
-        created_at: '2026-10-30T00:00:00Z',
+        created_at: '2026-09-01T00:00:00Z',
         sender_id: null,
         sender_sealed: [blobV2],
       },

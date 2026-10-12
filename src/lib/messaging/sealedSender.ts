@@ -70,8 +70,14 @@ const HEADER_LEN = 1 + EPH_PUB_LEN + IV_LEN;
  * (un membre peut recopier le scellé d'Alice dans un nouveau message). À partir
  * de cette date, un tel blob n'attribue PAS l'expéditeur ; les messages
  * antérieurs restent résolus en v2 (lecture de l'historique).
+ *
+ * Configurable via `VITE_SEALED_V2_SUNSET` (ISO 8601). Le **défaut est la date
+ * de mise en service de la v3** (`2026-10-12T00:00:00Z`) : tout message créé à
+ * partir de cette date refuse les blobs v2, ce qui ferme effectivement le rejeu
+ * (un défaut dans le futur laisserait la v2 acceptée partout jusque-là).
  */
-export const V2_SUNSET_ISO = '2026-11-01T00:00:00Z';
+export const V2_SUNSET_ISO =
+  (import.meta.env.VITE_SEALED_V2_SUNSET as string | undefined) ?? '2026-10-12T00:00:00Z';
 
 /**
  * `createdAt` correspond-il à un message créé à/après la bascule v2 ?

@@ -40,8 +40,19 @@ const READ_TIMEOUT_MS = 300;
  * non consommés. On peut donc lire plusieurs fois de suite sans I/O tant qu'il
  * reste des enveloppes en attente — ce qui augmente le débit sans changer
  * l'ordre ni risquer perte/duplication.
+ *
+ * Configurable via `VITE_SMP_READ_MAX` (défaut 100), borné à [1, 1000] : toute
+ * valeur absente, non numérique ou hors bornes est ramenée dans l'intervalle
+ * (une valeur non numérique retombe sur le défaut).
  */
-export const MAX_READ_ENVELOPES = 20;
+const READ_MAX_DEFAULT = 100;
+const READ_MAX_MIN = 1;
+const READ_MAX_MAX = 1000;
+export const MAX_READ_ENVELOPES = ((): number => {
+  const raw = Number(import.meta.env.VITE_SMP_READ_MAX ?? READ_MAX_DEFAULT);
+  if (!Number.isFinite(raw)) return READ_MAX_DEFAULT;
+  return Math.min(Math.max(Math.trunc(raw), READ_MAX_MIN), READ_MAX_MAX);
+})();
 /** Délai (ms) des lectures de drainage après la première (attente longue). */
 const DRAIN_TIMEOUT_MS = 1;
 
