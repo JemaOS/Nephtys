@@ -42,7 +42,8 @@ wss.on('connection', socket => {
   });
   upstream.on('close', () => { try { socket.close(); } catch { /* ignore */ } });
 
-  socket.on('message', data => {
+  socket.on('message', (data, isBinary) => {
+    if (process.env.BRIDGE_DEBUG) console.error('[bridge] recv', typeof data, 'isBinary=', isBinary, 'len=', data.length ?? data.byteLength);
     if (!upstream.destroyed) upstream.write(data);
   });
   socket.on('close', () => upstream.destroy());
