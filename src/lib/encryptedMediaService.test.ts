@@ -15,6 +15,7 @@ import { sealSenderForRecipient, sealedContentHash } from './messaging/sealedSen
 const h = vi.hoisted(() => ({
   signingKeys: {} as Record<string, string>,
   x25519Keys: {} as Record<string, string>,
+  members: {} as Record<string, string[]>,
   mediaKeyRow: null as any,
   messageRow: null as any,
   recipient: null as { publicKey: string; privateKey: string } | null,
@@ -43,6 +44,19 @@ vi.mock('@/lib/supabase', () => {
         }),
       };
     }
+    if (table === 'conversation_members') {
+      return {
+        select: () => ({
+          eq: (_col: string, conversationId: string) => ({
+            then: (resolve: (v: unknown) => unknown) =>
+              resolve({
+                data: (h.members[conversationId] ?? []).map(uid => ({ user_id: uid })),
+                error: null,
+              }),
+          }),
+        }),
+      };
+    }
     // message_media_keys : `.select().eq().eq().maybeSingle()`
     const chain: any = {
       select: () => chain,
@@ -56,7 +70,14 @@ vi.mock('@/lib/supabase', () => {
 
 vi.mock('@/lib/e2eeX25519', () => ({
   getLocalX25519KeyPair: async () => h.recipient,
-  fetchX25519PublicKeys: async () => new Map(),
+  fetchX25519PublicKeys: async (ids: string[]) => {
+    const map = new Map<string, string>();
+    for (const id of ids) {
+      const key = h.x25519Keys[id];
+      if (key) map.set(id, key);
+    }
+    return map;
+  },
 }));
 
 vi.mock('@/lib/offlineStorage', () => ({
@@ -76,6 +97,7 @@ describe('encryptedMediaService — clé d\'expéditeur SANS colonne (sealed sen
   beforeEach(() => {
     h.x25519Keys = {};
     h.signingKeys = {};
+    h.members = {};
     h.mediaKeyRow = null;
     h.messageRow = null;
   });
@@ -151,5 +173,42 @@ describe('encryptedMediaService — clé d\'expéditeur SANS colonne (sealed sen
     const out = await fetchMediaRawKey('m-legacy-media', 'bob-id');
     expect(out).not.toBeNull();
     expect(Array.from(out!.rawKey)).toEqual(Array.from(rawKey));
+  });
+
+  it('déchiffre via la clé d\'un membre quand colonne et v3 sont absents (repli)', async () => {
+    const alice = generateX25519KeyPair();   // expéditeur (membre)
+    const bob = generateX25519KeyPair();     // destinataire / lecteur
+    h.recipient = { publicKey: bob.publicKey, privateKey: bob.privateKey };
+    h.members = { conv: ['alice-id', 'bob-id'] };
+    h.x25519Keys = { 'alice-id': alice.publicKey };
+
+    const rawKey = randomKey();
+    const wrapped = await wrapKeyForRecipientX25519(
+      rawKey,
+      alice.privateKey,
+      alice.publicKey,
+      bob.publicKey,
+      keyWrapAad(alice.publicKey),
+    );
+    const mediaIv = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(12))));
+
+    h.mediaKeyRow = {
+      encrypted_key: wrapped.encryptedKey,
+      iv: wrapped.iv,
+      sender_public_key: null,
+      media_iv: mediaIv,
+    };
+    h.messageRow = {
+      id: 'm-cand',
+      conversation_id: 'conv',
+      content: '',
+      sender_id: null,
+      sender_sealed: null,
+    };
+
+    const out = await fetchMediaRawKey('m-cand', 'bob-id');
+    expect(out).not.toBeNull();
+    expect(Array.from(out!.rawKey)).toEqual(Array.from(rawKey));
+    expect(out!.mediaIvBase64).toBe(mediaIv);
   });
 });

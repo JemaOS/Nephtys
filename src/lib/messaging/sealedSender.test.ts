@@ -12,6 +12,8 @@ import {
   findVerifiedSender,
   findVerifiedSenderIdentity,
   sealedContentHash,
+  isAfterV2Sunset,
+  V2_SUNSET_ISO,
   type SealedSenderContext,
 } from './sealedSender';
 
@@ -218,5 +220,50 @@ describe('sealed sender — transport des clés d\'identité (anti-métadonnée)
     expect(resolved?.senderId).toBe('dave');
     expect(resolved?.x25519Key).toBeUndefined();
     expect(resolved?.identityKey).toBeUndefined();
+  });
+});
+
+describe('sealed sender — bascule v2 → v3 (V2_SUNSET_ISO)', () => {
+  it('isAfterV2Sunset : date postérieure = true, antérieure/absente = false', () => {
+    expect(V2_SUNSET_ISO).toBe('2026-11-01T00:00:00Z');
+    expect(isAfterV2Sunset('2026-11-01T00:00:00Z')).toBe(true);
+    expect(isAfterV2Sunset('2026-11-02T12:00:00+00:00')).toBe(true);
+    expect(isAfterV2Sunset('2026-10-31T23:59:59Z')).toBe(false);
+    expect(isAfterV2Sunset(null)).toBe(false);
+    expect(isAfterV2Sunset(undefined)).toBe(false);
+    expect(isAfterV2Sunset('pas-une-date')).toBe(false);
+  });
+
+  it('rejette un blob v2 quand rejectUnboundV2 (message postérieur)', async () => {
+    const alice = generateX25519KeyPair();
+    const dave = generateSigningKeyPair();
+    // Blob v2 : pas de contexte → signature liée au seul senderId (rejouable).
+    const blobV2 = await sealSenderForRecipient(alice.publicKey, 'dave', dave.privateKey);
+    const getSigningKey = async (id: string) => (id === 'dave' ? dave.publicKey : null);
+
+    // Sans bascule → résolu (rétrocompat).
+    expect(await findVerifiedSenderIdentity(alice.privateKey, [blobV2], getSigningKey)).not.toBeNull();
+    // Après bascule → refusé (non attribué).
+    expect(
+      await findVerifiedSenderIdentity(alice.privateKey, [blobV2], getSigningKey, undefined, {
+        rejectUnboundV2: true,
+      }),
+    ).toBeNull();
+  });
+
+  it('accepte toujours un blob v3 (lié au contexte) après la bascule', async () => {
+    const alice = generateX25519KeyPair();
+    const dave = generateSigningKeyPair();
+    const ctx: SealedSenderContext = {
+      conversationId: 'conv-1',
+      messageId: 'msg-1',
+      contentHash: await sealedContentHash('ct'),
+    };
+    const blobV3 = await sealSenderForRecipient(alice.publicKey, 'dave', dave.privateKey, ctx);
+    const getSigningKey = async (id: string) => (id === 'dave' ? dave.publicKey : null);
+    const resolved = await findVerifiedSenderIdentity(alice.privateKey, [blobV3], getSigningKey, ctx, {
+      rejectUnboundV2: true,
+    });
+    expect(resolved?.senderId).toBe('dave');
   });
 });

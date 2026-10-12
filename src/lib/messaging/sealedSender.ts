@@ -33,8 +33,16 @@
  * `sha256(content)` porte sur le champ `messages.content` stocké (ciphertext
  * pour le texte, texte de légende pour un média, "" sinon). Un blob v3 recopié
  * sur un autre message (id / conversation / contenu différent) échoue donc à la
- * vérification → l'expéditeur usurpé n'est PAS attribué. Le blob v2 (ou sans
- * `v`, considéré comme v2) reste accepté pour la rétrocompatibilité.
+ * vérification → l'expéditeur usurpé n'est PAS attribué.
+ *
+ * ⚠️ BASCULE v2 → v3 (`V2_SUNSET_ISO`) : la v2 n'est pas liée au message, donc
+ * REJOUABLE (un membre peut recopier le scellé d'un autre dans un nouveau
+ * message). Passé `V2_SUNSET_ISO`, un message dont `created_at` est ≥ la bascule
+ * REFUSE un blob v2 (ou sans `v`, considéré comme v2) : l'expéditeur n'est PAS
+ * attribué. Les messages ANTÉRIEURS restent lus via la v2 (rétrocompatibilité de
+ * l'historique). L'appelant active ce refus par
+ * `findVerifiedSenderIdentity(..., { rejectUnboundV2: true })` (voir aussi
+ * `isAfterV2Sunset`). `created_at` absent/illisible → refus non appliqué.
  *
  * Module PUR (aucune dépendance Supabase/IndexedDB) → testable en isolation.
  *
@@ -53,6 +61,29 @@ const PAYLOAD_VERSION_V3 = 3;
 const EPH_PUB_LEN = 32;
 const IV_LEN = 12;
 const HEADER_LEN = 1 + EPH_PUB_LEN + IV_LEN;
+
+/**
+ * Date de bascule v2 → v3 du sealed sender.
+ *
+ * Un message dont `created_at` est ≥ à cette date ne doit plus accepter les
+ * blobs v2 (ou sans `v`) : non liés au contexte du message, ils sont rejouables
+ * (un membre peut recopier le scellé d'Alice dans un nouveau message). À partir
+ * de cette date, un tel blob n'attribue PAS l'expéditeur ; les messages
+ * antérieurs restent résolus en v2 (lecture de l'historique).
+ */
+export const V2_SUNSET_ISO = '2026-11-01T00:00:00Z';
+
+/**
+ * `createdAt` correspond-il à un message créé à/après la bascule v2 ?
+ * `false` si la date est absente ou illisible (on ne peut pas prouver que le
+ * message est postérieur → on reste rétrocompatible avec l'historique).
+ */
+export function isAfterV2Sunset(createdAt: string | null | undefined): boolean {
+  if (typeof createdAt !== 'string' || createdAt.length === 0) return false;
+  const t = Date.parse(createdAt);
+  if (Number.isNaN(t)) return false;
+  return t >= Date.parse(V2_SUNSET_ISO);
+}
 
 // ─── base64 ───────────────────────────────────────────────────────────
 
@@ -307,17 +338,34 @@ export function verifySealedSender(
 }
 
 /**
+ * Options de `findVerifiedSenderIdentity` / `findVerifiedSender`.
+ */
+export interface FindVerifiedSenderOptions {
+  /**
+   * Refuse les payloads **v2** (ou sans `v`) : non liés au contexte du message,
+   * ils sont rejouables. À activer pour les messages créés APRÈS
+   * `V2_SUNSET_ISO` (cf. `isAfterV2Sunset`). Les v3 restent acceptés si le
+   * contexte du message vérifie.
+   */
+  rejectUnboundV2?: boolean;
+}
+
+/**
  * Comme `findVerifiedSender`, mais renvoie aussi les clés publiques d'identité
  * de l'expéditeur éventuellement transportées dans le payload (`xk`/`ik`).
  * C'est ce qui remplace le stockage en clair de `sender_public_key` et de
  * `identityKey` : le destinataire récupère la clé EXACTE utilisée à l'émission,
  * même après une rotation de clé de l'expéditeur.
+ *
+ * `options.rejectUnboundV2` refuse les blobs v2/v-absent (rejouables) — utilisé
+ * pour les messages postérieurs à `V2_SUNSET_ISO`.
  */
 export async function findVerifiedSenderIdentity(
   myPrivateKeyB64: string,
   blobs: string[],
   getSigningKey: (senderId: string) => Promise<string | null>,
   context?: SealedSenderContext,
+  options?: FindVerifiedSenderOptions,
 ): Promise<{ senderId: string; x25519Key?: string; identityKey?: string } | null> {
   for (const blob of blobs) {
     let raw: string;
@@ -328,6 +376,9 @@ export async function findVerifiedSenderIdentity(
     }
     const payload = parseSealedSenderPayload(raw);
     if (!payload) continue; // non authentifié → ignoré
+    // Bascule v2 : passé `V2_SUNSET_ISO`, un blob non lié au message (v2/sans v)
+    // est rejeté → l'expéditeur n'est pas attribué (anti-rejeu).
+    if (options?.rejectUnboundV2 && payload.version < PAYLOAD_VERSION_V3) continue;
     const signingKey = await getSigningKey(payload.senderId);
     if (!signingKey) continue;
     if (verifySealedSender(payload, signingKey, context)) {
@@ -346,14 +397,18 @@ export async function findVerifiedSenderIdentity(
  *
  * `context` (v3) lie la vérification au message courant : un blob v3 rejoué sur
  * un autre message (id / conversation / contenu différents) est **rejeté**.
+ *
+ * `options.rejectUnboundV2` refuse les blobs v2/v-absent (rejouables) pour les
+ * messages postérieurs à `V2_SUNSET_ISO`.
  */
 export async function findVerifiedSender(
   myPrivateKeyB64: string,
   blobs: string[],
   getSigningKey: (senderId: string) => Promise<string | null>,
   context?: SealedSenderContext,
+  options?: FindVerifiedSenderOptions,
 ): Promise<string | null> {
-  const found = await findVerifiedSenderIdentity(myPrivateKeyB64, blobs, getSigningKey, context);
+  const found = await findVerifiedSenderIdentity(myPrivateKeyB64, blobs, getSigningKey, context, options);
   return found?.senderId ?? null;
 }
 

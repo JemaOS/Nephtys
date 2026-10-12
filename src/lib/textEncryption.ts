@@ -38,7 +38,7 @@ import { fetchX25519PublicKeys, getLocalX25519KeyPair } from './e2eeX25519';
 import { wrapKeyForRecipientX25519, unwrapKeyFromSenderX25519, keyWrapAad } from './x25519';
 import { isRatchetEnvelope, tryDecryptWithRatchet } from './ratchet/chatIntegration';
 import { getLocalRatchetKeys } from './ratchet/keyStore';
-import { findVerifiedSenderIdentity, sealSenderForMembers, sealedContentHash, type SealedSenderContext, type SealedSenderIdentity } from './messaging/sealedSender';
+import { findVerifiedSenderIdentity, sealSenderForMembers, sealedContentHash, isAfterV2Sunset, type SealedSenderContext, type SealedSenderIdentity } from './messaging/sealedSender';
 
 // Taille de bloc du rembourrage. Un message texte est rembourré au
 // multiple de PAD_BLOCK supérieur, avec des octets aléatoires après la
@@ -476,13 +476,138 @@ async function unwrapKeyRowForUser(
   return await unwrapKeyFromSenderX25519(wrapped, caches.x25519.privateKey, keyWrapAad(senderPublicKey));
 }
 
+// ─── Repli robuste : clé d'expéditeur via un MEMBRE de la conversation ─
+//
+// Quand `message_text_keys.sender_public_key` (colonne) ET le payload sealed
+// sender v3 (`xk`) sont absents — et que `sender_id` n'est pas exploitable —
+// le destinataire ne peut plus « dériver » la clé de l'expéditeur. On essaie
+// alors la clé publique X25519 de CHAQUE membre de la conversation : l'enveloppe
+// est liée par AAD à la clé de l'expéditeur (`keyWrapAad`), donc une SEULE
+// candidate peut déchiffrer — celle de l'expéditeur, qui l'identifie par
+// conséquent (attribution + déchiffrement). En 1:1 → 1 candidate utile : coût
+// négligeable.
+
+/** Clés publiques X25519 (authentifiées) des membres d'une conversation. */
+async function fetchConversationMemberKeys(
+  conversationId: string,
+  cache?: Map<string, Promise<Map<string, string>>>,
+): Promise<Map<string, string>> {
+  const hit = cache?.get(conversationId);
+  if (hit) return hit;
+  const promise = (async () => {
+    try {
+      const { data: members } = await supabase
+        .from('conversation_members')
+        .select('user_id')
+        .eq('conversation_id', conversationId);
+      const ids = (members ?? [])
+        .map((m: { user_id: string }) => m.user_id)
+        .filter(Boolean);
+      if (ids.length === 0) return new Map<string, string>();
+      return await fetchX25519PublicKeys(ids);
+    } catch {
+      return new Map<string, string>();
+    }
+  })();
+  cache?.set(conversationId, promise);
+  return promise;
+}
+
+/**
+ * Repli « clé absente » : tente de déchiffrer l'enveloppe avec la clé publique
+ * de chacun des membres de la conversation. Retourne la clé AES brute ET
+ * l'identité (membre) dont la clé a réussi — c'est l'expéditeur.
+ * Exporté pour le média (`encryptedMediaService`).
+ */
+export async function tryUnwrapWithMemberKeys(
+  keyRow: { encrypted_key: string; iv: string },
+  conversationId: string | undefined,
+  userId: string,
+  opts?: {
+    myPrivateKey?: string;
+    conversationKeyCache?: Map<string, Promise<Map<string, string>>>;
+  },
+): Promise<{ rawKey: Uint8Array; senderId: string; senderPublicKey: string } | null> {
+  if (!conversationId) return null;
+  const memberKeys = await fetchConversationMemberKeys(conversationId, opts?.conversationKeyCache);
+  if (memberKeys.size === 0) return null;
+
+  let myPrivateKey = opts?.myPrivateKey;
+  if (!myPrivateKey) {
+    const kp = await getLocalX25519KeyPair(userId);
+    if (!kp) return null;
+    myPrivateKey = kp.privateKey;
+  }
+
+  for (const [memberId, publicKey] of memberKeys) {
+    try {
+      const rawKey = await unwrapKeyFromSenderX25519(
+        { encryptedKey: keyRow.encrypted_key, iv: keyRow.iv, senderPublicKey: publicKey },
+        myPrivateKey,
+        keyWrapAad(publicKey),
+      );
+      return { rawKey, senderId: memberId, senderPublicKey: publicKey };
+    } catch {
+      // Cette candidate n'est pas la clé de l'expéditeur → candidate suivante.
+    }
+  }
+  return null;
+}
+
+/**
+ * Résout la clé AES brute d'une ligne `message_text_keys`, dans l'ordre :
+ *   1. `sender_public_key` (colonne, ancien trafic) ;
+ *   2. payload sealed sender v3 (`sender_x25519_key`) → robuste aux rotations ;
+ *   3. `profiles.x25519_public_key(sender_id)` (sender authentifié) ;
+ *   4. REPLI : clé publique d'un membre de la conversation (identifie
+ *      l'expéditeur) — cf. `tryUnwrapWithMemberKeys`.
+ * `senderId` n'est renseigné que lorsque la clé provient du repli « membres »,
+ * pour attribution.
+ */
+async function resolveRowRawKey(params: {
+  keyRow: { encrypted_key: string; iv: string; sender_public_key: string | null };
+  senderX25519Key?: string | null;
+  senderId?: string | null;
+  conversationId?: string;
+  userId: string;
+  caches: UnwrapCaches;
+  senderKeyCache?: Map<string, string | null>;
+  memberKeysCache?: Map<string, Promise<Map<string, string>>>;
+}): Promise<{ rawKey: Uint8Array; senderId?: string; senderPublicKey: string } | null> {
+  const { keyRow, userId, caches } = params;
+  const senderPublicKey = await resolveSenderPublicKey(
+    keyRow.sender_public_key,
+    params.senderX25519Key,
+    params.senderId,
+    params.senderKeyCache,
+  );
+  if (senderPublicKey) {
+    try {
+      const rawKey = await unwrapKeyRowForUser(keyRow, senderPublicKey, userId, caches);
+      return { rawKey, senderPublicKey };
+    } catch {
+      // Clé résolue mais indéchiffrable (rotation ?) → repli « membres ».
+    }
+  }
+  const candidate = await tryUnwrapWithMemberKeys(keyRow, params.conversationId, userId, {
+    myPrivateKey: caches.x25519?.privateKey,
+    conversationKeyCache: params.memberKeysCache,
+  });
+  if (!candidate) return null;
+  return {
+    rawKey: candidate.rawKey,
+    senderId: candidate.senderId,
+    senderPublicKey: candidate.senderPublicKey,
+  };
+}
+
 /**
  * Déchiffre le contenu d'un message pour un utilisateur donné.
  * Retourne le texte en clair, ou `null` si le message n'est pas chiffré
  * ou si le déchiffrement est impossible (clé absente, pas de passphrase…).
  */
 export async function decryptMessageContent(
-  message: { id: string; content: string; is_text_encrypted?: boolean | null; encryption_metadata?: unknown; sender_id?: string; sender_sealed?: unknown; conversation_id?: string; sender_x25519_key?: string | null; sender_identity_key?: string | null },
+  message: { id: string; content: string; is_text_encrypted?: boolean | null; encryption_metadata?: unknown; sender_id?: string; sender_sealed?: unknown; conversation_id?: string; created_at?: string; sender_x25519_key?: string | null; sender_identity_key?: string | null },
   userId: string,
 ): Promise<string | null> {
   await resolveSealedSenders([message], userId);
@@ -545,14 +670,18 @@ export async function decryptMessageContent(
   }
 
   try {
-    const senderPublicKey = await resolveSenderPublicKey(
-      keyRow.sender_public_key,
-      message.sender_x25519_key,
-      message.sender_id,
-    );
-    if (!senderPublicKey) throw new Error('clé publique expéditeur introuvable');
-    const rawKey = await unwrapKeyRowForUser(keyRow, senderPublicKey, userId, {});
-    const text = await decryptText(message.content, envelope.iv, rawKey);
+    const resolved = await resolveRowRawKey({
+      keyRow,
+      senderX25519Key: message.sender_x25519_key,
+      senderId: message.sender_id,
+      conversationId: message.conversation_id,
+      userId,
+      caches: {},
+    });
+    if (!resolved) throw new Error('clé publique expéditeur introuvable');
+    // Repli « membres » → la candidate qui a déchiffré EST l'expéditeur.
+    if (resolved.senderId && !message.sender_id) message.sender_id = resolved.senderId;
+    const text = await decryptText(message.content, envelope.iv, resolved.rawKey);
     clearPendingDecryption(message.id);
     return text;
   } catch (e) {
@@ -587,6 +716,7 @@ export async function decryptMessageRows<T extends {
       id?: string;
       sender_id?: string | null;
       conversation_id?: string;
+      created_at?: string;
       content?: string;
       sender_sealed?: unknown;
       sender_x25519_key?: string | null;
@@ -624,6 +754,8 @@ export async function decryptMessageRows<T extends {
   // Cache par lot : évite une requête `profiles` par message quand la clé
   // publique de l'expéditeur doit être dérivée (nouveau trafic sans colonne).
   const senderKeyCache = new Map<string, string | null>();
+  // Cache par lot des clés publiques des membres (repli « clé absente »).
+  const memberKeysCache = new Map<string, Promise<Map<string, string>>>();
 
   await Promise.all(
     encrypted.map(async row => {
@@ -669,15 +801,23 @@ export async function decryptMessageRows<T extends {
         return;
       }
       try {
-        const senderPublicKey = await resolveSenderPublicKey(
-          keyRow.sender_public_key,
-          (row as any).sender_x25519_key,
-          (row as any).sender_id,
+        const resolved = await resolveRowRawKey({
+          keyRow,
+          senderX25519Key: (row as any).sender_x25519_key,
+          senderId: (row as any).sender_id,
+          conversationId: (row as any).conversation_id,
+          userId,
+          caches,
           senderKeyCache,
-        );
-        if (!senderPublicKey) throw new Error('clé publique expéditeur introuvable');
-        const rawKey = await unwrapKeyRowForUser(keyRow, senderPublicKey, userId, caches);
-        const payload = await decryptTextPayload(row.content, envelope.iv, rawKey);
+          memberKeysCache,
+        });
+        if (!resolved) throw new Error('clé publique expéditeur introuvable');
+        // Repli « membres » → la candidate qui a déchiffré EST l'expéditeur.
+        if (resolved.senderId && !(row as any).sender_id) {
+          (row as any).sender_id = resolved.senderId;
+          (row as any).sender_x25519_key = resolved.senderPublicKey;
+        }
+        const payload = await decryptTextPayload(row.content, envelope.iv, resolved.rawKey);
         row.content = payload.text;
         (row as any).is_text_encrypted = false;
         cacheDecryptedText(row.id, payload.text);
@@ -720,14 +860,20 @@ export async function decryptMessageRow<T extends {
  * Anti-rejeu (v3) : quand la ligne porte `id` + `conversation_id` + `content`,
  * on reconstruit le contexte du message et on le passe à la vérification. Un
  * blob v3 recopié sur un AUTRE message (id/conversation/contenu différents)
- * échoue à la signature → l'expéditeur n'est PAS attribué. Les blobs v2 (ou
- * sans `v`) restent acceptés sans contexte (rétrocompatibilité).
+ * échoue à la signature → l'expéditeur n'est PAS attribué.
+ *
+ * Bascule v2 (cf. `V2_SUNSET_ISO`) : pour un message dont `created_at` est ≥ à
+ * la date de bascule, les blobs v2 (ou sans `v`) — non liés au message, donc
+ * rejouables — sont REFUSÉS (l'expéditeur n'est pas attribué). Les messages
+ * antérieurs restent résolus en v2 (rétrocompatibilité de l'historique).
+ * `created_at` absent → refus non appliqué (on ne peut pas prouver le contraire).
  */
 export async function resolveSealedSenders(
   rows: Array<{
     id?: string;
     sender_id?: string | null;
     conversation_id?: string;
+    created_at?: string;
     content?: string;
     sender_sealed?: unknown;
     sender_x25519_key?: string | null;
@@ -789,11 +935,14 @@ export async function resolveSealedSenders(
       // Récupère aussi les clés publiques d'identité transportées dans le
       // payload (elles remplacent le stockage en clair de sender_public_key /
       // identityKey) : elles ne sont exploitées qu'APRÈS vérification.
+      // Bascule v2 : un message postérieur à la date refuse les blobs v2
+      // (non liés au message, donc rejouables).
       const resolved = await findVerifiedSenderIdentity(
         myPrivateKey,
         r.sender_sealed as string[],
         getSigningKey,
         context,
+        { rejectUnboundV2: isAfterV2Sunset(r.created_at) },
       );
       if (resolved) {
         r.sender_id = resolved.senderId;

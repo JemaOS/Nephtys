@@ -18,11 +18,11 @@
 
 import { supabase } from './supabase';
 import { extractStoragePath } from './mediaUrl';
-import { encryptMedia, decryptMedia, cryptoB64, type WrappedKey } from './mediaEncryption';
+import { encryptMedia, decryptMedia, cryptoB64 } from './mediaEncryption';
 import { getLocalX25519KeyPair, fetchX25519PublicKeys } from './e2eeX25519';
 import { wrapKeyForRecipientX25519, unwrapKeyFromSenderX25519, keyWrapAad } from './x25519';
 import { offlineStorage } from './offlineStorage';
-import { resolveSealedSenders } from './textEncryption';
+import { resolveSealedSenders, tryUnwrapWithMemberKeys } from './textEncryption';
 
 // ─── Cache local des blobURL déchiffrés ───────────────────────────────
 
@@ -181,12 +181,13 @@ export async function createMediaKeysForMessage(params: {
  *      (vérifiée : signature Ed25519 + contexte du message) — robuste à une
  *      rotation de clé de l'expéditeur ;
  *   2. repli : dérivation depuis `profiles.x25519_public_key(sender_id)`.
- * Retourne `null` si introuvable (média indéchiffrable).
+ * Retourne aussi `conversationId` (pour le repli « clé d'un membre ») et `null`
+ * comme clé si introuvable (média indéchiffrable).
  */
 async function resolveMediaSenderKey(
   messageId: string,
   userId: string,
-): Promise<string | null> {
+): Promise<{ senderPublicKey: string | null; conversationId?: string }> {
   let row: {
     id: string;
     conversation_id?: string;
@@ -194,27 +195,31 @@ async function resolveMediaSenderKey(
     sender_id?: string | null;
     sender_sealed?: unknown;
     sender_x25519_key?: string | null;
+    created_at?: string;
   } | null = null;
+  let conversationId: string | undefined;
   try {
     const { data } = await supabase
       .from('messages')
-      .select('id, conversation_id, content, sender_id, sender_sealed')
+      .select('id, conversation_id, content, sender_id, sender_sealed, created_at')
       .eq('id', messageId)
       .maybeSingle();
-    if (!data) return null;
+    if (!data) return { senderPublicKey: null };
+    conversationId = (data as any).conversation_id ?? undefined;
     row = {
       id: data.id,
-      conversation_id: (data as any).conversation_id ?? undefined,
+      conversation_id: conversationId,
       content: typeof (data as any).content === 'string' ? (data as any).content : undefined,
       sender_id: (data as any).sender_id ?? null,
       sender_sealed: (data as any).sender_sealed,
+      created_at: typeof (data as any).created_at === 'string' ? (data as any).created_at : undefined,
     };
     await resolveSealedSenders([row], userId);
   } catch {
-    return null;
+    return { senderPublicKey: null, conversationId };
   }
-  if (row.sender_x25519_key) return row.sender_x25519_key;
-  if (!row.sender_id) return null;
+  if (row.sender_x25519_key) return { senderPublicKey: row.sender_x25519_key, conversationId };
+  if (!row.sender_id) return { senderPublicKey: null, conversationId };
   try {
     const { data: prof } = await supabase
       .from('profiles')
@@ -222,10 +227,59 @@ async function resolveMediaSenderKey(
       .eq('id', row.sender_id)
       .maybeSingle();
     const key = (prof as any)?.x25519_public_key;
-    return typeof key === 'string' && key.length > 0 ? key : null;
+    return {
+      senderPublicKey: typeof key === 'string' && key.length > 0 ? key : null,
+      conversationId,
+    };
   } catch {
-    return null;
+    return { senderPublicKey: null, conversationId };
   }
+}
+
+/**
+ * Résout la clé AES brute d'un média, dans l'ordre :
+ *   1. `sender_public_key` (colonne, ancien trafic) ;
+ *   2. payload sealed sender v3 (`xk`) puis `profiles(sender_id)` ;
+ *   3. REPLI : clé publique d'un MEMBRE de la conversation (l'enveloppe est liée
+ *      par AAD à la clé de l'expéditeur → une seule candidate déchiffre, celle
+ *      de l'expéditeur).
+ * Retourne `null` si aucune clé ne déchiffre.
+ */
+async function resolveMediaRawKey(
+  keyRow: { encrypted_key: string; iv: string; sender_public_key: string | null },
+  messageId: string,
+  userId: string,
+): Promise<Uint8Array | null> {
+  const myKeyPair = await getLocalX25519KeyPair(userId);
+  if (!myKeyPair) return null;
+
+  const tryUnwrap = async (senderPublicKey: string): Promise<Uint8Array | null> => {
+    try {
+      return await unwrapKeyFromSenderX25519(
+        { encryptedKey: keyRow.encrypted_key, iv: keyRow.iv, senderPublicKey },
+        myKeyPair.privateKey,
+        keyWrapAad(senderPublicKey),
+      );
+    } catch {
+      return null;
+    }
+  };
+
+  if (keyRow.sender_public_key) {
+    const rawKey = await tryUnwrap(keyRow.sender_public_key);
+    if (rawKey) return rawKey;
+  }
+
+  const resolved = await resolveMediaSenderKey(messageId, userId);
+  if (resolved.senderPublicKey) {
+    const rawKey = await tryUnwrap(resolved.senderPublicKey);
+    if (rawKey) return rawKey;
+  }
+
+  const candidate = await tryUnwrapWithMemberKeys(keyRow, resolved.conversationId, userId, {
+    myPrivateKey: myKeyPair.privateKey,
+  });
+  return candidate?.rawKey ?? null;
 }
 
 /**
@@ -270,27 +324,12 @@ export async function fetchAndDecryptMedia(
     throw new Error(`Clé de chiffrement introuvable pour le message ${messageId}`);
   }
 
-  // Clé publique de l'expéditeur : colonne (ancien trafic) ou résolue via le
-  // sealed sender v3 / profiles (nouveau trafic, colonne NULL).
-  let senderPublicKey: string | null =
-    (keyRow.sender_public_key as string | null) ?? null;
-  if (!senderPublicKey) {
-    senderPublicKey = await resolveMediaSenderKey(messageId, userId);
-  }
-  if (!senderPublicKey) {
+  // Clé AES : colonne (ancien) → payload sealed v3 / profiles → REPLI « clé
+  // d'un membre de la conversation » (identifie l'expéditeur).
+  const rawKey = await resolveMediaRawKey(keyRow, messageId, userId);
+  if (!rawKey) {
     throw new Error(`Clé publique de l'expéditeur introuvable pour le message ${messageId}`);
   }
-
-  const wrapped: WrappedKey = {
-    encryptedKey: keyRow.encrypted_key,
-    iv: keyRow.iv,
-    senderPublicKey,
-  };
-
-  // 2. Déchiffre la clé AES (X25519)
-  const myKeyPair = await getLocalX25519KeyPair(userId);
-  if (!myKeyPair) throw new Error('Clés E2EE locales absentes (X25519).');
-  const rawKey = await unwrapKeyFromSenderX25519(wrapped, myKeyPair.privateKey, keyWrapAad(senderPublicKey));
 
   // 3. Télécharge le binaire chiffré (signed URL).
   // mediaPath peut être déjà une URL signée (le helper de loadMessages aura
@@ -373,26 +412,13 @@ export async function fetchMediaRawKey(
     return null;
   }
 
-  let senderPublicKey: string | null =
-    (keyRow.sender_public_key as string | null) ?? null;
-  if (!senderPublicKey) {
-    senderPublicKey = await resolveMediaSenderKey(messageId, userId);
-  }
-  if (!senderPublicKey) {
+  // Clé AES : colonne (ancien) → payload sealed v3 / profiles → REPLI « clé
+  // d'un membre de la conversation » (identifie l'expéditeur).
+  const rawKey = await resolveMediaRawKey(keyRow, messageId, userId);
+  if (!rawKey) {
     console.warn('[fetchMediaRawKey] clé publique expéditeur introuvable pour', messageId);
     return null;
   }
-
-  const wrapped: WrappedKey = {
-    encryptedKey: keyRow.encrypted_key,
-    iv: keyRow.iv,
-    senderPublicKey,
-  };
-
-  // 2. Déchiffre la clé AES (X25519)
-  const myKeyPair = await getLocalX25519KeyPair(userId);
-  if (!myKeyPair) return null;
-  const rawKey = await unwrapKeyFromSenderX25519(wrapped, myKeyPair.privateKey, keyWrapAad(senderPublicKey));
 
   return { rawKey, mediaIvBase64: keyRow.media_iv };
 }
