@@ -42,6 +42,8 @@ class SmpV9Connection {
   sessionId = new Uint8Array(0);
   serverAuthPub = new Uint8Array(0);
   keyHash = new Uint8Array(32);
+  /** Version négociée avec le serveur (min(maxServeur, 15)). */
+  version = 9;
 
   constructor(private readonly url: string, private readonly timeoutMs: number) {}
 
@@ -57,20 +59,27 @@ class SmpV9Connection {
     this.sessionId = hello.sessionId;
     this.serverAuthPub = hello.authPub;
     this.keyHash = sha256(hello.caCert); // keyHash = sha256(DER du certificat CA)
+    // Négociation : on parle jusqu'à 15 (v14+ = relais officiels).
+    this.version = Math.min(hello.max, 15);
   }
 
   private parseHello(block: Uint8Array) {
     const L = (block[0] << 8) | block[1];
     const p = block.subarray(2, 2 + L);
+    const max = (p[2] << 8) | p[3];
     const sl = p[4];
     const sessionId = p.subarray(5, 5 + sl);
     let off = 5 + sl;
     const count = p[off]; off += 1;
     const certs: Uint8Array[] = [];
     for (let i = 0; i < count; i++) { const len = (p[off] << 8) | p[off + 1]; off += 2; certs.push(p.subarray(off, off + len)); off += len; }
-    const authLen = (p[off] << 8) | p[off + 1]; off += 2;
-    const authDer = p.subarray(off, off + authLen);
-    return { sessionId, authPub: authDer.subarray(authDer.length - 32), caCert: certs.at(-1)! };
+    // v14+ seulement : authPubKey (Large) + proxy. En dessous, pas de auth key.
+    let authPub = new Uint8Array(0);
+    if (max >= 14) {
+      const authLen = (p[off] << 8) | p[off + 1]; off += 2;
+      authPub = p.subarray(off, off + authLen).subarray(-32);
+    }
+    return { max, sessionId, authPub, caCert: certs.at(-1)! };
   }
 
   private nextBlock(timeout = this.timeoutMs): Promise<Uint8Array> {
@@ -83,7 +92,12 @@ class SmpV9Connection {
   }
 
   async handshake(authPubSpki: Uint8Array): Promise<void> {
-    this.ws!.send(padBlock(concat(new Uint8Array([0, V]), small(this.keyHash), small(authPubSpki))));
+    // v9 : [v9][keyHash][authPubKey]. v14+ : [v][keyHash]['F'] (proxy=false,
+    // sans authPubKey → pas de chiffrement de bloc).
+    const payload = this.version >= 14
+      ? concat(new Uint8Array([(this.version >> 8) & 0xff, this.version & 0xff]), small(this.keyHash), new Uint8Array([0x46]))
+      : concat(new Uint8Array([0, this.version]), small(this.keyHash), small(authPubSpki));
+    this.ws!.send(padBlock(payload));
   }
 
   async command(auth: Uint8Array, corrId: Uint8Array, entityId: Uint8Array, cmd: Uint8Array): Promise<any[]> {
@@ -150,23 +164,32 @@ export class SmpV9Wire implements RelayWire {
 
   private get timeout(): number { return this.opts.timeoutMs ?? 15_000; }
 
-  /** CbAuthenticator v9 : nacl.box(sha512(t), corrId, srvAuthPub, notrePrivAuth). */
-  private cbAuth(authPriv: Uint8Array, srvDhPub: Uint8Array, corrId: Uint8Array, entityId: Uint8Array, cmd: Uint8Array, sessionId: Uint8Array): Uint8Array {
-    const h = nacl.hash(concat(small(sessionId), small(corrId), small(entityId), cmd));
-    const boxed = nacl.box(h, corrId, srvDhPub, authPriv);
-    return concat(boxed.subarray(boxed.length - 16), boxed.subarray(0, boxed.length - 16));
-  }
-
   async request(op: RelayOp): Promise<RelayResponse> {
     const conn = new SmpV9Connection(this.opts.bridgeUrl, this.timeout);
     try {
       await conn.open();
-      const auth = nacl.box.keyPair();
-      await conn.handshake(x25519Spki(auth.publicKey));
+
+      if (op.op === 'createQueue') {
+        const auth = nacl.box.keyPair();
+        await conn.handshake(x25519Spki(auth.publicKey));
+        await new Promise(r => setTimeout(r, 250));
+        return await this.createQueue(conn, auth);
+      }
+
+      if (op.op === 'send') {
+        // SEND : pas d'auth, handshake avec une clé jetable.
+        const throwaway = nacl.box.keyPair();
+        await conn.handshake(x25519Spki(throwaway.publicKey));
+        await new Promise(r => setTimeout(r, 250));
+        return await this.doSend(conn, op);
+      }
+
+      // read/ack/delete : handshake jetable ; la signature Ed25519 est dans le jeton.
+      const throwaway = nacl.box.keyPair();
+      await conn.handshake(x25519Spki(throwaway.publicKey));
       await new Promise(r => setTimeout(r, 250));
+
       switch (op.op) {
-        case 'createQueue': return await this.createQueue(conn, auth);
-        case 'send': return await this.doSend(conn, op);
         case 'read': return await this.doRead(conn, op);
         case 'ack': return await this.doAck(conn, op);
         case 'delete': return await this.doDelete(conn, op);
@@ -179,20 +202,25 @@ export class SmpV9Wire implements RelayWire {
     }
   }
 
-  private async createQueue(conn: SmpV9Connection, auth: nacl.BoxKeyPair): Promise<RelayResponse> {
+private async createQueue(conn: SmpV9Connection, auth: nacl.BoxKeyPair): Promise<RelayResponse> {
     const ed = nacl.sign.keyPair();
     const x = nacl.box.keyPair();
-    const cmd = concat(te.encode('NEW '), small(ed25519Spki(ed.publicKey)), small(x25519Spki(x.publicKey)), te.encode('0ST'));
+    // File « contact » : accepte les SEND **non signés** (aucun SKEY requis).
+    //   v15 : QueueReqData = '1C0' (contact) ; v14 : 'F' ; v9 : 'F'.
+    const reqData = conn.version >= 15 ? te.encode('1C0') : te.encode('F');
+    const cmd = concat(te.encode('NEW '), small(ed25519Spki(ed.publicKey)), small(x25519Spki(x.publicKey)), te.encode('0S'), reqData);
     const corrId = nacl.randomBytes(24);
     const txns = await conn.command(nacl.sign.detached(concat(small(conn.sessionId), small(corrId), small(new Uint8Array(0)), cmd), ed.secretKey), corrId, new Uint8Array(0), cmd);
     const ids = txns.find(t => t.type === 'IDS');
-    if (!ids) return { ok: false, error: `SMP v9 : IDS absent (reçu: ${txns.map(t => t.type + (t.text ? ':' + t.text : '')).join(',') || 'vide'})` };
+    if (!ids) return { ok: false, error: `SMP v9 : IDS absent (reçu: ${txns.map(t => t.type).join(',') || 'vide'})` };
     const creds: QueueCredentials = {
       queueId: b64u(ids.rcvId),
       sendKey: b64u(ids.sndId),
-      rcvKey: b64u(concat(auth.secretKey, x.secretKey, ids.rcvPublicDhKey)),
+      // Jeton lecteur : clé secrète Ed25519 (64o) ‖ DH privé (32o) ‖ DH serveur (32o)
+      rcvKey: b64u(concat(ed.secretKey, x.secretKey, ids.rcvPublicDhKey)),
       relay: this.opts.bridgeUrl,
     };
+    void auth;
     return { ok: true, result: creds };
   }
 
@@ -200,7 +228,8 @@ export class SmpV9Wire implements RelayWire {
     const sndId = unb64u(op.queueKey);
     const cmd = concat(te.encode('SEND '), te.encode('F '), unb64u(op.ciphertext));
     const corrId = nacl.randomBytes(24);
-    conn.send(new Uint8Array(0), corrId, sndId, cmd); // queue non sécurisée : pas d'auth
+    // File contact : SEND NON signé (auth vide).
+    conn.send(new Uint8Array(0), corrId, sndId, cmd);
     const txns = await conn.waitResponse();
     return txns.some(t => t.type === 'OK') || txns.some(t => t.type === 'MSG')
       ? { ok: true, result: { id: b64u(corrId) } }
@@ -210,12 +239,13 @@ export class SmpV9Wire implements RelayWire {
   private async doRead(conn: SmpV9Connection, op: Extract<RelayOp, { op: 'read' }>): Promise<RelayResponse> {
     const rcvId = unb64u(op.queueId);
     const packed = unb64u(op.queueKey);
-    const authPriv = packed.subarray(0, 32);
-    const rcvDhPriv = packed.subarray(32, 64);
-    const srvDhPub = packed.subarray(64, 96);
+    const edSecret = packed.subarray(0, 64);
+    const rcvDhPriv = packed.subarray(64, 96);
+    const srvDhPub = packed.subarray(96, 128);
     const cmd = te.encode('GET');
     const corrId = nacl.randomBytes(24);
-    const txns = await conn.command(this.cbAuth(authPriv, conn.serverAuthPub, corrId, rcvId, cmd, conn.sessionId), corrId, rcvId, cmd);
+    const sig = nacl.sign.detached(concat(small(conn.sessionId), small(corrId), small(rcvId), cmd), edSecret);
+    const txns = await conn.command(sig, corrId, rcvId, cmd);
     const out: StoredEnvelope[] = [];
     for (const t of txns) {
       if (t.type !== 'MSG') continue;
@@ -230,24 +260,24 @@ export class SmpV9Wire implements RelayWire {
 
   private async doAck(conn: SmpV9Connection, op: Extract<RelayOp, { op: 'ack' }>): Promise<RelayResponse> {
     const rcvId = unb64u(op.queueId);
-    const packed = unb64u(op.queueKey);
-    const authPriv = packed.subarray(0, 32);
+    const edSecret = unb64u(op.queueKey).subarray(0, 64);
     for (const id of op.ids) {
       const msgId = unb64u(id);
       const cmd = concat(te.encode('ACK '), small(msgId));
       const corrId = nacl.randomBytes(24);
-      await conn.command(this.cbAuth(authPriv, conn.serverAuthPub, corrId, rcvId, cmd, conn.sessionId), corrId, rcvId, cmd);
+      const sig = nacl.sign.detached(concat(small(conn.sessionId), small(corrId), small(rcvId), cmd), edSecret);
+      await conn.command(sig, corrId, rcvId, cmd);
     }
     return { ok: true, result: true };
   }
 
   private async doDelete(conn: SmpV9Connection, op: Extract<RelayOp, { op: 'delete' }>): Promise<RelayResponse> {
     const rcvId = unb64u(op.queueId);
-    const packed = unb64u(op.queueKey);
-    const authPriv = packed.subarray(0, 32);
+    const edSecret = unb64u(op.queueKey).subarray(0, 64);
     const cmd = te.encode('DEL');
     const corrId = nacl.randomBytes(24);
-    await conn.command(this.cbAuth(authPriv, conn.serverAuthPub, corrId, rcvId, cmd, conn.sessionId), corrId, rcvId, cmd);
+    const sig = nacl.sign.detached(concat(small(conn.sessionId), small(corrId), small(rcvId), cmd), edSecret);
+    await conn.command(sig, corrId, rcvId, cmd);
     return { ok: true, result: true };
   }
 }

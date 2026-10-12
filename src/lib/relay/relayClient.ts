@@ -12,6 +12,7 @@ import { WebSocketWire, isAllowedRelayUrl, type RelayWire } from './wire';
 import { SupabaseRelayWire } from './supabaseRelayWire';
 import { AgentRelayWire } from './agentRelayWire';
 import { SmpRelayWire } from './smpRelayWire';
+import { SmpV9Wire } from './smpV9Wire';
 import { createTorWebSocketImpl } from './torClient';
 import { FailoverRelayWire } from './failoverRelayWire';
 import { MultiRelayWire } from './multiRelayWire';
@@ -412,10 +413,58 @@ export function setDecentralizedRelayEnabled(enabled: boolean): void {
  */
 export function hasExternalRelayConfigured(): boolean {
   if (hasCustomRelay()) return true;
+  if (isSimplexV9Enabled()) return true;
   if (isDecentralizedRelayEnabled()) {
     return getRelayPool().some(url => !isLocalRelay(url));
   }
   return false;
+}
+
+// ─── Réseau SimpleX v9 (via le pont WS↔TLS natif) ─────────────────────
+
+const SIMPLEX_V9_KEY = 'nephtys_simplex_v9_enabled';
+const SIMPLEX_V9_URL_KEY = 'nephtys_simplex_v9_bridge_url';
+
+/** URL du pont WebSocket SMP (ex. wss://vps/simplex). */
+export function getSimplexV9BridgeUrl(): string {
+  try {
+    const o = localStorage.getItem(SIMPLEX_V9_URL_KEY);
+    if (o) return o.trim();
+  } catch {
+    // localStorage indisponible
+  }
+  return (import.meta.env.VITE_SIMPLEX_V9_BRIDGE_URL as string | undefined)?.trim() ?? '';
+}
+
+/** Enregistre l'URL du pont SimpleX v9. */
+export function setSimplexV9BridgeUrl(url: string): void {
+  try {
+    const v = url.trim();
+    if (v) localStorage.setItem(SIMPLEX_V9_URL_KEY, v);
+    else localStorage.removeItem(SIMPLEX_V9_URL_KEY);
+  } catch {
+    // localStorage indisponible
+  }
+  instance = null;
+}
+
+/** Vrai si le transport SimpleX v9 est actif (toggle + URL de pont). */
+export function isSimplexV9Enabled(): boolean {
+  try {
+    return localStorage.getItem(SIMPLEX_V9_KEY) === '1' && Boolean(getSimplexV9BridgeUrl());
+  } catch {
+    return false;
+  }
+}
+
+export function setSimplexV9Enabled(enabled: boolean): void {
+  try {
+    if (enabled) localStorage.setItem(SIMPLEX_V9_KEY, '1');
+    else localStorage.removeItem(SIMPLEX_V9_KEY);
+  } catch {
+    // localStorage indisponible
+  }
+  instance = null;
 }
 
 export function getPrivateMessenger(): PrivateMessenger {
@@ -441,6 +490,9 @@ export function getPrivateMessenger(): PrivateMessenger {
       wire = new SmpRelayWire({ url: smpUrl, keyHash: smpKeyHash });
     } else if (mode === 'simplex-agent') {
       wire = new AgentRelayWire(AGENT_URL);
+    } else if (isSimplexV9Enabled()) {
+      // Relais SimpleX SMP v9 via le pont WS↔TLS natif (server/simplex-bridge).
+      wire = new SmpV9Wire({ bridgeUrl: getSimplexV9BridgeUrl() });
     } else if (hasCustomRelay()) {
       wire = new WebSocketWire(getRelayUrl());
     } else {

@@ -56,7 +56,7 @@ try {
     rcvPublicVerifyKey: core.encodePublicKeyDer('Ed25519', ed.publicKey),
     rcvPublicDhKey: core.encodePublicKeyDer('X25519', x.publicKey),
     subscriptionMode: 'subscribe',
-    queueMode: 'messaging',
+    queueMode: 'contact',
   });
   const corrId = randomBytes(24);
   const stx = core.encodeSignedTransmission(V, hello.sessionId, {
@@ -74,7 +74,7 @@ try {
       // tentative de SEND (entity = sndId), signature ed25519 (clé de NEW)
       const sendCmd = core.encodeCommand(V, { type: 'SEND', flags: { notification: false }, body: new TextEncoder().encode('nephtys-test') });
       const c2 = randomBytes(24);
-      const stx2 = core.encodeSignedTransmission(V, hello.sessionId, { commandBytes: sendCmd, corrId: new Uint8Array(c2), queueId: m.sndId, privateKey: ed.secretKey });
+      const stx2 = core.encodeSignedTransmission(V, hello.sessionId, { commandBytes: sendCmd, corrId: new Uint8Array(c2), queueId: m.sndId, signature: new Uint8Array(0) });
       ws.send(core.encodeTransportBlock(V, [stx2]));
       const rb = await nextBlock().catch(() => null);
       if (rb) {

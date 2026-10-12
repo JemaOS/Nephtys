@@ -36,7 +36,11 @@ import {
   getAvailableRelays,
   type RelayMode,
   isDecentralizedRelayEnabled,
-  setDecentralizedRelayEnabled
+  setDecentralizedRelayEnabled,
+  isSimplexV9Enabled,
+  setSimplexV9Enabled,
+  getSimplexV9BridgeUrl,
+  setSimplexV9BridgeUrl
 } from '@/lib/relay/relayClient'
 import { isRelayOnlyCallsEnabled, setRelayOnlyCallsEnabled, getIceServers } from '@/lib/iceServers'
 import { isCoverTrafficEnabled, setCoverTrafficEnabled } from '@/lib/privacyPrefs'
@@ -171,6 +175,8 @@ export function SettingsPage() {
   const [relayOnlyCalls, setRelayOnlyCalls] = useState<boolean>(() => isRelayOnlyCallsEnabled())
   const [decentralized, setDecentralized] = useState<boolean>(() => isDecentralizedRelayEnabled())
   const [relayPoolInput, setRelayPoolInput] = useState<string>(() => getRelayPoolInput())
+  const [simplexV9, setSimplexV9] = useState<boolean>(() => isSimplexV9Enabled())
+  const [simplexV9Url, setSimplexV9Url] = useState<string>(() => getSimplexV9BridgeUrl())
   const [relayMode, setRelayMode] = useState<RelayMode>(() => getRelayMode())
   const [availableRelays, setAvailableRelays] = useState<string[]>(() => getAvailableRelays())
   const [iceServerCount, setIceServerCount] = useState<number>(() => getIceServers().length)
@@ -607,6 +613,8 @@ export function SettingsPage() {
     setRelayMode('auto')
     setRelayPool('')
     setRelayPoolInput('')
+    setSimplexV9Enabled(false)
+    setSimplexV9BridgeUrl('')
     setSelectedRelays([])
     globalThis.location.reload()
   }
@@ -643,6 +651,17 @@ export function SettingsPage() {
     saveRelayMode('manual')
     setRelayMode('manual')
     setAvailableRelays(getAvailableRelays())
+  }
+
+  const handleToggleSimplexV9 = () => {
+    const next = !simplexV9
+    setSimplexV9(next)
+    setSimplexV9Enabled(next)
+  }
+
+  const handleSaveSimplexV9Url = () => {
+    setSimplexV9BridgeUrl(simplexV9Url)
+    setSimplexV9Url(getSimplexV9BridgeUrl())
   }
 
   const handleToggleCover = () => {
@@ -1628,6 +1647,37 @@ export function SettingsPage() {
                       </div>
                     )}
                   </div>
+                </div>
+              )}
+              <div className="flex items-center justify-between">
+                <div className="pr-4">
+                  <div className="text-text-primary">Réseau SimpleX</div>
+                  <div className="text-sm text-text-secondary">Utiliser les relais SimpleX via le pont (serveur(s) compatible(s) WS).</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleToggleSimplexV9}
+                  aria-pressed={simplexV9}
+                  className={`w-12 h-6 rounded-full relative shrink-0 transition-colors ${simplexV9 ? 'bg-accent' : 'bg-[#8696a0]'}`}
+                >
+                  <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${simplexV9 ? 'right-1' : 'left-1'}`}></div>
+                </button>
+              </div>
+              {simplexV9 && (
+                <div className="flex items-center gap-2">
+                  <input
+                    value={simplexV9Url}
+                    onChange={e => setSimplexV9Url(e.target.value)}
+                    placeholder="wss://votre-vps/simplex"
+                    className="flex-1 min-w-0 px-2 py-1 rounded-lg bg-bg-surface text-[11px] font-mono text-text-secondary"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSaveSimplexV9Url}
+                    className="px-2 py-1 rounded-lg bg-bg-hover text-xs text-text-primary shrink-0"
+                  >
+                    Enregistrer
+                  </button>
                 </div>
               )}
               <button
