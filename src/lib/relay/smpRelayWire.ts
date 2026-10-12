@@ -170,11 +170,23 @@ export class SmpRelayWire implements RelayWire {
         const WebSocketImpl = this.opts.webSocketImplFactory
           ? await this.opts.webSocketImplFactory()
           : undefined;
-        const transport = await connectBrowserSmpWebSocketTransport({
+        const base = {
           url: this.opts.url,
           keyHash: this.opts.keyHash ?? '',
           WebSocketImpl,
-        });
+        };
+        // Certains serveurs SMP (ex. tiers) refusent le sous-protocole WS : on
+        // réessaie sans sous-protocole si la première tentative échoue. Le
+        // sous-protocole est donc dépendant du serveur, pas figé.
+        let transport;
+        try {
+          transport = await connectBrowserSmpWebSocketTransport({
+            ...base,
+            protocols: ['simplex-smp.v4.ws'],
+          });
+        } catch {
+          transport = await connectBrowserSmpWebSocketTransport({ ...base, protocols: [] });
+        }
         this.client = createBrowserSimplexClient({ transport });
       })();
     }
