@@ -2,7 +2,7 @@
 // Distributed under the license specified in the root directory of this project.
 
 /**
- * `SmpRelayWire` — transport du mode privé via **SimpleX SMP, 100 % navigateur**.
+ * `SmpRelayWire` — transport du mode privé via **SMP SMP, 100 % navigateur**.
  *
  * Implémente le contrat `RelayWire` (createQueue/send/read/ack/delete) au niveau
  * **file SMP**, ce qui correspond exactement au modèle « 2 files » du mode privé :
@@ -15,19 +15,19 @@
  *
  * Le corps des messages reste chiffré bout-en-bout par les clients (le relais ne
  * voit que des blocs opaques). S'appuie sur le cœur SMP navigateur vendoré
- * (`simplex-web`, AGPL-3).
+ * (`smp-web`, AGPL-3).
  */
 
-import { connectBrowserSmpWebSocketTransport } from '@/lib/simplexweb/browser-smp-websocket-transport.mjs';
-import { createBrowserSimplexClient } from '@/lib/simplexweb/browser-simplex-client.mjs';
+import { connectBrowserSmpWebSocketTransport } from '@/lib/smpweb/browser-smp-websocket-transport.mjs';
+import { createBrowserSmpClient } from '@/lib/smpweb/browser-smp-client.mjs';
 import {
   generateEd25519KeyPair,
   encodeBase64Url,
   decodeBase64Url,
   utf8Bytes,
   utf8Text,
-} from '@/lib/simplexweb/browser-smp-core.mjs';
-import { decryptRcvMessageBody } from '@/lib/simplexweb/browser-simplex-agent.mjs';
+} from '@/lib/smpweb/browser-smp-core.mjs';
+import { decryptRcvMessageBody } from '@/lib/smpweb/browser-smp-agent.mjs';
 import type { RelayOp, RelayResponse, RelayWire } from './wire';
 import type { QueueCredentials, StoredEnvelope } from './relayCore';
 
@@ -182,12 +182,12 @@ export class SmpRelayWire implements RelayWire {
         try {
           transport = await connectBrowserSmpWebSocketTransport({
             ...base,
-            protocols: ['simplex-smp.v4.ws'],
+            protocols: ['smp.v4.ws'],
           });
         } catch {
           transport = await connectBrowserSmpWebSocketTransport({ ...base, protocols: [] });
         }
-        this.client = createBrowserSimplexClient({ transport });
+        this.client = createBrowserSmpClient({ transport });
       })();
     }
     return this.connecting;

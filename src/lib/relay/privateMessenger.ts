@@ -2,18 +2,18 @@
 // Distributed under the license specified in the root directory of this project.
 
 /**
- * Mode privé anonyme (modèle SimpleX pour le 1:1) — OPT-IN, non intrusif.
+ * Mode privé anonyme (modèle SMP pour le 1:1) — OPT-IN, non intrusif.
  *
  * Combine :
  *   • le **relais sans identifiants** (aucune notion d'utilisateur côté serveur) ;
  *   • des **identités locales éphémères** par connexion (aucun compte, aucune
  *     clé publiée sur un serveur) ;
  *   • un **lien d'invitation hors-bande** qui transporte le bundle X3DH et les
- *     adresses de files (comme le lien de connexion SimpleX) ;
+ *     adresses de files (comme le lien de connexion SMP) ;
  *   • le **Double Ratchet** (forward secrecy) entre les deux pairs.
  *
  * Conséquence : le serveur ne voit ni identités, ni graphe social, ni contenu —
- * uniquement des files opaques et du ciphertext. C'est le niveau SimpleX pour
+ * uniquement des files opaques et du ciphertext. C'est le niveau SMP pour
  * une conversation directe.
  *
  * Ne modifie pas l'appli existante : ce module est un chemin parallèle,

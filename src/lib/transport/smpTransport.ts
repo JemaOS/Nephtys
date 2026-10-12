@@ -2,11 +2,11 @@
 // Distributed under the license specified in the root directory of this project.
 
 /**
- * Transport SMP (SimpleX Messaging Protocol) — client WebSocket vers un
- * agent SimpleX local.
+ * Transport SMP (SMP Messaging Protocol) — client WebSocket vers un
+ * agent SMP local.
  *
  * Ce module implémente le **plomberie de transport** réellement utilisée par
- * le client SimpleX officiel (cf. `simplex-chat/packages/simplex-chat-client/
+ * le client SMP officiel (cf. `smp-chat/packages/smp-chat-client/
  * typescript/src/transport.ts`) :
  *
  *   • liaison WebSocket vers l'agent (défaut `ws://127.0.0.1:5225`) ;
@@ -14,18 +14,18 @@
  *     événements serveur `{ resp: <ChatEvent> }` (sans corrId) ;
  *   • corrélation des réponses par `corrId` + distribution des événements.
  *
- * Le niveau « commande » réutilise la grammaire documentée de SimpleX :
+ * Le niveau « commande » réutilise la grammaire documentée de SMP :
  *   `/_send <@id|#id> json [<composedMessage>]`
  * avec `composedMessage = { msgContent: { type: "text", text }, mentions: {} }`.
  *
  * Ce que ce transport N'EST PAS (honnêtement) :
- *   • il ne gère pas encore le mapping conversation Nephtys ↔ chat SimpleX
+ *   • il ne gère pas encore le mapping conversation Nephtys ↔ chat SMP
  *     (l'adresse de conversation est passée telle quelle, p.ex. `@12`) ;
  *   • il ne persiste pas d'historique : SMP n'a pas d'historique côté
  *     serveur par conception → `fetchHistory` renvoie `[]` (le client doit
  *     s'appuyer sur sa base locale).
  *
- * Prérequis : un agent `simplex-chat` en écoute (voir docs/CLI.md et
+ * Prérequis : un agent `smp-chat` en écoute (voir docs/CLI.md et
  * docs/CHAT-RELAY.md). Tant que `SmpTransport` n'est pas branché comme
  * transport par défaut, l'app continue d'utiliser `SupabaseTransport`.
  */
@@ -51,7 +51,7 @@ interface PendingRequest {
   timer: ReturnType<typeof setTimeout>;
 }
 
-/** @see ChatRef.cmdString de SimpleX : `@<contactId>` (direct) ou `#<groupId>`. */
+/** @see ChatRef.cmdString de SMP : `@<contactId>` (direct) ou `#<groupId>`. */
 function chatRefOf(info: any): string | null {
   if (!info) return null;
   if (info.type === 'direct' && info.contact) return `@${info.contact.contactId}`;
@@ -165,7 +165,7 @@ export class SmpTransport implements MessagingTransport {
   // ─── MessagingTransport ────────────────────────────────────────────
 
   async sendMessage(msg: OutgoingMessage): Promise<SendResult> {
-    // `conversationId` porte l'adresse SimpleX (`@<contactId>` ou `#<groupId>`).
+    // `conversationId` porte l'adresse SMP (`@<contactId>` ou `#<groupId>`).
     const composed = [{ msgContent: { type: 'text', text: msg.content }, mentions: {} }];
     const cmd = `/_send ${msg.conversationId} json ${JSON.stringify(composed)}`;
     const resp = await this.request(cmd);

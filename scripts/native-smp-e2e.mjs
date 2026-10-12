@@ -1,10 +1,10 @@
-// E2E natif SMP v15 via le pont public (WS -> TLS SimpleX).
+// E2E natif SMP v15 via le pont public (WS -> TLS SMP).
 // Usage : node scripts/native-smp-e2e.mjs
 import { createHash, X509Certificate, randomBytes } from 'node:crypto';
 import nacl from 'tweetnacl';
-import * as core from '../src/lib/simplexweb/browser-smp-core.mjs';
+import * as core from '../src/lib/smpweb/browser-smp-core.mjs';
 
-const URL = process.env.BRIDGE || 'wss://78-232-3-78.sslip.io/simplex';
+const URL = process.env.BRIDGE || 'wss://78-232-3-78.sslip.io/smp';
 const V = 15;
 
 function parseHello(block) {

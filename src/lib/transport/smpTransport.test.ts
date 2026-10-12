@@ -47,7 +47,7 @@ describe('SmpTransport', () => {
     FakeWebSocket.last = null;
   });
 
-  it('sends a /_send command in the SimpleX grammar and correlates the response', async () => {
+  it('sends a /_send command in the SMP grammar and correlates the response', async () => {
     const transport = makeTransport();
     const pending = transport.sendMessage({
       conversationId: '@12',

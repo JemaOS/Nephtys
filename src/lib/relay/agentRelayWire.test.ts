@@ -37,7 +37,7 @@ function reply(ws: MockWebSocket, corrId: string, resp: unknown): void {
   ws.onmessage?.({ data: JSON.stringify({ corrId, resp }) });
 }
 
-describe('AgentRelayWire — mode privé via agent SimpleX', () => {
+describe('AgentRelayWire — mode privé via agent SMP', () => {
   it('createQueue → référence de chat ; send → /_send ; réception → read', async () => {
     const wire = new AgentRelayWire('ws://x', {
       WebSocketCtor: MockWebSocket as unknown as typeof WebSocket,

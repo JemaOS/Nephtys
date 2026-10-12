@@ -3,7 +3,7 @@
 // Browser-native SMP-over-WebSocket transport profile.
 //
 // Browsers cannot open raw TCP sockets or inspect TLS channel-binding data from
-// JavaScript, so this is not the native simplexmq TCP/TLS transport. It is a
+// JavaScript, so this is not the native smpmq TCP/TLS transport. It is a
 // small browser transport profile for SMP servers that expose binary WebSocket
 // frames. Each WebSocket message carries exactly one padded SMP transport block.
 //
@@ -50,21 +50,21 @@ function isLoopbackHost(hostname) {
 
 export function normalizeSmpWebSocketUrl(value, options = {}) {
   var raw = String(value || '').trim();
-  if (!raw) fail('SIMPLEX_SMP_WS_CONFIG', 'SMP WebSocket URL is required');
+  if (!raw) fail('SMP_SMP_WS_CONFIG', 'SMP WebSocket URL is required');
   var parsed;
   try {
     parsed = new URL(raw, globalThis.location && globalThis.location.href || 'http://127.0.0.1/');
   } catch (_error) {
-    fail('SIMPLEX_SMP_WS_CONFIG', 'SMP WebSocket URL is invalid');
+    fail('SMP_SMP_WS_CONFIG', 'SMP WebSocket URL is invalid');
   }
   if (parsed.protocol !== 'ws:' && parsed.protocol !== 'wss:') {
-    fail('SIMPLEX_SMP_WS_CONFIG', 'SMP WebSocket URL must use ws:// or wss://');
+    fail('SMP_SMP_WS_CONFIG', 'SMP WebSocket URL must use ws:// or wss://');
   }
   if (parsed.username || parsed.password) {
-    fail('SIMPLEX_SMP_WS_SECURITY', 'SMP WebSocket URL must not contain credentials');
+    fail('SMP_SMP_WS_SECURITY', 'SMP WebSocket URL must not contain credentials');
   }
   if (parsed.protocol === 'ws:' && !isLoopbackHost(parsed.hostname) && options.allowInsecureRemote !== true) {
-    fail('SIMPLEX_SMP_WS_SECURITY', 'remote SMP WebSocket transports must use wss://');
+    fail('SMP_SMP_WS_SECURITY', 'remote SMP WebSocket transports must use wss://');
   }
   parsed.hash = '';
   return parsed.href;
@@ -117,7 +117,7 @@ async function frameToBytes(frame) {
   if (typeof Blob !== 'undefined' && data instanceof Blob) {
     return new Uint8Array(await data.arrayBuffer());
   }
-  fail('SIMPLEX_SMP_WS_TEXT_FRAME', 'SMP WebSocket transport received a non-binary frame');
+  fail('SMP_SMP_WS_TEXT_FRAME', 'SMP WebSocket transport received a non-binary frame');
 }
 
 function createFrameQueue(socket, options = {}) {
@@ -136,7 +136,7 @@ function createFrameQueue(socket, options = {}) {
     try {
       var bytes = await frameToBytes(event);
       if (bytes.length !== SMP_BLOCK_SIZE) {
-        throw transportError('SIMPLEX_SMP_WS_BAD_BLOCK', 'SMP WebSocket frame must be exactly one 16384-byte block');
+        throw transportError('SMP_SMP_WS_BAD_BLOCK', 'SMP WebSocket frame must be exactly one 16384-byte block');
       }
       if (waiters.length) waiters.shift().resolve(bytes);
       else frames.push(bytes);
@@ -146,26 +146,26 @@ function createFrameQueue(socket, options = {}) {
     }
   }));
   cleanups.push(eventTargetOn(socket, 'error', () => {
-    flushError(transportError('SIMPLEX_SMP_WS_SOCKET', 'SMP WebSocket transport error'));
+    flushError(transportError('SMP_SMP_WS_SOCKET', 'SMP WebSocket transport error'));
   }));
   cleanups.push(eventTargetOn(socket, 'close', () => {
     closed = true;
-    flushError(transportError('SIMPLEX_SMP_WS_CLOSED', 'SMP WebSocket transport closed'));
+    flushError(transportError('SMP_SMP_WS_CLOSED', 'SMP WebSocket transport closed'));
   }));
 
   return {
     receive(timeoutMs) {
       if (frames.length) return Promise.resolve(frames.shift());
       if (closeError) return Promise.reject(closeError);
-      if (closed) return Promise.reject(transportError('SIMPLEX_SMP_WS_CLOSED', 'SMP WebSocket transport closed'));
+      if (closed) return Promise.reject(transportError('SMP_SMP_WS_CLOSED', 'SMP WebSocket transport closed'));
       return withTimeout(new Promise((resolve, reject) => {
         waiters.push({ resolve, reject });
-      }), timeoutMs, 'SIMPLEX_SMP_WS_TIMEOUT', 'timed out waiting for SMP WebSocket frame');
+      }), timeoutMs, 'SMP_SMP_WS_TIMEOUT', 'timed out waiting for SMP WebSocket frame');
     },
     dispose() {
       for (var cleanup of cleanups.splice(0)) cleanup();
       frames = [];
-      while (waiters.length) waiters.shift().reject(transportError('SIMPLEX_SMP_WS_CLOSED', 'SMP WebSocket transport closed'));
+      while (waiters.length) waiters.shift().reject(transportError('SMP_SMP_WS_CLOSED', 'SMP WebSocket transport closed'));
     }
   };
 }
@@ -173,7 +173,7 @@ function createFrameQueue(socket, options = {}) {
 function waitForOpen(socket, timeoutMs) {
   if (isSocketOpen(socket)) return Promise.resolve();
   if (socketReadyState(socket) > 1) {
-    return Promise.reject(transportError('SIMPLEX_SMP_WS_CLOSED', 'SMP WebSocket transport closed before opening'));
+    return Promise.reject(transportError('SMP_SMP_WS_CLOSED', 'SMP WebSocket transport closed before opening'));
   }
   return withTimeout(new Promise((resolve, reject) => {
     var cleanups = [];
@@ -182,27 +182,27 @@ function waitForOpen(socket, timeoutMs) {
       fn(value);
     }
     cleanups.push(eventTargetOn(socket, 'open', () => done(resolve)));
-    cleanups.push(eventTargetOn(socket, 'error', () => done(reject, transportError('SIMPLEX_SMP_WS_SOCKET', 'SMP WebSocket transport failed to open'))));
-    cleanups.push(eventTargetOn(socket, 'close', () => done(reject, transportError('SIMPLEX_SMP_WS_CLOSED', 'SMP WebSocket transport closed before opening'))));
-  }), timeoutMs, 'SIMPLEX_SMP_WS_TIMEOUT', 'timed out opening SMP WebSocket transport');
+    cleanups.push(eventTargetOn(socket, 'error', () => done(reject, transportError('SMP_SMP_WS_SOCKET', 'SMP WebSocket transport failed to open'))));
+    cleanups.push(eventTargetOn(socket, 'close', () => done(reject, transportError('SMP_SMP_WS_CLOSED', 'SMP WebSocket transport closed before opening'))));
+  }), timeoutMs, 'SMP_SMP_WS_TIMEOUT', 'timed out opening SMP WebSocket transport');
 }
 
 function socketSend(socket, block) {
-  if (!isSocketOpen(socket)) fail('SIMPLEX_SMP_WS_CLOSED', 'SMP WebSocket transport is not open');
+  if (!isSocketOpen(socket)) fail('SMP_SMP_WS_CLOSED', 'SMP WebSocket transport is not open');
   try {
     socket.send(block);
   } catch (error) {
-    throw transportError('SIMPLEX_SMP_WS_SEND', error && error.message ? error.message : 'SMP WebSocket send failed');
+    throw transportError('SMP_SMP_WS_SEND', error && error.message ? error.message : 'SMP WebSocket send failed');
   }
 }
 
 export async function connectBrowserSmpWebSocketTransport(options = {}) {
   var WebSocketImpl = options.WebSocketImpl || globalThis.WebSocket;
   if (typeof WebSocketImpl !== 'function') {
-    fail('SIMPLEX_SMP_WS_CONFIG', 'WebSocket is not available');
+    fail('SMP_SMP_WS_CONFIG', 'WebSocket is not available');
   }
   var url = normalizeSmpWebSocketUrl(options.url, options);
-  var protocols = options.protocols || ['simplex-smp.v4.ws'];
+  var protocols = options.protocols || ['smp.v4.ws'];
   var socket = new WebSocketImpl(url, protocols);
   if ('binaryType' in socket) socket.binaryType = 'arraybuffer';
   await waitForOpen(socket, options.openTimeoutMs || options.timeoutMs);
@@ -212,7 +212,7 @@ export async function connectBrowserSmpWebSocketTransport(options = {}) {
   var serverHandshake = parseServerHandshake(unpadBlock(serverBlock));
   if (options.expectedSessionId && !equalBytes(serverHandshake.sessionId, options.expectedSessionId)) {
     socket.close();
-    fail('SIMPLEX_SMP_WS_SESSION', 'SMP WebSocket server session id did not match expected value');
+    fail('SMP_SMP_WS_SESSION', 'SMP WebSocket server session id did not match expected value');
   }
   var version = chooseCompatibleVersion(serverHandshake, {
     minVersion: options.minVersion || SMP_BROWSER_MIN_VERSION,
@@ -222,7 +222,7 @@ export async function connectBrowserSmpWebSocketTransport(options = {}) {
   socketSend(socket, padBlock(encodeClientHandshake({ version, keyHash })));
 
   return {
-    profile: 'simplex-smp-websocket-browser-v1',
+    profile: 'smp-websocket-browser-v1',
     url,
     version,
     sessionId: serverHandshake.sessionId,
@@ -239,7 +239,7 @@ export async function connectBrowserSmpWebSocketTransport(options = {}) {
       return {
         connected: isSocketOpen(socket),
         version,
-        profile: 'simplex-smp-websocket-browser-v1'
+        profile: 'smp-websocket-browser-v1'
       };
     },
     sendSignedTransmissions(transmissions) {

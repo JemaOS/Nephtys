@@ -6,7 +6,7 @@
  *
  * La correspondance conversation ↔ (files du relais) ↔ (clés/session ratchet)
  * ne vit QUE sur l'appareil : le serveur n'en sait rien. C'est le point clé
- * du modèle SimpleX — pas de graphe social côté serveur.
+ * du modèle SMP — pas de graphe social côté serveur.
  */
 
 import type { LocalRatchetKeys } from '../ratchet/service';

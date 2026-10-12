@@ -1,6 +1,6 @@
 // SMP browser-profile broker — WebSocket server (Node).
-// Implémente le profil serveur attendu par simplex-web (client SMP navigateur).
-// Base extraite de tests/browser-simplex-e2e-broker.test.mjs (AGPL-3), enveloppée
+// Implémente le profil serveur attendu par smp-web (client SMP navigateur).
+// Base extraite de tests/browser-smp-e2e-broker.test.mjs (AGPL-3), enveloppée
 // en WebSocket + durcie « prod » : persistance disque, limites, re-souscription.
 //
 // Un bloc SMP paddé par frame WebSocket. Handshake : serveur -> handshake, puis
@@ -15,10 +15,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as smp from './lib/browser-smp-core.mjs';
-import { encryptRcvMessageBody } from './lib/browser-simplex-agent.mjs';
+import { encryptRcvMessageBody } from './lib/browser-smp-agent.mjs';
 
 const SMP_VERSION = 4; // version négociée (profil navigateur v4)
-const SUBPROTOCOL = 'simplex-smp.v4.ws';
+const SUBPROTOCOL = 'smp.v4.ws';
 
 // Limites « prod »
 const MAX_BODY_BYTES = Number(process.env.MAX_BODY_BYTES || 262144); // 256 Ko / message

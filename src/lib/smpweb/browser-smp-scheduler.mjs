@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Retry scheduler for browser SimpleX work.
+// Retry scheduler for browser SMP work.
 //
 // The scheduler is deterministic unless a caller injects `random()`. It stores
 // plain task records and computes the next eligible attempt with bounded
 // exponential backoff, jitter, and a maximum retry count.
 
-export const SIMPLEX_RETRY_BASE_MS = 500;
-export const SIMPLEX_RETRY_MAX_MS = 30000;
-export const SIMPLEX_RETRY_MAX_ATTEMPTS = 12;
+export const SMP_RETRY_BASE_MS = 500;
+export const SMP_RETRY_MAX_MS = 30000;
+export const SMP_RETRY_MAX_ATTEMPTS = 12;
 
-export class BrowserSimplexSchedulerError extends Error {
+export class BrowserSmpSchedulerError extends Error {
   constructor(code, message) {
     super(message);
-    this.name = 'BrowserSimplexSchedulerError';
+    this.name = 'BrowserSmpSchedulerError';
     this.code = code;
   }
 }
@@ -21,7 +21,7 @@ export class BrowserSimplexSchedulerError extends Error {
 function safeId(value) {
   var text = String(value == null ? '' : value).trim();
   if (!text || text.length > 160 || /[^A-Za-z0-9_.:-]/.test(text)) {
-    throw new BrowserSimplexSchedulerError('SIMPLEX_SCHEDULER_ID', 'task id is invalid');
+    throw new BrowserSmpSchedulerError('SMP_SCHEDULER_ID', 'task id is invalid');
   }
   return text;
 }
@@ -31,8 +31,8 @@ function nowMs(clock) {
 }
 
 export function nextRetryDelay(attempts, options = {}) {
-  var base = Math.max(1, Math.floor(Number(options.baseMs || SIMPLEX_RETRY_BASE_MS)));
-  var max = Math.max(base, Math.floor(Number(options.maxMs || SIMPLEX_RETRY_MAX_MS)));
+  var base = Math.max(1, Math.floor(Number(options.baseMs || SMP_RETRY_BASE_MS)));
+  var max = Math.max(base, Math.floor(Number(options.maxMs || SMP_RETRY_MAX_MS)));
   var jitter = Math.max(0, Math.min(1, Number(options.jitter == null ? 0.2 : options.jitter)));
   var exp = Math.min(max, base * Math.pow(2, Math.max(0, Math.floor(Number(attempts || 0)))));
   var random = typeof options.random === 'function' ? options.random() : 0.5;
@@ -70,7 +70,7 @@ export function markTaskSuccess(task, options = {}) {
   return { ...(task || {}), completedAt: nowMs(options.clock), lastError: '' };
 }
 
-export class BrowserSimplexRetryScheduler {
+export class BrowserSmpRetryScheduler {
   constructor(options = {}) {
     this.store = options.store || null;
     this.clock = options.clock || null;
@@ -126,20 +126,20 @@ export class BrowserSimplexRetryScheduler {
 
   prune() {
     this.load();
-    var maxAttempts = Math.max(1, Math.floor(Number(this.options.maxAttempts || SIMPLEX_RETRY_MAX_ATTEMPTS)));
+    var maxAttempts = Math.max(1, Math.floor(Number(this.options.maxAttempts || SMP_RETRY_MAX_ATTEMPTS)));
     this.tasks = this.tasks.filter((task) => !task.completedAt && Math.floor(Number(task.attempts || 0)) < maxAttempts);
     this.save();
     return this.tasks;
   }
 }
 
-export function createBrowserSimplexRetryScheduler(options = {}) {
-  return new BrowserSimplexRetryScheduler(options);
+export function createBrowserSmpRetryScheduler(options = {}) {
+  return new BrowserSmpRetryScheduler(options);
 }
 
 export default {
-  BrowserSimplexRetryScheduler,
-  createBrowserSimplexRetryScheduler,
+  BrowserSmpRetryScheduler,
+  createBrowserSmpRetryScheduler,
   createRetryTask,
   markTaskFailure,
   markTaskSuccess,

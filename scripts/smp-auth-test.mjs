@@ -2,7 +2,7 @@
 import { randomBytes, createHash } from 'node:crypto';
 import { xsalsa20poly1305 } from '@noble/ciphers/salsa.js';
 import { sha512 } from '@noble/hashes/sha2.js';
-import * as core from '../src/lib/simplexweb/browser-smp-core.mjs';
+import * as core from '../src/lib/smpweb/browser-smp-core.mjs';
 
 const URL = process.env.BRIDGE || 'ws://127.0.0.1:8098';
 const V = 15;

@@ -46,7 +46,7 @@ function chunkSize(value) {
 }
 
 function deriveChunkKey(rootKey, fileId, index) {
-  return hkdf(sha256, toBytes(rootKey, 'XFTP root key'), utf8Bytes(fileId), asciiBytes('simplex-web xftp chunk ' + index), 32);
+  return hkdf(sha256, toBytes(rootKey, 'XFTP root key'), utf8Bytes(fileId), asciiBytes('smp-web xftp chunk ' + index), 32);
 }
 
 function deriveChunkIv(fileId, index) {

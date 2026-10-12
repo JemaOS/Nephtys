@@ -4,7 +4,7 @@
 /**
  * KEM post-quantique (ML-KEM-768, anciennement Kyber) — brique « hybride »
  * pour rendre l'échange de clés E2EE résistant aux ordinateurs quantiques
- * (comme Signal / SimpleX).
+ * (comme Signal / SMP).
  *
  * Utilisé en **hybride** avec X25519 : le secret final combine les deux
  * (si l'un tombe, l'autre protège encore). Module pur, testable.

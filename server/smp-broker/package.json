@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "SMP browser-profile WebSocket broker (relais SMP pour client navigateur SimpleX / simplex-web)",
+  "description": "SMP browser-profile WebSocket broker (relais SMP pour client navigateur SMP / smp-web)",
   "license": "AGPL-3.0-only",
   "scripts": {
     "start": "node index.mjs",

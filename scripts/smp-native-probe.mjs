@@ -1,12 +1,12 @@
-// Sonde native SMP v15 — format EXACT (spec simplexmq).
+// Sonde native SMP v15 — format EXACT (spec smpmq).
 // handshake: [word16 v][1][32 keyHash][ 'F' ]   (clientKey omis => pas de bloc chiffré)
 // NEW:       "NEW " [1=44 Ed25519 SPKI] [1=44 X25519 SPKI] '0'(auth) 'S'(submode) "1M0"
 // signature: ed25519 over  [1=32 sessionId][1=24 corrId][1=0 entityId] NEW
 import tls from 'node:tls';
 import { createHash, X509Certificate } from 'node:crypto';
-import * as core from '../src/lib/simplexweb/browser-smp-core.mjs';
+import * as core from '../src/lib/smpweb/browser-smp-core.mjs';
 
-const HOST = 'smp10.simplex.im', PORT = 5223;
+const HOST = 'smp10.smp.im', PORT = 5223;
 const small = (b) => Buffer.concat([Buffer.from([b.length]), Buffer.from(b)]);
 
 function readBlock(stream, timeoutMs = 6000) {

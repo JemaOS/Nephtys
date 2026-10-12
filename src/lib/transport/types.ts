@@ -6,13 +6,13 @@
  *
  * Objectif (feuille de route décentralisation) : sortir le client du
  * couplage direct aux tables Supabase pour pouvoir brancher, sans réécrire
- * l'UI, un modèle « relais » à la SimpleX (files unidirectionnelles, serveur
+ * l'UI, un modèle « relais » à la SMP (files unidirectionnelles, serveur
  * sans identifiants ni graphe social, self-hosting), via le protocole SMP.
  *
  * Aujourd'hui : seule l'implémentation Supabase est active
  * (`VITE_MESSAGING_TRANSPORT` = "supabase", défaut).
  * Demain : `smpTransport` (voir `smpTransport.ts`) implémentera la même
- * interface au-dessus de simplexmq / du client TypeScript SimpleX.
+ * interface au-dessus de smpmq / du client TypeScript SMP.
  *
  * L'interface est volontairement minimale et orientée « enveloppe opaque » :
  * le transport ne connaît jamais le clair, uniquement des messages déjà
@@ -82,7 +82,7 @@ export interface TransportEvent {
 /**
  * Contrat que tout backend de messagerie doit respecter.
  *
- * Note : dans un backend à files SimpleX, `subscribe` correspond à la
+ * Note : dans un backend à files SMP, `subscribe` correspond à la
  * souscription aux files SMP de la conversation (pas à un canal Realtime
  * centralisé) et les identifiants ne sont pas des `userId` globaux mais des
  * adresses de file par connexion.

@@ -28,7 +28,7 @@
  *   GATEWAY_HOST  interface d'écoute (défaut 127.0.0.1)
  *   TOR_SOCKS     proxy SOCKS5 de Tor (défaut socks5h://127.0.0.1:9050)
  *   TOR_UPSTREAM  relais cible à joindre via Tor (obligatoire)
- *   SUBPROTOCOL   sous-protocole WS relayé (défaut simplex-smp.v4.ws)
+ *   SUBPROTOCOL   sous-protocole WS relayé (défaut smp.v4.ws)
  */
 
 import { WebSocketServer, WebSocket } from 'ws';
@@ -38,7 +38,7 @@ const PORT = Number(process.env.GATEWAY_PORT || 8080);
 const HOST = process.env.GATEWAY_HOST || '127.0.0.1';
 const TOR_SOCKS = process.env.TOR_SOCKS || 'socks5h://127.0.0.1:9050';
 const UPSTREAM = process.env.TOR_UPSTREAM;
-const SUBPROTOCOL = process.env.SUBPROTOCOL || 'simplex-smp.v4.ws';
+const SUBPROTOCOL = process.env.SUBPROTOCOL || 'smp.v4.ws';
 
 if (!UPSTREAM) {
   console.error('[tor-gateway] TOR_UPSTREAM est requis (ex. wss://relais.exemple/).');

@@ -20,7 +20,7 @@ import {
   formatSmpQueueUri,
   generateX448KeyPair,
   generateX25519KeyPair,
-  parseSimplexConnectionLink,
+  parseSmpConnectionLink,
   parseSmpQueueUri,
   randomNonce24,
   sha256Hash,
@@ -29,9 +29,9 @@ import {
   utf8Text,
   x25519SharedSecret
 } from './browser-smp-core.mjs';
-import { createBrowserSimplexClient } from './browser-simplex-client.mjs';
-import { createBrowserSimplexStore } from './browser-simplex-store.mjs';
-import { createBrowserSimplexRetryScheduler } from './browser-simplex-scheduler.mjs';
+import { createBrowserSmpClient } from './browser-smp-client.mjs';
+import { createBrowserSmpStore } from './browser-smp-store.mjs';
+import { createBrowserSmpRetryScheduler } from './browser-smp-scheduler.mjs';
 import {
   decryptClientMessageEnvelope,
   decryptRcvMessageBody,
@@ -45,11 +45,11 @@ import {
   parseNativeAgentEnvelope,
   parseNativeAgentMessage,
   parseNativeE2ERatchetParams,
-  SIMPLEX_NATIVE_ENC_CONN_INFO_LENGTH,
-  SIMPLEX_NATIVE_E2E_VERSION
-} from './browser-simplex-agent.mjs';
-import { createRatchetState, decryptRatchetMessage, encryptRatchetMessage } from './browser-simplex-ratchet.mjs';
-import { createNativeReceivingRatchet, decryptNativeRatchetMessage, encryptNativeRatchetMessage } from './browser-simplex-native-ratchet.mjs';
+  SMP_NATIVE_ENC_CONN_INFO_LENGTH,
+  SMP_NATIVE_E2E_VERSION
+} from './browser-smp-agent.mjs';
+import { createRatchetState, decryptRatchetMessage, encryptRatchetMessage } from './browser-smp-ratchet.mjs';
+import { createNativeReceivingRatchet, decryptNativeRatchetMessage, encryptNativeRatchetMessage } from './browser-smp-native-ratchet.mjs';
 import { createBrowserXftpClient } from './browser-xftp-client.mjs';
 
 export const CONTACT_STATE_INVITED = 'invited';
@@ -57,26 +57,26 @@ export const CONTACT_STATE_REQUESTED = 'requested';
 export const CONTACT_STATE_ACTIVE = 'active';
 export const CONTACT_STATE_SUSPENDED = 'suspended';
 export const CONTACT_STATE_DELETED = 'deleted';
-export const CONTACT_PAYLOAD_PREFIX = 'simplex-web:payload:v1\n';
+export const CONTACT_PAYLOAD_PREFIX = 'smp-web:payload:v1\n';
 const MAX_MESSAGE_REF_LENGTH = 256;
 const NATIVE_AGENT_MESSAGE_PADDED_LENGTH = 14800;
 const NATIVE_DIRECT_FILE_CHUNK_SIZE = 10000;
 
-export class BrowserSimplexContactError extends Error {
+export class BrowserSmpContactError extends Error {
   constructor(code, message) {
     super(message);
-    this.name = 'BrowserSimplexContactError';
+    this.name = 'BrowserSmpContactError';
     this.code = code;
   }
 }
 
 function fail(code, message) {
-  throw new BrowserSimplexContactError(code, message);
+  throw new BrowserSmpContactError(code, message);
 }
 
 function safeId(value, label = 'contact id') {
   var text = String(value == null ? '' : value).trim();
-  if (!text || text.length > 160 || /[^A-Za-z0-9_.:-]/.test(text)) fail('SIMPLEX_CONTACT_ID', label + ' is invalid');
+  if (!text || text.length > 160 || /[^A-Za-z0-9_.:-]/.test(text)) fail('SMP_CONTACT_ID', label + ' is invalid');
   return text;
 }
 
@@ -91,7 +91,7 @@ function safeStoredId(value, fallback) {
 function safeMessageRef(value, label = 'message ref') {
   var text = String(value == null ? '' : value).trim();
   if (!text || text.length > MAX_MESSAGE_REF_LENGTH || /[^A-Za-z0-9_.:-]/.test(text)) {
-    fail('SIMPLEX_CONTACT_MESSAGE_REF', label + ' is invalid');
+    fail('SMP_CONTACT_MESSAGE_REF', label + ' is invalid');
   }
   return text;
 }
@@ -106,7 +106,7 @@ function nowIso() {
 
 function requireState(contact, allowed) {
   if (!contact || !allowed.includes(contact.state)) {
-    fail('SIMPLEX_CONTACT_STATE', 'contact state does not allow this operation');
+    fail('SMP_CONTACT_STATE', 'contact state does not allow this operation');
   }
 }
 
@@ -146,7 +146,7 @@ function validateTextPayload(parsed) {
 }
 
 function validateFilePayload(parsed) {
-  if (!parsed.file || typeof parsed.file !== 'object') fail('SIMPLEX_CONTACT_PAYLOAD', 'contact file payload is invalid');
+  if (!parsed.file || typeof parsed.file !== 'object') fail('SMP_CONTACT_PAYLOAD', 'contact file payload is invalid');
   return {
     type: 'file',
     file: parsed.file,
@@ -170,13 +170,13 @@ export function decodeContactPayload(text) {
   try {
     parsed = JSON.parse(value.slice(CONTACT_PAYLOAD_PREFIX.length));
   } catch (_error) {
-    fail('SIMPLEX_CONTACT_PAYLOAD', 'contact payload JSON is invalid');
+    fail('SMP_CONTACT_PAYLOAD', 'contact payload JSON is invalid');
   }
-  if (!parsed || typeof parsed !== 'object') fail('SIMPLEX_CONTACT_PAYLOAD', 'contact payload is invalid');
+  if (!parsed || typeof parsed !== 'object') fail('SMP_CONTACT_PAYLOAD', 'contact payload is invalid');
   if (parsed.type === 'text') return validateTextPayload(parsed);
   if (parsed.type === 'file') return validateFilePayload(parsed);
   if (parsed.type === 'read-receipt') return validateReadReceiptPayload(parsed);
-  fail('SIMPLEX_CONTACT_PAYLOAD', 'contact payload type is unsupported');
+  fail('SMP_CONTACT_PAYLOAD', 'contact payload type is unsupported');
 }
 
 function encodeNativeChatBody(plaintext) {
@@ -196,8 +196,8 @@ function encodeNativeChatBody(plaintext) {
   }
   if (payload.type === 'file') {
     fail(
-      'SIMPLEX_CONTACT_NATIVE_FILE',
-      'native SimpleX file attachments must be sent with sendFile so XFTP invitations are generated'
+      'SMP_CONTACT_NATIVE_FILE',
+      'native SMP file attachments must be sent with sendFile so XFTP invitations are generated'
     );
   }
   return encodeNativeChatJson({
@@ -222,7 +222,7 @@ function decodeNativeChatBody(bytes) {
       if (content.type === 'file') return { text: String(content.text == null ? '' : content.text), payload: { type: 'file', file: { name: String(content.text == null ? '' : content.text) }, messageRef: '', createdAt: '' } };
     }
   } catch (_error) {
-    // simplex-web peers may still send the private payload envelope; fall back
+    // smp-web peers may still send the private payload envelope; fall back
     // to that decoder so mixed browser-native conversations remain readable.
   }
   var payload = decodeContactPayload(text);
@@ -248,13 +248,13 @@ function nativeFileName(file, fallback = 'file') {
 
 function requireXftpClient(client) {
   if (!client || typeof client.uploadFile !== 'function' || typeof client.downloadFile !== 'function') {
-    fail('SIMPLEX_CONTACT_XFTP', 'contact file transfer requires a browser XFTP client');
+    fail('SMP_CONTACT_XFTP', 'contact file transfer requires a browser XFTP client');
   }
   return client;
 }
 
 function invitationUriFromQueue(queue) {
-  if (!queue || !queue.server) fail('SIMPLEX_CONTACT_INVITATION', 'contact invitation requires server identity');
+  if (!queue || !queue.server) fail('SMP_CONTACT_INVITATION', 'contact invitation requires server identity');
   return formatSmpQueueUri({
     server: queue.server,
     queueId: queue.sndId,
@@ -264,7 +264,7 @@ function invitationUriFromQueue(queue) {
 
 function nativeInvitationUriFromQueue(queue, x3dhKey1, x3dhKey2, options = {}) {
   var q = queue && typeof queue === 'object' ? queue : {};
-  if (!q.server) fail('SIMPLEX_CONTACT_NATIVE_FILE', 'native file invitation queue requires a server');
+  if (!q.server) fail('SMP_CONTACT_NATIVE_FILE', 'native file invitation queue requires a server');
   var senderId = q.sndId || q.senderId || q.queueId;
   var dhPublicKey = q.recipientDhPublicKey || (q.rcvDhKey && q.rcvDhKey.publicKeyDer);
   var queueMode = String(options.queueMode || q.queueMode || 'm').toLowerCase().slice(0, 1) || 'm';
@@ -277,7 +277,7 @@ function nativeInvitationUriFromQueue(queue, x3dhKey1, x3dhKey2, options = {}) {
       encodeBase64Url(x3dhKey1.publicKeyDer || encodePublicKeyDer('X448', x3dhKey1.publicKey)),
       encodeBase64Url(x3dhKey2.publicKeyDer || encodePublicKeyDer('X448', x3dhKey2.publicKey))
     ].join(',');
-  return 'simplex:/invitation#/?v=2-7&smp=' + encodeURIComponent(queueUri) + '&e2e=' + encodeURIComponent(e2e);
+  return 'smp:/invitation#/?v=2-7&smp=' + encodeURIComponent(queueUri) + '&e2e=' + encodeURIComponent(e2e);
 }
 
 function maybeInvitationUriFromQueue(queue) {
@@ -288,7 +288,7 @@ function parseJsonBytes(bytes, label) {
   try {
     return JSON.parse(utf8Text(bytes));
   } catch (_error) {
-    fail('SIMPLEX_CONTACT_JSON', label + ' JSON is invalid');
+    fail('SMP_CONTACT_JSON', label + ' JSON is invalid');
   }
 }
 
@@ -302,7 +302,7 @@ function profileFromNativeConnInfo(bytes) {
 
 function chatMessageFromNativeConnInfo(bytes, label = 'native file connection info') {
   var decoded = parseJsonBytes(bytes, label) || {};
-  if (!decoded.event || typeof decoded.event !== 'string') fail('SIMPLEX_CONTACT_NATIVE_FILE', label + ' is missing an event');
+  if (!decoded.event || typeof decoded.event !== 'string') fail('SMP_CONTACT_NATIVE_FILE', label + ' is missing an event');
   return decoded;
 }
 
@@ -325,7 +325,7 @@ function splitNativeDirectFile(bytes, chunkSize) {
 
 function nativeProfileConnInfo(profile = {}) {
   var input = profile && typeof profile === 'object' ? profile : {};
-  var displayName = String(input.displayName || input.display_name || input.fullName || input.full_name || 'simplex-web').trim() || 'simplex-web';
+  var displayName = String(input.displayName || input.display_name || input.fullName || input.full_name || 'smp-web').trim() || 'smp-web';
   var fullName = String(input.fullName || input.full_name || displayName).trim();
   return utf8Bytes(JSON.stringify({
     event: 'x.info',
@@ -368,13 +368,13 @@ function normalizeNativeReceiptMessageId(value) {
   if (typeof value === 'bigint') return value;
   if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0) return BigInt(value);
   var text = String(value == null ? '' : value).trim();
-  if (!/^[0-9]+$/.test(text)) fail('SIMPLEX_CONTACT_RECEIPT', 'native receipt message id is invalid');
+  if (!/^[0-9]+$/.test(text)) fail('SMP_CONTACT_RECEIPT', 'native receipt message id is invalid');
   return BigInt(text);
 }
 
 function normalizeNativeReceiptHash(value) {
   var hash = retryBytes(value, 'native receipt message hash');
-  if (hash.length !== 32) fail('SIMPLEX_CONTACT_RECEIPT', 'native receipt message hash must be 32 bytes');
+  if (hash.length !== 32) fail('SMP_CONTACT_RECEIPT', 'native receipt message hash must be 32 bytes');
   return hash;
 }
 
@@ -382,7 +382,7 @@ function prepareNativeOutboundQueue(queue, options = {}) {
   var q = { ...(queue || {}) };
   if (q.e2eSharedSecret && q.senderE2eKey) return q;
   var recipientDh = decodePublicKeyDer(q.recipientDhPublicKey || q.dhPublicKey);
-  if (recipientDh.algorithm !== 'X25519') fail('SIMPLEX_CONTACT_NATIVE_QUEUE', 'native outbound queue DH key must be X25519');
+  if (recipientDh.algorithm !== 'X25519') fail('SMP_CONTACT_NATIVE_QUEUE', 'native outbound queue DH key must be X25519');
   var senderE2eKey = options.senderE2eKey || options.senderE2eDhKey || generateX25519KeyPair(options.senderE2eSeed || options.replySenderE2eSeed);
   return {
     ...q,
@@ -443,15 +443,15 @@ function deleteQueueOptions(options, queueId, index, client) {
   return { ...options, corrId };
 }
 
-export function createBrowserSimplexContactClient(options = {}) {
-  return new BrowserSimplexContactClient(options);
+export function createBrowserSmpContactClient(options = {}) {
+  return new BrowserSmpContactClient(options);
 }
 
-export class BrowserSimplexContactClient {
+export class BrowserSmpContactClient {
   constructor(options = {}) {
-    this.client = options.client || createBrowserSimplexClient(options);
-    this.store = options.store || createBrowserSimplexStore(options.storeOptions || {});
-    this.scheduler = options.scheduler || createBrowserSimplexRetryScheduler({ store: this.store });
+    this.client = options.client || createBrowserSmpClient(options);
+    this.store = options.store || createBrowserSmpStore(options.storeOptions || {});
+    this.scheduler = options.scheduler || createBrowserSmpRetryScheduler({ store: this.store });
     this.xftpClient = options.xftpClient || (options.xftpServer ? createBrowserXftpClient({ server: options.xftpServer, profile: options.xftpProfile }) : null);
   }
 
@@ -481,28 +481,28 @@ export class BrowserSimplexContactClient {
 
   invitationUri(id) {
     var contact = this.store.loadContact(safeId(id));
-    if (!contact) fail('SIMPLEX_CONTACT_MISSING', 'contact does not exist');
+    if (!contact) fail('SMP_CONTACT_MISSING', 'contact does not exist');
     if (contact.invitationUri) return contact.invitationUri;
     var queue = this.store.loadQueue(contact.inboxQueueId || (contact.id + ':inbox'));
-    if (!queue) fail('SIMPLEX_CONTACT_QUEUE', 'contact inbox queue is missing');
+    if (!queue) fail('SMP_CONTACT_QUEUE', 'contact inbox queue is missing');
     return invitationUriFromQueue(queue);
   }
 
   async requestContact(id, invitationUri, options = {}) {
     var cleanId = safeId(id);
-    var link = parseSimplexConnectionLink(invitationUri);
+    var link = parseSmpConnectionLink(invitationUri);
     if (link.nativeAgentProfile) {
       if (options.allowNativeAgentProfile !== true) {
         fail(
-          'SIMPLEX_CONTACT_NATIVE_AGENT_UNSUPPORTED',
-          'native SimpleX Chat invitation links require allowNativeAgentProfile while the native browser agent is being completed'
+          'SMP_CONTACT_NATIVE_AGENT_UNSUPPORTED',
+          'native SMP Chat invitation links require allowNativeAgentProfile while the native browser agent is being completed'
         );
       }
       return this.requestNativeContact(cleanId, String(invitationUri), link, options);
     }
     var parsed = link.smpQueues[0] || parseSmpQueueUri(invitationUri);
     var recipientDh = decodePublicKeyDer(parsed.recipientDhPublicKey);
-    if (recipientDh.algorithm !== 'X25519') fail('SIMPLEX_CONTACT_INVITATION', 'contact invitation DH key must be X25519');
+    if (recipientDh.algorithm !== 'X25519') fail('SMP_CONTACT_INVITATION', 'contact invitation DH key must be X25519');
     var replyQueue = options.replyQueue || null;
     if (!replyQueue && options.createReplyQueue !== false) {
       replyQueue = await this.client.createQueue({
@@ -579,7 +579,7 @@ export class BrowserSimplexContactClient {
 
   async requestNativeContact(cleanId, invitationUri, link, options = {}) {
     var parsed = link.smpQueues[0];
-    if (!parsed) fail('SIMPLEX_CONTACT_INVITATION', 'native invitation does not contain an SMP queue');
+    if (!parsed) fail('SMP_CONTACT_INVITATION', 'native invitation does not contain an SMP queue');
     var replyQueue = options.replyQueue || null;
     if (!replyQueue && options.createReplyQueue !== false) {
       replyQueue = await this.client.createQueue({
@@ -591,7 +591,7 @@ export class BrowserSimplexContactClient {
       });
     }
     if (!replyQueue) {
-      fail('SIMPLEX_CONTACT_NATIVE_AGENT_UNSUPPORTED', 'native SimpleX invitation joins require a reply queue');
+      fail('SMP_CONTACT_NATIVE_AGENT_UNSUPPORTED', 'native SMP invitation joins require a reply queue');
     }
     this.store.saveQueue(cleanId + ':inbox', replyQueue);
     var isContactAddress = link.type === 'contact';
@@ -667,7 +667,7 @@ export class BrowserSimplexContactClient {
     var contact = this.store.loadContact(safeId(id));
     requireState(contact, [CONTACT_STATE_INVITED]);
     var queue = options.queue || this.store.loadQueue(contact.inboxQueueId || (contact.id + ':inbox'));
-    if (!queue) fail('SIMPLEX_CONTACT_QUEUE', 'contact inbox queue is missing');
+    if (!queue) fail('SMP_CONTACT_QUEUE', 'contact inbox queue is missing');
     var received = await this.client.receiveQueueMessage(queue, options);
     var decryptedBody = decryptRcvMessageBody({
       serverDhSecret: queue.serverDhSecret,
@@ -675,22 +675,22 @@ export class BrowserSimplexContactClient {
       encryptedBody: received.message.body
     });
     var envelope = parseClientMessageEnvelope(decryptedBody.body);
-    if (!envelope.publicHeader.e2ePubDhKey) fail('SIMPLEX_CONTACT_REQUEST', 'contact request is missing sender E2E DH key');
+    if (!envelope.publicHeader.e2ePubDhKey) fail('SMP_CONTACT_REQUEST', 'contact request is missing sender E2E DH key');
     var senderDh = decodePublicKeyDer(envelope.publicHeader.e2ePubDhKey);
-    if (senderDh.algorithm !== 'X25519') fail('SIMPLEX_CONTACT_REQUEST', 'contact request sender DH key must be X25519');
+    if (senderDh.algorithm !== 'X25519') fail('SMP_CONTACT_REQUEST', 'contact request sender DH key must be X25519');
     var shared = x25519SharedSecret(queue.rcvDhKey.secretKey, senderDh.rawPublicKey);
     var decrypted = decryptClientMessageEnvelope({
       sharedSecret: shared,
       envelope: decryptedBody.body
     });
-    if (decrypted.privateHeader.type !== 'confirmation') fail('SIMPLEX_CONTACT_REQUEST', 'contact request is missing confirmation key');
+    if (decrypted.privateHeader.type !== 'confirmation') fail('SMP_CONTACT_REQUEST', 'contact request is missing confirmation key');
     var request = parseJsonBytes(decrypted.body, 'contact request');
-    if (!request || request.type !== 'contact-request') fail('SIMPLEX_CONTACT_REQUEST', 'contact request payload is unsupported');
+    if (!request || request.type !== 'contact-request') fail('SMP_CONTACT_REQUEST', 'contact request payload is unsupported');
     var acceptReply = null;
     if (request.replyQueueUri && options.sendAccept !== false) {
       var reply = parseSmpQueueUri(request.replyQueueUri);
       var replyDh = decodePublicKeyDer(reply.recipientDhPublicKey);
-      if (replyDh.algorithm !== 'X25519') fail('SIMPLEX_CONTACT_ACCEPT', 'contact accept reply queue DH key must be X25519');
+      if (replyDh.algorithm !== 'X25519') fail('SMP_CONTACT_ACCEPT', 'contact accept reply queue DH key must be X25519');
       acceptReply = { reply, replyDh };
     }
     await this.client.secureQueue(queue, decrypted.privateHeader.senderPublicVerifyKey, {
@@ -782,7 +782,7 @@ export class BrowserSimplexContactClient {
     requireState(contact, [CONTACT_STATE_REQUESTED, CONTACT_STATE_ACTIVE]);
     if (contact.nativeAgentProfile) return this.receiveNativeContactAccept(contact, options);
     var queue = options.queue || this.store.loadQueue(contact.inboxQueueId || (contact.id + ':inbox'));
-    if (!queue) fail('SIMPLEX_CONTACT_QUEUE', 'contact accept queue is missing');
+    if (!queue) fail('SMP_CONTACT_QUEUE', 'contact accept queue is missing');
     var received = await this.client.receiveQueueMessage(queue, options);
     var decryptedBody = decryptRcvMessageBody({
       serverDhSecret: queue.serverDhSecret,
@@ -790,17 +790,17 @@ export class BrowserSimplexContactClient {
       encryptedBody: received.message.body
     });
     var envelope = parseClientMessageEnvelope(decryptedBody.body);
-    if (!envelope.publicHeader.e2ePubDhKey) fail('SIMPLEX_CONTACT_ACCEPT', 'contact accept is missing sender E2E DH key');
+    if (!envelope.publicHeader.e2ePubDhKey) fail('SMP_CONTACT_ACCEPT', 'contact accept is missing sender E2E DH key');
     var senderDh = decodePublicKeyDer(envelope.publicHeader.e2ePubDhKey);
-    if (senderDh.algorithm !== 'X25519') fail('SIMPLEX_CONTACT_ACCEPT', 'contact accept sender DH key must be X25519');
+    if (senderDh.algorithm !== 'X25519') fail('SMP_CONTACT_ACCEPT', 'contact accept sender DH key must be X25519');
     var shared = x25519SharedSecret(queue.rcvDhKey.secretKey, senderDh.rawPublicKey);
     var decrypted = decryptClientMessageEnvelope({
       sharedSecret: shared,
       envelope: decryptedBody.body
     });
-    if (decrypted.privateHeader.type !== 'confirmation') fail('SIMPLEX_CONTACT_ACCEPT', 'contact accept is missing confirmation key');
+    if (decrypted.privateHeader.type !== 'confirmation') fail('SMP_CONTACT_ACCEPT', 'contact accept is missing confirmation key');
     var accept = parseJsonBytes(decrypted.body, 'contact accept');
-    if (!accept || accept.type !== 'contact-accept') fail('SIMPLEX_CONTACT_ACCEPT', 'contact accept payload is unsupported');
+    if (!accept || accept.type !== 'contact-accept') fail('SMP_CONTACT_ACCEPT', 'contact accept payload is unsupported');
     await this.client.secureQueue(queue, decrypted.privateHeader.senderPublicVerifyKey, {
       ...options,
       corrId: options.keyCorrId || options.corrId || ('accept-key-' + Date.now())
@@ -825,7 +825,7 @@ export class BrowserSimplexContactClient {
 
   async receiveNativeContactAccept(contact, options = {}) {
     var queue = options.queue || this.store.loadQueue(contact.inboxQueueId || (contact.id + ':inbox'));
-    if (!queue) fail('SIMPLEX_CONTACT_QUEUE', 'native contact accept queue is missing');
+    if (!queue) fail('SMP_CONTACT_QUEUE', 'native contact accept queue is missing');
     var received = await this.client.receiveQueueMessage(queue, options);
     var decryptedBody = decryptRcvMessageBody({
       serverDhSecret: queue.serverDhSecret,
@@ -833,26 +833,26 @@ export class BrowserSimplexContactClient {
       encryptedBody: received.message.body
     });
     var envelope = parseClientMessageEnvelope(decryptedBody.body);
-    if (!envelope.publicHeader.e2ePubDhKey) fail('SIMPLEX_CONTACT_ACCEPT', 'native accept is missing sender E2E DH key');
+    if (!envelope.publicHeader.e2ePubDhKey) fail('SMP_CONTACT_ACCEPT', 'native accept is missing sender E2E DH key');
     var senderDh = decodePublicKeyDer(envelope.publicHeader.e2ePubDhKey);
-    if (senderDh.algorithm !== 'X25519') fail('SIMPLEX_CONTACT_ACCEPT', 'native accept sender DH key must be X25519');
+    if (senderDh.algorithm !== 'X25519') fail('SMP_CONTACT_ACCEPT', 'native accept sender DH key must be X25519');
     var inboundShared = x25519SharedSecret(queue.rcvDhKey.secretKey, senderDh.rawPublicKey);
     var decrypted = decryptClientMessageEnvelope({
       sharedSecret: inboundShared,
       envelope: decryptedBody.body
     });
     if (decrypted.privateHeader.type !== 'confirmation' && decrypted.privateHeader.type !== 'empty') {
-      fail('SIMPLEX_CONTACT_ACCEPT', 'native accept has an unsupported private header');
+      fail('SMP_CONTACT_ACCEPT', 'native accept has an unsupported private header');
     }
     var nativeEnvelope = parseNativeAgentEnvelope(decrypted.body);
-    if (nativeEnvelope.type !== 'confirmation') fail('SIMPLEX_CONTACT_ACCEPT', 'native accept envelope must be a confirmation');
+    if (nativeEnvelope.type !== 'confirmation') fail('SMP_CONTACT_ACCEPT', 'native accept envelope must be a confirmation');
     var storedRatchet = this.store.loadRatchet(contact.id);
-    if (!storedRatchet || !storedRatchet.nativeAgentProfile) fail('SIMPLEX_CONTACT_RATCHET', 'native contact ratchet is missing');
+    if (!storedRatchet || !storedRatchet.nativeAgentProfile) fail('SMP_CONTACT_RATCHET', 'native contact ratchet is missing');
     var ratchet = storedRatchet;
     var nativePlain = null;
     if (nativeEnvelope.e2eEncryption) {
       if (!ratchet.pendingNativeContactRequest || !ratchet.recipientX3dhKey1 || !ratchet.recipientX3dhKey2) {
-        fail('SIMPLEX_CONTACT_RATCHET', 'native contact request keys are missing');
+        fail('SMP_CONTACT_RATCHET', 'native contact request keys are missing');
       }
       var e2e = parseNativeE2ERatchetParams(nativeEnvelope.e2eEncryption);
       var init = deriveNativeX3dhReceiver({
@@ -862,7 +862,7 @@ export class BrowserSimplexContactClient {
         senderKey2: e2e.key2
       });
       var receivingRatchet = createNativeReceivingRatchet({
-        version: e2e.version || SIMPLEX_NATIVE_E2E_VERSION,
+        version: e2e.version || SMP_NATIVE_E2E_VERSION,
         init,
         ownDhKey: ratchet.recipientX3dhKey2
       });
@@ -871,7 +871,7 @@ export class BrowserSimplexContactClient {
     }
     if (!nativePlain) nativePlain = decryptNativeRatchetMessage(ratchet, nativeEnvelope.encConnInfo);
     var conn = parseNativeAgentConnInfo(nativePlain.plaintext);
-    if (conn.type !== 'info' && conn.type !== 'reply') fail('SIMPLEX_CONTACT_ACCEPT', 'native accept connection info is unsupported');
+    if (conn.type !== 'info' && conn.type !== 'reply') fail('SMP_CONTACT_ACCEPT', 'native accept connection info is unsupported');
     if (decrypted.privateHeader.type === 'confirmation') {
       await this.client.secureQueue(queue, decrypted.privateHeader.senderPublicVerifyKey, {
         ...options,
@@ -896,7 +896,7 @@ export class BrowserSimplexContactClient {
     this.store.saveQueue(contact.inboxQueueId || (contact.id + ':inbox'), queue);
     if (conn.type === 'reply') {
       var replyQueue = conn.replyQueues[0];
-      if (!replyQueue) fail('SIMPLEX_CONTACT_ACCEPT', 'native accept reply queue is missing');
+      if (!replyQueue) fail('SMP_CONTACT_ACCEPT', 'native accept reply queue is missing');
       var replySenderSignKey = generateEd25519KeyPair(options.replySenderSignSeed || options.senderSignSeed);
       contact.outboundQueue = {
         server: replyQueue.server,
@@ -919,7 +919,7 @@ export class BrowserSimplexContactClient {
         });
         var infoHash = sha256Hash(infoMessage);
         var infoEncrypted = encryptNativeRatchetMessage(ratchet, infoMessage, {
-          paddedLength: options.nativeEncConnInfoLength || options.encConnInfoLength || SIMPLEX_NATIVE_ENC_CONN_INFO_LENGTH,
+          paddedLength: options.nativeEncConnInfoLength || options.encConnInfoLength || SMP_NATIVE_ENC_CONN_INFO_LENGTH,
           nextDhKey: options.nativeNextDhKey,
           ownDhKey: options.nativeOwnDhKey,
           ownDhSeed: options.nativeOwnDhSeed || options.ownDhSeed
@@ -964,7 +964,7 @@ export class BrowserSimplexContactClient {
 
   activateContact(id, options = {}) {
     var contact = this.store.loadContact(safeId(id));
-    if (!contact) fail('SIMPLEX_CONTACT_MISSING', 'contact does not exist');
+    if (!contact) fail('SMP_CONTACT_MISSING', 'contact does not exist');
     var ratchet = createRatchetState({
       rootKey: options.rootKey,
       ownDhSeed: options.ownDhSeed,
@@ -984,7 +984,7 @@ export class BrowserSimplexContactClient {
 
   suspendContact(id, reason = '') {
     var contact = this.store.loadContact(safeId(id));
-    if (!contact) fail('SIMPLEX_CONTACT_MISSING', 'contact does not exist');
+    if (!contact) fail('SMP_CONTACT_MISSING', 'contact does not exist');
     contact.state = CONTACT_STATE_SUSPENDED;
     contact.reason = String(reason || '').slice(0, 500);
     contact.updatedAt = nowIso();
@@ -1033,7 +1033,7 @@ export class BrowserSimplexContactClient {
   async deleteContactEverywhere(id, options = {}) {
     var cleanId = safeId(id);
     var contact = this.store.loadContact(cleanId);
-    if (!contact) fail('SIMPLEX_CONTACT_MISSING', 'contact does not exist');
+    if (!contact) fail('SMP_CONTACT_MISSING', 'contact does not exist');
     var remoteDeletedQueues = [];
     var queueIds = ownedInboxQueueIds(contact, cleanId);
     for (var i = 0; i < queueIds.length; i += 1) {
@@ -1046,7 +1046,7 @@ export class BrowserSimplexContactClient {
       remoteDeletedQueues.push(queueId);
     }
     if (!remoteDeletedQueues.length && options.requireRemoteQueue !== false) {
-      fail('SIMPLEX_CONTACT_QUEUE', 'contact inbox queue is missing');
+      fail('SMP_CONTACT_QUEUE', 'contact inbox queue is missing');
     }
     return {
       contact: this.deleteContact(cleanId, options),
@@ -1068,9 +1068,9 @@ export class BrowserSimplexContactClient {
     var contact = this.store.loadContact(safeId(id));
     requireState(contact, [CONTACT_STATE_ACTIVE]);
     var queue = options.queue || contact.outboundQueue || this.store.loadQueue(outboxQueueId(contact));
-    if (!queue) fail('SIMPLEX_CONTACT_QUEUE', 'contact outbound queue is missing');
+    if (!queue) fail('SMP_CONTACT_QUEUE', 'contact outbound queue is missing');
     var ratchet = this.store.loadRatchet(contact.id);
-    if (!ratchet) fail('SIMPLEX_CONTACT_RATCHET', 'contact ratchet is missing');
+    if (!ratchet) fail('SMP_CONTACT_RATCHET', 'contact ratchet is missing');
     if (contact.nativeAgentProfile || ratchet.nativeAgentProfile) {
       return this.sendNativeChatBody(contact, encodeNativeChatBody(plaintext), options);
     }
@@ -1137,9 +1137,9 @@ export class BrowserSimplexContactClient {
   async sendNativeChatBody(contact, nativeChatBody, options = {}) {
     requireState(contact, [CONTACT_STATE_ACTIVE]);
     var queue = options.queue || contact.outboundQueue || this.store.loadQueue(outboxQueueId(contact));
-    if (!queue) fail('SIMPLEX_CONTACT_QUEUE', 'contact outbound queue is missing');
+    if (!queue) fail('SMP_CONTACT_QUEUE', 'contact outbound queue is missing');
     var ratchet = this.store.loadRatchet(contact.id);
-    if (!ratchet || !ratchet.nativeAgentProfile) fail('SIMPLEX_CONTACT_RATCHET', 'native contact ratchet is missing');
+    if (!ratchet || !ratchet.nativeAgentProfile) fail('SMP_CONTACT_RATCHET', 'native contact ratchet is missing');
     var nativeSndMsgId = ratchet.nativeNextSndMsgId || 1;
     var nativeMessage = encodeNativeAgentMessage({
       type: 'message',
@@ -1254,9 +1254,9 @@ export class BrowserSimplexContactClient {
 
   async acceptAndSendNativeDirectFile(contact, fileQueueId, bytes, options = {}) {
     var fileState = this.store.load('nativeFile', fileQueueId);
-    if (!fileState) fail('SIMPLEX_CONTACT_NATIVE_FILE', 'native direct file state is missing');
+    if (!fileState) fail('SMP_CONTACT_NATIVE_FILE', 'native direct file state is missing');
     var fileQueue = options.fileQueue || this.store.loadQueue(fileQueueId);
-    if (!fileQueue) fail('SIMPLEX_CONTACT_NATIVE_FILE', 'native direct file queue is missing');
+    if (!fileQueue) fail('SMP_CONTACT_NATIVE_FILE', 'native direct file queue is missing');
     var received = await this.client.receiveQueueMessage(fileQueue, options);
     var decryptedBody = decryptRcvMessageBody({
       serverDhSecret: fileQueue.serverDhSecret,
@@ -1264,7 +1264,7 @@ export class BrowserSimplexContactClient {
       encryptedBody: received.message.body
     });
     var envelope = parseClientMessageEnvelope(decryptedBody.body);
-    if (!envelope.publicHeader.e2ePubDhKey) fail('SIMPLEX_CONTACT_NATIVE_FILE', 'native file accept is missing sender E2E DH key');
+    if (!envelope.publicHeader.e2ePubDhKey) fail('SMP_CONTACT_NATIVE_FILE', 'native file accept is missing sender E2E DH key');
     var senderDh = decodePublicKeyDer(envelope.publicHeader.e2ePubDhKey);
     var inboundShared = x25519SharedSecret(fileQueue.rcvDhKey.secretKey, senderDh.rawPublicKey);
     var decrypted = decryptClientMessageEnvelope({ sharedSecret: inboundShared, envelope: decryptedBody.body });
@@ -1275,7 +1275,7 @@ export class BrowserSimplexContactClient {
       });
     }
     var nativeEnvelope = parseNativeAgentEnvelope(decrypted.body);
-    if (nativeEnvelope.type !== 'confirmation') fail('SIMPLEX_CONTACT_NATIVE_FILE', 'native file accept envelope must be a confirmation');
+    if (nativeEnvelope.type !== 'confirmation') fail('SMP_CONTACT_NATIVE_FILE', 'native file accept envelope must be a confirmation');
     var e2e = parseNativeE2ERatchetParams(nativeEnvelope.e2eEncryption);
     var init = deriveNativeX3dhReceiver({
       recipientKey1: fileState.recipientX3dhKey1,
@@ -1284,7 +1284,7 @@ export class BrowserSimplexContactClient {
       senderKey2: e2e.key2
     });
     var receivingRatchet = createNativeReceivingRatchet({
-      version: e2e.version || SIMPLEX_NATIVE_E2E_VERSION,
+      version: e2e.version || SMP_NATIVE_E2E_VERSION,
       init,
       ownDhKey: fileState.recipientX3dhKey2
     });
@@ -1292,10 +1292,10 @@ export class BrowserSimplexContactClient {
     var conn = parseNativeAgentConnInfo(nativePlain.plaintext);
     var acceptMessage = chatMessageFromNativeConnInfo(conn.connInfo, 'native direct file accept');
     if (acceptMessage.event !== 'x.file.acpt' || !acceptMessage.params || acceptMessage.params.fileName !== fileState.fileName) {
-      fail('SIMPLEX_CONTACT_NATIVE_FILE', 'native direct file accept does not match the sent file');
+      fail('SMP_CONTACT_NATIVE_FILE', 'native direct file accept does not match the sent file');
     }
     var replyQueue = conn.replyQueues && conn.replyQueues[0];
-    if (!replyQueue) fail('SIMPLEX_CONTACT_NATIVE_FILE', 'native direct file accept did not provide a reply queue');
+    if (!replyQueue) fail('SMP_CONTACT_NATIVE_FILE', 'native direct file accept did not provide a reply queue');
     var outboundQueue = {
       server: replyQueue.server,
       sndId: replyQueue.senderId,
@@ -1315,7 +1315,7 @@ export class BrowserSimplexContactClient {
     var ratchet = nativePlain.state;
     var okMessage = encodeNativeAgentConnInfo({ type: 'info', connInfo: encodeNativeChatEvent('x.ok') });
     var okEncrypted = encryptNativeRatchetMessage(ratchet, okMessage, {
-      paddedLength: options.nativeEncConnInfoLength || options.encConnInfoLength || SIMPLEX_NATIVE_ENC_CONN_INFO_LENGTH
+      paddedLength: options.nativeEncConnInfoLength || options.encConnInfoLength || SMP_NATIVE_ENC_CONN_INFO_LENGTH
     });
     ratchet = okEncrypted.state;
     var okEnvelope = encodeNativeAgentEnvelope({
@@ -1397,7 +1397,7 @@ export class BrowserSimplexContactClient {
     var contact = this.store.loadContact(safeId(id));
     requireState(contact, [CONTACT_STATE_ACTIVE]);
     var ratchet = this.store.loadRatchet(contact.id);
-    if (!ratchet) fail('SIMPLEX_CONTACT_RATCHET', 'contact ratchet is missing');
+    if (!ratchet) fail('SMP_CONTACT_RATCHET', 'contact ratchet is missing');
     var decrypted = decryptRatchetMessage(ratchet, parsePacketBytes(toBytes(packetBytesValue, 'ratchet packet')));
     this.store.saveRatchet(contact.id, decrypted.state);
     return utf8Text(decrypted.plaintext);
@@ -1435,9 +1435,9 @@ export class BrowserSimplexContactClient {
   async sendNativeAgentReceipt(contact, receipt, options = {}) {
     requireState(contact, [CONTACT_STATE_ACTIVE]);
     var queue = options.queue || contact.outboundQueue || this.store.loadQueue(outboxQueueId(contact));
-    if (!queue) fail('SIMPLEX_CONTACT_QUEUE', 'native receipt outbound queue is missing');
+    if (!queue) fail('SMP_CONTACT_QUEUE', 'native receipt outbound queue is missing');
     var ratchet = this.store.loadRatchet(contact.id);
-    if (!ratchet || !ratchet.nativeAgentProfile) fail('SIMPLEX_CONTACT_RATCHET', 'native receipt ratchet is missing');
+    if (!ratchet || !ratchet.nativeAgentProfile) fail('SMP_CONTACT_RATCHET', 'native receipt ratchet is missing');
     var normalizedReceipt = {
       agentMsgId: normalizeNativeReceiptMessageId(receipt.agentMsgId || receipt.id),
       msgHash: normalizeNativeReceiptHash(receipt.msgHash || receipt.hash),
@@ -1503,7 +1503,7 @@ export class BrowserSimplexContactClient {
     var contact = this.store.loadContact(safeId(id));
     requireState(contact, [CONTACT_STATE_ACTIVE]);
     var queue = options.queue || this.store.loadQueue(contact.id + ':inbox');
-    if (!queue) fail('SIMPLEX_CONTACT_QUEUE', 'contact inbox queue is missing');
+    if (!queue) fail('SMP_CONTACT_QUEUE', 'contact inbox queue is missing');
     if (options.subscribeBeforeReceive === true && contact.nativeAgentProfile) {
       await this.client.subscribeQueue(queue, {
         ...options,
@@ -1517,7 +1517,7 @@ export class BrowserSimplexContactClient {
     var seen = this.store.load('received', seenId);
     if (seen) {
       if (seen.bodyHash && seen.bodyHash !== bodyHash) {
-        fail('SIMPLEX_CONTACT_REPLAY', 'received message id replay changed the encrypted body');
+        fail('SMP_CONTACT_REPLAY', 'received message id replay changed the encrypted body');
       }
       var duplicateAck = await this.acknowledgeOrQueue(contact, queue, msgId, options);
       this.store.save('received', seenId, {
@@ -1545,7 +1545,7 @@ export class BrowserSimplexContactClient {
       encryptedBody: received.message.body
     });
     var ratchet = this.store.loadRatchet(contact.id);
-    if (!ratchet) fail('SIMPLEX_CONTACT_RATCHET', 'contact ratchet is missing');
+    if (!ratchet) fail('SMP_CONTACT_RATCHET', 'contact ratchet is missing');
     if (contact.nativeAgentProfile || ratchet.nativeAgentProfile) {
       var nativeEnvelopeBody = decryptedBody.body;
       if (queue.e2eSharedSecret) {
@@ -1554,12 +1554,12 @@ export class BrowserSimplexContactClient {
           envelope: decryptedBody.body
         });
         if (nativeClientMessage.privateHeader.type !== 'empty') {
-          fail('SIMPLEX_CONTACT_MESSAGE', 'native incoming message has an unsupported private header');
+          fail('SMP_CONTACT_MESSAGE', 'native incoming message has an unsupported private header');
         }
         nativeEnvelopeBody = nativeClientMessage.body;
       }
       var nativeEnvelope = parseNativeAgentEnvelope(nativeEnvelopeBody);
-      if (nativeEnvelope.type !== 'message') fail('SIMPLEX_CONTACT_MESSAGE', 'native incoming envelope must be a message');
+      if (nativeEnvelope.type !== 'message') fail('SMP_CONTACT_MESSAGE', 'native incoming envelope must be a message');
       var nativeDecrypted = decryptNativeRatchetMessage(ratchet, nativeEnvelope.encAgentMessage);
       var nativeAgentMessage = parseNativeAgentMessage(nativeDecrypted.plaintext);
       if (nativeAgentMessage.type === 'receipt') {
@@ -1604,7 +1604,7 @@ export class BrowserSimplexContactClient {
           ...nativeReceiptAck
         };
       }
-      if (nativeAgentMessage.type !== 'message') fail('SIMPLEX_CONTACT_MESSAGE', 'native incoming agent message type is unsupported');
+      if (nativeAgentMessage.type !== 'message') fail('SMP_CONTACT_MESSAGE', 'native incoming agent message type is unsupported');
       var nativeChat = decodeNativeChatBody(nativeAgentMessage.body);
       var nativeText = nativeChat.text;
       var nativePayload = nativeChat.payload;
@@ -1705,7 +1705,7 @@ export class BrowserSimplexContactClient {
   async downloadReceivedFile(received, options = {}) {
     var xftp = requireXftpClient(options.xftpClient || this.xftpClient);
     var file = received && received.file ? received.file : null;
-    if (!file || !file.manifest || !file.rootKey) fail('SIMPLEX_CONTACT_FILE', 'received file payload is missing');
+    if (!file || !file.manifest || !file.rootKey) fail('SMP_CONTACT_FILE', 'received file payload is missing');
     return xftp.downloadFile(file.manifest, decodeBase64Url(file.rootKey, 'received file root key'), options);
   }
 
@@ -1724,9 +1724,9 @@ export class BrowserSimplexContactClient {
             retryOnFailure: false
           };
           var sendContact = this.store.loadContact(safeId(task.payload.contactId));
-          if (!sendContact) fail('SIMPLEX_CONTACT_MISSING', 'contact does not exist');
+          if (!sendContact) fail('SMP_CONTACT_MISSING', 'contact does not exist');
           var sendQueue = options.queue || sendContact.outboundQueue || this.store.loadQueue(task.payload.queueId || outboxQueueId(sendContact));
-          if (!sendQueue) fail('SIMPLEX_CONTACT_QUEUE', 'contact retry queue is missing');
+          if (!sendQueue) fail('SMP_CONTACT_QUEUE', 'contact retry queue is missing');
           response = await this.client.sendQueueMessage(sendQueue, retryBytes(task.payload.packet, 'retry packet'), sendPacketOptions);
         } else if (task.payload.type === 'initialConfirmation') {
           response = await this.client.sendPreparedTransmission(
@@ -1742,9 +1742,9 @@ export class BrowserSimplexContactClient {
           // They deliberately avoid storing the plaintext message or ratchet
           // packet because the website already received and decrypted it.
           var contact = this.store.loadContact(safeId(task.payload.contactId));
-          if (!contact) fail('SIMPLEX_CONTACT_MISSING', 'contact does not exist');
+          if (!contact) fail('SMP_CONTACT_MISSING', 'contact does not exist');
           var queue = this.store.loadQueue(task.payload.queueId || contact.inboxQueueId || (contact.id + ':inbox'));
-          if (!queue) fail('SIMPLEX_CONTACT_QUEUE', 'contact ACK queue is missing');
+          if (!queue) fail('SMP_CONTACT_QUEUE', 'contact ACK queue is missing');
           response = await this.client.acknowledgeMessage(queue, decodeBase64Url(task.payload.msgId, 'retry ACK msg id'), {
             ...(task.payload.options || {}),
             ...(options.ackOptions || {}),
@@ -1767,8 +1767,8 @@ export class BrowserSimplexContactClient {
 }
 
 export default {
-  BrowserSimplexContactClient,
-  BrowserSimplexContactError,
+  BrowserSmpContactClient,
+  BrowserSmpContactError,
   CONTACT_PAYLOAD_PREFIX,
   CONTACT_STATE_ACTIVE,
   CONTACT_STATE_DELETED,
@@ -1777,5 +1777,5 @@ export default {
   CONTACT_STATE_SUSPENDED,
   decodeContactPayload,
   encodeContactPayload,
-  createBrowserSimplexContactClient
+  createBrowserSmpContactClient
 };

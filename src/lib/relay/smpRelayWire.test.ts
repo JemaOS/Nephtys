@@ -12,12 +12,12 @@ const h = vi.hoisted(() => ({
   ackIds: [] as string[],
 }));
 
-vi.mock('@/lib/simplexweb/browser-smp-websocket-transport.mjs', () => ({
+vi.mock('@/lib/smpweb/browser-smp-websocket-transport.mjs', () => ({
   connectBrowserSmpWebSocketTransport: vi.fn(async () => ({})),
 }));
 
-vi.mock('@/lib/simplexweb/browser-simplex-client.mjs', () => ({
-  createBrowserSimplexClient: vi.fn(() => ({
+vi.mock('@/lib/smpweb/browser-smp-client.mjs', () => ({
+  createBrowserSmpClient: vi.fn(() => ({
     createQueue: vi.fn(async () => ({
       server: null,
       queueMode: 'messaging',
@@ -29,7 +29,7 @@ vi.mock('@/lib/simplexweb/browser-simplex-client.mjs', () => ({
     secureQueue: vi.fn(async () => ({})),
     subscribeQueue: vi.fn(async () => ({})),
     receiveQueueMessage: vi.fn(async () => {
-      if (!h.messages.length) throw new Error('SIMPLEX_CLIENT_TIMEOUT');
+      if (!h.messages.length) throw new Error('SMP_CLIENT_TIMEOUT');
       return { message: h.messages.shift()! };
     }),
     acknowledgeMessage: vi.fn(async (_queue: unknown, id: Uint8Array) => {
@@ -41,7 +41,7 @@ vi.mock('@/lib/simplexweb/browser-simplex-client.mjs', () => ({
   })),
 }));
 
-vi.mock('@/lib/simplexweb/browser-smp-core.mjs', () => ({
+vi.mock('@/lib/smpweb/browser-smp-core.mjs', () => ({
   generateEd25519KeyPair: vi.fn(() => ({
     publicKeyDer: new Uint8Array([9]),
     secretKey: new Uint8Array([10]),
@@ -52,7 +52,7 @@ vi.mock('@/lib/simplexweb/browser-smp-core.mjs', () => ({
   utf8Text: vi.fn((b: Uint8Array) => new TextDecoder().decode(b)),
 }));
 
-vi.mock('@/lib/simplexweb/browser-simplex-agent.mjs', () => ({
+vi.mock('@/lib/smpweb/browser-smp-agent.mjs', () => ({
   decryptRcvMessageBody: vi.fn(({ encryptedBody }: { encryptedBody: Uint8Array }) => ({ body: encryptedBody })),
 }));
 

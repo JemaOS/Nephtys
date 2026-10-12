@@ -34,7 +34,7 @@ class ErrWs {
   }
 }
 
-describe('probeLocalAgent (détection transparente de l\'agent SimpleX)', () => {
+describe('probeLocalAgent (détection transparente de l\'agent SMP)', () => {
   it('détecte un agent qui accepte la connexion', async () => {
     (globalThis as { WebSocket?: unknown }).WebSocket = OkWs;
     expect(await probeLocalAgent('ws://agent')).toBe(true);

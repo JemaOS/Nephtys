@@ -40,14 +40,14 @@ export function onRelayTransportChange(cb: (active: boolean) => void): () => voi
   return () => { transportListeners.delete(cb); };
 }
 
-/** Vrai si un agent SimpleX local a été détecté (mode privé → SMP SimpleX). */
+/** Vrai si un agent SMP local a été détecté (mode privé → SMP SMP). */
 let agentReachable = false;
 
 const AGENT_URL =
   (import.meta.env.VITE_SMP_AGENT_URL as string | undefined) ?? 'ws://127.0.0.1:5225';
 
 /**
- * Tente de joindre un agent SimpleX local (transparent, sans config). Résout
+ * Tente de joindre un agent SMP local (transparent, sans config). Résout
  * `true` si une connexion WebSocket s'ouvre. Best-effort : échec silencieux.
  * Note : en prod `https`, `ws://localhost` est bloqué par le navigateur
  * (mixed content) → l'agent doit être en `wss://` ou l'app servie en http.
@@ -278,7 +278,7 @@ export function isTorAvailable(): boolean {
   return Boolean(getTorRelayUrl());
 }
 
-// ─── Réseau décentralisé (pool de relais, façon SimpleX) ──────────────
+// ─── Réseau décentralisé (pool de relais, façon SMP) ──────────────
 
 const DECENTRALIZED_KEY = 'nephtys_decentralized_relays';
 const RELAY_POOL_KEY = 'nephtys_relay_pool';
@@ -413,38 +413,38 @@ export function setDecentralizedRelayEnabled(enabled: boolean): void {
  */
 export function hasExternalRelayConfigured(): boolean {
   if (hasCustomRelay()) return true;
-  if (isSimplexV9Enabled()) return true;
+  if (isSmpV9Enabled()) return true;
   if (isDecentralizedRelayEnabled()) {
     return getRelayPool().some(url => !isLocalRelay(url));
   }
   return false;
 }
 
-// ─── Réseau SimpleX v9 (via le pont WS↔TLS natif) ─────────────────────
+// ─── Réseau SMP v9 (via le pont WS↔TLS natif) ─────────────────────
 
-const SIMPLEX_V9_KEY = 'nephtys_simplex_v9_enabled';
-const SIMPLEX_V9_URL_KEY = 'nephtys_simplex_v9_bridge_url';
+const SMP_V9_KEY = 'nephtys_smp_v9_enabled';
+const SMP_V9_URL_KEY = 'nephtys_smp_v9_bridge_url';
 
-/** URL du pont WebSocket SMP (ex. wss://vps/simplex). */
-export function getSimplexV9BridgeUrl(): string {
+/** URL du pont WebSocket SMP (ex. wss://vps/smp). */
+export function getSmpV9BridgeUrl(): string {
   try {
-    const o = localStorage.getItem(SIMPLEX_V9_URL_KEY);
+    const o = localStorage.getItem(SMP_V9_URL_KEY);
     if (o) return o.trim();
   } catch {
     // localStorage indisponible
   }
   return (
-    (import.meta.env.VITE_SIMPLEX_V9_BRIDGE_URL as string | undefined)?.trim() ||
-    'wss://78-232-3-78.sslip.io/simplex'
+    (import.meta.env.VITE_SMP_V9_BRIDGE_URL as string | undefined)?.trim() ||
+    'wss://78-232-3-78.sslip.io/smp'
   );
 }
 
-/** Enregistre l'URL du pont SimpleX v9. */
-export function setSimplexV9BridgeUrl(url: string): void {
+/** Enregistre l'URL du pont SMP v9. */
+export function setSmpV9BridgeUrl(url: string): void {
   try {
     const v = url.trim();
-    if (v) localStorage.setItem(SIMPLEX_V9_URL_KEY, v);
-    else localStorage.removeItem(SIMPLEX_V9_URL_KEY);
+    if (v) localStorage.setItem(SMP_V9_URL_KEY, v);
+    else localStorage.removeItem(SMP_V9_URL_KEY);
   } catch {
     // localStorage indisponible
   }
@@ -452,23 +452,23 @@ export function setSimplexV9BridgeUrl(url: string): void {
 }
 
 /**
- * Vrai si le transport SimpleX est actif. **Activé par défaut** (le mode privé
- * route via le réseau SimpleX officiel) ; l'utilisateur peut le désactiver
+ * Vrai si le transport SMP est actif. **Activé par défaut** (le mode privé
+ * route via le réseau SMP officiel) ; l'utilisateur peut le désactiver
  * explicitement (valeur '0'), ou le désactiver en vidant l'URL du pont.
  */
-export function isSimplexV9Enabled(): boolean {
+export function isSmpV9Enabled(): boolean {
   try {
-    const v = localStorage.getItem(SIMPLEX_V9_KEY);
+    const v = localStorage.getItem(SMP_V9_KEY);
     const on = v === null ? true : v === '1';
-    return on && Boolean(getSimplexV9BridgeUrl());
+    return on && Boolean(getSmpV9BridgeUrl());
   } catch {
-    return Boolean(getSimplexV9BridgeUrl());
+    return Boolean(getSmpV9BridgeUrl());
   }
 }
 
-export function setSimplexV9Enabled(enabled: boolean): void {
+export function setSmpV9Enabled(enabled: boolean): void {
   try {
-    localStorage.setItem(SIMPLEX_V9_KEY, enabled ? '1' : '0');
+    localStorage.setItem(SMP_V9_KEY, enabled ? '1' : '0');
   } catch {
     // localStorage indisponible
   }
@@ -491,18 +491,18 @@ export function getPrivateMessenger(): PrivateMessenger {
         keyHash: '',
         webSocketImplFactory: createTorWebSocketImpl,
       });
-    } else if (mode === 'simplex-smp') {
-      // Relais SimpleX SMP (browser-profile) — OPTION EXPLICITE.
+    } else if (mode === 'smp') {
+      // Relais SMP SMP (browser-profile) — OPTION EXPLICITE.
       // ⚠️ WIP : l'adaptateur SmpRelayWire ne couvre pas encore le modèle de
       // connexion à deux files du mode privé ; à finaliser avant usage prod.
       wire = new SmpRelayWire({ url: smpUrl, keyHash: smpKeyHash });
-    } else if (mode === 'simplex-agent') {
+    } else if (mode === 'smp-agent') {
       wire = new AgentRelayWire(AGENT_URL);
-    } else if (isSimplexV9Enabled()) {
-      // Réseau SimpleX (protocole SMP v9..v15) via le pont WS↔TLS natif, avec
-      // repli sur le relais aveugle si le pont/le serveur SimpleX est injoignable.
+    } else if (isSmpV9Enabled()) {
+      // Réseau SMP (protocole SMP v9..v15) via le pont WS↔TLS natif, avec
+      // repli sur le relais aveugle si le pont/le serveur SMP est injoignable.
       const fw = new FailoverRelayWire(
-        new SmpV9Wire({ bridgeUrl: getSimplexV9BridgeUrl() }),
+        new SmpV9Wire({ bridgeUrl: getSmpV9BridgeUrl() }),
         new SupabaseRelayWire(),
         active => { for (const cb of transportListeners) cb(active); },
       );
@@ -511,7 +511,7 @@ export function getPrivateMessenger(): PrivateMessenger {
     } else if (hasCustomRelay()) {
       wire = new WebSocketWire(getRelayUrl());
     } else {
-      // DÉFAUT : SMP (SimpleX browser-profile) PRIORITAIRE, repli automatique sur
+      // DÉFAUT : SMP (SMP browser-profile) PRIORITAIRE, repli automatique sur
       // le relais aveugle Supabase si le premier est injoignable → le mode privé
       // fonctionne toujours. (Un relais local 127.0.0.1 traînant est ignoré.)
       const pool = getRelayPool();

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Small browser-native SimpleX client orchestrator.
+// Small browser-native SMP client orchestrator.
 //
 // This module wires the low-level SMP core, agent-envelope helpers, and an
 // abstract SMP transport together.  It intentionally stays low to the ground:
@@ -25,24 +25,24 @@ import {
   prepareSenderSecureCommand,
   prepareSenderMessage,
   queueSummary
-} from './browser-simplex-agent.mjs';
+} from './browser-smp-agent.mjs';
 
-export class BrowserSimplexClientError extends Error {
+export class BrowserSmpClientError extends Error {
   constructor(code, message, detail = null) {
     super(message);
-    this.name = 'BrowserSimplexClientError';
+    this.name = 'BrowserSmpClientError';
     this.code = code;
     this.detail = detail;
   }
 }
 
 function fail(code, message, detail) {
-  throw new BrowserSimplexClientError(code, message, detail);
+  throw new BrowserSmpClientError(code, message, detail);
 }
 
 function requireTransport(transport) {
   if (!transport || typeof transport.sendSignedTransmissions !== 'function' || typeof transport.receiveSignedTransmissions !== 'function') {
-    fail('SIMPLEX_CLIENT_TRANSPORT', 'browser SimpleX client requires an SMP transport');
+    fail('SMP_CLIENT_TRANSPORT', 'browser SMP client requires an SMP transport');
   }
   return transport;
 }
@@ -50,9 +50,9 @@ function requireTransport(transport) {
 function normalizeCorrId(value, fallback) {
   var corr = value == null ? fallback : value;
   var bytes = typeof corr === 'string' ? asciiBytes(corr) : toBytes(corr, 'correlation id');
-  if (!bytes.length || bytes.length > 32) fail('SIMPLEX_CLIENT_CORR_ID', 'correlation id must be 1 to 32 bytes');
+  if (!bytes.length || bytes.length > 32) fail('SMP_CLIENT_CORR_ID', 'correlation id must be 1 to 32 bytes');
   for (var i = 0; i < bytes.length; i += 1) {
-    if (bytes[i] <= 0x20 || bytes[i] > 0x7e) fail('SIMPLEX_CLIENT_CORR_ID', 'correlation id must be printable non-space ASCII');
+    if (bytes[i] <= 0x20 || bytes[i] > 0x7e) fail('SMP_CLIENT_CORR_ID', 'correlation id must be printable non-space ASCII');
   }
   return bytes;
 }
@@ -95,11 +95,11 @@ function sameServer(left, right) {
   return serverKey(left) === serverKey(right);
 }
 
-export function createBrowserSimplexClient(options = {}) {
-  return new BrowserSimplexClient(options);
+export function createBrowserSmpClient(options = {}) {
+  return new BrowserSmpClient(options);
 }
 
-export class BrowserSimplexClient {
+export class BrowserSmpClient {
   constructor(options = {}) {
     this.transport = requireTransport(options.transport);
     this.server = options.server || null;
@@ -127,7 +127,7 @@ export class BrowserSimplexClient {
 
   getQueue(label) {
     var queue = this.queues.get(String(label || ''));
-    if (!queue) fail('SIMPLEX_CLIENT_QUEUE', 'queue is not known');
+    if (!queue) fail('SMP_CLIENT_QUEUE', 'queue is not known');
     return queue;
   }
 
@@ -160,7 +160,7 @@ export class BrowserSimplexClient {
     var maxBatches = Math.max(1, Math.floor(Number(options.maxBatches || 25) || 25));
     var pending = this.takePending((tx) => tx && tx.corrId && equalBytes(tx.corrId, expected));
     if (pending) {
-      if (brokerType(pending) === 'ERR') fail('SIMPLEX_CLIENT_BROKER_ERR', errorText(brokerMessage(pending)), brokerMessage(pending));
+      if (brokerType(pending) === 'ERR') fail('SMP_CLIENT_BROKER_ERR', errorText(brokerMessage(pending)), brokerMessage(pending));
       return pending;
     }
     for (var i = 0; i < maxBatches; i += 1) {
@@ -173,14 +173,14 @@ export class BrowserSimplexClient {
         if (equalBytes(tx.corrId, expected)) {
           var message = brokerMessage(tx);
           if (brokerType(tx) === 'ERR') {
-            fail('SIMPLEX_CLIENT_BROKER_ERR', errorText(message), message);
+            fail('SMP_CLIENT_BROKER_ERR', errorText(message), message);
           }
           return tx;
         }
         this.rememberPending(tx);
       }
     }
-    fail('SIMPLEX_CLIENT_TIMEOUT', 'no SMP response matched the correlation id');
+    fail('SMP_CLIENT_TIMEOUT', 'no SMP response matched the correlation id');
   }
 
   async receiveQueueMessage(queueOrLabel, options = {}) {
@@ -197,14 +197,14 @@ export class BrowserSimplexClient {
       for (var tx of transmissions || []) {
         var message = brokerMessage(tx);
         var type = brokerType(tx);
-        if (type === 'ERR') fail('SIMPLEX_CLIENT_BROKER_ERR', errorText(message), message);
+        if (type === 'ERR') fail('SMP_CLIENT_BROKER_ERR', errorText(message), message);
         if (type === 'MSG' && queueMatches(tx, queue)) {
           return { queue, transmission: tx, message };
         }
         this.rememberPending(tx);
       }
     }
-    fail('SIMPLEX_CLIENT_TIMEOUT', 'no SMP message matched the queue');
+    fail('SMP_CLIENT_TIMEOUT', 'no SMP message matched the queue');
   }
 
   async createQueue(options = {}) {
@@ -223,7 +223,7 @@ export class BrowserSimplexClient {
       transportBlock: false
     });
     var response = await this.sendAndWait(pending.transmission, corrId, { ...options, transport });
-    if (brokerType(response) !== 'IDS') fail('SIMPLEX_CLIENT_PROTOCOL', 'NEW expected IDS response', response);
+    if (brokerType(response) !== 'IDS') fail('SMP_CLIENT_PROTOCOL', 'NEW expected IDS response', response);
     var queue = completeNewQueueRequest(pending, brokerMessage(response), {
       version,
       server: options.server || this.server,
@@ -271,7 +271,7 @@ export class BrowserSimplexClient {
       corrId
     });
     var response = await this.sendAndWait(transmission, corrId, { ...options, transport });
-    if (brokerType(response) !== 'OK') fail('SIMPLEX_CLIENT_PROTOCOL', 'SKEY expected OK response', response);
+    if (brokerType(response) !== 'OK') fail('SMP_CLIENT_PROTOCOL', 'SKEY expected OK response', response);
     return response;
   }
 
@@ -338,7 +338,7 @@ export class BrowserSimplexClient {
     var cleanCorrId = normalizeCorrId(corrId, this.makeCorrId('prepared'));
     var preparedTransmission = transmission && transmission.bytes ? transmission : { bytes: toBytes(transmission, 'prepared transmission') };
     var response = await this.sendAndWait(preparedTransmission, cleanCorrId, options);
-    if (brokerType(response) !== 'OK') fail('SIMPLEX_CLIENT_PROTOCOL', 'prepared SEND expected OK response', response);
+    if (brokerType(response) !== 'OK') fail('SMP_CLIENT_PROTOCOL', 'prepared SEND expected OK response', response);
     return response;
   }
 
@@ -354,7 +354,7 @@ export class BrowserSimplexClient {
       flags: options.flags || { notification: false }
     });
     var response = await this.sendAndWait(transmission, corrId, { ...options, transport });
-    if (brokerType(response) !== 'OK') fail('SIMPLEX_CLIENT_PROTOCOL', 'SEND expected OK response', response);
+    if (brokerType(response) !== 'OK') fail('SMP_CLIENT_PROTOCOL', 'SEND expected OK response', response);
     return response;
   }
 
@@ -368,7 +368,7 @@ export class BrowserSimplexClient {
     }
     if (sameServer(targetServer, this.transport.server || this.server)) return this.transport;
     if (!this.transportForServer) {
-      fail('SIMPLEX_CLIENT_TRANSPORT_ROUTE', 'queue is on a different SMP server and no transport router is configured');
+      fail('SMP_CLIENT_TRANSPORT_ROUTE', 'queue is on a different SMP server and no transport router is configured');
     }
     var key = serverKey(targetServer);
     if (!this.serverTransports.has(key)) {
@@ -394,7 +394,7 @@ export class BrowserSimplexClient {
 }
 
 export default {
-  BrowserSimplexClient,
-  BrowserSimplexClientError,
-  createBrowserSimplexClient
+  BrowserSmpClient,
+  BrowserSmpClientError,
+  createBrowserSmpClient
 };

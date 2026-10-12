@@ -4,7 +4,7 @@
 /**
  * Transport de messagerie adossé au relais auto-hébergeable.
  *
- * Modèle SimpleX : une « connexion » = deux files unidirectionnelles.
+ * Modèle SMP : une « connexion » = deux files unidirectionnelles.
  *   • `createConnection()` génère la paire de files et renvoie une
  *     **invitation** à transmettre hors-bande (QR/lien).
  *   • `acceptInvite()` enregistre la connexion miroir côté pair.

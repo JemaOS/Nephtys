@@ -3,7 +3,7 @@
 // Browser-native XFTP web client profile.
 //
 // This module implements the browser-facing XFTP web transport shape used by
-// upstream simplexmq's xftp-web work: binary 16384-byte protocol blocks over
+// upstream smpmq's xftp-web work: binary 16384-byte protocol blocks over
 // HTTPS/fetch, a web challenge in the first hello, server identity proof
 // verification, a padded client handshake, authenticated XFTP commands, and
 // padded binary responses. It is deliberately separate from the local
@@ -978,7 +978,7 @@ export async function connectBrowserXftpWebClient(options = {}) {
   }, timeoutMs);
   if (ack.length !== 0) fail('XFTP_WEB_HANDSHAKE', 'XFTP web client handshake returned a non-empty acknowledgement');
   var client = {
-    profile: 'simplex-xftp-web-browser-v1',
+    profile: 'smp-xftp-web-browser-v1',
     url,
     version,
     sessionId: handshake.sessionId,
@@ -1173,7 +1173,7 @@ function readDescriptionLine(lines, index, pattern, label) {
 export function encodeXftpWebFileDescription(description) {
   var desc = normalizeXftpWebDescription(description);
   var lines = [
-    'simplexWebXftpDescription: 1',
+    'smpWebXftpDescription: 1',
     'party: ' + desc.party,
     'size: ' + formatXftpWebDescriptionSize(desc.size),
     'digest: ' + encodeBase64UrlPadded(desc.digest),
@@ -1204,7 +1204,7 @@ export function decodeXftpWebFileDescription(text) {
   if (!raw || raw.length > 1024 * 1024) fail('XFTP_WEB_DESCRIPTION', 'XFTP file description size is invalid');
   var lines = raw.split(/\r?\n/).filter((line) => line.trim() && !/^\s*#/.test(line));
   var i = 0;
-  readDescriptionLine(lines, i++, /^simplexWebXftpDescription: 1$/, 'description marker');
+  readDescriptionLine(lines, i++, /^smpWebXftpDescription: 1$/, 'description marker');
   var party = readDescriptionLine(lines, i++, /^party: (recipient|sender)$/, 'description party')[1];
   var size = parseXftpWebDescriptionSize(readDescriptionLine(lines, i++, /^size: ([0-9]+(?:kb|mb|gb)?)$/i, 'description size')[1], 'XFTP description size');
   var digest = parseXftpWebDescriptionBytes(readDescriptionLine(lines, i++, /^digest: ([A-Za-z0-9_-]+={0,2})$/, 'description digest')[1], 'XFTP description digest', 64);

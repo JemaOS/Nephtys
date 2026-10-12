@@ -4,7 +4,7 @@ import { SmpV9Wire } from './smpV9Wire';
 const BRIDGE = process.env.SMP_V9_BRIDGE || 'ws://127.0.0.1:8098';
 const run = !!process.env.SMP_V9_E2E;
 
-describe.skipIf(!run)('SmpV9Wire (pont -> SimpleX v9)', () => {
+describe.skipIf(!run)('SmpV9Wire (pont -> SMP v9)', () => {
   it('createQueue -> IDS, puis send/read (aller-retour)', async () => {
     const wire = new SmpV9Wire({ bridgeUrl: BRIDGE, timeoutMs: 15000 });
     const created = await wire.request({ op: 'createQueue' });

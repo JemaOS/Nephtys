@@ -9,8 +9,8 @@
 
 import { decodeBase64Url, encodeBase64Url, toBytes } from './browser-smp-core.mjs';
 
-export const SIMPLEX_BROWSER_XFTP_PROFILE_VERSION = 1;
-export const SIMPLEX_BROWSER_XFTP_TRANSPORTS = Object.freeze(['https', 'websocket', 'webtransport']);
+export const SMP_BROWSER_XFTP_PROFILE_VERSION = 1;
+export const SMP_BROWSER_XFTP_TRANSPORTS = Object.freeze(['https', 'websocket', 'webtransport']);
 
 export class BrowserXftpServerProfileError extends Error {
   constructor(code, message) {
@@ -78,11 +78,11 @@ function safeOrigin(raw) {
 
 export function normalizeBrowserXftpServerProfile(profile = {}) {
   var p = profile && typeof profile === 'object' ? profile : {};
-  if (Number(p.version) !== SIMPLEX_BROWSER_XFTP_PROFILE_VERSION) {
+  if (Number(p.version) !== SMP_BROWSER_XFTP_PROFILE_VERSION) {
     fail('XFTP_SERVER_PROFILE_VERSION', 'browser XFTP profile version is unsupported');
   }
   var transport = String(p.transport || '').toLowerCase();
-  if (!SIMPLEX_BROWSER_XFTP_TRANSPORTS.includes(transport)) {
+  if (!SMP_BROWSER_XFTP_TRANSPORTS.includes(transport)) {
     fail('XFTP_SERVER_PROFILE_TRANSPORT', 'browser XFTP transport is unsupported');
   }
   var keyHash = p.keyHash instanceof Uint8Array ? toBytes(p.keyHash, 'XFTP server key hash') : decodeBase64Url(p.keyHash, 'XFTP server key hash');
@@ -90,7 +90,7 @@ export function normalizeBrowserXftpServerProfile(profile = {}) {
   var endpoint = safeEndpoint(p.url, transport);
   var address = parseXftpServerAddress(p.xftpAddress || 'xftp://' + encodeBase64Url(keyHash) + '@' + endpoint.hostname);
   return {
-    version: SIMPLEX_BROWSER_XFTP_PROFILE_VERSION,
+    version: SMP_BROWSER_XFTP_PROFILE_VERSION,
     transport,
     url: endpoint.href,
     allowedOrigins: (Array.isArray(p.allowedOrigins) ? p.allowedOrigins : []).map(safeOrigin),
@@ -114,7 +114,7 @@ export function assertProductionBrowserXftpServerProfile(profile = {}) {
 
 export default {
   BrowserXftpServerProfileError,
-  SIMPLEX_BROWSER_XFTP_PROFILE_VERSION,
+  SMP_BROWSER_XFTP_PROFILE_VERSION,
   assertProductionBrowserXftpServerProfile,
   normalizeBrowserXftpServerProfile,
   parseXftpServerAddress

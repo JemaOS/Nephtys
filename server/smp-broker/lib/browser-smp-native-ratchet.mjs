@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Native SimpleX X448 ratchet primitives.
+// Native SMP X448 ratchet primitives.
 //
-// This module follows the upstream simplexmq ratchet shape closely enough for
+// This module follows the upstream smpmq ratchet shape closely enough for
 // browser-side native-agent work:
 // - X448 DH ratchet keys
-// - HKDF-SHA512 with the upstream SimpleX labels
+// - HKDF-SHA512 with the upstream SMP labels
 // - AES-GCM message encryption with encrypted padded headers
 // - the non-PQ header form used by current invitation links
 //
-// It is intentionally separate from `browser-simplex-ratchet.mjs`, which is the
+// It is intentionally separate from `browser-smp-ratchet.mjs`, which is the
 // earlier browser-profile ratchet. Keeping them separate avoids silently
-// changing existing browser-profile contacts while native SimpleX interop is
+// changing existing browser-profile contacts while native SMP interop is
 // brought up piece by piece.
 
 import { ctr, ecb, gcm } from '@noble/ciphers/aes.js';
@@ -39,26 +39,26 @@ import {
   x448SharedSecret
 } from './browser-smp-core.mjs';
 
-export const SIMPLEX_NATIVE_RATCHET_HEADER_LENGTH = 88;
-export const SIMPLEX_NATIVE_RATCHET_VERSION = 2;
-export const SIMPLEX_NATIVE_ROOT_INFO = 'SimpleXRootRatchet';
-export const SIMPLEX_NATIVE_CHAIN_INFO = 'SimpleXChainRatchet';
+export const SMP_NATIVE_RATCHET_HEADER_LENGTH = 88;
+export const SMP_NATIVE_RATCHET_VERSION = 2;
+export const SMP_NATIVE_ROOT_INFO = 'SMPRootRatchet';
+export const SMP_NATIVE_CHAIN_INFO = 'SMPChainRatchet';
 
-export class BrowserSimplexNativeRatchetError extends Error {
+export class BrowserSmpNativeRatchetError extends Error {
   constructor(code, message) {
     super(message);
-    this.name = 'BrowserSimplexNativeRatchetError';
+    this.name = 'BrowserSmpNativeRatchetError';
     this.code = code;
   }
 }
 
 function fail(code, message) {
-  throw new BrowserSimplexNativeRatchetError(code, message);
+  throw new BrowserSmpNativeRatchetError(code, message);
 }
 
 function safeWord32(value, label) {
   var n = Number(value || 0);
-  if (!Number.isSafeInteger(n) || n < 0 || n > 0xffffffff) fail('SIMPLEX_NATIVE_RATCHET_RANGE', label + ' is invalid');
+  if (!Number.isSafeInteger(n) || n < 0 || n > 0xffffffff) fail('SMP_NATIVE_RATCHET_RANGE', label + ' is invalid');
   return n;
 }
 
@@ -69,25 +69,25 @@ function hkdf3(salt, ikm, info) {
 
 function splitIvs(bytes) {
   var ivs = toBytes(bytes, 'ratchet IV material');
-  if (ivs.length !== 32) fail('SIMPLEX_NATIVE_RATCHET_KDF', 'ratchet IV material must be 32 bytes');
+  if (ivs.length !== 32) fail('SMP_NATIVE_RATCHET_KDF', 'ratchet IV material must be 32 bytes');
   return [ivs.slice(0, 16), ivs.slice(16, 32)];
 }
 
 function normalizeX448KeyPair(value, label) {
   var key = value && typeof value === 'object' ? value : {};
   var secretKey = key.secretKey ? toBytes(key.secretKey, label + ' secret key') : null;
-  if (!secretKey) fail('SIMPLEX_NATIVE_RATCHET_KEY', label + ' secret key is missing');
-  if (secretKey.length !== 56) fail('SIMPLEX_NATIVE_RATCHET_KEY', label + ' secret key must be 56 bytes');
+  if (!secretKey) fail('SMP_NATIVE_RATCHET_KEY', label + ' secret key is missing');
+  if (secretKey.length !== 56) fail('SMP_NATIVE_RATCHET_KEY', label + ' secret key must be 56 bytes');
   var publicKey = key.publicKey || key.rawPublicKey || null;
   if (!publicKey && key.publicKeyDer) publicKey = decodePublicKeyDer(key.publicKeyDer).rawPublicKey;
   var publicBytes = publicKey ? toBytes(publicKey, label + ' public key') : generateX448KeyPair(secretKey).publicKey;
-  if (publicBytes.length !== 56) fail('SIMPLEX_NATIVE_RATCHET_KEY', label + ' public key must be 56 bytes');
+  if (publicBytes.length !== 56) fail('SMP_NATIVE_RATCHET_KEY', label + ' public key must be 56 bytes');
   return { secretKey, publicKey: publicBytes, publicKeyDer: encodePublicKeyDer('X448', publicBytes) };
 }
 
 function normalizeX448PublicKey(value, label) {
   if (value && typeof value === 'object') {
-    if (value.algorithm && value.algorithm !== 'X448') fail('SIMPLEX_NATIVE_RATCHET_KEY', label + ' must be X448');
+    if (value.algorithm && value.algorithm !== 'X448') fail('SMP_NATIVE_RATCHET_KEY', label + ' must be X448');
     if (value.rawPublicKey) return normalizeX448PublicKey(value.rawPublicKey, label);
     if (value.publicKey) return normalizeX448PublicKey(value.publicKey, label);
     if (value.publicKeyDer) return normalizeX448PublicKey(decodePublicKeyDer(value.publicKeyDer), label);
@@ -95,7 +95,7 @@ function normalizeX448PublicKey(value, label) {
   var key = toBytes(value, label);
   if (key.length !== 56) {
     var decoded = decodePublicKeyDer(key);
-    if (decoded.algorithm !== 'X448') fail('SIMPLEX_NATIVE_RATCHET_KEY', label + ' must be X448');
+    if (decoded.algorithm !== 'X448') fail('SMP_NATIVE_RATCHET_KEY', label + ' must be X448');
     return decoded.rawPublicKey;
   }
   return key;
@@ -105,7 +105,7 @@ function rootKdf(rootKey, remotePublicKey, ownSecretKey) {
   var [nextRoot, chainKey, nextHeaderKey] = hkdf3(
     toBytes(rootKey, 'root key'),
     x448SharedSecret(ownSecretKey, remotePublicKey),
-    SIMPLEX_NATIVE_ROOT_INFO
+    SMP_NATIVE_ROOT_INFO
   );
   return { rootKey: nextRoot, chainKey, nextHeaderKey };
 }
@@ -114,7 +114,7 @@ function chainKdf(chainKey) {
   var [nextChainKey, messageKey, ivMaterial] = hkdf3(
     new Uint8Array(),
     toBytes(chainKey, 'chain key'),
-    SIMPLEX_NATIVE_CHAIN_INFO
+    SMP_NATIVE_CHAIN_INFO
   );
   var [messageIv, headerIv] = splitIvs(ivMaterial);
   return { nextChainKey, messageKey, messageIv, headerIv };
@@ -148,15 +148,15 @@ function decryptAead(key, iv, aad, body, tag) {
       // Try the next authenticated AES-GCM IV profile.
     }
   }
-  fail('SIMPLEX_NATIVE_RATCHET_DECRYPT', 'native ratchet decryption failed');
+  fail('SMP_NATIVE_RATCHET_DECRYPT', 'native ratchet decryption failed');
 }
 
 function decryptAeadPart(part, key, iv, aad, body, tag) {
   try {
     return decryptAead(key, iv, aad, body, tag);
   } catch (error) {
-    if (error && error.code === 'SIMPLEX_NATIVE_RATCHET_DECRYPT') {
-      fail('SIMPLEX_NATIVE_RATCHET_DECRYPT_' + String(part).toUpperCase(), 'native ratchet ' + part + ' decryption failed');
+    if (error && error.code === 'SMP_NATIVE_RATCHET_DECRYPT') {
+      fail('SMP_NATIVE_RATCHET_DECRYPT_' + String(part).toUpperCase(), 'native ratchet ' + part + ' decryption failed');
     }
     throw error;
   }
@@ -183,7 +183,7 @@ function ghashTag(key, aad, ciphertext, tagMask) {
 }
 
 function cryptoniteGcm(key, iv, aad, plaintext) {
-  if (iv.length !== 16) fail('SIMPLEX_NATIVE_RATCHET_NONCE', 'native AES-GCM IV must be 16 bytes');
+  if (iv.length !== 16) fail('SMP_NATIVE_RATCHET_NONCE', 'native AES-GCM IV must be 16 bytes');
   var authKey = ecb(key, { disablePadding: true }).encrypt(new Uint8Array(16));
   var initialCounter = gcmInitialCounter(authKey, iv);
   var tagMask = ecb(key, { disablePadding: true }).encrypt(initialCounter);
@@ -192,12 +192,12 @@ function cryptoniteGcm(key, iv, aad, plaintext) {
 }
 
 function cryptoniteGcmOpen(key, iv, aad, body, tag) {
-  if (iv.length !== 16 || tag.length !== 16) fail('SIMPLEX_NATIVE_RATCHET_NONCE', 'native AES-GCM IV and tag must be 16 bytes');
+  if (iv.length !== 16 || tag.length !== 16) fail('SMP_NATIVE_RATCHET_NONCE', 'native AES-GCM IV and tag must be 16 bytes');
   var authKey = ecb(key, { disablePadding: true }).encrypt(new Uint8Array(16));
   var initialCounter = gcmInitialCounter(authKey, iv);
   var tagMask = ecb(key, { disablePadding: true }).encrypt(initialCounter);
   var expected = ghashTag(authKey, aad, body, tagMask);
-  if (!equalBytes(expected, tag)) fail('SIMPLEX_NATIVE_RATCHET_DECRYPT', 'native AES-GCM tag mismatch');
+  if (!equalBytes(expected, tag)) fail('SMP_NATIVE_RATCHET_DECRYPT', 'native AES-GCM tag mismatch');
   return ctr(key, inc32(initialCounter)).decrypt(body);
 }
 
@@ -216,8 +216,8 @@ export function createNativeSendingRatchet(options = {}) {
   var remoteDhPublicKey = normalizeX448PublicKey(options.remoteDhPublicKey, 'remote DH key');
   var derived = rootKdf(init.ratchetKey, remoteDhPublicKey, ownDhKey.secretKey);
   return {
-    version: Number(options.version || SIMPLEX_NATIVE_RATCHET_VERSION),
-    maxSupportedVersion: Number(options.maxSupportedVersion || options.version || SIMPLEX_NATIVE_RATCHET_VERSION),
+    version: Number(options.version || SMP_NATIVE_RATCHET_VERSION),
+    maxSupportedVersion: Number(options.maxSupportedVersion || options.version || SMP_NATIVE_RATCHET_VERSION),
     associatedData: toBytes(init.associatedData || new Uint8Array(), 'associated data'),
     ownDhKey,
     remoteDhPublicKey,
@@ -234,8 +234,8 @@ export function createNativeSendingRatchet(options = {}) {
 export function createNativeReceivingRatchet(options = {}) {
   var init = options.init || {};
   return {
-    version: Number(options.version || SIMPLEX_NATIVE_RATCHET_VERSION),
-    maxSupportedVersion: Number(options.maxSupportedVersion || options.version || SIMPLEX_NATIVE_RATCHET_VERSION),
+    version: Number(options.version || SMP_NATIVE_RATCHET_VERSION),
+    maxSupportedVersion: Number(options.maxSupportedVersion || options.version || SMP_NATIVE_RATCHET_VERSION),
     associatedData: toBytes(init.associatedData || new Uint8Array(), 'associated data'),
     ownDhKey: normalizeX448KeyPair(options.ownDhKey, 'receiving DH key'),
     rootKey: toBytes(init.ratchetKey, 'root key'),
@@ -252,7 +252,7 @@ export function createNativeReceivingRatchet(options = {}) {
 export function encodeNativeMessageHeader(header = {}) {
   var publicKey = normalizeX448PublicKey(header.dh, 'header DH key');
   return concatBytes(
-    encodeWord16(safeWord32(header.maxSupportedVersion || SIMPLEX_NATIVE_RATCHET_VERSION, 'max supported version')),
+    encodeWord16(safeWord32(header.maxSupportedVersion || SMP_NATIVE_RATCHET_VERSION, 'max supported version')),
     encodeSmallBytes(encodePublicKeyDer('X448', publicKey)),
     encodeWord32(safeWord32(header.previousSendCount, 'previous send count')),
     encodeWord32(safeWord32(header.messageNumber, 'message number'))
@@ -261,14 +261,14 @@ export function encodeNativeMessageHeader(header = {}) {
 
 export function parseNativeMessageHeader(bytes) {
   var input = toBytes(bytes, 'native ratchet header');
-  if (input.length < 2) fail('SIMPLEX_NATIVE_RATCHET_HEADER', 'native ratchet header is truncated');
+  if (input.length < 2) fail('SMP_NATIVE_RATCHET_HEADER', 'native ratchet header is truncated');
   var maxSupportedVersion = decodeWord16(input, 0);
   var keyLength = input[2];
   var keyStart = 3;
   var keyEnd = keyStart + keyLength;
-  if (keyEnd + 8 !== input.length) fail('SIMPLEX_NATIVE_RATCHET_HEADER', 'native ratchet header has invalid length');
+  if (keyEnd + 8 !== input.length) fail('SMP_NATIVE_RATCHET_HEADER', 'native ratchet header has invalid length');
   var dh = decodePublicKeyDer(input.slice(keyStart, keyEnd));
-  if (dh.algorithm !== 'X448') fail('SIMPLEX_NATIVE_RATCHET_HEADER', 'native ratchet header DH key must be X448');
+  if (dh.algorithm !== 'X448') fail('SMP_NATIVE_RATCHET_HEADER', 'native ratchet header DH key must be X448');
   return {
     maxSupportedVersion,
     dh: dh.rawPublicKey,
@@ -297,12 +297,12 @@ function encodeEncryptedHeader(version, iv, tag, body) {
 
 function parseEncryptedHeader(bytes) {
   var input = toBytes(bytes, 'encrypted native ratchet header');
-  if (input.length < 34) fail('SIMPLEX_NATIVE_RATCHET_HEADER', 'encrypted native ratchet header is truncated');
+  if (input.length < 34) fail('SMP_NATIVE_RATCHET_HEADER', 'encrypted native ratchet header is truncated');
   var version = decodeWord16(input, 0);
   var iv = input.slice(2, 18);
   var tag = input.slice(18, 34);
   var body = readMaybeLarge(input, 34);
-  if (body.next !== input.length) fail('SIMPLEX_NATIVE_RATCHET_HEADER', 'encrypted native ratchet header has trailing bytes');
+  if (body.next !== input.length) fail('SMP_NATIVE_RATCHET_HEADER', 'encrypted native ratchet header has trailing bytes');
   return { version, iv, tag, body: body.value };
 }
 
@@ -310,7 +310,7 @@ export function encryptNativeRatchetMessage(stateInput, plaintext, options = {})
   var state = { ...stateInput };
   if (!state.sendingChainKey) {
     if (!state.remoteDhPublicKey || !state.nextSendingHeaderKey) {
-      fail('SIMPLEX_NATIVE_RATCHET_STATE', 'native sending ratchet is not initialized');
+      fail('SMP_NATIVE_RATCHET_STATE', 'native sending ratchet is not initialized');
     }
     var nextOwnDhKey = normalizeX448KeyPair(
       options.nextDhKey || options.ownDhKey || generateX448KeyPair(options.ownDhSeed),
@@ -325,7 +325,7 @@ export function encryptNativeRatchetMessage(stateInput, plaintext, options = {})
     state.nextSendingHeaderKey = derived.nextHeaderKey;
     state.sendCount = 0;
   }
-  if (!state.sendingHeaderKey) fail('SIMPLEX_NATIVE_RATCHET_STATE', 'native sending ratchet is not initialized');
+  if (!state.sendingHeaderKey) fail('SMP_NATIVE_RATCHET_STATE', 'native sending ratchet is not initialized');
   var chain = chainKdf(state.sendingChainKey);
   var headerPlain = encodeNativeMessageHeader({
     maxSupportedVersion: state.maxSupportedVersion || state.version,
@@ -338,7 +338,7 @@ export function encryptNativeRatchetMessage(stateInput, plaintext, options = {})
     options.headerIv || chain.headerIv,
     state.associatedData,
     headerPlain,
-    SIMPLEX_NATIVE_RATCHET_HEADER_LENGTH
+    SMP_NATIVE_RATCHET_HEADER_LENGTH
   );
   var encodedHeader = encodeEncryptedHeader(state.version, options.headerIv || chain.headerIv, encryptedHeader.tag, encryptedHeader.body);
   var encryptedBody = encryptAead(
@@ -379,7 +379,7 @@ export function decryptNativeRatchetMessage(stateInput, packet) {
       headerError = error;
     }
   }
-  if (!headerAttempt) throw headerError || fail('SIMPLEX_NATIVE_RATCHET_STATE', 'native receiving header key is missing');
+  if (!headerAttempt) throw headerError || fail('SMP_NATIVE_RATCHET_STATE', 'native receiving header key is missing');
   var headerPlain = headerAttempt.plain;
   var header = parseNativeMessageHeader(headerPlain);
   if (!state.receivingChainKey || headerAttempt.next) {
@@ -399,9 +399,9 @@ export function decryptNativeRatchetMessage(stateInput, packet) {
 }
 
 export default {
-  BrowserSimplexNativeRatchetError,
-  SIMPLEX_NATIVE_RATCHET_HEADER_LENGTH,
-  SIMPLEX_NATIVE_RATCHET_VERSION,
+  BrowserSmpNativeRatchetError,
+  SMP_NATIVE_RATCHET_HEADER_LENGTH,
+  SMP_NATIVE_RATCHET_VERSION,
   createNativeReceivingRatchet,
   createNativeSendingRatchet,
   decryptNativeRatchetMessage,

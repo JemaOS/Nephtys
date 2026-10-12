@@ -5,7 +5,7 @@
 // SKEY:    "SKEY " [44 Ed25519 SPKI]        SEND: "SEND " 'F' ' ' body       SUB/GET/ACK (entity=rcvId)
 import { randomBytes, createHash } from 'node:crypto';
 import nacl from 'tweetnacl';
-import * as core from '../src/lib/simplexweb/browser-smp-core.mjs';
+import * as core from '../src/lib/smpweb/browser-smp-core.mjs';
 
 const URL = process.env.BRIDGE || 'ws://127.0.0.1:8098';
 const V = 9;

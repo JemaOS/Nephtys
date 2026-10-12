@@ -2,9 +2,9 @@
 // Distributed under the license specified in the root directory of this project.
 
 /**
- * RelayWire piloté par un **agent SimpleX** (`simplex-chat`).
+ * RelayWire piloté par un **agent SMP** (`smp-chat`).
  *
- * But : permettre au **mode privé** d'utiliser l'infrastructure SimpleX (l'agent
+ * But : permettre au **mode privé** d'utiliser l'infrastructure SMP (l'agent
  * porte les messages aux relais **SMP publics**) au lieu du protocole maison.
  *
  * L'agent expose une API WebSocket (défaut `ws://127.0.0.1:5225`) :
@@ -38,7 +38,7 @@ interface PendingRequest {
   timer: ReturnType<typeof setTimeout>;
 }
 
-/** Référence de chat SimpleX : `@<contactId>` ou `#<groupId>`. */
+/** Référence de chat SMP : `@<contactId>` ou `#<groupId>`. */
 function chatRefOf(info: any): string | null {
   if (!info) return null;
   if (info.type === 'direct' && info.contact) return `@${info.contact.contactId}`;

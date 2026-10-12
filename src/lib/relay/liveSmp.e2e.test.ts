@@ -1,5 +1,5 @@
 // Test live 2 pairs (A↔B) : A établit, B accepte, échange aller-retour via le
-// transport SimpleX (SmpV9Wire -> pont -> serveur v14+) avec E2EE (ratchet).
+// transport SMP (SmpV9Wire -> pont -> serveur v14+) avec E2EE (ratchet).
 // Exécution : SMP_V9_E2E=1 SMP_V9_BRIDGE=ws://127.0.0.1:8098 npx vitest run ...
 import { describe, it, expect } from 'vitest';
 import { PrivateMessenger } from './privateMessenger';
@@ -17,7 +17,7 @@ const waitFor = (pred: () => boolean, ms = 40000) => new Promise<void>((res, rej
   }, 300);
 });
 
-describe.skipIf(!run)('live A<->B via SimpleX (v14+)', () => {
+describe.skipIf(!run)('live A<->B via SMP (v14+)', () => {
   it('invitation -> message A->B -> réponse B->A (E2EE par-dessus)', async () => {
     const mk = () => new PrivateMessenger(new SmpV9Wire({ bridgeUrl: BRIDGE, timeoutMs: 20000 }), new InMemoryConnectionStore(), 800);
     const A = mk(); const B = mk();

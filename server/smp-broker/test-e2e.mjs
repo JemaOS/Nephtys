@@ -1,9 +1,9 @@
 // E2E : le serveur browser-profile + deux clients SMP navigateur via VRAI WebSocket.
 import { startServer } from './index.mjs';
 import * as smp from './lib/browser-smp-core.mjs';
-import { createBrowserSimplexClient } from './lib/browser-simplex-client.mjs';
-import { createBrowserSimplexContactClient } from './lib/browser-simplex-contact-client.mjs';
-import { createBrowserSimplexStore } from './lib/browser-simplex-store.mjs';
+import { createBrowserSmpClient } from './lib/browser-smp-client.mjs';
+import { createBrowserSmpContactClient } from './lib/browser-smp-contact-client.mjs';
+import { createBrowserSmpStore } from './lib/browser-smp-store.mjs';
 import { connectBrowserSmpWebSocketTransport } from './lib/browser-smp-websocket-transport.mjs';
 
 function filled(length, value) { return new Uint8Array(length).fill(value); }
@@ -16,7 +16,7 @@ const url = process.env.SMP_URL || `ws://127.0.0.1:${PORT}/`;
 
 async function makeClient(name) {
   const transport = await connectBrowserSmpWebSocketTransport({ url });
-  return { transport, client: createBrowserSimplexClient({ transport }) };
+  return { transport, client: createBrowserSmpClient({ transport }) };
 }
 
 async function main() {
@@ -24,10 +24,10 @@ async function main() {
   const bob = await makeClient('bob');
   console.log('[e2e] clients connected (version', alice.transport.version, ')');
 
-  const aliceStore = createBrowserSimplexStore({ namespace: 'ws-e2e-alice' });
-  const bobStore = createBrowserSimplexStore({ namespace: 'ws-e2e-bob' });
-  const aliceContacts = createBrowserSimplexContactClient({ client: alice.client, store: aliceStore });
-  const bobContacts = createBrowserSimplexContactClient({ client: bob.client, store: bobStore });
+  const aliceStore = createBrowserSmpStore({ namespace: 'ws-e2e-alice' });
+  const bobStore = createBrowserSmpStore({ namespace: 'ws-e2e-bob' });
+  const aliceContacts = createBrowserSmpContactClient({ client: alice.client, store: aliceStore });
+  const bobContacts = createBrowserSmpContactClient({ client: bob.client, store: bobStore });
 
   await aliceContacts.createInvitation({ id: 'bob', corrId: 'alice-new', rcvSignSeed: filled(32, 1), rcvDhSeed: filled(32, 2) });
   await bobContacts.createInvitation({ id: 'alice', corrId: 'bob-new', rcvSignSeed: filled(32, 3), rcvDhSeed: filled(32, 4) });

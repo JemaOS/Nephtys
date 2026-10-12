@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Browser-native SimpleX agent helpers built on top of the SMP core.
+// Browser-native SMP agent helpers built on top of the SMP core.
 //
 // `browser-smp-core.mjs` knows how to encode bytes, commands, signatures, and
 // transport blocks.  This module starts the next layer: the message envelopes
 // and queue lifecycle records that a browser client needs before it can become
-// a full SimpleX agent.
+// a full SMP agent.
 //
 // This is still intentionally transport-agnostic.  Callers can feed the signed
 // transmissions to a real browser SMP transport when that exists, or to test
@@ -39,7 +39,7 @@ import {
   generateEd25519KeyPair,
   generateX448KeyPair,
   generateX25519KeyPair,
-  parseSimplexConnectionLink,
+  parseSmpConnectionLink,
   parseBrokerMessage,
   parseCommand,
   parseSignedTransmission,
@@ -55,25 +55,25 @@ import { sha512 } from '@noble/hashes/sha2.js';
 import {
   createNativeSendingRatchet,
   encryptNativeRatchetMessage
-} from './browser-simplex-native-ratchet.mjs';
+} from './browser-smp-native-ratchet.mjs';
 
-export const SIMPLEX_AGENT_MESSAGE_VERSION = 1;
-export const SIMPLEX_NATIVE_AGENT_MESSAGE_VERSION = 7;
-export const SIMPLEX_NATIVE_E2E_VERSION = 2;
-export const SIMPLEX_NATIVE_ENC_CONN_INFO_LENGTH = 14832;
-export const SIMPLEX_EMPTY_PRIVATE_HEADER = '_';
-export const SIMPLEX_CONFIRMATION_PRIVATE_HEADER = 'K';
-export const SIMPLEX_NATIVE_X3DH_INFO = 'SimpleXX3DH';
+export const SMP_AGENT_MESSAGE_VERSION = 1;
+export const SMP_NATIVE_AGENT_MESSAGE_VERSION = 7;
+export const SMP_NATIVE_E2E_VERSION = 2;
+export const SMP_NATIVE_ENC_CONN_INFO_LENGTH = 14832;
+export const SMP_EMPTY_PRIVATE_HEADER = '_';
+export const SMP_CONFIRMATION_PRIVATE_HEADER = 'K';
+export const SMP_NATIVE_X3DH_INFO = 'SMPX3DH';
 
 class AgentProtocolError extends Error {
   constructor(code, message) {
     super(message);
-    this.name = 'SimplexBrowserAgentError';
+    this.name = 'SmpBrowserAgentError';
     this.code = code;
   }
 }
 
-export { AgentProtocolError as SimplexBrowserAgentError };
+export { AgentProtocolError as SmpBrowserAgentError };
 
 function fail(code, message) {
   throw new AgentProtocolError(code, message);
@@ -91,12 +91,12 @@ class Reader {
   }
 
   takeByte(label) {
-    if (this.offset >= this.bytes.length) fail('SIMPLEX_AGENT_TRUNCATED', label + ' is missing');
+    if (this.offset >= this.bytes.length) fail('SMP_AGENT_TRUNCATED', label + ' is missing');
     return this.bytes[this.offset++];
   }
 
   take(length, label) {
-    if (this.offset + length > this.bytes.length) fail('SIMPLEX_AGENT_TRUNCATED', label + ' is truncated');
+    if (this.offset + length > this.bytes.length) fail('SMP_AGENT_TRUNCATED', label + ' is truncated');
     var out = this.bytes.slice(this.offset, this.offset + length);
     this.offset += length;
     return out;
@@ -116,14 +116,14 @@ class Reader {
   }
 
   done(label) {
-    if (this.offset !== this.bytes.length) fail('SIMPLEX_AGENT_SYNTAX', label + ' has trailing bytes');
+    if (this.offset !== this.bytes.length) fail('SMP_AGENT_SYNTAX', label + ' has trailing bytes');
   }
 }
 
 function normalizeVersion(value) {
-  var version = Number(value == null ? SIMPLEX_AGENT_MESSAGE_VERSION : value);
+  var version = Number(value == null ? SMP_AGENT_MESSAGE_VERSION : value);
   if (!Number.isSafeInteger(version) || version < 1 || version > 0xffff) {
-    fail('SIMPLEX_AGENT_VERSION', 'agent message version is invalid');
+    fail('SMP_AGENT_VERSION', 'agent message version is invalid');
   }
   return version;
 }
@@ -135,7 +135,7 @@ function normalizePrivateHeader(header) {
   if (type === 'confirmation') {
     return { type: 'confirmation', senderPublicVerifyKey: toBytes(h.senderPublicVerifyKey, 'sender public verify key') };
   }
-  fail('SIMPLEX_AGENT_HEADER', 'unsupported SimpleX private header');
+  fail('SMP_AGENT_HEADER', 'unsupported SMP private header');
 }
 
 function normalizePublicHeader(header) {
@@ -151,20 +151,20 @@ function normalizeX448KeyPair(value, label) {
   var publicKey = key.publicKey || key.rawPublicKey || null;
   if (!publicKey && key.publicKeyDer) {
     var decodedPublic = decodePublicKeyDer(key.publicKeyDer);
-    if (decodedPublic.algorithm !== 'X448') fail('SIMPLEX_AGENT_X3DH', label + ' public key must be X448');
+    if (decodedPublic.algorithm !== 'X448') fail('SMP_AGENT_X3DH', label + ' public key must be X448');
     publicKey = decodedPublic.rawPublicKey;
   }
   var secretKey = key.secretKey || key.privateKey || null;
-  if (!secretKey) fail('SIMPLEX_AGENT_X3DH', label + ' secret key is missing');
+  if (!secretKey) fail('SMP_AGENT_X3DH', label + ' secret key is missing');
   var secret = toBytes(secretKey, label + ' secret key');
   var pub = toBytes(publicKey || generateX448KeyPair(secret).publicKey, label + ' public key');
-  if (secret.length !== 56 || pub.length !== 56) fail('SIMPLEX_AGENT_X3DH', label + ' keys must be X448 keys');
+  if (secret.length !== 56 || pub.length !== 56) fail('SMP_AGENT_X3DH', label + ' keys must be X448 keys');
   return { secretKey: secret, publicKey: pub };
 }
 
 function normalizeX448PublicKey(value, label) {
   if (value && typeof value === 'object') {
-    if (value.algorithm && value.algorithm !== 'X448') fail('SIMPLEX_AGENT_X3DH', label + ' must be X448');
+    if (value.algorithm && value.algorithm !== 'X448') fail('SMP_AGENT_X3DH', label + ' must be X448');
     if (value.rawPublicKey) return normalizeX448PublicKey(value.rawPublicKey, label);
     if (value.publicKey) return normalizeX448PublicKey(value.publicKey, label);
     if (value.publicKeyDer) return normalizeX448PublicKey(decodePublicKeyDer(value.publicKeyDer), label);
@@ -177,7 +177,7 @@ function normalizeX448PublicKey(value, label) {
       // Fall through to the stable X448 length error below.
     }
   }
-  if (key.length !== 56) fail('SIMPLEX_AGENT_X3DH', label + ' must be a 56-byte X448 public key');
+  if (key.length !== 56) fail('SMP_AGENT_X3DH', label + ' must be a 56-byte X448 public key');
   return key;
 }
 
@@ -190,24 +190,24 @@ function hkdf3(salt, ikm, info) {
   };
 }
 
-function simplexX3dh(firstPublicPair, dh1, dh2, dh3, kemSecret) {
+function smpX3dh(firstPublicPair, dh1, dh2, dh3, kemSecret) {
   var salt = new Uint8Array(64);
   var ikm = concatBytes(dh1, dh2, dh3, kemSecret || new Uint8Array());
   return {
     associatedData: concatBytes(firstPublicPair[0], firstPublicPair[1]),
-    ...hkdf3(salt, ikm, SIMPLEX_NATIVE_X3DH_INFO)
+    ...hkdf3(salt, ikm, SMP_NATIVE_X3DH_INFO)
   };
 }
 
 export function deriveNativeX3dhSender(options = {}) {
-  // Upstream SimpleX uses this path for the peer joining an invitation:
+  // Upstream SMP uses this path for the peer joining an invitation:
   // DH(rk1, spk2) || DH(rk2, spk1) || DH(rk2, spk2), HKDF-SHA512,
   // where `rk*` are recipient invitation keys and `spk*` are sender keys.
   var senderKey1 = normalizeX448KeyPair(options.senderKey1 || options.spk1, 'sender X3DH key 1');
   var senderKey2 = normalizeX448KeyPair(options.senderKey2 || options.spk2, 'sender X3DH key 2');
   var recipientKey1 = normalizeX448PublicKey(options.recipientKey1 || options.rk1, 'recipient X3DH key 1');
   var recipientKey2 = normalizeX448PublicKey(options.recipientKey2 || options.rk2, 'recipient X3DH key 2');
-  return simplexX3dh(
+  return smpX3dh(
     [senderKey1.publicKey, recipientKey1],
     x448SharedSecret(senderKey2.secretKey, recipientKey1),
     x448SharedSecret(senderKey1.secretKey, recipientKey2),
@@ -217,14 +217,14 @@ export function deriveNativeX3dhSender(options = {}) {
 }
 
 export function deriveNativeX3dhReceiver(options = {}) {
-  // Upstream SimpleX uses this path for the invitation creator after receiving
+  // Upstream SMP uses this path for the invitation creator after receiving
   // the joiner's reply: the same three DHs as the sender, evaluated from the
   // opposite private keys.
   var recipientKey1 = normalizeX448KeyPair(options.recipientKey1 || options.rpk1, 'recipient X3DH key 1');
   var recipientKey2 = normalizeX448KeyPair(options.recipientKey2 || options.rpk2, 'recipient X3DH key 2');
   var senderKey1 = normalizeX448PublicKey(options.senderKey1 || options.sk1, 'sender X3DH key 1');
   var senderKey2 = normalizeX448PublicKey(options.senderKey2 || options.sk2, 'sender X3DH key 2');
-  return simplexX3dh(
+  return smpX3dh(
     [senderKey1, recipientKey1.publicKey],
     x448SharedSecret(recipientKey1.secretKey, senderKey2),
     x448SharedSecret(recipientKey2.secretKey, senderKey1),
@@ -251,15 +251,15 @@ export function parsePublicHeader(bytes) {
   if (tag === 0x31) {
     return { header: { version, e2ePubDhKey: readSmall(reader, 'E2E public DH key') }, rest: reader.tail() };
   }
-  fail('SIMPLEX_AGENT_HEADER', 'public header key tag must be 0 or 1');
+  fail('SMP_AGENT_HEADER', 'public header key tag must be 0 or 1');
 }
 
 export function encodePrivateHeader(header = {}) {
   // Upstream Haskell uses `_` for the empty private header and `K<key>` for the
   // confirmation header that carries the sender's SMP signing public key.
   var h = normalizePrivateHeader(header);
-  if (h.type === 'empty') return asciiBytes(SIMPLEX_EMPTY_PRIVATE_HEADER);
-  return concatBytes(asciiBytes(SIMPLEX_CONFIRMATION_PRIVATE_HEADER), new Uint8Array([h.senderPublicVerifyKey.length]), h.senderPublicVerifyKey);
+  if (h.type === 'empty') return asciiBytes(SMP_EMPTY_PRIVATE_HEADER);
+  return concatBytes(asciiBytes(SMP_CONFIRMATION_PRIVATE_HEADER), new Uint8Array([h.senderPublicVerifyKey.length]), h.senderPublicVerifyKey);
 }
 
 export function parsePrivateHeader(bytes) {
@@ -274,7 +274,7 @@ export function parsePrivateHeader(bytes) {
       body: reader.tail()
     };
   }
-  fail('SIMPLEX_AGENT_HEADER', 'private header tag is unsupported');
+  fail('SMP_AGENT_HEADER', 'private header tag is unsupported');
 }
 
 function encodeMaybeBytes(value) {
@@ -286,11 +286,11 @@ function parseMaybeNativeE2ERatchetParams(reader, label) {
   var tag = reader.takeByte(label + ' tag');
   if (tag === 0x30) return null;
   if (tag === 0x31) return parseNativeE2ERatchetParamsReader(reader);
-  fail('SIMPLEX_AGENT_ENVELOPE', label + ' tag must be 0 or 1');
+  fail('SMP_AGENT_ENVELOPE', label + ' tag must be 0 or 1');
 }
 
 export function encodeNativeAgentEnvelope(envelope = {}) {
-  var version = normalizeVersion(envelope.agentVersion || envelope.version || SIMPLEX_AGENT_MESSAGE_VERSION);
+  var version = normalizeVersion(envelope.agentVersion || envelope.version || SMP_AGENT_MESSAGE_VERSION);
   var type = String(envelope.type || '').toLowerCase();
   if (type === 'confirmation') {
     return concatBytes(
@@ -323,7 +323,7 @@ export function encodeNativeAgentEnvelope(envelope = {}) {
       toBytes(envelope.info || new Uint8Array(), 'ratchet key info')
     );
   }
-  fail('SIMPLEX_AGENT_ENVELOPE', 'native agent envelope type is unsupported');
+  fail('SMP_AGENT_ENVELOPE', 'native agent envelope type is unsupported');
 }
 
 export function parseNativeAgentEnvelope(bytes) {
@@ -345,12 +345,12 @@ export function parseNativeAgentEnvelope(bytes) {
   if (tag === 0x52) {
     return { type: 'ratchet-key', agentVersion, e2eEncryption: parseNativeE2ERatchetParamsReader(reader), info: reader.tail() };
   }
-  fail('SIMPLEX_AGENT_ENVELOPE', 'native agent envelope tag is unsupported');
+  fail('SMP_AGENT_ENVELOPE', 'native agent envelope tag is unsupported');
 }
 
 function normalizeAgentMsgId(value, label) {
   var n = typeof value === 'bigint' ? value : BigInt(Number(value || 0));
-  if (n < 0n || n > 0x7fffffffffffffffn) fail('SIMPLEX_AGENT_MESSAGE_ID', label + ' is invalid');
+  if (n < 0n || n > 0x7fffffffffffffffn) fail('SMP_AGENT_MESSAGE_ID', label + ' is invalid');
   return n;
 }
 
@@ -359,19 +359,19 @@ function normalizeX448PublicDer(value, label) {
     if (value.publicKeyDer) return normalizeX448PublicDer(value.publicKeyDer, label);
     if (value.publicKey || value.rawPublicKey) {
       var key = toBytes(value.publicKey || value.rawPublicKey, label + ' public key');
-      if (key.length !== 56) fail('SIMPLEX_AGENT_X3DH', label + ' public key must be X448');
+      if (key.length !== 56) fail('SMP_AGENT_X3DH', label + ' public key must be X448');
       return encodePublicKeyDer('X448', key);
     }
   }
   var der = toBytes(value, label + ' public key DER');
   var decoded = decodePublicKeyDer(der);
-  if (decoded.algorithm !== 'X448') fail('SIMPLEX_AGENT_X3DH', label + ' public key must be X448');
+  if (decoded.algorithm !== 'X448') fail('SMP_AGENT_X3DH', label + ' public key must be X448');
   return der;
 }
 
 function encodeProtocolServerBinary(server = {}) {
   var host = String(server.host || '').trim();
-  if (!host || /[:,;\/\s]/.test(host)) fail('SIMPLEX_AGENT_QUEUE', 'protocol server host is invalid');
+  if (!host || /[:,;\/\s]/.test(host)) fail('SMP_AGENT_QUEUE', 'protocol server host is invalid');
   return concatBytes(
     new Uint8Array([1]),
     encodeSmallBytes(asciiBytes(host)),
@@ -384,11 +384,11 @@ function encodeQueueMode(value) {
   var mode = String(value || 'm').toLowerCase();
   if (mode === 'm' || mode === 'messaging') return asciiBytes('M');
   if (mode === 'c' || mode === 'contact') return asciiBytes('C');
-  fail('SIMPLEX_AGENT_QUEUE', 'native queue mode is unsupported');
+  fail('SMP_AGENT_QUEUE', 'native queue mode is unsupported');
 }
 
 function normalizeReplyQueue(queue = {}) {
-  if (!queue.server) fail('SIMPLEX_AGENT_QUEUE', 'native reply queue requires a server');
+  if (!queue.server) fail('SMP_AGENT_QUEUE', 'native reply queue requires a server');
   var senderId = queue.senderId || queue.sndId || queue.queueId;
   var dhPublicKey = queue.dhPublicKey || queue.recipientDhPublicKey ||
     (queue.rcvDhKey && queue.rcvDhKey.publicKeyDer);
@@ -403,7 +403,7 @@ function normalizeReplyQueue(queue = {}) {
 
 export function encodeNativeSmpQueueInfo(queue = {}) {
   var q = normalizeReplyQueue(queue);
-  if (q.clientVersion < 4) fail('SIMPLEX_AGENT_QUEUE', 'native reply queue must use SMP client version 4 or newer');
+  if (q.clientVersion < 4) fail('SMP_AGENT_QUEUE', 'native reply queue must use SMP client version 4 or newer');
   return concatBytes(
     encodeWord16(q.clientVersion),
     encodeProtocolServerBinary(q.server),
@@ -419,7 +419,7 @@ export function encodeNativeAgentConnInfo(message = {}) {
   if (type === 'info') return concatBytes(asciiBytes('I'), connInfo);
   if (type === 'reply' || type === 'conn-info-reply') {
     var queues = Array.isArray(message.replyQueues) ? message.replyQueues : [message.replyQueue].filter(Boolean);
-    if (!queues.length || queues.length > 255) fail('SIMPLEX_AGENT_QUEUE', 'native connection reply requires one to 255 reply queues');
+    if (!queues.length || queues.length > 255) fail('SMP_AGENT_QUEUE', 'native connection reply requires one to 255 reply queues');
     return concatBytes(
       asciiBytes('D'),
       new Uint8Array([queues.length]),
@@ -427,21 +427,21 @@ export function encodeNativeAgentConnInfo(message = {}) {
       connInfo
     );
   }
-  fail('SIMPLEX_AGENT_MESSAGE', 'native connection info message type is unsupported');
+  fail('SMP_AGENT_MESSAGE', 'native connection info message type is unsupported');
 }
 
 export function parseNativeAgentConnInfo(bytes) {
   var reader = new Reader(bytes, 'native connection info message');
   var tag = reader.takeByte('native connection info tag');
   if (tag === 0x49) return { type: 'info', connInfo: reader.tail() };
-  if (tag !== 0x44) fail('SIMPLEX_AGENT_MESSAGE', 'native connection info tag is unsupported');
+  if (tag !== 0x44) fail('SMP_AGENT_MESSAGE', 'native connection info tag is unsupported');
   var count = reader.takeByte('native reply queue count');
-  if (!count) fail('SIMPLEX_AGENT_QUEUE', 'native connection reply queue list is empty');
+  if (!count) fail('SMP_AGENT_QUEUE', 'native connection reply queue list is empty');
   var queues = [];
   for (var i = 0; i < count; i += 1) {
     var clientVersion = decodeWord16(reader.take(2, 'reply queue client version'));
     var hostCount = reader.takeByte('reply queue host count');
-    if (!hostCount) fail('SIMPLEX_AGENT_QUEUE', 'reply queue host list is empty');
+    if (!hostCount) fail('SMP_AGENT_QUEUE', 'reply queue host list is empty');
     var hosts = [];
     for (var h = 0; h < hostCount; h += 1) hosts.push(asciiText(reader.takeSmall('reply queue host')));
     queues.push({
@@ -463,7 +463,7 @@ export function parseNativeAgentConnInfo(bytes) {
 
 export function encodeNativeE2ERatchetParams(params = {}) {
   var version = normalizeVersion(params.version || 2);
-  if (version >= 3 && params.kem) fail('SIMPLEX_AGENT_X3DH', 'native PQ ratchet params are not implemented yet');
+  if (version >= 3 && params.kem) fail('SMP_AGENT_X3DH', 'native PQ ratchet params are not implemented yet');
   return concatBytes(
     encodeWord16(version),
     encodeSmallBytes(normalizeX448PublicDer(params.key1 || params.x3dhKey1 || params.publicKey1, 'native E2E key 1')),
@@ -484,11 +484,11 @@ function parseNativeE2ERatchetParamsReader(reader) {
   var key1 = decodePublicKeyDer(reader.takeSmall('native E2E key 1'));
   var key2 = decodePublicKeyDer(reader.takeSmall('native E2E key 2'));
   if (key1.algorithm !== 'X448' || key2.algorithm !== 'X448') {
-    fail('SIMPLEX_AGENT_X3DH', 'native E2E ratchet keys must be X448');
+    fail('SMP_AGENT_X3DH', 'native E2E ratchet keys must be X448');
   }
   if (version >= 3) {
     var pqTag = reader.takeByte('native E2E PQ ratchet tag');
-    if (pqTag !== 0x30) fail('SIMPLEX_AGENT_X3DH', 'native PQ ratchet params are not implemented yet');
+    if (pqTag !== 0x30) fail('SMP_AGENT_X3DH', 'native PQ ratchet params are not implemented yet');
   }
   return { version, key1, key2 };
 }
@@ -503,7 +503,7 @@ export function encodeNativeAgentMessage(message = {}) {
       body = concatBytes(asciiBytes('M'), toBytes(message.body || new Uint8Array(), 'agent message body'));
     } else {
       var receipts = Array.isArray(message.receipts) ? message.receipts : [];
-      if (!receipts.length || receipts.length > 255) fail('SIMPLEX_AGENT_RECEIPT', 'native receipt list must contain one to 255 receipts');
+      if (!receipts.length || receipts.length > 255) fail('SMP_AGENT_RECEIPT', 'native receipt list must contain one to 255 receipts');
       body = concatBytes(
         asciiBytes('V'),
         new Uint8Array([receipts.length]),
@@ -521,12 +521,12 @@ export function encodeNativeAgentMessage(message = {}) {
       body
     );
   }
-  fail('SIMPLEX_AGENT_MESSAGE', 'native agent message type is unsupported');
+  fail('SMP_AGENT_MESSAGE', 'native agent message type is unsupported');
 }
 
 function parseNativeReceiptBody(reader) {
   var count = reader.takeByte('receipt count');
-  if (!count) fail('SIMPLEX_AGENT_RECEIPT', 'native receipt list must be non-empty');
+  if (!count) fail('SMP_AGENT_RECEIPT', 'native receipt list must be non-empty');
   var receipts = [];
   for (var i = 0; i < count; i += 1) {
     receipts.push({
@@ -558,7 +558,7 @@ export function parseNativeAgentMessage(bytes) {
       reader.done('receipt list');
       return { type: 'receipt', sndMsgId, prevMsgHash, receipts: framedReceipts };
     }
-    if (msgType !== 0x4d) fail('SIMPLEX_AGENT_MESSAGE', 'native agent message body type is unsupported');
+    if (msgType !== 0x4d) fail('SMP_AGENT_MESSAGE', 'native agent message body type is unsupported');
     return { type: 'message', sndMsgId, prevMsgHash, body: reader.tail() };
   }
   if (tag === 0x56) {
@@ -566,7 +566,7 @@ export function parseNativeAgentMessage(bytes) {
     reader.done('receipt list');
     return { type: 'receipt', receipts };
   }
-  fail('SIMPLEX_AGENT_MESSAGE', 'native agent message tag is unsupported');
+  fail('SMP_AGENT_MESSAGE', 'native agent message tag is unsupported');
 }
 
 export function encodeClientMessage(message = {}) {
@@ -608,7 +608,7 @@ export function parseClientMessageEnvelope(bytes) {
 export function encryptClientMessage(options = {}) {
   var publicHeader = normalizePublicHeader(options.publicHeader);
   var nonce = toBytes(options.nonce, 'client message nonce');
-  if (nonce.length !== 24) fail('SIMPLEX_AGENT_NONCE', 'client message nonce must be 24 bytes');
+  if (nonce.length !== 24) fail('SMP_AGENT_NONCE', 'client message nonce must be 24 bytes');
   var clientMessage = encodeClientMessage({
     privateHeader: options.privateHeader,
     body: options.body || new Uint8Array()
@@ -630,7 +630,7 @@ export function decryptClientMessageEnvelope(options = {}) {
 }
 
 export function messageIdNonce(msgId) {
-  // SimpleX uses `cbNonce`: truncate IDs longer than 24 bytes, or right-pad
+  // SMP uses `cbNonce`: truncate IDs longer than 24 bytes, or right-pad
   // shorter IDs with zeroes until the XSalsa20 nonce is 24 bytes.
   var id = toBytes(msgId, 'message id');
   if (id.length >= 24) return id.slice(0, 24);
@@ -652,7 +652,7 @@ export function parseRcvMessageBody(bytes) {
   var reader = new Reader(bytes, 'received message body');
   var timestamp = decodeWord64(reader.take(8, 'message timestamp'));
   var flag = reader.takeByte('message notification flag');
-  if (flag !== 0x54 && flag !== 0x46) fail('SIMPLEX_AGENT_SYNTAX', 'message notification flag must be T or F');
+  if (flag !== 0x54 && flag !== 0x46) fail('SMP_AGENT_SYNTAX', 'message notification flag must be T or F');
   while (reader.offset < reader.bytes.length) {
     if (reader.takeByte('message flag separator') === 0x20) {
       return {
@@ -662,7 +662,7 @@ export function parseRcvMessageBody(bytes) {
       };
     }
   }
-  fail('SIMPLEX_AGENT_SYNTAX', 'received message body is missing the flag separator');
+  fail('SMP_AGENT_SYNTAX', 'received message body is missing the flag separator');
 }
 
 export function encryptRcvMessageBody(options = {}) {
@@ -721,9 +721,9 @@ function normalizeBrokerMessage(value, version) {
 export function completeNewQueueRequest(pending, brokerMessage, options = {}) {
   var request = pending && typeof pending === 'object' ? pending : {};
   var ids = normalizeBrokerMessage(brokerMessage, options.version || 4);
-  if (ids.type !== 'IDS') fail('SIMPLEX_AGENT_IDS', 'new queue request must complete with IDS');
+  if (ids.type !== 'IDS') fail('SMP_AGENT_IDS', 'new queue request must complete with IDS');
   var serverDhPublic = decodePublicKeyDer(ids.rcvPublicDhKey);
-  if (serverDhPublic.algorithm !== 'X25519') fail('SIMPLEX_AGENT_IDS', 'IDS server DH key must be X25519');
+  if (serverDhPublic.algorithm !== 'X25519') fail('SMP_AGENT_IDS', 'IDS server DH key must be X25519');
   return {
     server: request.server || options.server || null,
     rcvId: ids.rcvId,
@@ -739,7 +739,7 @@ export function completeNewQueueRequest(pending, brokerMessage, options = {}) {
 
 export function prepareRecipientCommand(queue, options = {}) {
   var q = queue && typeof queue === 'object' ? queue : {};
-  if (!q.rcvSignKey || !q.rcvId) fail('SIMPLEX_AGENT_QUEUE', 'recipient queue state is incomplete');
+  if (!q.rcvSignKey || !q.rcvId) fail('SMP_AGENT_QUEUE', 'recipient queue state is incomplete');
   var command = options.command || { type: options.type || 'SUB' };
   return encodeSignedTransmission(options.version || 4, options.sessionId || new Uint8Array(), {
     privateKey: q.rcvSignKey.secretKey,
@@ -751,7 +751,7 @@ export function prepareRecipientCommand(queue, options = {}) {
 
 export function prepareSenderSecureCommand(queue, options = {}) {
   var q = queue && typeof queue === 'object' ? queue : {};
-  if (!q.senderSignKey || !q.senderSignKey.secretKey || !q.sndId) fail('SIMPLEX_AGENT_QUEUE', 'sender queue state is incomplete');
+  if (!q.senderSignKey || !q.senderSignKey.secretKey || !q.sndId) fail('SMP_AGENT_QUEUE', 'sender queue state is incomplete');
   return encodeSignedTransmission(options.version || 4, options.sessionId || new Uint8Array(), {
     privateKey: q.senderSignKey.secretKey,
     corrId: options.corrId || new Uint8Array(),
@@ -776,7 +776,7 @@ export function prepareInitialSenderMessage(options = {}) {
     sharedSecret: options.e2eSharedSecret,
     nonce: options.nonce || randomBytes(24),
     publicHeader: {
-      version: options.agentVersion || SIMPLEX_AGENT_MESSAGE_VERSION,
+      version: options.agentVersion || SMP_AGENT_MESSAGE_VERSION,
       e2ePubDhKey: options.senderE2ePubDhKey || null
     },
     privateHeader,
@@ -798,7 +798,7 @@ export function prepareInitialSenderMessage(options = {}) {
 
 function nativeInvitationUriFromQueue(queue, x3dhKey1, x3dhKey2, options = {}) {
   var q = queue && typeof queue === 'object' ? queue : {};
-  if (!q.server) fail('SIMPLEX_AGENT_QUEUE', 'native invitation queue requires a server');
+  if (!q.server) fail('SMP_AGENT_QUEUE', 'native invitation queue requires a server');
   var senderId = q.sndId || q.senderId || q.queueId;
   var dhPublicKey = q.recipientDhPublicKey || (q.rcvDhKey && q.rcvDhKey.publicKeyDer);
   var e2eVersionRange = String(options.nativeE2EVersionRange || options.e2eVersionRange || '2');
@@ -811,14 +811,14 @@ function nativeInvitationUriFromQueue(queue, x3dhKey1, x3dhKey2, options = {}) {
     encodeBase64Url(x3dhKey1.publicKeyDer || encodePublicKeyDer('X448', x3dhKey1.publicKey)),
     encodeBase64Url(x3dhKey2.publicKeyDer || encodePublicKeyDer('X448', x3dhKey2.publicKey))
   ].join(',');
-  return 'simplex:/invitation#/?v=2-7&smp=' + encodeURIComponent(queueUri) + '&e2e=' + encodeURIComponent(e2e);
+  return 'smp:/invitation#/?v=2-7&smp=' + encodeURIComponent(queueUri) + '&e2e=' + encodeURIComponent(e2e);
 }
 
 function nativeProfileConnInfo(profile = {}) {
-  // The SimpleX Chat layer expects agent connection info to be a serialized
+  // The SMP Chat layer expects agent connection info to be a serialized
   // ChatMessage. For a basic profile exchange that is the `x.info` event.
   var input = profile && typeof profile === 'object' ? profile : {};
-  var displayName = String(input.displayName || input.display_name || input.fullName || input.full_name || 'simplex-web').trim() || 'simplex-web';
+  var displayName = String(input.displayName || input.display_name || input.fullName || input.full_name || 'smp-web').trim() || 'smp-web';
   var fullName = String(input.fullName || input.full_name || displayName).trim();
   return utf8Bytes(JSON.stringify({
     event: 'x.info',
@@ -835,16 +835,16 @@ function nativeProfileConnInfo(profile = {}) {
 export function prepareNativeContactRequest(options = {}) {
   var link = options.link && typeof options.link === 'object'
     ? options.link
-    : parseSimplexConnectionLink(options.invitationUri || options.invitation_uri || options.contactLink || options.contact_link);
+    : parseSmpConnectionLink(options.invitationUri || options.invitation_uri || options.contactLink || options.contact_link);
   if (!link.nativeAgentProfile || link.type !== 'contact') {
-    fail('SIMPLEX_AGENT_NATIVE_CONTACT', 'native contact request requires a native SimpleX contact link');
+    fail('SMP_AGENT_NATIVE_CONTACT', 'native contact request requires a native SMP contact link');
   }
   var contactQueue = link.smpQueues[0];
-  if (!contactQueue) fail('SIMPLEX_AGENT_NATIVE_CONTACT', 'native contact link does not contain an SMP queue');
+  if (!contactQueue) fail('SMP_AGENT_NATIVE_CONTACT', 'native contact link does not contain an SMP queue');
   var recipientQueueDh = decodePublicKeyDer(contactQueue.recipientDhPublicKey);
-  if (recipientQueueDh.algorithm !== 'X25519') fail('SIMPLEX_AGENT_NATIVE_CONTACT', 'native contact queue DH key must be X25519');
+  if (recipientQueueDh.algorithm !== 'X25519') fail('SMP_AGENT_NATIVE_CONTACT', 'native contact queue DH key must be X25519');
   var replyQueue = options.replyQueue;
-  if (!replyQueue) fail('SIMPLEX_AGENT_NATIVE_CONTACT', 'native contact request requires a reply queue');
+  if (!replyQueue) fail('SMP_AGENT_NATIVE_CONTACT', 'native contact request requires a reply queue');
 
   var senderQueueDh = options.senderQueueDhKey || options.ownDhKey || generateX25519KeyPair(options.ownDhSeed);
   var recipientX3dhKey1 = options.recipientX3dhKey1 || generateX448KeyPair(options.recipientX3dhSeed1);
@@ -855,7 +855,7 @@ export function prepareNativeContactRequest(options = {}) {
     : toBytes(options.connInfo, 'native contact info');
   var body = encodeNativeAgentEnvelope({
     type: 'invitation',
-    version: options.nativeAgentVersion || SIMPLEX_NATIVE_AGENT_MESSAGE_VERSION,
+    version: options.nativeAgentVersion || SMP_NATIVE_AGENT_MESSAGE_VERSION,
     connReq: utf8Bytes(connReq),
     connInfo
   });
@@ -891,17 +891,17 @@ export function prepareNativeContactRequest(options = {}) {
 export function prepareNativeInvitationJoin(options = {}) {
   var link = options.link && typeof options.link === 'object'
     ? options.link
-    : parseSimplexConnectionLink(options.invitationUri || options.invitation_uri || options.contactLink || options.contact_link);
+    : parseSmpConnectionLink(options.invitationUri || options.invitation_uri || options.contactLink || options.contact_link);
   if (!link.nativeAgentProfile || !link.nativeE2E) {
-    fail('SIMPLEX_AGENT_NATIVE_JOIN', 'native invitation join requires a native SimpleX invitation link');
+    fail('SMP_AGENT_NATIVE_JOIN', 'native invitation join requires a native SMP invitation link');
   }
   var invitationQueue = link.smpQueues[0];
-  if (!invitationQueue) fail('SIMPLEX_AGENT_NATIVE_JOIN', 'native invitation does not contain an SMP queue');
+  if (!invitationQueue) fail('SMP_AGENT_NATIVE_JOIN', 'native invitation does not contain an SMP queue');
   var recipientQueueDh = decodePublicKeyDer(invitationQueue.recipientDhPublicKey);
-  if (recipientQueueDh.algorithm !== 'X25519') fail('SIMPLEX_AGENT_NATIVE_JOIN', 'native invitation queue DH key must be X25519');
+  if (recipientQueueDh.algorithm !== 'X25519') fail('SMP_AGENT_NATIVE_JOIN', 'native invitation queue DH key must be X25519');
   var recipientE2eKey1 = link.nativeE2E.x3dhKeys[0];
   var recipientE2eKey2 = link.nativeE2E.x3dhKeys[1];
-  if (!recipientE2eKey1 || !recipientE2eKey2) fail('SIMPLEX_AGENT_NATIVE_JOIN', 'native invitation is missing X3DH keys');
+  if (!recipientE2eKey1 || !recipientE2eKey2) fail('SMP_AGENT_NATIVE_JOIN', 'native invitation is missing X3DH keys');
 
   var senderQueueDh = options.senderQueueDhKey || options.ownDhKey || generateX25519KeyPair(options.ownDhSeed);
   var senderX3dhKey1 = options.senderX3dhKey1 || generateX448KeyPair(options.senderX3dhSeed1);
@@ -914,7 +914,7 @@ export function prepareNativeInvitationJoin(options = {}) {
     recipientKey2: recipientE2eKey2
   });
   var nativeRatchet = createNativeSendingRatchet({
-    version: options.nativeE2EVersion || SIMPLEX_NATIVE_E2E_VERSION,
+    version: options.nativeE2EVersion || SMP_NATIVE_E2E_VERSION,
     init,
     ownDhKey: senderRatchetDh,
     remoteDhPublicKey: recipientE2eKey2.rawPublicKey
@@ -928,17 +928,17 @@ export function prepareNativeInvitationJoin(options = {}) {
     connInfo
   });
   var encryptedConnInfo = encryptNativeRatchetMessage(nativeRatchet, agentConnInfo, {
-    paddedLength: options.encConnInfoLength || SIMPLEX_NATIVE_ENC_CONN_INFO_LENGTH,
+    paddedLength: options.encConnInfoLength || SMP_NATIVE_ENC_CONN_INFO_LENGTH,
     headerIv: options.nativeHeaderIv
   });
   var e2eEncryption = encodeNativeE2ERatchetParams({
-    version: options.nativeE2EVersion || SIMPLEX_NATIVE_E2E_VERSION,
+    version: options.nativeE2EVersion || SMP_NATIVE_E2E_VERSION,
     key1: senderX3dhKey1,
     key2: senderX3dhKey2
   });
   var body = encodeNativeAgentEnvelope({
     type: 'confirmation',
-    version: options.nativeAgentVersion || SIMPLEX_NATIVE_AGENT_MESSAGE_VERSION,
+    version: options.nativeAgentVersion || SMP_NATIVE_AGENT_MESSAGE_VERSION,
     e2eEncryption,
     encConnInfo: encryptedConnInfo.packet
   });
@@ -977,7 +977,7 @@ export function prepareSenderMessage(queue, options = {}) {
   // ID. If a sender signing key is present the SMP transmission is signed;
   // otherwise it remains unsigned for pre-secure test and bootstrap flows.
   var q = queue && typeof queue === 'object' ? queue : {};
-  if (!q.sndId) fail('SIMPLEX_AGENT_QUEUE', 'sender queue id is missing');
+  if (!q.sndId) fail('SMP_AGENT_QUEUE', 'sender queue id is missing');
   var command = {
     type: 'SEND',
     flags: options.flags || { notification: false },
@@ -1021,12 +1021,12 @@ export function queueSummary(queue) {
 }
 
 export default {
-  SIMPLEX_AGENT_MESSAGE_VERSION,
-  SIMPLEX_CONFIRMATION_PRIVATE_HEADER,
-  SIMPLEX_EMPTY_PRIVATE_HEADER,
-  SIMPLEX_NATIVE_AGENT_MESSAGE_VERSION,
-  SIMPLEX_NATIVE_E2E_VERSION,
-  SIMPLEX_NATIVE_ENC_CONN_INFO_LENGTH,
+  SMP_AGENT_MESSAGE_VERSION,
+  SMP_CONFIRMATION_PRIVATE_HEADER,
+  SMP_EMPTY_PRIVATE_HEADER,
+  SMP_NATIVE_AGENT_MESSAGE_VERSION,
+  SMP_NATIVE_E2E_VERSION,
+  SMP_NATIVE_ENC_CONN_INFO_LENGTH,
   completeNewQueueRequest,
   deriveNativeX3dhReceiver,
   deriveNativeX3dhSender,

@@ -4,10 +4,10 @@
 //
 // This module is deliberately small and explicit.  It does not talk to the
 // plaintext command bridge, and it does not send plaintext to a website bridge.
-// It implements the low-level SimpleX Messaging Protocol (SMP) pieces that a
+// It implements the low-level SMP Messaging Protocol (SMP) pieces that a
 // browser transport needs before a full agent/contact layer can be built:
 //
-// - byte/string encodings used by simplexmq's Haskell `Encoding` instances
+// - byte/string encodings used by smpmq's Haskell `Encoding` instances
 // - `smp://` queue URI parsing
 // - fixed-size 16384-byte transport block padding
 // - SMP v3 single-transmission and SMP v4+ batched block framing
@@ -16,7 +16,7 @@
 //
 // The code favors readable checks over cleverness because protocol code is a
 // trust boundary.  Every helper either returns bytes of one exact wire shape or
-// throws `SimplexSmpProtocolError` with a stable code.
+// throws `SmpSmpProtocolError` with a stable code.
 
 import { ed25519, x25519 } from '@noble/curves/ed25519.js';
 import { x448 } from '@noble/curves/ed448.js';
@@ -29,9 +29,9 @@ import { sha256 } from '@noble/hashes/sha2.js';
 export const SMP_BLOCK_SIZE = 16384;
 export const SMP_MAX_MESSAGE_LENGTH = 16088;
 export const SMP_MAX_RCV_MESSAGE_LENGTH = SMP_MAX_MESSAGE_LENGTH + 16;
-// These limits match simplexmq's e2eEncConfirmationLength/e2eEncMessageLength
+// These limits match smpmq's e2eEncConfirmationLength/e2eEncMessageLength
 // constants. They are the largest plaintext payloads that still fit inside the
-// fixed 16384-byte SMP transport block after SimpleX's headers, nonce, and
+// fixed 16384-byte SMP transport block after SMP's headers, nonce, and
 // authentication tag are added.
 export const SMP_E2E_ENC_CONFIRMATION_LENGTH = 15904;
 export const SMP_E2E_ENC_MESSAGE_LENGTH = 16000;
@@ -39,16 +39,16 @@ export const SMP_BROWSER_MIN_VERSION = 3;
 export const SMP_BROWSER_MAX_VERSION = 9;
 export const SMP_DEFAULT_PORT = '5223';
 
-export class SimplexSmpProtocolError extends Error {
+export class SmpSmpProtocolError extends Error {
   constructor(code, message) {
     super(message);
-    this.name = 'SimplexSmpProtocolError';
+    this.name = 'SmpSmpProtocolError';
     this.code = code;
   }
 }
 
 function protocolError(code, message) {
-  return new SimplexSmpProtocolError(code, message);
+  return new SmpSmpProtocolError(code, message);
 }
 
 function fail(code, message) {
@@ -300,7 +300,7 @@ function encodeMaybeQueueReqData(value) {
   if (mode === 'm' || mode === 'messaging' || mode === 'message') tag = 'M';
   else if (mode === 'c' || mode === 'contact') tag = 'C';
   else fail('SMP_QUEUE_MODE', 'NEW queue mode must be messaging or contact');
-  // The full v15 queue request can carry short-link data. simplex-web only
+  // The full v15 queue request can carry short-link data. smp-web only
   // needs ordinary one-time queues here, so it sends `Just (mode Nothing)`.
   return asciiBytes('1' + tag + '0');
 }
@@ -340,7 +340,7 @@ function queueModeFromSenderCanSecure(value) {
 function encodeSubscriptionMode(value) {
   // SMP relay protocol v6 added an explicit queue subscription mode to NEW.
   // `S` asks the server to create and subscribe immediately, matching the
-  // upstream `SMSubscribe` path used by SimpleX Chat for ordinary queues.
+  // upstream `SMSubscribe` path used by SMP Chat for ordinary queues.
   var mode = String(value || 'subscribe').toLowerCase();
   if (mode === 'subscribe' || mode === 's' || mode === 'smsubscribe') return asciiBytes('S');
   if (mode === 'only-create' || mode === 'create' || mode === 'c' || mode === 'smonlycreate') return asciiBytes('C');
@@ -917,9 +917,9 @@ function parseNativeE2EParams(value) {
   };
 }
 
-export function parseSimplexConnectionLink(value) {
+export function parseSmpConnectionLink(value) {
   var text = String(value == null ? '' : value).trim();
-  if (/[\x00-\x20\x7f]/.test(text)) fail('SMP_URI', 'SimpleX connection link contains control or whitespace characters');
+  if (/[\x00-\x20\x7f]/.test(text)) fail('SMP_URI', 'SMP connection link contains control or whitespace characters');
   if (text.startsWith('smp://')) {
     return {
       scheme: 'smp',
@@ -935,29 +935,29 @@ export function parseSimplexConnectionLink(value) {
   try {
     url = new URL(text);
   } catch (_error) {
-    fail('SMP_URI', 'SimpleX connection link is invalid');
+    fail('SMP_URI', 'SMP connection link is invalid');
   }
-  var simplexScheme = url.protocol === 'simplex:';
+  var smpScheme = url.protocol === 'smp:';
   var webScheme = url.protocol === 'https:' || url.protocol === 'http:';
-  if (!simplexScheme && !webScheme) fail('SMP_URI', 'SimpleX connection link scheme is unsupported');
+  if (!smpScheme && !webScheme) fail('SMP_URI', 'SMP connection link scheme is unsupported');
   var path = url.pathname.replace(/^\/+/, '');
-  if (path !== 'invitation' && path !== 'contact') fail('SMP_URI', 'SimpleX connection link type is unsupported');
+  if (path !== 'invitation' && path !== 'contact') fail('SMP_URI', 'SMP connection link type is unsupported');
   var hash = String(url.hash || '');
-  if (!hash.startsWith('#/?')) fail('SMP_URI', 'SimpleX connection link fragment must start with #/?');
+  if (!hash.startsWith('#/?')) fail('SMP_URI', 'SMP connection link fragment must start with #/?');
   var params = new URLSearchParams(hash.slice(3));
   var smpParam = params.get('smp') || '';
-  if (!smpParam) fail('SMP_URI', 'SimpleX connection link is missing SMP queue data');
+  if (!smpParam) fail('SMP_URI', 'SMP connection link is missing SMP queue data');
   var queueTexts = smpParam.split(',');
   var queues = queueTexts.map((queueText) => {
     var q = String(queueText || '').trim();
-    if (!q) fail('SMP_URI', 'SimpleX connection link contains an empty SMP queue');
+    if (!q) fail('SMP_URI', 'SMP connection link contains an empty SMP queue');
     return q.includes('#/?') ? parseNativeSmpQueueUri(q) : parseSmpQueueUri(q);
   });
   var e2eText = params.get('e2e') || '';
   var nativeAgentProfile = !!e2eText || queues.some((queue) => !!(queue && queue.native));
   var nativeE2E = e2eText ? parseNativeE2EParams(e2eText) : null;
   return {
-    scheme: simplexScheme ? 'simplex' : url.protocol.slice(0, -1),
+    scheme: smpScheme ? 'smp' : url.protocol.slice(0, -1),
     type: path,
     version: params.get('v') || '',
     smpQueues: queues,
@@ -1208,24 +1208,24 @@ function wordsToBytes(words) {
   return out;
 }
 
-function simpleXHsalsa(key, input) {
+function smpHsalsa(key, input) {
   var out = new Uint32Array(8);
   hsalsa(SALSA_SIGMA_WORDS, keyWords32(key, 'HSalsa key'), words32(input, 'HSalsa input'), out);
   return wordsToBytes(out);
 }
 
-function simpleXXsalsa20State(key, nonce) {
-  // SimpleX/cryptonite uses a double-HSalsa cascade:
+function smpXsalsa20State(key, nonce) {
+  // SMP/cryptonite uses a double-HSalsa cascade:
   // HSalsa(key, zero16), then HSalsa(subkey, nonce[0:16]), then Salsa20 with
   // nonce[16:24]. This differs from the standard XSalsa20 helper exported by
   // Noble and libsodium.
   var nonceBytes = normalizeRawKey(nonce, 24, 'XSalsa20-Poly1305 nonce');
-  var subkey1 = simpleXHsalsa(key, new Uint8Array(16));
-  var subkey2 = simpleXHsalsa(subkey1, nonceBytes.slice(0, 16));
+  var subkey1 = smpHsalsa(key, new Uint8Array(16));
+  var subkey2 = smpHsalsa(subkey1, nonceBytes.slice(0, 16));
   return { subkey: subkey2, nonce8: nonceBytes.slice(16, 24) };
 }
 
-function simpleXXsalsa20Xor(state, data) {
+function smpXsalsa20Xor(state, data) {
   var input = toBytes(data, 'XSalsa20 data');
   var out = new Uint8Array(input.length);
   var offset = 0;
@@ -1246,41 +1246,41 @@ function simpleXXsalsa20Xor(state, data) {
   return out;
 }
 
-function simpleXSecretBox(key, nonce, plaintext) {
-  var state = simpleXXsalsa20State(key, nonce);
+function smpSecretBox(key, nonce, plaintext) {
+  var state = smpXsalsa20State(key, nonce);
   var first = salsa20(state.subkey, state.nonce8, new Uint8Array(64), undefined, 0);
   var authKey = first.slice(0, 32);
-  var ciphertext = simpleXXsalsa20Xor(state, plaintext);
+  var ciphertext = smpXsalsa20Xor(state, plaintext);
   return concatBytes(poly1305(ciphertext, authKey), ciphertext);
 }
 
-function simpleXSecretBoxOpen(key, nonce, packet) {
+function smpSecretBoxOpen(key, nonce, packet) {
   var input = toBytes(packet, 'secretbox packet');
   if (input.length < 16) fail('SMP_DECRYPT', 'XSalsa20-Poly1305 packet is too short');
-  var state = simpleXXsalsa20State(key, nonce);
+  var state = smpXsalsa20State(key, nonce);
   var first = salsa20(state.subkey, state.nonce8, new Uint8Array(64), undefined, 0);
   var authKey = first.slice(0, 32);
   var tag = input.slice(0, 16);
   var ciphertext = input.slice(16);
   var expected = poly1305(ciphertext, authKey);
   if (!equalBytes(tag, expected)) fail('SMP_DECRYPT', 'XSalsa20-Poly1305 authentication failed');
-  return simpleXXsalsa20Xor(state, ciphertext);
+  return smpXsalsa20Xor(state, ciphertext);
 }
 
 export function encryptSecretBox(sharedSecret, nonce, plaintext, paddedLength) {
   var key = normalizeRawKey(sharedSecret, 32, 'XSalsa20-Poly1305 key');
   var nonceBytes = normalizeRawKey(nonce, 24, 'XSalsa20-Poly1305 nonce');
   var padded = padMessage(plaintext, paddedLength);
-  return simpleXSecretBox(key, nonceBytes, padded);
+  return smpSecretBox(key, nonceBytes, padded);
 }
 
 export function decryptSecretBox(sharedSecret, nonce, packet) {
   var key = normalizeRawKey(sharedSecret, 32, 'XSalsa20-Poly1305 key');
   var nonceBytes = normalizeRawKey(nonce, 24, 'XSalsa20-Poly1305 nonce');
   try {
-    return unpadMessage(simpleXSecretBoxOpen(key, nonceBytes, packet));
+    return unpadMessage(smpSecretBoxOpen(key, nonceBytes, packet));
   } catch (error) {
-    if (error instanceof SimplexSmpProtocolError) throw error;
+    if (error instanceof SmpSmpProtocolError) throw error;
     fail('SMP_DECRYPT', 'XSalsa20-Poly1305 decryption failed');
   }
 }
@@ -1304,7 +1304,7 @@ export function decryptAesGcm(key, iv, ciphertext, tag, aad = new Uint8Array()) 
   try {
     return unpadMessage(gcm(keyBytes, ivBytes, toBytes(aad, 'AES-GCM associated data')).decrypt(packet));
   } catch (error) {
-    if (error instanceof SimplexSmpProtocolError) throw error;
+    if (error instanceof SmpSmpProtocolError) throw error;
     fail('SMP_DECRYPT', 'AES-GCM decryption failed');
   }
 }
@@ -1369,7 +1369,7 @@ export default {
   parseProtocolServer,
   parseServerHandshake,
   parseSignedTransmission,
-  parseSimplexConnectionLink,
+  parseSmpConnectionLink,
   parseSmpQueueUri,
   randomBytes32,
   randomNonce24,

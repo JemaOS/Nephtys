@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// First-party adapter for `window.SimplexWebTransport`.
+// First-party adapter for `window.SmpWebTransport`.
 //
 // The public facade in `src/transport.js` is intentionally stable and small:
 // websites call `sendText`, `sendFiles`, `getMessages`, and `connect`.
@@ -13,12 +13,12 @@ import {
   decodeBase64Url,
   encodeBase64Url,
   hexToBytes,
-  parseSimplexConnectionLink,
+  parseSmpConnectionLink,
   toBytes
 } from './browser-smp-core.mjs';
-import { createBrowserSimplexClient } from './browser-simplex-client.mjs';
-import { createBrowserSimplexContactClient } from './browser-simplex-contact-client.mjs';
-import { createBrowserSimplexStore } from './browser-simplex-store.mjs';
+import { createBrowserSmpClient } from './browser-smp-client.mjs';
+import { createBrowserSmpContactClient } from './browser-smp-contact-client.mjs';
+import { createBrowserSmpStore } from './browser-smp-store.mjs';
 import { connectBrowserSmpWebSocketTransport } from './browser-smp-websocket-transport.mjs';
 import {
   connectBrowserXftpWebClient,
@@ -28,27 +28,27 @@ import {
 
 const MAX_CONTACT_ID_LENGTH = 160;
 const DEFAULT_RECEIVE_LIMIT = 25;
-const ATTACHMENT_MARKER = 'simplex-web-file:v1:';
-const ATTACHMENT_CHUNK_MARKER = 'simplex-web-file-chunk:v1:';
+const ATTACHMENT_MARKER = 'smp-web-file:v1:';
+const ATTACHMENT_CHUNK_MARKER = 'smp-web-file-chunk:v1:';
 const DEFAULT_NATIVE_INLINE_FILE_BYTES = 900 * 1024;
 const DEFAULT_NATIVE_INLINE_CHUNK_BYTES = 9000;
 
-export class SimplexWebTransportAdapterError extends Error {
+export class SmpWebTransportAdapterError extends Error {
   constructor(code, message) {
     super(message);
-    this.name = 'SimplexWebTransportAdapterError';
+    this.name = 'SmpWebTransportAdapterError';
     this.code = code;
   }
 }
 
 function fail(code, message) {
-  throw new SimplexWebTransportAdapterError(code, message);
+  throw new SmpWebTransportAdapterError(code, message);
 }
 
 function safeContactId(value) {
   var id = String(value == null ? '' : value).trim();
   if (!id || id.length > MAX_CONTACT_ID_LENGTH || /[^A-Za-z0-9_.:-]/.test(id)) {
-    fail('SIMPLEX_WEB_ADAPTER_CONTACT', 'contact id is required and must be filename-safe ASCII');
+    fail('SMP_WEB_ADAPTER_CONTACT', 'contact id is required and must be filename-safe ASCII');
   }
   return id;
 }
@@ -59,7 +59,7 @@ function contactLinkText(message = {}) {
 
 function parseOptionalContactLink(message = {}) {
   var linkText = contactLinkText(message);
-  return linkText ? parseSimplexConnectionLink(linkText) : null;
+  return linkText ? parseSmpConnectionLink(linkText) : null;
 }
 
 function contactState(contacts, id) {
@@ -89,11 +89,11 @@ function nativeContactIdForLink(contacts, contactId, parsedLink) {
 function rejectUnsupportedNativeContactLink(message = {}) {
   var linkText = String(message.contact_link || message.contactLink || message.invitation_uri || message.invitationUri || '').trim();
   if (!linkText) return null;
-  var parsed = parseSimplexConnectionLink(linkText);
+  var parsed = parseSmpConnectionLink(linkText);
   if (parsed.nativeAgentProfile) {
     fail(
-      'SIMPLEX_WEB_ADAPTER_NATIVE_AGENT_UNSUPPORTED',
-      'native SimpleX Chat invitation links are only accepted by contact request sends'
+      'SMP_WEB_ADAPTER_NATIVE_AGENT_UNSUPPORTED',
+      'native SMP Chat invitation links are only accepted by contact request sends'
     );
   }
   return parsed;
@@ -102,7 +102,7 @@ function rejectUnsupportedNativeContactLink(message = {}) {
 function safeMessageRef(value, fallback = '') {
   var ref = String(value == null ? fallback : value).trim();
   if (!ref || ref.length > 256 || /[^A-Za-z0-9_.:-]/.test(ref)) {
-    fail('SIMPLEX_WEB_ADAPTER_MESSAGE_REF', 'message ref is required and must be filename-safe ASCII');
+    fail('SMP_WEB_ADAPTER_MESSAGE_REF', 'message ref is required and must be filename-safe ASCII');
   }
   return ref;
 }
@@ -117,7 +117,7 @@ function optionalSafeMessageRef(value) {
 
 function safeText(value) {
   var text = String(value == null ? '' : value);
-  if (!text.trim()) fail('SIMPLEX_WEB_ADAPTER_TEXT', 'message text is required');
+  if (!text.trim()) fail('SMP_WEB_ADAPTER_TEXT', 'message text is required');
   return text;
 }
 
@@ -151,15 +151,15 @@ function generatedMessageRef(prefix) {
 async function readFileBytes(file, maxBytes) {
   if (file instanceof Uint8Array || file instanceof ArrayBuffer || ArrayBuffer.isView(file)) {
     var bytes = toBytes(file, 'file bytes');
-    if (bytes.length > maxBytes) fail('SIMPLEX_WEB_ADAPTER_FILE_SIZE', 'file is larger than the configured maximum');
+    if (bytes.length > maxBytes) fail('SMP_WEB_ADAPTER_FILE_SIZE', 'file is larger than the configured maximum');
     return bytes;
   }
-  if (!file || typeof file !== 'object') fail('SIMPLEX_WEB_ADAPTER_FILE', 'file object is required');
+  if (!file || typeof file !== 'object') fail('SMP_WEB_ADAPTER_FILE', 'file object is required');
   var size = Number(file.size || 0);
-  if (Number.isFinite(size) && size > maxBytes) fail('SIMPLEX_WEB_ADAPTER_FILE_SIZE', 'file is larger than the configured maximum');
-  if (typeof file.arrayBuffer !== 'function') fail('SIMPLEX_WEB_ADAPTER_FILE', 'file must expose arrayBuffer()');
+  if (Number.isFinite(size) && size > maxBytes) fail('SMP_WEB_ADAPTER_FILE_SIZE', 'file is larger than the configured maximum');
+  if (typeof file.arrayBuffer !== 'function') fail('SMP_WEB_ADAPTER_FILE', 'file must expose arrayBuffer()');
   var bytesFromFile = new Uint8Array(await file.arrayBuffer());
-  if (bytesFromFile.length > maxBytes) fail('SIMPLEX_WEB_ADAPTER_FILE_SIZE', 'file is larger than the configured maximum');
+  if (bytesFromFile.length > maxBytes) fail('SMP_WEB_ADAPTER_FILE_SIZE', 'file is larger than the configured maximum');
   return bytesFromFile;
 }
 
@@ -181,7 +181,7 @@ function bytesToBase64(bytes) {
   }
   if (typeof btoa === 'function') return btoa(binary);
   if (typeof Buffer !== 'undefined') return Buffer.from(input).toString('base64');
-  fail('SIMPLEX_WEB_ADAPTER_BASE64', 'base64 encoding is not available');
+  fail('SMP_WEB_ADAPTER_BASE64', 'base64 encoding is not available');
 }
 
 function nativeInlineAttachmentText(message, file, bytes, ref) {
@@ -191,9 +191,9 @@ function nativeInlineAttachmentText(message, file, bytes, ref) {
     size: bytes.length
   };
   var metaBytes = new TextEncoder().encode(JSON.stringify(meta));
-  // Native SimpleX Chat does not reliably accept the browser direct-file
+  // Native SMP Chat does not reliably accept the browser direct-file
   // queue yet. For native-agent contacts, small Secure Chat attachments are
-  // sent inside the encrypted SimpleX message body so the owner import can
+  // sent inside the encrypted SMP message body so the owner import can
   // render the media immediately without a plaintext server bridge.
   return String(message.text || '').trimEnd() + '\n\n' + ATTACHMENT_MARKER + encodeBase64Url(metaBytes) + ':' + bytesToBase64(bytes);
 }
@@ -221,8 +221,8 @@ function nativeInlineAttachmentChunks(message, file, bytes, ref, chunkBytes) {
 
 function timeoutError(error) {
   return error && (
-    error.code === 'SIMPLEX_CLIENT_TIMEOUT' ||
-    error.code === 'SIMPLEX_SMP_WS_TIMEOUT'
+    error.code === 'SMP_CLIENT_TIMEOUT' ||
+    error.code === 'SMP_SMP_WS_TIMEOUT'
   );
 }
 
@@ -237,7 +237,7 @@ function staleNativeContactError(error) {
   } catch (_err) {
     detailText = String(detail || '');
   }
-  return code === 'SIMPLEX_CLIENT_BROKER_ERR' && /\b(AUTH|NO_AUTH)\b/i.test(message + ' ' + detailText);
+  return code === 'SMP_CLIENT_BROKER_ERR' && /\b(AUTH|NO_AUTH)\b/i.test(message + ' ' + detailText);
 }
 
 function statusTimeoutMs(message = {}) {
@@ -341,8 +341,8 @@ function normalizeAdapterOptions(options, params) {
   };
 }
 
-export function createSimplexWebTransportAdapter(options = {}) {
-  return new SimplexWebTransportAdapter(options);
+export function createSmpWebTransportAdapter(options = {}) {
+  return new SmpWebTransportAdapter(options);
 }
 
 function attachTransportServer(transport, server) {
@@ -350,12 +350,12 @@ function attachTransportServer(transport, server) {
   return transport;
 }
 
-export class SimplexWebTransportAdapter {
+export class SmpWebTransportAdapter {
   constructor(options = {}) {
     this.options = options;
     this.transport = options.transport || null;
     this.xftpWebClient = options.xftpWebClient || null;
-    this.simplexClient = options.client || null;
+    this.smpClient = options.client || null;
     this.store = options.store || null;
     this.contactClient = options.contactClient || null;
     this.injectedContactClient = !!options.contactClient;
@@ -370,7 +370,7 @@ export class SimplexWebTransportAdapter {
     if (!this.transport && !this.contactClient) {
       var smp = config.smp || {};
       var url = config.smpWebSocketUrl || config.smp_url || smp.url;
-      if (!url) fail('SIMPLEX_WEB_ADAPTER_SMP', 'SMP WebSocket URL is required');
+      if (!url) fail('SMP_WEB_ADAPTER_SMP', 'SMP WebSocket URL is required');
       this.transport = attachTransportServer(await connectBrowserSmpWebSocketTransport({
         ...smp,
         url,
@@ -387,7 +387,7 @@ export class SimplexWebTransportAdapter {
       });
     }
 
-    this.simplexClient = this.simplexClient || config.client || createBrowserSimplexClient({
+    this.smpClient = this.smpClient || config.client || createBrowserSmpClient({
       ...config,
       server: config.server || config.smpServer || (config.smp && config.smp.server) || (this.transport && this.transport.server) || null,
       transport: this.transport,
@@ -402,15 +402,15 @@ export class SimplexWebTransportAdapter {
           }
         : null)
     });
-    this.store = this.store || config.store || createBrowserSimplexStore({
+    this.store = this.store || config.store || createBrowserSmpStore({
       ...(config.storeOptions || {}),
-      namespace: config.namespace || (config.storeOptions && config.storeOptions.namespace) || 'simplex-web'
+      namespace: config.namespace || (config.storeOptions && config.storeOptions.namespace) || 'smp-web'
     });
     if (hasProfile(config.profile)) this.setProfile(config.profile);
     var xftpClient = config.xftpClient || (this.xftpWebClient ? createXftpWebFileTransferClient(this.xftpWebClient) : null);
-    this.contactClient = this.contactClient || config.contactClient || createBrowserSimplexContactClient({
+    this.contactClient = this.contactClient || config.contactClient || createBrowserSmpContactClient({
       ...config,
-      client: this.simplexClient,
+      client: this.smpClient,
       store: this.store,
       xftpClient
     });
@@ -420,7 +420,7 @@ export class SimplexWebTransportAdapter {
 
   async ensureReady(params = {}) {
     if (!this.contactClient) await this.connect(params);
-    if (!this.contactClient) fail('SIMPLEX_WEB_ADAPTER_CONNECT', 'browser SimpleX contact client is not connected');
+    if (!this.contactClient) fail('SMP_WEB_ADAPTER_CONNECT', 'browser SMP contact client is not connected');
     return this.contactClient;
   }
 
@@ -593,8 +593,8 @@ export class SimplexWebTransportAdapter {
     var linkText = contactLinkText(message);
     if (!linkText && !this.injectedContactClient && !hasConfiguredXftpOptions(this)) {
       fail(
-        'SIMPLEX_WEB_ADAPTER_XFTP',
-        'browser-native SimpleX file sending requires a configured XFTP web endpoint'
+        'SMP_WEB_ADAPTER_XFTP',
+        'browser-native SMP file sending requires a configured XFTP web endpoint'
       );
     }
     var parsedLink = null;
@@ -603,8 +603,8 @@ export class SimplexWebTransportAdapter {
     } catch (error) {
       if (!hasConfiguredXftpOptions(this)) {
         fail(
-          'SIMPLEX_WEB_ADAPTER_XFTP',
-          'browser-native SimpleX file sending requires a configured XFTP web endpoint'
+          'SMP_WEB_ADAPTER_XFTP',
+          'browser-native SMP file sending requires a configured XFTP web endpoint'
         );
       }
       throw error;
@@ -619,8 +619,8 @@ export class SimplexWebTransportAdapter {
     }
     if (!nativeDirectFile && !this.injectedContactClient && !hasConfiguredXftpClient(this, contacts)) {
       fail(
-        'SIMPLEX_WEB_ADAPTER_XFTP',
-        'browser-native SimpleX file sending requires a configured XFTP web endpoint'
+        'SMP_WEB_ADAPTER_XFTP',
+        'browser-native SMP file sending requires a configured XFTP web endpoint'
       );
     }
     if (parsedLink && parsedLink.nativeAgentProfile && contactState(contacts, contactId) !== 'active') {
@@ -648,7 +648,7 @@ export class SimplexWebTransportAdapter {
       }
     }
     var files = Array.isArray(message.files) ? message.files : Array.from(message.files || []);
-    if (!files.length) fail('SIMPLEX_WEB_ADAPTER_FILE', 'at least one file is required');
+    if (!files.length) fail('SMP_WEB_ADAPTER_FILE', 'at least one file is required');
     var maxBytes = Math.max(1, Math.floor(Number(message.max_file_bytes || message.maxFileBytes || this.options.maxFileBytes || (25 * 1024 * 1024)) || (25 * 1024 * 1024)));
     var maxNativeInlineBytes = Math.max(1, Math.floor(Number(message.max_native_inline_file_bytes || message.maxNativeInlineFileBytes || this.options.maxNativeInlineFileBytes || DEFAULT_NATIVE_INLINE_FILE_BYTES) || DEFAULT_NATIVE_INLINE_FILE_BYTES));
     var nativeInlineChunkBytes = Math.max(1, Math.floor(Number(message.native_inline_chunk_bytes || message.nativeInlineChunkBytes || this.options.nativeInlineChunkBytes || DEFAULT_NATIVE_INLINE_CHUNK_BYTES) || DEFAULT_NATIVE_INLINE_CHUNK_BYTES));
@@ -660,7 +660,7 @@ export class SimplexWebTransportAdapter {
       var sent;
       if (nativeDirectFile) {
         if (bytes.length > maxNativeInlineBytes) {
-          fail('SIMPLEX_WEB_ADAPTER_NATIVE_INLINE_FILE_SIZE', 'browser-native SimpleX attachment is too large for inline encrypted delivery');
+          fail('SMP_WEB_ADAPTER_NATIVE_INLINE_FILE_SIZE', 'browser-native SMP attachment is too large for inline encrypted delivery');
         }
         if (bytes.length <= nativeInlineChunkBytes) {
           sent = await contacts.sendText(contactId, nativeInlineAttachmentText(message, file, bytes, ref), {
@@ -792,7 +792,7 @@ export class SimplexWebTransportAdapter {
   }
 
   invitationUri(contactId) {
-    if (!this.contactClient) fail('SIMPLEX_WEB_ADAPTER_CONNECT', 'browser SimpleX contact client is not connected');
+    if (!this.contactClient) fail('SMP_WEB_ADAPTER_CONNECT', 'browser SMP contact client is not connected');
     return this.contactClient.invitationUri(safeContactId(contactId || this.options.defaultContactId));
   }
 
@@ -841,7 +841,7 @@ export class SimplexWebTransportAdapter {
   }
 
   activateContact(params = {}) {
-    if (!this.contactClient) fail('SIMPLEX_WEB_ADAPTER_CONNECT', 'browser SimpleX contact client is not connected');
+    if (!this.contactClient) fail('SMP_WEB_ADAPTER_CONNECT', 'browser SMP contact client is not connected');
     return this.contactClient.activateContact(
       safeContactId(params.contact_id || params.contactId || params.id || this.options.defaultContactId),
       params
@@ -867,17 +867,17 @@ export class SimplexWebTransportAdapter {
   }
 }
 
-export function registerSimplexWebTransportAdapter(options = {}, facade = globalThis.SimplexWebTransport) {
-  var adapter = createSimplexWebTransportAdapter(options);
+export function registerSmpWebTransportAdapter(options = {}, facade = globalThis.SmpWebTransport) {
+  var adapter = createSmpWebTransportAdapter(options);
   if (!facade || typeof facade.registerBrowserTransport !== 'function') {
-    fail('SIMPLEX_WEB_ADAPTER_FACADE', 'window.SimplexWebTransport.registerBrowserTransport is not available');
+    fail('SMP_WEB_ADAPTER_FACADE', 'window.SmpWebTransport.registerBrowserTransport is not available');
   }
   return facade.registerBrowserTransport(adapter);
 }
 
 export default {
-  SimplexWebTransportAdapter,
-  SimplexWebTransportAdapterError,
-  createSimplexWebTransportAdapter,
-  registerSimplexWebTransportAdapter
+  SmpWebTransportAdapter,
+  SmpWebTransportAdapterError,
+  createSmpWebTransportAdapter,
+  registerSmpWebTransportAdapter
 };

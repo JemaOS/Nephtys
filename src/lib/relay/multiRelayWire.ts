@@ -3,7 +3,7 @@
 
 /**
  * MultiRelayWire — **repartition des files sur plusieurs relais**
- * (decentralisation facon SimpleX).
+ * (decentralisation facon SMP).
  *
  * Chaque **nouvelle file** du mode prive est creee sur un relais choisi en
  * **round-robin** ; toutes les operations suivantes sur cette file sont routees

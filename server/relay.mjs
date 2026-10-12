@@ -2,7 +2,7 @@
 // Distributed under the license specified in the root directory of this project.
 
 /**
- * Serveur relais auto-hébergeable (modèle SimpleX/SMP).
+ * Serveur relais auto-hébergeable (modèle SMP/SMP).
  *
  *   node server/relay.mjs            # écoute sur ws://0.0.0.0:8090
  *   RELAY_PORT=9000 node server/relay.mjs

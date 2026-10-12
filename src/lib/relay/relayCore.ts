@@ -2,7 +2,7 @@
 // Distributed under the license specified in the root directory of this project.
 
 /**
- * Relais à files unidirectionnelles, sans identifiants (modèle SimpleX/SMP).
+ * Relais à files unidirectionnelles, sans identifiants (modèle SMP/SMP).
  *
  * Principes :
  *   • Aucune notion d'utilisateur, de compte ni d'identité : le relais ne

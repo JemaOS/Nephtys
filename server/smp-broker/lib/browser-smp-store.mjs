@@ -10,41 +10,41 @@
 
 import { decodeBase64Url, encodeBase64Url, toBytes } from './browser-smp-core.mjs';
 
-export const SIMPLEX_STORE_SCHEMA = 1;
-export const SIMPLEX_STORE_PREFIX = 'simplex-web-v1';
-export const SIMPLEX_STORE_MAX_RECORD_BYTES = 262144;
-export const SIMPLEX_STORE_MAX_LIST_ITEMS = 1000;
+export const SMP_STORE_SCHEMA = 1;
+export const SMP_STORE_PREFIX = 'smp-web-v1';
+export const SMP_STORE_MAX_RECORD_BYTES = 262144;
+export const SMP_STORE_MAX_LIST_ITEMS = 1000;
 
-export class BrowserSimplexStoreError extends Error {
+export class BrowserSmpStoreError extends Error {
   constructor(code, message) {
     super(message);
-    this.name = 'BrowserSimplexStoreError';
+    this.name = 'BrowserSmpStoreError';
     this.code = code;
   }
 }
 
 function fail(code, message) {
-  throw new BrowserSimplexStoreError(code, message);
+  throw new BrowserSmpStoreError(code, message);
 }
 
 function safePart(value, label = 'key') {
   var text = String(value == null ? '' : value).trim();
   if (!text || text.length > 160 || /[^A-Za-z0-9_.:-]/.test(text)) {
-    fail('SIMPLEX_STORE_KEY', label + ' must be 1 to 160 safe ASCII characters');
+    fail('SMP_STORE_KEY', label + ' must be 1 to 160 safe ASCII characters');
   }
   return text;
 }
 
 function storageKey(namespace, type, id) {
-  return SIMPLEX_STORE_PREFIX + ':' + safePart(namespace, 'namespace') + ':' + safePart(type, 'record type') + ':' + safePart(id, 'record id');
+  return SMP_STORE_PREFIX + ':' + safePart(namespace, 'namespace') + ':' + safePart(type, 'record type') + ':' + safePart(id, 'record id');
 }
 
 function storageKeyPrefix(namespace, type) {
-  return SIMPLEX_STORE_PREFIX + ':' + safePart(namespace, 'namespace') + ':' + safePart(type, 'record type') + ':';
+  return SMP_STORE_PREFIX + ':' + safePart(namespace, 'namespace') + ':' + safePart(type, 'record type') + ':';
 }
 
 function listKey(namespace, type) {
-  return SIMPLEX_STORE_PREFIX + ':' + safePart(namespace, 'namespace') + ':list:' + safePart(type, 'record type');
+  return SMP_STORE_PREFIX + ':' + safePart(namespace, 'namespace') + ':list:' + safePart(type, 'record type');
 }
 
 function binary(value) {
@@ -57,7 +57,7 @@ function isPlainObject(value) {
 
 function encodeValue(value) {
   if (value instanceof Uint8Array || value instanceof ArrayBuffer || ArrayBuffer.isView(value)) return binary(value);
-  if (Array.isArray(value)) return value.slice(0, SIMPLEX_STORE_MAX_LIST_ITEMS).map(encodeValue);
+  if (Array.isArray(value)) return value.slice(0, SMP_STORE_MAX_LIST_ITEMS).map(encodeValue);
   if (isPlainObject(value)) {
     var out = {};
     for (var [key, child] of Object.entries(value)) {
@@ -84,21 +84,21 @@ function decodeValue(value) {
 }
 
 function serialize(record) {
-  var text = JSON.stringify({ schema: SIMPLEX_STORE_SCHEMA, record: encodeValue(record) });
-  if (text.length > SIMPLEX_STORE_MAX_RECORD_BYTES) fail('SIMPLEX_STORE_SIZE', 'stored record is too large');
+  var text = JSON.stringify({ schema: SMP_STORE_SCHEMA, record: encodeValue(record) });
+  if (text.length > SMP_STORE_MAX_RECORD_BYTES) fail('SMP_STORE_SIZE', 'stored record is too large');
   return text;
 }
 
 function deserialize(text) {
   if (!text) return null;
-  if (String(text).length > SIMPLEX_STORE_MAX_RECORD_BYTES) fail('SIMPLEX_STORE_SIZE', 'stored record is too large');
+  if (String(text).length > SMP_STORE_MAX_RECORD_BYTES) fail('SMP_STORE_SIZE', 'stored record is too large');
   var parsed;
   try {
     parsed = JSON.parse(String(text));
   } catch (_error) {
-    fail('SIMPLEX_STORE_JSON', 'stored record is not valid JSON');
+    fail('SMP_STORE_JSON', 'stored record is not valid JSON');
   }
-  if (!parsed || parsed.schema !== SIMPLEX_STORE_SCHEMA) fail('SIMPLEX_STORE_SCHEMA', 'stored record schema is unsupported');
+  if (!parsed || parsed.schema !== SMP_STORE_SCHEMA) fail('SMP_STORE_SCHEMA', 'stored record schema is unsupported');
   return decodeValue(parsed.record);
 }
 
@@ -136,7 +136,7 @@ function readList(storage, namespace, type) {
 
 function writeList(storage, namespace, type, ids) {
   var clean = [];
-  for (var i = ids.length - 1; i >= 0 && clean.length < SIMPLEX_STORE_MAX_LIST_ITEMS; i -= 1) {
+  for (var i = ids.length - 1; i >= 0 && clean.length < SMP_STORE_MAX_LIST_ITEMS; i -= 1) {
     var id = safePart(ids[i], 'stored id');
     if (!clean.includes(id)) clean.unshift(id);
   }
@@ -172,11 +172,11 @@ function uniqueIds(ids) {
   return seen;
 }
 
-export function createBrowserSimplexStore(options = {}) {
-  return new BrowserSimplexStore(options);
+export function createBrowserSmpStore(options = {}) {
+  return new BrowserSmpStore(options);
 }
 
-export class BrowserSimplexStore {
+export class BrowserSmpStore {
   constructor(options = {}) {
     this.storage = options.storage || (typeof localStorage !== 'undefined' ? localStorage : memoryStorage());
     this.namespace = safePart(options.namespace || 'default', 'namespace');
@@ -286,7 +286,7 @@ export class BrowserSimplexStore {
     var queue = this.load('pending', 'queue') || [];
     var cleanId = safePart(id, 'pending id');
     var next = queue.filter((item) => item.id !== cleanId).concat({ id: cleanId, task: task || {}, attempts: 0 });
-    this.save('pending', 'queue', next.slice(-SIMPLEX_STORE_MAX_LIST_ITEMS));
+    this.save('pending', 'queue', next.slice(-SMP_STORE_MAX_LIST_ITEMS));
   }
 
   listPending() {
@@ -294,7 +294,7 @@ export class BrowserSimplexStore {
   }
 
   replacePending(items) {
-    this.save('pending', 'queue', (Array.isArray(items) ? items : []).slice(0, SIMPLEX_STORE_MAX_LIST_ITEMS));
+    this.save('pending', 'queue', (Array.isArray(items) ? items : []).slice(0, SMP_STORE_MAX_LIST_ITEMS));
   }
 
   deletePendingWhere(predicate) {
@@ -306,9 +306,9 @@ export class BrowserSimplexStore {
 }
 
 export default {
-  BrowserSimplexStore,
-  BrowserSimplexStoreError,
-  SIMPLEX_STORE_PREFIX,
-  SIMPLEX_STORE_SCHEMA,
-  createBrowserSimplexStore
+  BrowserSmpStore,
+  BrowserSmpStoreError,
+  SMP_STORE_PREFIX,
+  SMP_STORE_SCHEMA,
+  createBrowserSmpStore
 };

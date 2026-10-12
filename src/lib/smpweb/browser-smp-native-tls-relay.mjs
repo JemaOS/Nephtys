@@ -2,15 +2,15 @@
 //
 // Native SMP TLS relay for browser WebSocket clients.
 //
-// Existing public SimpleX SMP servers speak native SMP over TLS with ALPN
+// Existing public SMP SMP servers speak native SMP over TLS with ALPN
 // `smp/1`; browsers cannot open that socket shape directly.  This relay is a
 // narrow byte gateway: it accepts WebSocket binary frames from the browser,
 // opens the native TLS SMP connection, normalizes the server handshake for the
 // browser profile, and then forwards only exact 16384-byte SMP transport blocks.
 //
-// It is not the removed SimpleX Chat command bridge.  It does not accept chat
-// plaintext, does not call the SimpleX Chat API, and does not know how to form a
-// SimpleX message.  Message bodies are already encrypted by the browser agent
+// It is not the removed SMP Chat command bridge.  It does not accept chat
+// plaintext, does not call the SMP Chat API, and does not know how to form a
+// SMP message.  Message bodies are already encrypted by the browser agent
 // before they reach this process.
 
 import http from 'node:http';
@@ -262,7 +262,7 @@ function closePair(wsSocket, nativeStream, code = 1000, reason = '') {
 }
 
 export function handleSmpNativeTlsRelayUpgrade(request, socket, head, options = {}) {
-  var path = text(options.path || '/simplex/smp');
+  var path = text(options.path || '/smp/smp');
   var url = new URL(request.url || '/', 'http://127.0.0.1');
   if (url.pathname !== path) return false;
   if (head && head.length) return false;
@@ -272,9 +272,9 @@ export function handleSmpNativeTlsRelayUpgrade(request, socket, head, options = 
     return true;
   }
   var protocols = requestedProtocol(request);
-  var protocol = protocols.includes('simplex-smp.v4.ws') ? 'simplex-smp.v4.ws' : '';
+  var protocol = protocols.includes('smp.v4.ws') ? 'smp.v4.ws' : '';
   if (!protocol) {
-    socket.write('HTTP/1.1 426 Upgrade Required\r\nConnection: close\r\nSec-WebSocket-Protocol: simplex-smp.v4.ws\r\n\r\n');
+    socket.write('HTTP/1.1 426 Upgrade Required\r\nConnection: close\r\nSec-WebSocket-Protocol: smp.v4.ws\r\n\r\n');
     socket.destroy();
     return true;
   }
@@ -359,23 +359,23 @@ function envList(name) {
 
 export function relayOptionsFromEnv(env = process.env) {
   return {
-    path: text(env.SIMPLEX_WEB_SMP_RELAY_PATH) || '/simplex/smp',
+    path: text(env.SMP_WEB_SMP_RELAY_PATH) || '/smp/smp',
     target: {
-      host: text(env.SIMPLEX_WEB_SMP_TARGET_HOST),
-      port: safePort(env.SIMPLEX_WEB_SMP_TARGET_PORT || 5223),
-      servername: text(env.SIMPLEX_WEB_SMP_TARGET_SERVERNAME || env.SIMPLEX_WEB_SMP_TARGET_HOST)
+      host: text(env.SMP_WEB_SMP_TARGET_HOST),
+      port: safePort(env.SMP_WEB_SMP_TARGET_PORT || 5223),
+      servername: text(env.SMP_WEB_SMP_TARGET_SERVERNAME || env.SMP_WEB_SMP_TARGET_HOST)
     },
-    allowedOrigins: envList('SIMPLEX_WEB_SMP_RELAY_ALLOWED_ORIGINS'),
-    rejectUnauthorized: text(env.SIMPLEX_WEB_SMP_TARGET_REJECT_UNAUTHORIZED || 'true') !== 'false',
-    timeoutMs: Number(env.SIMPLEX_WEB_SMP_RELAY_TIMEOUT_MS || 15000) || 15000,
-    maxVersion: Number(env.SIMPLEX_WEB_SMP_RELAY_MAX_VERSION || 15) || 15
+    allowedOrigins: envList('SMP_WEB_SMP_RELAY_ALLOWED_ORIGINS'),
+    rejectUnauthorized: text(env.SMP_WEB_SMP_TARGET_REJECT_UNAUTHORIZED || 'true') !== 'false',
+    timeoutMs: Number(env.SMP_WEB_SMP_RELAY_TIMEOUT_MS || 15000) || 15000,
+    maxVersion: Number(env.SMP_WEB_SMP_RELAY_MAX_VERSION || 15) || 15
   };
 }
 
 export function startSmpNativeTlsRelayFromEnv(env = process.env) {
   var options = relayOptionsFromEnv(env);
-  var host = text(env.SIMPLEX_WEB_SMP_RELAY_HOST) || '127.0.0.1';
-  var port = safePort(env.SIMPLEX_WEB_SMP_RELAY_PORT || 8097);
+  var host = text(env.SMP_WEB_SMP_RELAY_HOST) || '127.0.0.1';
+  var port = safePort(env.SMP_WEB_SMP_RELAY_PORT || 8097);
   var server = createSmpNativeTlsRelayServer(options);
   server.listen(port, host);
   return { server, host, port, options };
@@ -384,7 +384,7 @@ export function startSmpNativeTlsRelayFromEnv(env = process.env) {
 if (import.meta.url === `file://${process.argv[1]}`) {
   var started = startSmpNativeTlsRelayFromEnv();
   // Keep startup output deliberately small so service managers can scrape it.
-  process.stdout.write(`simplex-web SMP relay listening on ${started.host}:${started.port}${started.options.path}\n`);
+  process.stdout.write(`smp-web SMP relay listening on ${started.host}:${started.port}${started.options.path}\n`);
 }
 
 export default {

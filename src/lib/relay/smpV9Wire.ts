@@ -1,18 +1,18 @@
 // Copyright (c) 2025 Jema Technology.
 // Distributed under the license specified in the project root.
 //
-// Transport SMP v9 « natif » — implémente le protocole SimpleX v9 tel qu'il a
+// Transport SMP v9 « natif » — implémente le protocole SMP v9 tel qu'il a
 // été **prouvé** de bout en bout (scripts/smp-v9-flow.mjs) :
 //   handshake v9 (keyHash=sha256(CA) + authPubKey) → NEW→IDS → SUB/GET→OK →
 //   SEND→MSG → déchiffrement Layer B (nacl.box).
-// Il parle à un serveur SimpleX via le **pont** WebSocket↔TLS natif
-// (server/simplex-bridge) : le navigateur ne peut pas ouvrir du TLS natif.
+// Il parle à un serveur SMP via le **pont** WebSocket↔TLS natif
+// (server/smp-bridge) : le navigateur ne peut pas ouvrir du TLS natif.
 //
 // Expose la surface `RelayWire` (createQueue/send/read/ack/delete).
 
 import nacl from 'tweetnacl';
 import { sha256 } from '@noble/hashes/sha2.js';
-import { decodeTransportBlock } from '../simplexweb/browser-smp-core.mjs';
+import { decodeTransportBlock } from '../smpweb/browser-smp-core.mjs';
 import type { QueueCredentials, StoredEnvelope } from './relayCore';
 import type { RelayOp, RelayResponse, RelayWire } from './wire';
 
@@ -30,7 +30,7 @@ const x25519Spki = (pk: Uint8Array): Uint8Array => concat(new Uint8Array([0x30, 
 const ed25519Spki = (pk: Uint8Array): Uint8Array => concat(new Uint8Array([0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x03, 0x21, 0x00]), pk);
 
 export interface SmpV9Options {
-  /** URL du pont WebSocket (ex. wss://vps/simplex). */
+  /** URL du pont WebSocket (ex. wss://vps/smp). */
   bridgeUrl: string;
   timeoutMs?: number;
 }
@@ -126,7 +126,7 @@ class SmpV9Connection {
 }
 
 /**
- * Wire SMP v9 : mappe le protocole SimpleX sur `RelayWire`.
+ * Wire SMP v9 : mappe le protocole SMP sur `RelayWire`.
  * Jetons opaques :
  *   queueId (rcv) : rcvId
  *   sendKey       : sndId du pair (pour SEND)

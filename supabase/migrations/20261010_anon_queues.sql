@@ -4,7 +4,7 @@
 -- Objectif : faire fonctionner le mode privé anonyme SANS serveur relais en
 -- plus, en utilisant Supabase comme simple transport à files opaques.
 --
--- Principes (modèle SimpleX) :
+-- Principes (modèle SMP) :
 --   • Aucune notion d'utilisateur : les tables ne contiennent AUCUN user_id.
 --   • Chaque file a 2 jetons : send_token (déposer) et rcv_token (lire/ack).
 --     Seuls les HASH des jetons sont stockés (pgcrypto), jamais en clair.

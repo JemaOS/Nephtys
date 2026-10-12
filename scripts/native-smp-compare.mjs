@@ -1,7 +1,7 @@
 // Compare : envoi direct TLS vs via pont WS, octets IDENTIQUES (clés fixes).
 import tls from 'node:tls';
 import { createHash, X509Certificate } from 'node:crypto';
-import * as core from '../src/lib/simplexweb/browser-smp-core.mjs';
+import * as core from '../src/lib/smpweb/browser-smp-core.mjs';
 
 const CA_DER = process.env.CA || null;
 const small = b => Buffer.concat([Buffer.from([b.length]), Buffer.from(b)]);
@@ -30,7 +30,7 @@ const tag = b => { const L = b.readUInt16BE(0); let s = ''; for (const x of b.su
 
 async function viaDirect() {
   return new Promise((res) => {
-    const s = tls.connect({ host: 'smp10.simplex.im', port: 5223, servername: 'smp10.simplex.im', ALPNProtocols: ['smp/1'], rejectUnauthorized: false });
+    const s = tls.connect({ host: 'smp10.smp.im', port: 5223, servername: 'smp10.smp.im', ALPNProtocols: ['smp/1'], rejectUnauthorized: false });
     let buf = Buffer.alloc(0), phase = 0, hello = null;
     s.on('data', d => {
       buf = Buffer.concat([buf, d]);
