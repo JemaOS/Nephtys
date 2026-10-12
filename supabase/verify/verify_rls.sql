@@ -133,17 +133,19 @@ ORDER BY n.nspname, p.proname;
 -- 8) Vérifications des correctifs 20261030_audit_final (à exécuter après)
 -- ============================================================================
 
--- 8a) conversation_members INSERT : UNE seule policy pour `authenticated`,
---     `cm_insert_creator_or_member`, SANS branche `user_id = auth.uid()`.
---     ATTENDU : exactement 1 ligne, et le `with_check` NE contient PAS
---     'auth.uid()' en comparaison d'user_id (il peut contenir created_by).
+-- 8a) HISTORIQUE (état 20261030, superseded par §12/20261041) :
+--     conversation_members INSERT devait alors n'avoir AUCUNE branche
+--     `user_id = auth.uid()`. Ce n'est PLUS l'état attendu : la branche
+--     d'auto-insertion est RÉ-AUTORISÉE légitimement (cf. §12). Requêtes
+--     conservées à titre informatif ; l'état ATTENDU est celui de §12.
 SELECT policyname, cmd, roles::text AS roles, with_check
 FROM pg_policies
 WHERE schemaname = 'public' AND tablename = 'conversation_members'
   AND cmd = 'INSERT'
 ORDER BY policyname;
 
--- Résidu auto-adhésion interdit : ATTENDU 0 ligne.
+-- Auto-insertion (self) : DÉSORMAIS ATTENDU 1 ligne `cm_insert_creator_or_admin`
+-- (voir §12 pour le contrôle complet). N'est plus un « résidu interdit ».
 SELECT policyname, with_check
 FROM pg_policies
 WHERE schemaname = 'public' AND tablename = 'conversation_members'
@@ -230,10 +232,11 @@ WHERE n.nspname = 'public' AND p.proname = 'check_and_record_rate_limit';
 -- 9) Vérifications des correctifs 20261036 (items #1, #3, #4)
 -- ============================================================================
 
--- 9a) conversation_members INSERT : UNE seule policy `cm_insert_creator_or_admin`
---     (créateur OU admin/owner), SANS branche « membre quelconque ».
+-- 9a) conversation_members INSERT : UNE seule policy `cm_insert_creator_or_admin`.
+--     (20261041 a AJOUTÉ la branche self `user_id = auth.uid()` — voir §12.
+--     Il n'existe toujours AUCUNE branche « membre quelconque ». )
 --     ATTENDU : 1 ligne ; la requête suivante (« is_conversation_member » seul)
---     doit renvoyer 0 ligne.
+--     doit renvoyer 0 ligne (un membre quelconque ne peut PAS insérer un tiers).
 SELECT policyname, cmd, roles::text AS roles, with_check
 FROM pg_policies
 WHERE schemaname = 'public' AND tablename = 'conversation_members'
@@ -408,3 +411,102 @@ WHERE n.nspname = 'public' AND c.relname = 'conversation_members'
   AND NOT t.tgisinternal
   AND tgname = 'trg_prevent_member_role_escalation';
 -- ============================================================================
+
+-- ============================================================================
+-- 12) Vérifications du correctif 20261041 (INSERT conversation_members : self)
+-- ============================================================================
+-- Objectif : self AUTORISÉ, insertion d'un TIERS par un simple membre REFUSÉE,
+-- rôle FORCÉ à 'member', gate aal2 CONSERVÉ, anti-escalade UPDATE intact.
+
+-- 12a) UNE seule policy INSERT `cm_insert_creator_or_admin`. ATTENDU : 1 ligne.
+SELECT policyname, cmd, roles::text AS roles, with_check
+FROM pg_policies
+WHERE schemaname = 'public' AND tablename = 'conversation_members'
+  AND cmd = 'INSERT'
+ORDER BY policyname;
+
+-- 12b) SELF AUTORISÉ : la policy contient la branche `user_id = auth.uid()`.
+--      ATTENDU : 1 ligne (`cm_insert_creator_or_admin`).
+SELECT policyname
+FROM pg_policies
+WHERE schemaname = 'public' AND tablename = 'conversation_members'
+  AND cmd = 'INSERT'
+  AND with_check ILIKE '%user_id = auth.uid()%'
+ORDER BY policyname;
+
+-- 12c) TIERS REFUSÉ : AUCUNE branche « membre quelconque »
+--      (`is_conversation_member` — la faille d'origine). ATTENDU : 0 ligne.
+SELECT policyname
+FROM pg_policies
+WHERE schemaname = 'public' AND tablename = 'conversation_members'
+  AND cmd = 'INSERT'
+  AND with_check ILIKE '%is_conversation_member%'
+ORDER BY policyname;
+
+-- 12c-bis) La policy conserve bien les deux voies « peut insérer un tiers » :
+--      créateur (`created_by = auth.uid()`) ET admin/owner
+--      (`is_conversation_admin`). ATTENDU : les 2 booléens = true.
+SELECT
+  with_check ILIKE '%created_by = auth.uid()%'   AS allows_creator,
+  with_check ILIKE '%is_conversation_admin%'     AS allows_admin_owner
+FROM pg_policies
+WHERE schemaname = 'public' AND tablename = 'conversation_members'
+  AND cmd = 'INSERT' AND policyname = 'cm_insert_creator_or_admin';
+
+-- 12d) RÔLE FORCÉ : trigger `trg_cm_force_member_role` présent (1 ligne) et
+--      fonction qui force `NEW.role := 'member'` pour les non-créateurs
+--      (ATTENDU : forces_member_role = true). Le trigger garantit que
+--      l'auto-insertion ne peut PAS donner 'admin'.
+SELECT tgname, pg_get_triggerdef(t.oid) AS definition
+FROM pg_trigger t
+JOIN pg_class c     ON c.oid = t.tgrelid
+JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE n.nspname = 'public' AND c.relname = 'conversation_members'
+  AND NOT t.tgisinternal
+  AND tgname = 'trg_cm_force_member_role';
+
+SELECT position('NEW.role := ''member''' in prosrc) > 0 AS forces_member_role
+FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+WHERE n.nspname = 'private' AND p.proname = 'force_member_role_on_insert';
+
+-- 12e) GATE aal2 CONSERVÉ sur l'INSERT `conversation_members`.
+--      ATTENDU : has_aal2_ok = true.
+--      ⚠️ Si 20261040_disable_aal2_enforcement (dernier mot) est appliqué, ce
+--      contrôle indique l'état RÉEL (aal2 retiré) ; 20261041 le ré-active.
+SELECT policyname,
+       (COALESCE(qual, '') ILIKE '%aal2_ok%'
+        OR COALESCE(with_check, '') ILIKE '%aal2_ok%') AS has_aal2_ok
+FROM pg_policies
+WHERE schemaname = 'public' AND tablename = 'conversation_members'
+  AND cmd = 'INSERT' AND policyname = 'cm_insert_creator_or_admin';
+
+-- 12f) NON-RÉGRESSION anti-escalade UPDATE : la policy UPDATE et le trigger
+--      de plafonnement de rôle subsistent. ATTENDU : 1 ligne + 1 ligne.
+SELECT policyname, cmd
+FROM pg_policies
+WHERE schemaname = 'public' AND tablename = 'conversation_members'
+  AND cmd = 'UPDATE'
+ORDER BY policyname;
+
+SELECT tgname
+FROM pg_trigger t
+JOIN pg_class c     ON c.oid = t.tgrelid
+JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE n.nspname = 'public' AND c.relname = 'conversation_members'
+  AND NOT t.tgisinternal
+  AND tgname = 'trg_prevent_member_role_escalation';
+
+-- 12g) Test fonctionnel (MANUEL, hors lecture seule) — à exécuter dans une
+--      session `authenticated` en posant le JWT, ou via l'app :
+--        • UPSERT de SA PROPRE ligne (on_conflict=conversation_id,user_id)
+--          où l'on est déjà membre → DOIT réussir (200/201), role = 'member'.
+--        • INSERT de la ligne d'un AUTRE user_id où l'on n'est ni créateur ni
+--          admin/owner → DOIT échouer (403 / RLS violation).
+--      Exemple (remplacer <uid>/<conv>) :
+--        insert into public.conversation_members (conversation_id, user_id, role)
+--        values ('<conv>', '<uid>', 'member')
+--        on conflict (conversation_id, user_id) do nothing;   -- self: OK
+--        insert into public.conversation_members (conversation_id, user_id, role)
+--        values ('<conv>', '<autre_uid>', 'admin');           -- tiers: REFUSÉ
+-- ============================================================================
+

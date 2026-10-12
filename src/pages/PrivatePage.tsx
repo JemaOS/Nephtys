@@ -25,6 +25,7 @@ import {
   ChevronDown,
   Copy,
   EyeOff,
+  Loader2,
   Lock,
   Paperclip,
   Plus,
@@ -164,7 +165,6 @@ export function PrivatePage() {
   // Interface distincte : shell anonyme (sans compte) vs shell de l'app connectée.
   const Shell = isAnonymous ? AnonymousShell : MainLayout
   const messenger = useMemo(() => getPrivateMessenger(), [])
-  const relayUrl = useMemo(() => getRelayUrl(), [])
 
   const [connections, setConnections] = useState<PrivateConnectionRecord[]>([])
   const [invite, setInvite] = useState<string | null>(null)
@@ -173,7 +173,13 @@ export function PrivatePage() {
   const [messages, setMessages] = useState<ChatItem[]>([])
   const [draft, setDraft] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
+  // Création/jonction d'une connexion privée : la mise en place SMP (createQueue)
+  // peut prendre plusieurs secondes → indicateur de chargement + bouton désactivé
+  // (anti double-clic) + étape en cours + réessai en cas d'échec.
+  const [creating, setCreating] = useState(false)
+  const [creatingStep, setCreatingStep] = useState<string | null>(null)
+  const [joining, setJoining] = useState(false)
+  const [connectFailed, setConnectFailed] = useState<'create' | 'join' | null>(null)
   const [copied, setCopied] = useState(false)
   const [relayInput, setRelayInput] = useState(() => getRelayUrl())
 
@@ -426,25 +432,32 @@ export function PrivatePage() {
   }, [])
 
   const handleCreate = useCallback(async () => {
-    setBusy(true)
+    if (creating) return
+    setCreating(true)
+    setCreatingStep(tStatic('pvCreateStepIdentity'))
     setError(null)
+    setConnectFailed(null)
     try {
       const id = newConnectionId()
+      setCreatingStep(tStatic('pvCreateStepQueue'))
       const { link } = await messenger.establish(id)
       setInvite(link)
       await refresh()
       openConnection(id)
     } catch (e) {
-      setError(tStatic('pvCreateError', { url: relayUrl, message: (e as Error).message }))
+      console.error('[private] create failed', e)
+      setConnectFailed('create')
     } finally {
-      setBusy(false)
+      setCreating(false)
+      setCreatingStep(null)
     }
-  }, [messenger, refresh, openConnection, relayUrl])
+  }, [creating, messenger, refresh, openConnection])
 
   const handleJoin = useCallback(async () => {
-    if (!joinLink.trim()) return
-    setBusy(true)
+    if (!joinLink.trim() || joining) return
+    setJoining(true)
     setError(null)
+    setConnectFailed(null)
     try {
       const id = newConnectionId()
       await messenger.accept(id, joinLink.trim())
@@ -452,11 +465,12 @@ export function PrivatePage() {
       await refresh()
       openConnection(id)
     } catch (e) {
-      setError(tStatic('pvJoinError', { message: (e as Error).message }))
+      console.error('[private] join failed', e)
+      setConnectFailed('join')
     } finally {
-      setBusy(false)
+      setJoining(false)
     }
-  }, [messenger, refresh, openConnection, joinLink])
+  }, [joining, messenger, refresh, openConnection, joinLink])
 
   const handleSend = useCallback(async () => {
     const text = draft.trim()
@@ -886,11 +900,26 @@ export function PrivatePage() {
                   <button
                     type="button"
                     onClick={handleCreate}
-                    disabled={busy}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-[#7578db] text-white text-sm font-medium hover:opacity-90 disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7578db]"
+                    disabled={creating}
+                    aria-busy={creating}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-[#7578db] text-white text-sm font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7578db]"
                   >
-                    <Plus size={16} /> {t('pvCreateConnection')}
+                    {creating ? (
+                      <>
+                        <Loader2 size={16} className="animate-spin" aria-hidden />
+                        {t('pvCreating')}
+                      </>
+                    ) : (
+                      <>
+                        <Plus size={16} /> {t('pvCreateConnection')}
+                      </>
+                    )}
                   </button>
+                  {creating && creatingStep && (
+                    <p role="status" className="text-[11px] text-text-tertiary text-center">
+                      {t('pvCreatingStep', { step: creatingStep })}
+                    </p>
+                  )}
 
                   <Disclosure label={t('pvJoinDisclosure')} open={showJoin} onToggle={() => setShowJoin(v => !v)}>
                     <textarea
@@ -903,10 +932,18 @@ export function PrivatePage() {
                     <button
                       type="button"
                       onClick={handleJoin}
-                      disabled={busy || !joinLink.trim()}
-                      className="w-full px-3 py-2 rounded-xl bg-bg-hover text-text-primary text-sm font-medium hover:brightness-110 disabled:opacity-50"
+                      disabled={joining || !joinLink.trim()}
+                      aria-busy={joining}
+                      className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-bg-hover text-text-primary text-sm font-medium hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      {t('pvJoinAction')}
+                      {joining ? (
+                        <>
+                          <Loader2 size={14} className="animate-spin" aria-hidden />
+                          {t('pvJoining')}
+                        </>
+                      ) : (
+                        t('pvJoinAction')
+                      )}
                     </button>
                   </Disclosure>
 
@@ -945,6 +982,26 @@ export function PrivatePage() {
                     </div>
                   </Disclosure>
                 </>
+              )}
+
+              {connectFailed && (
+                <div
+                  role="alert"
+                  className="rounded-xl bg-red-500/10 border border-red-500/20 p-3 text-xs text-red-400 flex items-center justify-between gap-3"
+                >
+                  <span>{connectFailed === 'create' ? t('pvCreateFailed') : t('pvJoinFailed')}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (connectFailed === 'create') void handleCreate()
+                      else void handleJoin()
+                    }}
+                    disabled={creating || joining}
+                    className="shrink-0 px-3 py-1.5 rounded-lg bg-bg-hover text-text-primary font-medium disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7578db]"
+                  >
+                    {t('retry')}
+                  </button>
+                </div>
               )}
 
               {errorBox}
