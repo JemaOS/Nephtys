@@ -4,17 +4,17 @@
 /**
  * Page « Réseau » — suivi EN TEMPS RÉEL des chemins réseau du mode privé.
  *
- * Affiche (1) l'état des chemins configurés (Tor, pont SMP, relais SMP, transport
- * actif/dégradé) et (2) un flux d'événements live émis par les couches réseau
- * (Tor, SMP, SMP v9, Supabase, XFTP, repli). Vue purement locale : rien n'est
- * envoyé au serveur.
+ *   • globe 3D (Three.js) : nœuds + flux animés, thème et police de l'app ;
+ *   • IP d'ENTRÉE (votre IP publique) et IP de SORTIE (vue par le serveur) ;
+ *   • chiffrement par saut (E2EE, TLS, Tor, Supabase, XFTP) ;
+ *   • flux d'événements live émis par les couches réseau.
  *
- * Perf : les événements sont coalescés (au plus un rendu toutes les 200 ms) et
- * la liste est bornée à 200 lignes.
+ * Vue purement locale (l'IP est obtenue via un service externe configurable,
+ * uniquement quand cette page est ouverte).
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Activity, Globe, Trash2 } from 'lucide-react'
+import { Activity, Globe, Lock, Trash2 } from 'lucide-react'
 import { MainLayout } from '@/components/MainLayout'
 import { useI18n } from '@/i18n'
 import {
@@ -26,13 +26,17 @@ import {
   type NetStatus,
 } from '@/lib/relay/netLog'
 import {
-  getOnionRelayUrl,
-  getSmpBridgeUrl,
-  getSmpV9Host,
-  isRelayFallbackActive,
-  isTorRelayEnabled,
-  onRelayTransportChange,
-} from '@/lib/relay/relayClient'
+  buildGlobeNodes,
+  currentBridge,
+  egressInfo,
+  fetchGeoIp,
+  flowTargetFor,
+  NODE_DEVICE,
+  type GeoIp,
+  type GlobeNode,
+} from '@/lib/relay/networkMap'
+import { isRelayFallbackActive, isSmpV9Enabled, isTorRelayEnabled, onRelayTransportChange } from '@/lib/relay/relayClient'
+import { NetworkGlobe, type NetworkGlobeHandle } from '@/components/NetworkGlobe'
 
 const LAYER_STYLE: Record<NetLayer, string> = {
   tor: 'text-purple-400',
@@ -57,9 +61,9 @@ function timeOf(t: number): string {
 export function NetworkPage() {
   const { t } = useI18n()
   const [events, setEvents] = useState<NetEvent[]>(() => netLogSnapshot())
+  const globeRef = useRef<NetworkGlobeHandle | null>(null)
 
-  // Coalescence : on accumule les événements et on applique au plus un rendu
-  // toutes les 200 ms (évite un re-render par paquet à fort débit).
+  // Coalescence : au plus un rendu toutes les 200 ms.
   const pendingRef = useRef<NetEvent[]>([])
   const timerRef = useRef<number | null>(null)
   useEffect(() => {
@@ -74,6 +78,8 @@ export function NetworkPage() {
       })
     }
     const unsub = netLogSubscribe(e => {
+      // Flux animé sur le globe (impératif, sans re-render).
+      globeRef.current?.addFlow(NODE_DEVICE, flowTargetFor(e.layer), e.status !== 'fail')
       pendingRef.current.push(e)
       if (timerRef.current == null) timerRef.current = window.setTimeout(flush, 200)
     })
@@ -86,18 +92,44 @@ export function NetworkPage() {
   const [fallback, setFallback] = useState(() => isRelayFallbackActive())
   useEffect(() => onRelayTransportChange(setFallback), [])
 
+  // IP d'entrée + géolocalisation approximative de l'appareil (appel unique).
+  const [geo, setGeo] = useState<GeoIp | null>(null)
+  const [geoLoading, setGeoLoading] = useState(true)
+  useEffect(() => {
+    let alive = true
+    fetchGeoIp().then(g => {
+      if (!alive) return
+      setGeo(g)
+      setGeoLoading(false)
+    })
+    return () => { alive = false }
+  }, [])
+
   const torOn = isTorRelayEnabled()
-  const onion = torOn ? getOnionRelayUrl() : ''
-  const bridge = getSmpBridgeUrl()
-  const host = getSmpV9Host()
+  const smpV9 = isSmpV9Enabled()
+  const bridge = currentBridge()
+  const egress = useMemo(() => egressInfo(), [torOn, smpV9]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const nodes: GlobeNode[] = useMemo(
+    () => buildGlobeNodes({ device: geo, torEnabled: isTorRelayEnabled(), smpV9Enabled: isSmpV9Enabled() }),
+    [geo],
+  )
 
   const rows = useMemo(() => events.slice().reverse().slice(0, 200), [events])
 
   const summary = [
-    { label: t('netTor'), value: torOn ? `${t('netOn')} · ${onion}` : t('netOff') },
+    { label: t('netTor'), value: torOn ? t('netOn') : t('netOff') },
     { label: t('netTransport'), value: fallback ? t('netDegraded') : t('netNormal') },
     { label: t('netBridge'), value: bridge },
-    { label: t('netHost'), value: host },
+  ]
+
+  const hops = [
+    { key: 'e2ee', title: t('netHopE2ee'), desc: t('netHopE2eeDesc') },
+    { key: 'tls', title: t('netHopTls'), desc: t('netHopTlsDesc') },
+    ...(torOn ? [{ key: 'tor', title: t('netHopTor'), desc: t('netHopTorDesc') }] : []),
+    ...(smpV9 ? [{ key: 'smp', title: t('netHopSmp'), desc: t('netHopSmpDesc') }] : []),
+    { key: 'supabase', title: t('netHopSupabase'), desc: t('netHopSupabaseDesc') },
+    { key: 'xftp', title: t('netHopXftp'), desc: t('netHopXftpDesc') },
   ]
 
   return (
@@ -120,6 +152,34 @@ export function NetworkPage() {
             </button>
           </header>
 
+          {/* Globe 3D : nœuds + flux animés */}
+          <section className="rounded-2xl bg-bg-surface overflow-hidden">
+            <NetworkGlobe ref={globeRef} nodes={nodes} height={300} />
+          </section>
+
+          {/* IP d'entrée / sortie */}
+          <section className="rounded-2xl bg-bg-surface p-3 space-y-2">
+            <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-text-tertiary">
+              <Lock size={13} /> {t('netIpTitle')}
+            </h2>
+            <div className="flex items-start justify-between gap-3 text-xs">
+              <span className="text-text-secondary shrink-0">{t('netIpEntry')}</span>
+              <span className="text-text-primary font-mono text-right break-all">
+                {geo ? geo.ip : geoLoading ? '…' : t('netIpUnknown')}
+                {geo?.city ? ` · ${geo.city}` : ''}
+              </span>
+            </div>
+            <div className="flex items-start justify-between gap-3 text-xs">
+              <span className="text-text-secondary shrink-0">{t('netIpExit')}</span>
+              <span className={`font-mono text-right break-all ${egress.masked ? 'text-amber-400' : 'text-text-primary'}`}>
+                {egress.ip}
+                {` · ${egress.transport}`}
+              </span>
+            </div>
+            <p className="text-[10px] text-text-tertiary">{t('netGeoNote')}</p>
+          </section>
+
+          {/* Chemins réseau (état) */}
           <section className="rounded-2xl bg-bg-surface p-3 space-y-2">
             <h2 className="text-xs font-semibold uppercase tracking-wide text-text-tertiary">{t('netPaths')}</h2>
             {summary.map(({ label, value }) => (
@@ -130,6 +190,18 @@ export function NetworkPage() {
             ))}
           </section>
 
+          {/* Chiffrement par saut */}
+          <section className="rounded-2xl bg-bg-surface p-3 space-y-2">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-text-tertiary">{t('netEncTitle')}</h2>
+            {hops.map(h => (
+              <div key={h.key} className="space-y-0.5">
+                <p className="text-xs font-medium text-text-primary">{h.title}</p>
+                <p className="text-[11px] text-text-secondary">{h.desc}</p>
+              </div>
+            ))}
+          </section>
+
+          {/* Flux live */}
           <section className="space-y-2">
             <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-text-tertiary">
               <Activity size={13} /> {t('netLive')}
