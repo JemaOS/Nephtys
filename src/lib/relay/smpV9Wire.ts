@@ -216,7 +216,6 @@ private async createQueue(conn: SmpV9Connection, auth: nacl.BoxKeyPair): Promise
     const creds: QueueCredentials = {
       queueId: b64u(ids.rcvId),
       sendKey: b64u(ids.sndId),
-      // Jeton lecteur : clé secrète Ed25519 (64o) ‖ DH privé (32o) ‖ DH serveur brut (32o)
       rcvKey: b64u(concat(ed.secretKey, x.secretKey, ids.rcvPublicDhKey.subarray(-32))),
       relay: this.opts.bridgeUrl,
     };

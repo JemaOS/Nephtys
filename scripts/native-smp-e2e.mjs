@@ -1,6 +1,7 @@
 // E2E natif SMP v15 via le pont public (WS -> TLS SimpleX).
 // Usage : node scripts/native-smp-e2e.mjs
 import { createHash, X509Certificate, randomBytes } from 'node:crypto';
+import nacl from 'tweetnacl';
 import * as core from '../src/lib/simplexweb/browser-smp-core.mjs';
 
 const URL = process.env.BRIDGE || 'wss://78-232-3-78.sslip.io/simplex';
@@ -78,8 +79,15 @@ try {
       ws.send(core.encodeTransportBlock(V, [stx2]));
       const rb = await nextBlock().catch(() => null);
       if (rb) {
+        const srvDh = Buffer.from(m.rcvPublicDhKey).subarray(-32);
         const rx = core.decodeTransportBlock(V, rb, { kind: 'broker', sessionId: hello.sessionId });
-        for (const t2 of rx) console.log('SEND ->', t2.message.type, toText(t2.commandBytes || new Uint8Array()));
+        for (const t2 of rx) {
+          const mm = t2.message;
+          if (mm.type === 'MSG') {
+            const plain = nacl.box.open(mm.body, mm.msgId, srvDh, x.secretKey);
+            console.log('DECRYPT:', plain ? 'OK -> ' + new TextDecoder().decode(plain.subarray(14, 14 + 11)) : 'ÉCHEC');
+          } else console.log('SEND ->', mm.type, toText(t2.commandBytes || new Uint8Array()));
+        }
       } else console.log('SEND -> aucune réponse');
     }
   }
