@@ -60,7 +60,7 @@ import { parseStatus, encodeStatus, toRecord, type StatusPayload, type StatusRec
 import { PrivateCall, type CallState, type PeerLike } from '@/lib/relay/privateCall'
 import { isCallSignal } from '@/lib/relay/callSignaling'
 import { IdbStatusStore } from '@/lib/relay/statusIdbStore'
-import { encryptAndUploadFile, downloadAndDecryptFile, sanitizeFileName, type FileDescriptor } from '@/lib/relay/fileTransfer'
+import { uploadFileXftp, downloadAndDecryptFile, sanitizeFileName, type FileDescriptor } from '@/lib/relay/fileTransfer'
 import type { PrivateConnectionRecord } from '@/lib/relay/connectionStore'
 
 interface ChatItem {
@@ -465,7 +465,7 @@ export function PrivatePage() {
       setUploading(true)
       setError(null)
       try {
-        const descriptor = await encryptAndUploadFile(file)
+        const descriptor = await uploadFileXftp(file)
         await messenger.sendFile(active, descriptor)
         // Affiche le descripteur localement (rendu comme fichier chiffré).
         setMessages(prev => [

@@ -19,6 +19,7 @@
 import { supabase } from '../supabase';
 import { isAnonRelayConsentGranted } from './supabaseRelayWire';
 import { bytesToBase64, base64ToBytes, randomBytes } from '../ratchet/primitives';
+import { uploadFileToXftp, downloadFileFromXftp, getXftpFileServer } from './xftpClient';
 
 export const FILE_BUCKET = 'anon_files';
 export const FILE_CHUNK_SIZE = 256 * 1024; // 256 KiB
@@ -79,7 +80,7 @@ async function ensureAnonymousFileAccess(): Promise<void> {
   if (session) throw new Error(FILE_AUTH_DENIED);
 }
 
-interface FileDescriptor {
+interface LocalFileDescriptor {
   v: 1;
   name: string;
   mime: string;
@@ -94,7 +95,26 @@ interface FileDescriptor {
   chunks: number;
 }
 
-export type { FileDescriptor };
+/**
+ * Descripteur de fichier **XFTP** (v2) : le fichier est déposé sur un serveur XFTP
+ * (chiffré de bout en bout, clé dans la description) ; seul ce descripteur est
+ * transmis au pair (via le canal privé chiffré). Le pair télécharge depuis XFTP.
+ */
+export interface XftpFileDescriptor {
+  v: 2;
+  kind: 'xftp';
+  /** Adresse `xftp://<keyHash>@hôte` du serveur de fichiers. */
+  server: string;
+  name: string;
+  mime: string;
+  size: number;
+  /** Description XFTP destinataire (contient la clé/nonce E2E du fichier). */
+  desc: unknown;
+}
+
+export type FileDescriptor = LocalFileDescriptor | XftpFileDescriptor;
+
+export type { LocalFileDescriptor };
 
 /** Nettoie un nom de fichier téléchargé (retire séparateurs de chemin/contrôle). */
 export function sanitizeFileName(name: unknown): string {
@@ -110,7 +130,7 @@ export function sanitizeFileName(name: unknown): string {
  * clé = 32 octets, ivBase = 8 octets, préfixe whitelisté, chunks bornés et
  * cohérents avec la taille annoncée.
  */
-function validateDescriptor(desc: FileDescriptor): { key: Uint8Array; ivBase: Uint8Array } {
+function validateDescriptor(desc: LocalFileDescriptor): { key: Uint8Array; ivBase: Uint8Array } {
   if (!desc || typeof desc !== 'object') throw new Error('descripteur de fichier invalide');
   if (PREFIX_RE.test(desc.prefix) === false) throw new Error('préfixe de fichier invalide');
   if (!Number.isInteger(desc.chunks) || desc.chunks < 1 || desc.chunks > FILE_MAX_CHUNKS) {
@@ -187,7 +207,7 @@ function randomPrefix(): string {
 export async function encryptAndUploadFile(
   file: Blob,
   onProgress?: (fraction: number) => void,
-): Promise<FileDescriptor> {
+): Promise<LocalFileDescriptor> {
   await ensureAnonymousFileAccess();
   const total = file.size;
   if (total > FILE_MAX_BYTES) throw new Error('fichier trop volumineux');
@@ -257,6 +277,8 @@ async function fetchSignedChunkUrls(prefix: string, indices: number[]): Promise<
 }
 
 export async function downloadAndDecryptFile(desc: FileDescriptor): Promise<Blob> {
+  // Descripteur XFTP (v2) : le fichier vit sur un serveur XFTP (HTTP/2).
+  if (desc.v === 2) return await downloadXftpDescriptor(desc);
   await ensureAnonymousFileAccess();
   const { key, ivBase } = validateDescriptor(desc);
   const parts: BlobPart[] = [];
@@ -284,4 +306,58 @@ export async function downloadAndDecryptFile(desc: FileDescriptor): Promise<Blob
   }
 
   return new Blob(parts, { type: desc.mime });
+}
+
+// ─── Transfert via serveurs XFTP (mode privé, HTTP/2) ────────────────
+
+/** Borne mémoire pour l'upload XFTP (le navigateur charge le fichier en RAM). */
+export const XFTP_MAX_BYTES = 100 * 1024 * 1024; // 100 MiB
+
+/** Vrai si le descripteur désigne un fichier hébergé sur un serveur XFTP. */
+export function isXftpDescriptor(desc: unknown): desc is XftpFileDescriptor {
+  return !!desc && typeof desc === 'object' && (desc as { v?: number }).v === 2;
+}
+
+/** Lit un Blob en Uint8Array (robuste aux Blob sans `arrayBuffer`/`text`). */
+export async function readBlobBytes(file: Blob): Promise<Uint8Array> {
+  if (typeof file.arrayBuffer === 'function') {
+    const ab = await file.arrayBuffer();
+    if (ab && ab.byteLength !== undefined) return new Uint8Array(ab);
+  }
+  // Environnements type jsdom : pas d'`arrayBuffer`, on passe par FileReader.
+  if (typeof FileReader !== 'undefined') {
+    return await new Promise<Uint8Array>((resolve, reject) => {
+      const fr = new FileReader();
+      fr.onload = () => resolve(new Uint8Array(fr.result as ArrayBuffer));
+      fr.onerror = () => reject(fr.error ?? new Error('lecture du blob échouée'));
+      fr.readAsArrayBuffer(file);
+    });
+  }
+  return new Uint8Array(await new Response(file).arrayBuffer());
+}
+
+/**
+ * Chiffre (de bout en bout, géré par XFTP) et dépose le fichier sur le serveur
+ * XFTP sélectionné ; renvoie le descripteur à transmettre au pair.
+ */
+export async function uploadFileXftp(file: Blob, onProgress?: (f: number) => void): Promise<XftpFileDescriptor> {
+  if (file.size > XFTP_MAX_BYTES) throw new Error('fichier trop volumineux pour l’envoi (max 100 Mo)');
+  const server = getXftpFileServer();
+  const named = file as File;
+  const name = sanitizeFileName(named.name);
+  const mime = typeof named.type === 'string' && named.type ? named.type : 'application/octet-stream';
+  const bytes = await readBlobBytes(file);
+  onProgress?.(0.5);
+  const { recipientDescription } = await uploadFileToXftp(server, bytes, name);
+  onProgress?.(1);
+  return { v: 2, kind: 'xftp', server, name, mime, size: bytes.length, desc: recipientDescription };
+}
+
+/** Télécharge et déchiffre un fichier XFTP à partir de son descripteur. */
+async function downloadXftpDescriptor(desc: XftpFileDescriptor): Promise<Blob> {
+  if (typeof desc.server !== 'string' || !desc.server.startsWith('xftp://')) {
+    throw new Error('descripteur XFTP invalide');
+  }
+  const bytes = await downloadFileFromXftp(desc.server, desc.desc);
+  return new Blob([bytes as unknown as BlobPart], { type: desc.mime || 'application/octet-stream' });
 }

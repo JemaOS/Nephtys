@@ -49,16 +49,16 @@ describe('fileTransfer (P3)', () => {
   });
 
   it('rejette un descripteur invalide avant tout téléchargement', async () => {
-    const good = { v: 1, name: 'a', mime: 'x', size: 3, key: btoa('\0'.repeat(32)), ivBase: btoa('\0'.repeat(8)), prefix: 'abcdefgh', chunks: 1 } as FileDescriptor;
+const good = { v: 1, name: 'a', mime: 'x', size: 3, key: btoa('\0'.repeat(32)), ivBase: btoa('\0'.repeat(8)), prefix: 'abcdefgh', chunks: 1 } as FileDescriptor;
     // Préfixe hors whitelist.
-    await expect(downloadAndDecryptFile({ ...good, prefix: '../x' })).rejects.toThrow(/préfixe/);
+    await expect(downloadAndDecryptFile({ ...good, prefix: '../x' } as FileDescriptor)).rejects.toThrow(/préfixe/);
     // Clé de mauvaise taille.
-    await expect(downloadAndDecryptFile({ ...good, key: btoa('short') })).rejects.toThrow(/clé/);
+    await expect(downloadAndDecryptFile({ ...good, key: btoa('short') } as FileDescriptor)).rejects.toThrow(/clé/);
     // ivBase de mauvaise taille.
-    await expect(downloadAndDecryptFile({ ...good, ivBase: btoa('tiny') })).rejects.toThrow(/ivBase/);
+    await expect(downloadAndDecryptFile({ ...good, ivBase: btoa('tiny') } as FileDescriptor)).rejects.toThrow(/ivBase/);
     // Trop de chunks.
-    await expect(downloadAndDecryptFile({ ...good, chunks: 1_000_000 })).rejects.toThrow(/chunks/);
+    await expect(downloadAndDecryptFile({ ...good, chunks: 1_000_000 } as FileDescriptor)).rejects.toThrow(/chunks/);
     // Incohérence taille/chunks.
-    await expect(downloadAndDecryptFile({ ...good, size: 10 * FILE_CHUNK_SIZE, chunks: 1 })).rejects.toThrow(/incoh/);
+    await expect(downloadAndDecryptFile({ ...good, size: 10 * FILE_CHUNK_SIZE, chunks: 1 } as FileDescriptor)).rejects.toThrow(/incoh/);
   });
 });
