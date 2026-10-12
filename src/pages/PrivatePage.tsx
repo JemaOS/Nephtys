@@ -40,6 +40,7 @@ import { MainLayout } from '@/components/MainLayout'
 import { useAuth } from '@/context/AuthContext'
 import {
   getPrivateMessenger,
+  warmupPrivateRelay,
   getRelayUrl,
   getRelayLabel,
   setRelayUrl,
@@ -330,6 +331,9 @@ export function PrivatePage() {
     refresh()
     // Ré-enregistre les connexions stockées dans le transport (après reload).
     void messenger.refreshConnections()
+    // Préchauffe le transport (bootstrap Tor WASM si actif) pour que la création
+    // d'une connexion privée ne l'attende pas au clic.
+    warmupPrivateRelay()
   }, [refresh, messenger])
 
   const refreshStatuses = useCallback(async () => {

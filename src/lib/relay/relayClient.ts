@@ -13,7 +13,7 @@ import { SupabaseRelayWire } from './supabaseRelayWire';
 import { AgentRelayWire } from './agentRelayWire';
 import { SmpRelayWire } from './smpRelayWire';
 import { SmpV9Wire, SMP_RELAY_PRESETS } from './smpV9Wire';
-import { createTorWebSocketImpl } from './torClient';
+import { createTorWebSocketImpl, getTorClient } from './torClient';
 import { FailoverRelayWire } from './failoverRelayWire';
 import { MultiRelayWire } from './multiRelayWire';
 import { PrivateMessenger } from './privateMessenger';
@@ -28,6 +28,19 @@ let instance: PrivateMessenger | null = null;
  */
 let failoverWire: FailoverRelayWire | null = null;
 const transportListeners = new Set<(active: boolean) => void>();
+
+/**
+ * Budget (ms) accordé au transport **prioritaire** avant de démarrer le repli
+ * **en parallèle** (cf. `FailoverRelayWire` `hedgeMs`). Borne la latence de
+ * création de la connexion privée quand le primaire est lent à s'établir
+ * (bootstrap du client Tor WASM, pont SMP lent) : au pire on crée sur le repli
+ * en ~`hedgeMs` + latence du secondaire, au lieu d'attendre le timeout complet.
+ * Configurable via `VITE_RELAY_PRIMARY_HEDGE_MS` (défaut 6000, borné ≥ 0).
+ */
+const PRIMARY_HEDGE_MS = ((): number => {
+  const raw = Number(import.meta.env.VITE_RELAY_PRIMARY_HEDGE_MS ?? 6000);
+  return Number.isFinite(raw) ? Math.max(0, Math.trunc(raw)) : 6000;
+})();
 
 /** Vrai si le transport privé a basculé sur le relais de repli (état dégradé). */
 export function isRelayFallbackActive(): boolean {
@@ -630,6 +643,7 @@ export function createPrivateRelayWire(): PrivateRelayWireSelection {
       torWire,
       new SupabaseRelayWire(),
       active => { for (const cb of transportListeners) cb(active); },
+      { hedgeMs: PRIMARY_HEDGE_MS },
     );
     failover = fw;
     wire = fw;
@@ -649,6 +663,7 @@ export function createPrivateRelayWire(): PrivateRelayWireSelection {
       new SmpV9Wire({ bridgeUrl: getSmpBridgeUrl(), host: getSmpV9Host() }),
       new SupabaseRelayWire(),
       active => { for (const cb of transportListeners) cb(active); },
+      { hedgeMs: PRIMARY_HEDGE_MS },
     );
     failover = fw;
     wire = fw;
@@ -675,12 +690,24 @@ export function createPrivateRelayWire(): PrivateRelayWireSelection {
       primaryWire,
       new SupabaseRelayWire(),
       active => { for (const cb of transportListeners) cb(active); },
+      { hedgeMs: PRIMARY_HEDGE_MS },
     );
     failover = fw;
     wire = fw;
   }
 
   return { wire, failover };
+}
+
+/**
+ * Préchauffe le transport privé (best-effort, aucun effet observable) : démarre
+ * le bootstrap du client Tor WASM si le mode Tor est actif, afin que la création
+ * d'une connexion privée ne l'attende pas. À appeler au montage de la page
+ * privée. Ne lève jamais.
+ */
+export function warmupPrivateRelay(): void {
+  if (!isTorRelayEnabled()) return;
+  void getTorClient().catch(() => { /* best-effort */ });
 }
 
 export function getPrivateMessenger(): PrivateMessenger {

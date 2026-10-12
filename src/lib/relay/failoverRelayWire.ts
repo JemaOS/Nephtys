@@ -32,6 +32,19 @@ interface RelayIdAware {
   readonly relayIds?: string[];
 }
 
+export interface FailoverOptions {
+  /**
+   * Budget (ms) accordé au relais **prioritaire** pour créer une file avant de
+   * démarrer le repli **en parallèle** (course « le premier à réussir gagne »).
+   * `0` (défaut) = comportement historique (attendre le primaire jusqu'au bout).
+   *
+   * Sert à BORNER la latence quand le primaire est lent à s'établir (ex. client
+   * Tor WASM en cours de bootstrap, pont SMP lent) : la connexion privée se crée
+   * sur le repli en quelques secondes au lieu d'attendre le timeout complet.
+   */
+  hedgeMs?: number;
+}
+
 export class FailoverRelayWire implements RelayWire {
   private primaryFailed = false;
   private retryPrimaryAt = 0;
@@ -41,7 +54,12 @@ export class FailoverRelayWire implements RelayWire {
     private readonly secondary: RelayWire,
     /** Notifié quand on bascule sur le relais de repli (état dégradé). */
     private readonly onFallbackChange?: (active: boolean) => void,
+    private readonly options: FailoverOptions = {},
   ) {}
+
+  private get hedgeMs(): number {
+    return Math.max(0, this.options.hedgeMs ?? 0);
+  }
 
   /** Vrai si le relais prioritaire est actuellement en repli. */
   get onFallback(): boolean {
@@ -69,27 +87,74 @@ export class FailoverRelayWire implements RelayWire {
     this.onFallbackChange?.(false);
   }
 
+  private markPrimaryDown(reason?: string): void {
+    // Échec du relais prioritaire → repli TEMPORAIRE pour les NOUVELLES files.
+    console.warn('[relay] relais prioritaire indisponible → repli temporaire:', reason);
+    this.primaryFailed = true;
+    this.retryPrimaryAt = Date.now() + PRIMARY_COOLDOWN_MS;
+    this.onFallbackChange?.(true);
+  }
+
+  private primaryCreate(): Promise<RelayResponse> {
+    return this.primary
+      .request({ op: 'createQueue' })
+      .catch(() => ({ ok: false, error: 'primary threw' }) as RelayResponse);
+  }
+
   private async createQueue(): Promise<RelayResponse> {
     // Re-tenter le primaire après le cooldown (échec probablement transitoire).
     if (this.primaryFailed && Date.now() >= this.retryPrimaryAt) {
       this.restorePrimary();
     }
-    if (!this.primaryFailed) {
-      let resp: RelayResponse;
-      try {
-        resp = await this.primary.request({ op: 'createQueue' });
-      } catch {
-        resp = { ok: false, error: 'primary threw' };
-      }
-      if (resp.ok && resp.result) return resp;
-
-      // Échec du relais prioritaire → repli TEMPORAIRE pour les NOUVELLES files.
-      console.warn('[relay] relais prioritaire indisponible → repli temporaire:', resp.error);
-      this.primaryFailed = true;
-      this.retryPrimaryAt = Date.now() + PRIMARY_COOLDOWN_MS;
-      this.onFallbackChange?.(true);
+    // Déjà en repli : pas de course, on va droit au secondaire.
+    if (this.primaryFailed) {
+      return this.secondary.request({ op: 'createQueue' });
     }
-    return this.secondary.request({ op: 'createQueue' });
+
+    const hedgeMs = this.hedgeMs;
+    // Comportement historique : on attend le primaire jusqu'au bout.
+    if (hedgeMs <= 0) {
+      const resp = await this.primaryCreate();
+      if (resp.ok && resp.result) return resp;
+      this.markPrimaryDown(resp.error);
+      return this.secondary.request({ op: 'createQueue' });
+    }
+
+    // Course bornée : le primaire a `hedgeMs` d'avance ; le repli est démarré dès
+    // que le primaire échoue OU que le budget expire. Le premier succès gagne — le
+    // primaire reste préféré s'il répond à temps. Borne la latence quand le
+    // primaire est lent à s'établir (bootstrap Tor, pont SMP lent).
+    return await new Promise<RelayResponse>((resolve) => {
+      let settled = false;
+      let secondaryStarted = false;
+      let timer: ReturnType<typeof setTimeout> | null = null;
+
+      const finish = (resp: RelayResponse, primaryWon: boolean): void => {
+        if (settled) return;
+        settled = true;
+        if (timer) clearTimeout(timer);
+        if (!primaryWon) this.markPrimaryDown(resp.error);
+        resolve(resp);
+      };
+
+      const startSecondary = (): void => {
+        if (secondaryStarted) return;
+        secondaryStarted = true;
+        void this.secondary.request({ op: 'createQueue' }).then(
+          resp => finish(resp, false),
+          () => finish({ ok: false, error: 'secondary threw' }, false),
+        );
+      };
+
+      timer = setTimeout(startSecondary, hedgeMs);
+
+      void this.primaryCreate().then(resp => {
+        // Le primaire a répondu à temps : il gagne.
+        if (resp.ok && resp.result) { finish(resp, true); return; }
+        // Échec du primaire avant le budget → démarrer le repli immédiatement.
+        startSecondary();
+      });
+    });
   }
 
   async request(op: RelayOp): Promise<RelayResponse> {
