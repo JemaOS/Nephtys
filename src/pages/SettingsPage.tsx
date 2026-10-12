@@ -1502,7 +1502,7 @@ export function SettingsPage() {
                   value={relayInput}
                   onChange={e => setRelayInput(e.target.value)}
                   placeholder="wss://relais.exemple/"
-                  className="flex-1 min-w-0 px-2 py-1 rounded-lg bg-bg-surface text-[11px] font-mono text-text-secondary"
+                  className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-bg-surface text-sm text-text-secondary"
                 />
                 <button onClick={handleSaveRelay} className="px-2 py-1 rounded-lg bg-bg-hover text-xs text-text-primary shrink-0">Enregistrer</button>
               </div>
@@ -1584,7 +1584,7 @@ export function SettingsPage() {
                         key={host}
                         type="button"
                         onClick={() => { setSmpV9Host(host); setSmpV9HostSel(host) }}
-                        className={`w-full text-left px-3 py-2 text-xs font-mono border-b border-bg-hover last:border-0 ${smpV9HostSel === host ? 'text-accent' : 'text-text-secondary'}`}
+                        className={`w-full text-left px-3 py-2 text-sm border-b border-bg-hover last:border-0 ${smpV9HostSel === host ? 'text-accent' : 'text-text-secondary'}`}
                       >
                         {smpV9HostSel === host ? '● ' : '○ '}{host}
                       </button>
@@ -1595,7 +1595,7 @@ export function SettingsPage() {
                       value={smpV9HostDraft}
                       onChange={e => setSmpV9HostDraft(e.target.value)}
                       placeholder="smp.exemple.org"
-                      className="flex-1 min-w-0 px-2 py-1 rounded-lg bg-bg-surface text-[11px] font-mono text-text-secondary"
+                      className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-bg-surface text-sm text-text-secondary"
                     />
                     <button
                       type="button"
@@ -1619,7 +1619,7 @@ export function SettingsPage() {
                     key={addr}
                     type="button"
                     onClick={() => handlePickXftp(addr)}
-                    className={`w-full text-left px-3 py-2 text-[11px] font-mono border-b border-bg-hover last:border-0 truncate ${xftpServer === addr ? 'text-accent' : 'text-text-secondary'}`}
+                    className={`w-full text-left px-3 py-2 text-sm border-b border-bg-hover last:border-0 truncate ${xftpServer === addr ? 'text-accent' : 'text-text-secondary'}`}
                   >
                     {xftpServer === addr ? '● ' : '○ '}{addr.replace(/^xftp:\/\/[^@]*@/, '')}
                   </button>
@@ -1630,7 +1630,7 @@ export function SettingsPage() {
                   value={xftpDraft}
                   onChange={e => setXftpDraft(e.target.value)}
                   placeholder="xftp://<clé>@hôte"
-                  className="flex-1 min-w-0 px-2 py-1 rounded-lg bg-bg-surface text-[11px] font-mono text-text-secondary"
+                  className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-bg-surface text-sm text-text-secondary"
                 />
                 <button
                   type="button"
