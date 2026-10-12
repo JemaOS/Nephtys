@@ -28,6 +28,7 @@ import { tryEncryptWithRatchet } from '@/lib/ratchet/chatIntegration'
 import { getMessagingTransport } from '@/lib/transport'
 import { downloadMedia } from '@/lib/downloadMedia'
 import { offlineStorage } from '@/lib/offlineStorage'
+import { applySendJitter } from '@/lib/sendJitter'
 import { useUserPresence } from '@/hooks/usePresence'
 import { Send, Mic, Plus } from 'lucide-react'
 import { MessageReply } from '@/components/MessageReply'
@@ -2353,6 +2354,11 @@ await decryptMessageRows(validData as any[], user.id)
       // (l'id du message n'est connu qu'à ce moment) → `sender_sealed` est
       // attaché juste après la création des clés (voir plus bas).
 
+      // Jitter anti-analyse temporelle : décalage réseau aléatoire borné, APRÈS
+      // l'affichage optimiste (UI toujours instantanée) et AVANT l'insertion
+      // réseau / la diffusion. N'affecte pas l'accusé de réception optimiste.
+      await applySendJitter()
+
       // Use optional chaining as required by SonarQube
       let insertResult: { data: any; error: any }
       if (USE_TRANSPORT_SEND) {
@@ -2574,6 +2580,9 @@ await decryptMessageRows(validData as any[], user.id)
           : null
       }
 
+      // Jitter anti-analyse temporelle : après l'affichage optimiste, avant l'envoi réseau.
+      await applySendJitter()
+
       // INSERT du message.
       const insertResult = await supabase.from('messages').insert(messageData).select().single()
       // FAIL-CLOSED : plus de repli « sans is_media_encrypted ». Si la migration
@@ -2712,6 +2721,10 @@ await decryptMessageRows(validData as any[], user.id)
 
     let fileErrorCount = 0
     try {
+      // Jitter anti-analyse temporelle : un seul décalage borné pour le lot,
+      // après l'affichage optimiste et avant les insertions réseau.
+      await applySendJitter()
+
       // Send each file as a separate message
       for (let i = 0; i < files.length; i++) {
         const file = files[i]
@@ -2897,6 +2910,9 @@ await decryptMessageRows(validData as any[], user.id)
       setMessages(prev => [...prev, optimisticMessage])
       setReplyToMessage(null)
       
+      // Jitter anti-analyse temporelle : après l'optimiste, avant l'envoi réseau.
+      await applySendJitter()
+
       // Insert into database
       const { data: insertedMessage, error } = await insertMessageSingle(messageData)
       
@@ -3374,6 +3390,9 @@ await decryptMessageRows(validData as any[], user.id)
     if (!messageToForward || !user) return
 
     try {
+      // Jitter anti-analyse temporelle : décale l'envoi réseau des transferts.
+      await applySendJitter()
+
       const { successCount, errorCount } = await forwardMessageToConversations(
         conversationIds,
         messageToForward,
@@ -4115,6 +4134,9 @@ await decryptMessageRows(validData as any[], user.id)
               }
 
               // Phase 1 (sealed sender v3) : scellé APRÈS insertion (id connu).
+
+              // Jitter anti-analyse temporelle : après l'optimiste, avant l'envoi réseau.
+              await applySendJitter()
 
               const { data, error } = await insertMessageSingle(messageData)
               

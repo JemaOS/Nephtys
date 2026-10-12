@@ -40,18 +40,69 @@ import { isRatchetEnvelope, tryDecryptWithRatchet } from './ratchet/chatIntegrat
 import { getLocalRatchetKeys } from './ratchet/keyStore';
 import { findVerifiedSenderIdentity, sealSenderForMembers, sealedContentHash, isAfterV2Sunset, type SealedSenderContext, type SealedSenderIdentity } from './messaging/sealedSender';
 
-// Taille de bloc du rembourrage. Un message texte est rembourré au
-// multiple de PAD_BLOCK supérieur, avec des octets aléatoires après la
-// longueur réelle → l'observateur ne peut pas déduire la longueur.
-const PAD_BLOCK = 256;
+// Paliers (buckets) de rembourrage. Un message est rembourré à la BORNE
+// SUPÉRIEURE de paliers fixes : tous les messages qui tombent dans le même
+// palier partagent la MÊME taille de ciphertext. Ex. avec les paliers par
+// défaut, 600 o et 900 o tombent tous deux dans 1024 → indistinguables, alors
+// que l'ancien rembourrage au multiple de 256 les séparait (768 vs 1024) : le
+// pas s'élargit avec la taille au lieu de rester à 256 partout.
+//
+// Au-delà du dernier palier, on arrondit au multiple de ce dernier.
+// Configurable via la constante exportée ou la variable d'env
+// `VITE_TEXT_PAD_BUCKETS` (liste d'octets séparés par des virgules).
 const LENGTH_PREFIX_BYTES = 4;
 const ENVELOPE_VERSION = 1;
+
+export const DEFAULT_TEXT_PAD_BUCKETS: readonly number[] = [
+  256, 512, 1024, 2048, 4096, 8192, 16384, 32768,
+];
+
+/** Normalise une liste de paliers : entier > 0, dédupliqué, trié croissant. */
+function normalizeBuckets(values: number[]): number[] | null {
+  const cleaned = values
+    .filter(v => Number.isFinite(v) && v > 0)
+    .map(v => Math.floor(v));
+  if (cleaned.length === 0) return null;
+  return [...new Set(cleaned)].sort((a, b) => a - b);
+}
+
+/** Lit une liste de paliers depuis une chaîne « 256,512,... » (env). */
+function parseBuckets(raw: unknown): number[] | null {
+  if (typeof raw !== 'string' || raw.trim() === '') return null;
+  const parsed = raw.split(',').map(part => Number(part.trim()));
+  return normalizeBuckets(parsed);
+}
+
+/**
+ * Paliers de rembourrage effectifs (env prioritaire, sinon défaut).
+ * Exporté pour les tests et l'introspection.
+ */
+export const TEXT_PAD_BUCKETS: readonly number[] = (() => {
+  const env = (import.meta as { env?: Record<string, string | undefined> }).env;
+  const fromEnv = parseBuckets(env?.VITE_TEXT_PAD_BUCKETS);
+  return fromEnv ?? DEFAULT_TEXT_PAD_BUCKETS;
+})();
+
+/**
+ * Taille totale rembourrée pour une longueur donnée : plus petit palier ≥
+ * longueur, ou multiple du plus grand palier au-delà.
+ */
+function paddedLength(contentLength: number): number {
+  for (const bucket of TEXT_PAD_BUCKETS) {
+    if (contentLength <= bucket) return bucket;
+  }
+  const largest = TEXT_PAD_BUCKETS[TEXT_PAD_BUCKETS.length - 1];
+  return Math.ceil(contentLength / largest) * largest;
+}
 
 // ─── Rembourrage ──────────────────────────────────────────────────────
 
 /**
  * Sérialise une chaîne UTF-8 avec un préfixe de longueur (4 octets, BE)
- * puis complète avec des octets aléatoires jusqu'au multiple de PAD_BLOCK.
+ * puis complète avec des octets aléatoires jusqu'à la borne supérieure du
+ * palier englobant. Le FORMAT (longueur + contenu + aléatoire) est inchangé :
+ * `unpad` reste capable de lire les anciens messages rembourrés en multiples
+ * de 256, la longueur réelle étant portée par le préfixe.
  */
 function pad(plaintext: string): Uint8Array {
   const bytes = new TextEncoder().encode(plaintext);
@@ -59,10 +110,7 @@ function pad(plaintext: string): Uint8Array {
   new DataView(withLength.buffer).setUint32(0, bytes.length, false);
   withLength.set(bytes, LENGTH_PREFIX_BYTES);
 
-  const total = Math.max(
-    PAD_BLOCK,
-    Math.ceil(withLength.length / PAD_BLOCK) * PAD_BLOCK,
-  );
+  const total = paddedLength(withLength.length);
   const out = new Uint8Array(total);
   out.set(withLength, 0);
   if (total > withLength.length) {

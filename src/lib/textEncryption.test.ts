@@ -19,8 +19,11 @@ import {
   parseEnvelope,
   decryptMessageContent,
   decryptMessageRows,
+  serializeTextPayload,
   UNDECRYPTABLE_PLACEHOLDER,
 } from './textEncryption';
+
+import { encryptMedia, cryptoB64 } from './mediaEncryption';
 
 function b64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64);
@@ -57,11 +60,51 @@ describe('textEncryption', () => {
     expect(decoded.linkPreview).toEqual(linkPreview);
   });
 
-  it('pads the plaintext to a 256-byte multiple (length hiding)', async () => {
+  it('pads to size buckets: different lengths in the same bucket share a ciphertext size', async () => {
+    // 600 o et 900 o tombent tous deux dans le palier 1024 (alors que l'ancien
+    // rembourrage au multiple de 256 les aurait séparés : 768 vs 1024) → même
+    // taille de ciphertext, la longueur réelle n'est plus révélée.
+    const short = await encryptText('a'.repeat(600));
+    const long = await encryptText('b'.repeat(900));
+    const lenShort = atob(short.ciphertextB64).length;
+    const lenLong = atob(long.ciphertextB64).length;
+    expect(lenShort).toBe(lenLong);
+    // Palier 1024 + tag GCM (16 o).
+    expect(lenShort).toBe(1024 + 16);
+  });
+
+  it('uses the smallest bucket that covers the payload', async () => {
+    // Un texte court doit rester dans le premier palier (256 + tag GCM 16).
     const { ciphertextB64 } = await encryptText('a');
-    const len = atob(ciphertextB64).length;
-    // 16 octets = tag AES-GCM ; le reste est le plaintext rembourré.
-    expect((len - 16) % 256).toBe(0);
+    expect(atob(ciphertextB64).length).toBe(256 + 16);
+  });
+
+  it('round-trips a payload sized across a bucket boundary', async () => {
+    const text = 'x'.repeat(260); // ~282 o avec préfixe/JSON → palier 512
+    const { ciphertextB64, ivB64, rawKey } = await encryptText(text);
+    expect(await decryptText(ciphertextB64, ivB64, rawKey)).toBe(text);
+  });
+
+  it('decrypts a legacy payload padded to a 256-byte multiple (rétrocompat)', async () => {
+    // Reproduit le format HISTORIQUE : longueur (4 o BE) + contenu + aléatoire,
+    // rembourré au multiple de 256. `unpad` lit la longueur en préfixe → OK.
+    const plaintext = serializeTextPayload('legacy message', null);
+    const bytes = new TextEncoder().encode(plaintext);
+    const withLength = new Uint8Array(4 + bytes.length);
+    new DataView(withLength.buffer).setUint32(0, bytes.length, false);
+    withLength.set(bytes, 4);
+    const total = Math.max(256, Math.ceil(withLength.length / 256) * 256);
+    const legacy = new Uint8Array(total);
+    legacy.set(withLength, 0);
+    legacy.set(crypto.getRandomValues(new Uint8Array(total - withLength.length)), withLength.length);
+
+    const { ciphertext, rawKey, iv } = await encryptMedia(legacy.buffer as ArrayBuffer);
+    const text = await decryptText(
+      cryptoB64.toBase64(ciphertext),
+      cryptoB64.toBase64(iv),
+      rawKey,
+    );
+    expect(text).toBe('legacy message');
   });
 
   it('fails to decrypt tampered ciphertext', async () => {

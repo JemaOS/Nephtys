@@ -40,6 +40,7 @@ import {
 } from '@/lib/relay/relayClient'
 import { isRelayOnlyCallsEnabled, setRelayOnlyCallsEnabled, getIceServers } from '@/lib/iceServers'
 import { isCoverTrafficEnabled, setCoverTrafficEnabled } from '@/lib/privacyPrefs'
+import { isSendJitterEnabled, setSendJitterEnabled } from '@/lib/sendJitter'
 
 import {
   ArrowLeft, User, Lock, Bell, MessageSquare, Video, Palette,
@@ -182,6 +183,7 @@ export function SettingsPage() {
   })
   const [showAdvancedRelays, setShowAdvancedRelays] = useState(false)
   const [coverTraffic, setCoverTraffic] = useState<boolean>(() => isCoverTrafficEnabled())
+  const [sendJitter, setSendJitter] = useState<boolean>(() => isSendJitterEnabled())
   // Multi-appareil (QR) : code à afficher + scanner.
   const [deviceTab, setDeviceTab] = useState<'mine' | 'scan'>('mine')
   const [deviceMsg, setDeviceMsg] = useState<string | null>(null)
@@ -647,6 +649,12 @@ export function SettingsPage() {
     const next = !coverTraffic
     setCoverTraffic(next)
     setCoverTrafficEnabled(next)
+  }
+
+  const handleToggleSendJitter = () => {
+    const next = !sendJitter
+    setSendJitter(next)
+    setSendJitterEnabled(next)
   }
 
   /**
@@ -1510,6 +1518,20 @@ export function SettingsPage() {
                   className={`w-12 h-6 rounded-full relative shrink-0 transition-colors ${coverTraffic ? 'bg-accent' : 'bg-[#8696a0]'}`}
                 >
                   <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${coverTraffic ? 'right-1' : 'left-1'}`}></div>
+                </button>
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="pr-4">
+                  <div className="text-text-primary">{t('sendJitterLabel')}</div>
+                  <div className="text-sm text-text-secondary">{t('sendJitterDesc')}</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleToggleSendJitter}
+                  aria-pressed={sendJitter}
+                  className={`w-12 h-6 rounded-full relative shrink-0 transition-colors ${sendJitter ? 'bg-accent' : 'bg-[#8696a0]'}`}
+                >
+                  <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${sendJitter ? 'right-1' : 'left-1'}`}></div>
                 </button>
               </div>
               <div className="flex items-center justify-between">
