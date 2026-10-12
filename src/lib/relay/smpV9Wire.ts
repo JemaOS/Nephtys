@@ -216,8 +216,8 @@ private async createQueue(conn: SmpV9Connection, auth: nacl.BoxKeyPair): Promise
     const creds: QueueCredentials = {
       queueId: b64u(ids.rcvId),
       sendKey: b64u(ids.sndId),
-      // Jeton lecteur : clé secrète Ed25519 (64o) ‖ DH privé (32o) ‖ DH serveur (32o)
-      rcvKey: b64u(concat(ed.secretKey, x.secretKey, ids.rcvPublicDhKey)),
+      // Jeton lecteur : clé secrète Ed25519 (64o) ‖ DH privé (32o) ‖ DH serveur brut (32o)
+      rcvKey: b64u(concat(ed.secretKey, x.secretKey, ids.rcvPublicDhKey.subarray(-32))),
       relay: this.opts.bridgeUrl,
     };
     void auth;
@@ -245,7 +245,7 @@ private async createQueue(conn: SmpV9Connection, auth: nacl.BoxKeyPair): Promise
     const cmd = te.encode('GET');
     const corrId = nacl.randomBytes(24);
     const sig = nacl.sign.detached(concat(small(conn.sessionId), small(corrId), small(rcvId), cmd), edSecret);
-    const txns = await conn.command(sig, corrId, rcvId, cmd);
+const txns = await conn.command(sig, corrId, rcvId, cmd);
     const out: StoredEnvelope[] = [];
     for (const t of txns) {
       if (t.type !== 'MSG') continue;
