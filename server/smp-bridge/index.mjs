@@ -8,7 +8,9 @@
 // un serveur SMP natif. Aucune logique de protocole : le client (navigateur)
 // fait tout le handshake/la crypto.
 //
-// Cible : `?host=<hote>` (liste blanche `ALLOWED_HOSTS`), sinon `SMP_HOST`.
+// Cible : `?host=<hote>&port=<port>&alpn=<proto>` (liste blanche `ALLOWED_HOSTS`),
+// sinon `SMP_HOST`/`SMP_PORT`/ALPN `smp/1`. Permet aussi de viser un serveur de
+// fichiers XFTP (ALPN `xftp/1`, port 443).
 // Variables : BRIDGE_PORT, SMP_HOST, SMP_PORT, SMP_REJECT_UNAUTHORIZED,
 //             ALLOWED_HOSTS (suffixes séparés par des virgules).
 
@@ -20,6 +22,7 @@ const DEFAULT_HOST = process.env.SMP_HOST || 'smp10.simplex.im';
 const SMP_PORT = Number(process.env.SMP_PORT || 5223);
 const REJECT_UNAUTH = process.env.SMP_REJECT_UNAUTHORIZED !== 'false';
 const ALLOWED = (process.env.ALLOWED_HOSTS || 'simplex.im').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+const ALLOWED_ALPN = ['smp/1', 'xftp/1'];
 
 function allowedHost(host) {
   if (!host) return DEFAULT_HOST;
@@ -30,7 +33,7 @@ function allowedHost(host) {
 const wss = new WebSocketServer({ port: PORT, host: '127.0.0.1' });
 
 wss.on('listening', () => {
-  console.log(`[smp-bridge] ws://127.0.0.1:${PORT} -> ${DEFAULT_HOST}:${SMP_PORT} (ALPN smp/1, allowed=${ALLOWED.join('|')})`);
+  console.log(`[smp-bridge] ws://127.0.0.1:${PORT} -> ${DEFAULT_HOST}:${SMP_PORT} (allowed=${ALLOWED.join('|')})`);
 });
 
 wss.on('connection', (socket, req) => {
@@ -40,12 +43,16 @@ wss.on('connection', (socket, req) => {
     try { socket.close(1008, 'host non autorisé'); } catch { /* ignore */ }
     return;
   }
+  const portParam = Number(url.searchParams.get('port'));
+  const targetPort = portParam > 0 && portParam <= 65535 ? portParam : SMP_PORT;
+  const alpnParam = url.searchParams.get('alpn');
+  const alpn = alpnParam && ALLOWED_ALPN.includes(alpnParam) ? alpnParam : 'smp/1';
 
   const upstream = tls.connect({
     host,
-    port: SMP_PORT,
+    port: targetPort,
     servername: host,
-    ALPNProtocols: ['smp/1'],
+    ALPNProtocols: [alpn],
     rejectUnauthorized: REJECT_UNAUTH,
   });
 
