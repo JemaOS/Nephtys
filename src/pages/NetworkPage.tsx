@@ -4,13 +4,12 @@
 /**
  * Page « Réseau » — suivi EN TEMPS RÉEL des chemins réseau du mode privé.
  *
- *   • globe 3D (Three.js) : nœuds + flux animés, thème et police de l'app ;
  *   • IP d'ENTRÉE (votre IP publique) et IP de SORTIE (vue par le serveur) ;
  *   • chiffrement par saut (E2EE, TLS, Tor, Supabase, XFTP) ;
  *   • flux d'événements live émis par les couches réseau.
  *
- * Vue purement locale (l'IP est obtenue via un service externe configurable,
- * uniquement quand cette page est ouverte).
+ * Vue purement locale. L'IP est obtenue via un écho public (`api64.ipify.org`,
+ * autorisé par la CSP) uniquement quand cette page est ouverte.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -25,18 +24,8 @@ import {
   type NetLayer,
   type NetStatus,
 } from '@/lib/relay/netLog'
-import {
-  buildGlobeNodes,
-  currentBridge,
-  egressInfo,
-  fetchGeoIp,
-  flowTargetFor,
-  NODE_DEVICE,
-  type GeoIp,
-  type GlobeNode,
-} from '@/lib/relay/networkMap'
+import { currentBridge, egressInfo, fetchPublicIp } from '@/lib/relay/networkMap'
 import { isRelayFallbackActive, isSmpV9Enabled, isTorRelayEnabled, onRelayTransportChange } from '@/lib/relay/relayClient'
-import { NetworkGlobe, type NetworkGlobeHandle } from '@/components/NetworkGlobe'
 
 const LAYER_STYLE: Record<NetLayer, string> = {
   tor: 'text-purple-400',
@@ -61,7 +50,6 @@ function timeOf(t: number): string {
 export function NetworkPage() {
   const { t } = useI18n()
   const [events, setEvents] = useState<NetEvent[]>(() => netLogSnapshot())
-  const globeRef = useRef<NetworkGlobeHandle | null>(null)
 
   // Coalescence : au plus un rendu toutes les 200 ms.
   const pendingRef = useRef<NetEvent[]>([])
@@ -78,8 +66,6 @@ export function NetworkPage() {
       })
     }
     const unsub = netLogSubscribe(e => {
-      // Flux animé sur le globe (impératif, sans re-render).
-      globeRef.current?.addFlow(NODE_DEVICE, flowTargetFor(e.layer), e.status !== 'fail')
       pendingRef.current.push(e)
       if (timerRef.current == null) timerRef.current = window.setTimeout(flush, 200)
     })
@@ -92,15 +78,15 @@ export function NetworkPage() {
   const [fallback, setFallback] = useState(() => isRelayFallbackActive())
   useEffect(() => onRelayTransportChange(setFallback), [])
 
-  // IP d'entrée + géolocalisation approximative de l'appareil (appel unique).
-  const [geo, setGeo] = useState<GeoIp | null>(null)
-  const [geoLoading, setGeoLoading] = useState(true)
+  // IP d'entrée (écho public, appel unique, page ouverte).
+  const [ip, setIp] = useState<string | null>(null)
+  const [ipLoading, setIpLoading] = useState(true)
   useEffect(() => {
     let alive = true
-    fetchGeoIp().then(g => {
+    fetchPublicIp().then(v => {
       if (!alive) return
-      setGeo(g)
-      setGeoLoading(false)
+      setIp(v)
+      setIpLoading(false)
     })
     return () => { alive = false }
   }, [])
@@ -108,12 +94,7 @@ export function NetworkPage() {
   const torOn = isTorRelayEnabled()
   const smpV9 = isSmpV9Enabled()
   const bridge = currentBridge()
-  const egress = useMemo(() => egressInfo(), [torOn, smpV9]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const nodes: GlobeNode[] = useMemo(
-    () => buildGlobeNodes({ device: geo, torEnabled: isTorRelayEnabled(), smpV9Enabled: isSmpV9Enabled() }),
-    [geo],
-  )
+  const egress = useMemo(() => egressInfo(), []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const rows = useMemo(() => events.slice().reverse().slice(0, 200), [events])
 
@@ -152,11 +133,6 @@ export function NetworkPage() {
             </button>
           </header>
 
-          {/* Globe 3D : nœuds + flux animés */}
-          <section className="rounded-2xl bg-bg-surface overflow-hidden">
-            <NetworkGlobe ref={globeRef} nodes={nodes} height={300} />
-          </section>
-
           {/* IP d'entrée / sortie */}
           <section className="rounded-2xl bg-bg-surface p-3 space-y-2">
             <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-text-tertiary">
@@ -165,8 +141,7 @@ export function NetworkPage() {
             <div className="flex items-start justify-between gap-3 text-xs">
               <span className="text-text-secondary shrink-0">{t('netIpEntry')}</span>
               <span className="text-text-primary font-mono text-right break-all">
-                {geo ? geo.ip : geoLoading ? '…' : t('netIpUnknown')}
-                {geo?.city ? ` · ${geo.city}` : ''}
+                {ip ? ip : ipLoading ? '…' : t('netIpUnknown')}
               </span>
             </div>
             <div className="flex items-start justify-between gap-3 text-xs">
