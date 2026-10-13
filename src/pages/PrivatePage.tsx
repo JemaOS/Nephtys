@@ -1423,22 +1423,82 @@ export function PrivatePage() {
           </div>
         )}
 
-        {/* Conversation de groupe — PAGE DISTINCTE plein écran (bouton retour à gauche). */}
+        {/* Conversation de groupe — PAGE DISTINCTE plein écran (interface identique au 1:1). */}
         {activeGroupId && (
           <div className="flex-1 flex flex-col min-h-0 bg-bg-secondary">
-            <div className="flex items-center gap-1 px-3 py-2 border-b border-bg-hover shrink-0">
-              <button
-                type="button"
-                onClick={() => setActiveGroupId(null)}
-                className="p-1.5 -ml-1 rounded-lg hover:bg-bg-hover text-text-primary shrink-0"
-                aria-label={t('back')}
-              >
-                <ArrowLeft size={18} />
-              </button>
-              <span className="flex items-center gap-2 text-sm font-medium text-text-primary min-w-0">
-                <Lock size={14} className="text-[#7578db] shrink-0" />
-                <span className="truncate">{activeGroupLabel}</span>
-              </span>
+            <div className="px-4 py-2.5 space-y-2 border-b border-bg-hover">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1 min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => setActiveGroupId(null)}
+                    className="p-1.5 -ml-1 rounded-lg hover:bg-bg-hover text-text-primary shrink-0"
+                    aria-label={t('back')}
+                  >
+                    <ArrowLeft size={18} />
+                  </button>
+                  <span className="flex items-center gap-2 text-sm font-medium text-text-primary min-w-0">
+                    <Lock size={14} className="text-[#7578db] shrink-0" />
+                    <span className="truncate">{activeGroupLabel}</span>
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    disabled
+                    title={t('pvGroupNotAvailable')}
+                    className="px-2.5 py-1 rounded-lg bg-bg-hover text-text-primary text-xs disabled:opacity-40 disabled:cursor-not-allowed"
+                    aria-label={t('pvCall')}
+                  >
+                    {t('pvCall')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveGroupId(null)}
+                    className="p-1.5 rounded-lg hover:bg-bg-hover text-text-tertiary"
+                    aria-label={t('pvCloseConnection')}
+                  >
+                    <X size={15} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Contrôles compacts : relais SMP + Tor + incognito (une seule rangée). */}
+              <div className="flex flex-wrap items-center gap-2">
+                <div role="group" aria-label={t('pvRelayControl')} className="flex items-center rounded-full bg-bg-primary p-0.5">
+                  <button type="button" aria-pressed={smpMode === 'auto'} onClick={() => applySmpMode('auto')} className={segClass(smpMode === 'auto')}>
+                    {t('pvRelayAuto')}
+                  </button>
+                  <button type="button" aria-pressed={smpMode === 'manual'} onClick={() => applySmpMode('manual')} className={segClass(smpMode === 'manual')}>
+                    {t('pvRelayChoose')}
+                  </button>
+                </div>
+                <button type="button" onClick={changeSmpHost} className={chipClass}>
+                  <RefreshCw size={13} /> {t('pvRelayChange')}
+                </button>
+                <span className="text-[11px] text-text-tertiary truncate max-w-[45%]" title={relayDisplay}>{relayDisplay}</span>
+                <Toggle label={t('torLabel')} checked={torOn} onChange={toggleTor} />
+                <Toggle label={t('pvIncognito')} checked={incognitoOn} onChange={toggleIncognito} icon={<EyeOff size={13} />} />
+              </div>
+              {/* Sélection manuelle : liste des serveurs SMP (le cycle reste un raccourci). */}
+              {smpMode === 'manual' && smpOptions.length > 0 && (
+                <label className="flex items-center gap-2 text-[11px] text-text-tertiary">
+                  <span className="shrink-0">{t('pvRelayChoose')}</span>
+                  <select
+                    value={smpHost}
+                    onChange={e => selectSmpHost(e.target.value, 'manual')}
+                    aria-label={t('pvSmpSelectLabel')}
+                    className="flex-1 min-w-0 px-2 py-1 rounded-lg bg-bg-primary text-[11px] text-text-secondary font-mono focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7578db]"
+                  >
+                    {smpOptions.map(host => (
+                      <option key={host} value={host}>{host}</option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {smpPending && <p className="text-[11px] text-[#a5a7ff]">{t('pvRelayAppliesNext')}</p>}
+              {incognitoOn && <p className="text-[11px] text-[#a5a7ff]">{t('pvIncognitoDesc')}</p>}
+              {torOn && <p className="text-[11px] text-text-tertiary">{t('torActiveHint')}</p>}
             </div>
 
             {groupInvite && groupInviteId === activeGroupId && (
@@ -1457,8 +1517,23 @@ export function PrivatePage() {
                 <div key={m.id} className={`max-w-[75%] px-3 py-2 rounded-2xl text-sm ${m.mine ? 'ml-auto bg-[#7578db] text-white' : 'mr-auto bg-bg-surface text-text-primary'}`}>{m.text}</div>
               ))}
             </div>
-            <div className="flex items-center gap-2 px-4 py-3 border-t border-bg-hover shrink-0">
-              <input value={groupDraft} onChange={e => setGroupDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendGroup() } }} placeholder={t('pvGroupMessagePlaceholder')} className="flex-1 px-3 py-2 rounded-xl bg-bg-primary text-sm text-text-primary" />
+            <div className="flex items-center gap-2 px-4 py-3 border-t border-bg-hover">
+              <button
+                type="button"
+                disabled
+                title={t('pvGroupNotAvailable')}
+                className="p-2 rounded-xl bg-bg-hover text-text-primary disabled:opacity-50"
+                aria-label={t('pvAttachFile')}
+              >
+                <Paperclip size={18} />
+              </button>
+              <input
+                value={groupDraft}
+                onChange={e => setGroupDraft(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendGroup() } }}
+                placeholder={t('pvGroupMessagePlaceholder')}
+                className="flex-1 px-3 py-2 rounded-xl bg-bg-primary text-sm text-text-primary"
+              />
               <button type="button" onClick={handleSendGroup} disabled={!groupDraft.trim()} className="p-2 rounded-xl bg-[#7578db] text-white disabled:opacity-50" aria-label={t('send')}><Send size={18} /></button>
             </div>
           </div>
