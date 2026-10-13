@@ -15,7 +15,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { getPeerConnectionConfig, hasTurnServer, isRelayOnlyCallsEnabled } from '@/lib/iceServers'
 import { isCoverTrafficEnabled, setCoverTrafficEnabled } from '@/lib/privacyPrefs'
 import { useI18n, tStatic } from '@/i18n'
@@ -162,6 +162,7 @@ function Toggle({
 
 export function PrivatePage() {
   const navigate = useNavigate()
+  const { conversationId: routeConversationId } = useParams()
   const { t } = useI18n()
   const { user, loading } = useAuth()
   const isAnonymous = !user
@@ -370,22 +371,31 @@ export function PrivatePage() {
     await refreshStatuses()
   }, [statusDraft, messenger, statusStore, refreshStatuses])
 
+  // Ouvre la conversation comme une PAGE distincte : l'URL devient /private/:id.
   const openConnection = useCallback(
-    async (conversationId: string) => {
-      activeRef.current = conversationId
-      setActive(conversationId)
-      setMessages([])
-      setError(null)
-      // Recharge l'historique local persistant.
-      try {
-        const rows = await messenger.history(conversationId)
-        setMessages(rows.map(r => ({ id: r.id, text: r.text, mine: r.mine })))
-      } catch {
-        // historique indisponible → on démarre vide
-      }
+    (conversationId: string) => {
+      navigate(`/private/${encodeURIComponent(conversationId)}`)
     },
-    [messenger],
+    [navigate],
   )
+
+  // Conversation ouverte pilotée par l'URL (page plein écran + bouton retour).
+  useEffect(() => {
+    const id = routeConversationId ?? null
+    if (id === activeRef.current) return
+    activeRef.current = id
+    setActive(id)
+    setMessages([])
+    setError(null)
+    if (id) {
+      void messenger
+        .history(id)
+        .then(rows => setMessages(rows.map(r => ({ id: r.id, text: r.text, mine: r.mine }))))
+        .catch(() => {
+          // historique indisponible → on démarre vide
+        })
+    }
+  }, [routeConversationId, messenger])
 
   // Un SEUL abonnement par connexion (messages + statuts), pour toutes les
   // connexions (pas seulement l'active) afin de capter les statuts. La rotation
@@ -722,8 +732,7 @@ export function PrivatePage() {
       monitorsRef.current.delete(conversationId)
       await messenger.forget(conversationId)
       if (active === conversationId) {
-        activeRef.current = null
-        setActive(null)
+        navigate('/private')
       }
       await refresh()
     },
@@ -749,9 +758,14 @@ export function PrivatePage() {
   )
 
   const closeConnection = useCallback(() => {
-    activeRef.current = null
-    setActive(null)
-  }, [])
+    navigate('/private')
+  }, [navigate])
+
+  // Nom affiché de la connexion ouverte (pseudo local sinon identifiant).
+  const activeLabel = useMemo(
+    () => connections.find(c => c.conversationId === active)?.label ?? active ?? '',
+    [connections, active],
+  )
 
   const handleCopy = useCallback(async () => {
     if (!invite) return
@@ -818,6 +832,8 @@ export function PrivatePage() {
   return (
     <Shell>
       <div className="flex-1 flex flex-col overflow-hidden bg-bg-primary">
+        {!active && (
+          <>
         {/* Header */}
         <div className="flex items-center gap-3 px-4 py-3 border-b border-bg-hover">
           {!isAnonymous && (
@@ -1192,15 +1208,28 @@ export function PrivatePage() {
           )}
         </div>
 
-        {/* Chat 1:1 + contrôles compacts de la connexion */}
-        {tab === 'connections' && active && (
-          <div className="border-t border-bg-hover bg-bg-secondary">
+          </>
+        )}
+
+        {/* Conversation privée — PAGE DISTINCTE plein écran (bouton retour à gauche). */}
+        {active && (
+          <div className="flex-1 flex flex-col min-h-0 bg-bg-secondary">
             <div className="px-4 py-2.5 space-y-2 border-b border-bg-hover">
               <div className="flex items-center justify-between gap-2">
-                <span className="flex items-center gap-2 text-xs text-text-secondary min-w-0">
-                  <Lock size={13} className="text-[#7578db] shrink-0" />
-                  <span className="truncate">{active}</span>
-                </span>
+                <div className="flex items-center gap-1 min-w-0">
+                  <button
+                    type="button"
+                    onClick={closeConnection}
+                    className="p-1.5 -ml-1 rounded-lg hover:bg-bg-hover text-text-primary shrink-0"
+                    aria-label={t('back')}
+                  >
+                    <ArrowLeft size={18} />
+                  </button>
+                  <span className="flex items-center gap-2 text-sm font-medium text-text-primary min-w-0">
+                    <Lock size={14} className="text-[#7578db] shrink-0" />
+                    <span className="truncate">{activeLabel}</span>
+                  </span>
+                </div>
                 <div className="flex items-center gap-1.5 shrink-0">
                   <button
                     type="button"
@@ -1261,7 +1290,7 @@ export function PrivatePage() {
               {torOn && <p className="text-[11px] text-text-tertiary">{t('torActiveHint')}</p>}
             </div>
 
-            <div className="h-56 overflow-auto px-4 py-2 space-y-2">
+            <div className="flex-1 min-h-0 overflow-auto px-4 py-2 space-y-2">
               {messages.length === 0 && <p className="text-xs text-text-tertiary">{t('pvNoMessages')}</p>}
               {messages.map(item => {
                 const file = parseFileMessage(item.text) as FileDescriptor | null

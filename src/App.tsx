@@ -235,6 +235,8 @@ function AppRoutes() {
 
         <Route path="/private" element={<PrivatePage />} />
 
+        <Route path="/private/:conversationId" element={<PrivatePage />} />
+
         <Route path="/network" element={<NetworkPage />} />
 
           <Route path="/" element={<Navigate to="/chats" />} />
