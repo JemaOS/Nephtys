@@ -283,6 +283,15 @@ export class GroupMessenger {
     await this.store.remove(groupId);
   }
 
+  /** Renomme localement un groupe (nom affiché, jamais transmis au pair). */
+  async rename(groupId: string, name: string): Promise<void> {
+    const record = await this.store.load(groupId);
+    if (!record) return;
+    const trimmed = name.trim();
+    if (trimmed) record.name = trimmed;
+    await this.store.save(record);
+  }
+
   /** Crée un groupe ; renvoie son id + le lien d'invitation à partager. */
   async create(name: string): Promise<{ record: GroupRecord; invite: string }> {
     const groupId = newGroupId();

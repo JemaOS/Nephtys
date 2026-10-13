@@ -214,6 +214,8 @@ export function PrivatePage() {
   const [statusDraft, setStatusDraft] = useState('')
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameDraft, setRenameDraft] = useState('')
+  const [renamingGroupId, setRenamingGroupId] = useState<string | null>(null)
+  const [renameGroupDraft, setRenameGroupDraft] = useState('')
 
   // Appel privé (signalisation WebRTC via le canal chiffré)
   const [callState, setCallState] = useState<CallState>('idle')
@@ -464,7 +466,8 @@ export function PrivatePage() {
       setInvite(link)
       setInviteConvId(id)
       await refresh()
-      openConnection(id)
+      // Pas de navigation automatique : l'utilisateur ouvre la conversation
+      // lui-même une fois l'invitation (QR/lien) partagée.
     } catch (e) {
       console.error('[private] create failed', e)
       setConnectFailed('create')
@@ -472,7 +475,7 @@ export function PrivatePage() {
       setCreating(false)
       setCreatingStep(null)
     }
-  }, [creating, messenger, refresh, openConnection])
+  }, [creating, messenger, refresh])
 
   const handleJoin = useCallback(async () => {
     if (!joinLink.trim() || joining) return
@@ -681,13 +684,13 @@ export function PrivatePage() {
       setGroupInvite(invite)
       setGroupInviteId(record.groupId)
       await refreshGroups()
-      openGroup(record.groupId)
+      // Pas d'ouverture automatique : l'utilisateur ouvre le groupe lui-même.
     } catch (e) {
       setGroupError(tStatic('pvGroupCreateError', { message: (e as Error).message }))
     } finally {
       setGroupBusy(false)
     }
-  }, [groupMessenger, refreshGroups, openGroup])
+  }, [groupMessenger, refreshGroups])
 
   const handleJoinGroup = useCallback(async () => {
     if (!groupJoinLink.trim()) return
@@ -751,6 +754,16 @@ export function PrivatePage() {
       await refresh()
     },
     [messenger, renameDraft, refresh],
+  )
+
+  const handleRenameGroup = useCallback(
+    async (groupId: string) => {
+      await groupMessenger.rename(groupId, renameGroupDraft)
+      setRenamingGroupId(null)
+      setRenameGroupDraft('')
+      await refreshGroups()
+    },
+    [groupMessenger, renameGroupDraft, refreshGroups],
   )
 
   const handleDeleteStatus = useCallback(
@@ -1163,12 +1176,37 @@ export function PrivatePage() {
                 {groups.length === 0 && <p className="text-sm text-text-tertiary">{t('pvNoGroups')}</p>}
                 {groups.map(g => (
                   <div key={g.groupId} className="flex items-center justify-between gap-2 rounded-xl bg-bg-surface px-3 py-2">
-                    <button type="button" onClick={() => openGroup(g.groupId)} className="flex items-center gap-2 text-sm text-text-primary min-w-0">
-                      <Lock size={15} className="text-[#7578db] shrink-0" />
-                      <span className="truncate">{g.name}</span>
-                      <span className="text-[10px] text-text-tertiary shrink-0">{t('pvMembers', { count: g.members.length + 1 })}</span>
-                    </button>
-                    <button type="button" onClick={() => handleForgetGroup(g.groupId)} className="p-2 rounded-lg hover:bg-bg-hover text-text-tertiary" aria-label={t('pvForget')}><Trash2 size={15} /></button>
+                    {renamingGroupId === g.groupId ? (
+                      <input
+                        autoFocus
+                        value={renameGroupDraft}
+                        onChange={e => setRenameGroupDraft(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') void handleRenameGroup(g.groupId)
+                          else if (e.key === 'Escape') { setRenamingGroupId(null); setRenameGroupDraft('') }
+                        }}
+                        placeholder={t('pvRenamePlaceholder')}
+                        className="flex-1 min-w-0 px-2 py-1 rounded-lg bg-bg-primary text-sm text-text-primary outline-none"
+                      />
+                    ) : (
+                      <button type="button" onClick={() => openGroup(g.groupId)} className="flex items-center gap-2 text-sm text-text-primary min-w-0">
+                        <Lock size={15} className="text-[#7578db] shrink-0" />
+                        <span className="truncate">{g.name}</span>
+                        <span className="text-[10px] text-text-tertiary shrink-0">{t('pvMembers', { count: g.members.length + 1 })}</span>
+                      </button>
+                    )}
+                    <div className="flex items-center gap-1 shrink-0">
+                      {renamingGroupId === g.groupId ? (
+                        <button type="button" onClick={() => handleRenameGroup(g.groupId)} className="p-2 rounded-lg hover:bg-bg-hover text-[#7578db]" aria-label={t('pvRename')}>
+                          <Check size={15} />
+                        </button>
+                      ) : (
+                        <button type="button" onClick={() => { setRenamingGroupId(g.groupId); setRenameGroupDraft(g.name) }} className="p-2 rounded-lg hover:bg-bg-hover text-text-tertiary" aria-label={t('pvRename')}>
+                          <Pencil size={15} />
+                        </button>
+                      )}
+                      <button type="button" onClick={() => handleForgetGroup(g.groupId)} className="p-2 rounded-lg hover:bg-bg-hover text-text-tertiary" aria-label={t('pvForget')}><Trash2 size={15} /></button>
+                    </div>
                   </div>
                 ))}
               </section>
