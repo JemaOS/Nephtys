@@ -42,14 +42,6 @@ import { tStatic } from './i18n';
 // Fichier partagé : le garder identique dans toutes les apps PWA.
 
 const API_BASE = 'https://connect-api.jematech.fr';
-// Identifiant client du backend connect. Fourni de préférence par la variable
-// d'environnement VITE_CONNECT_API_KEY (à définir dans Vercel). La valeur de
-// repli est un identifiant PARTAGÉ livré dans le bundle : par nature PUBLIC
-// (tout ce qui est dans un bundle JS l'est, quelle que soit la variable d'env
-// utilisée). Le contrôle d'accès réel doit rester côté serveur.
-const API_KEY =
-  (import.meta.env.VITE_CONNECT_API_KEY as string | undefined) ||
-  'e58492a3-b452-4197-9f4a-deb7915b9446';
 
 // Portail SSO central (authentification JemaOS). Sur l'hôte SSO lui-même,
 // /auth est la page de connexion du routeur de l'app.
@@ -399,7 +391,6 @@ async function checkSubscription(token: string): Promise<CheckResult> {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': API_KEY,
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({}),
@@ -475,7 +466,6 @@ async function tryRefreshToken(): Promise<boolean> {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': API_KEY,
       },
       body: JSON.stringify({ refresh_token: refreshToken }),
     });
