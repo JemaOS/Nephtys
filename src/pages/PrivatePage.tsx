@@ -172,6 +172,7 @@ export function PrivatePage() {
 
   const [connections, setConnections] = useState<PrivateConnectionRecord[]>([])
   const [invite, setInvite] = useState<string | null>(null)
+  const [inviteConvId, setInviteConvId] = useState<string | null>(null)
   const [joinLink, setJoinLink] = useState('')
   const [active, setActive] = useState<string | null>(null)
   const [messages, setMessages] = useState<ChatItem[]>([])
@@ -194,6 +195,7 @@ export function PrivatePage() {
   const groupMessenger = useMemo(() => getGroupMessenger(), [])
   const [groups, setGroups] = useState<GroupRecord[]>([])
   const [groupInvite, setGroupInvite] = useState<string | null>(null)
+  const [groupInviteId, setGroupInviteId] = useState<string | null>(null)
   const [groupJoinLink, setGroupJoinLink] = useState('')
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null)
   const [groupMessages, setGroupMessages] = useState<ChatItem[]>([])
@@ -460,6 +462,7 @@ export function PrivatePage() {
       setCreatingStep(tStatic('pvCreateStepQueue'))
       const { link } = await messenger.establish(id)
       setInvite(link)
+      setInviteConvId(id)
       await refresh()
       openConnection(id)
     } catch (e) {
@@ -676,6 +679,7 @@ export function PrivatePage() {
     try {
       const { record, invite } = await groupMessenger.create(tStatic('pvGroupName'))
       setGroupInvite(invite)
+      setGroupInviteId(record.groupId)
       await refreshGroups()
       openGroup(record.groupId)
     } catch (e) {
@@ -767,6 +771,12 @@ export function PrivatePage() {
     [connections, active],
   )
 
+  // Nom du groupe ouvert.
+  const activeGroupLabel = useMemo(
+    () => groups.find(g => g.groupId === activeGroupId)?.name ?? activeGroupId ?? '',
+    [groups, activeGroupId],
+  )
+
   const handleCopy = useCallback(async () => {
     if (!invite) return
     try {
@@ -832,7 +842,7 @@ export function PrivatePage() {
   return (
     <Shell>
       <div className="flex-1 flex flex-col overflow-hidden bg-bg-primary">
-        {!active && (
+        {!active && !activeGroupId && (
           <>
         {/* Header */}
         <div className="flex items-center gap-3 px-4 py-3 border-b border-bg-hover">
@@ -1290,6 +1300,16 @@ export function PrivatePage() {
               {torOn && <p className="text-[11px] text-text-tertiary">{t('torActiveHint')}</p>}
             </div>
 
+            {invite && inviteConvId === active && (
+              <div className="px-3 py-2 border-b border-bg-hover space-y-1 shrink-0">
+                <p className="text-[11px] text-text-secondary">{t('pvInviteTitle')}</p>
+                <div className="flex items-center gap-2">
+                  <input readOnly value={invite} className="flex-1 min-w-0 px-2 py-1 rounded-lg bg-bg-primary text-[11px] font-mono text-text-secondary truncate" />
+                  <button type="button" onClick={handleCopy} className="px-3 py-1.5 rounded-lg bg-bg-hover text-xs text-text-primary">{t('pvCopy')}</button>
+                </div>
+              </div>
+            )}
+
             <div className="flex-1 min-h-0 overflow-auto px-4 py-2 space-y-2">
               {messages.length === 0 && <p className="text-xs text-text-tertiary">{t('pvNoMessages')}</p>}
               {messages.map(item => {
@@ -1365,19 +1385,41 @@ export function PrivatePage() {
           </div>
         )}
 
-        {/* Chat de groupe */}
-        {tab === 'groups' && activeGroupId && (
-          <div className="border-t border-bg-hover bg-bg-secondary">
-            <div className="px-4 py-2 text-xs text-text-secondary flex items-center gap-2">
-              <Lock size={13} className="text-[#7578db]" /> {t('pvGroupLabel', { id: activeGroupId })}
+        {/* Conversation de groupe — PAGE DISTINCTE plein écran (bouton retour à gauche). */}
+        {activeGroupId && (
+          <div className="flex-1 flex flex-col min-h-0 bg-bg-secondary">
+            <div className="flex items-center gap-1 px-3 py-2 border-b border-bg-hover shrink-0">
+              <button
+                type="button"
+                onClick={() => setActiveGroupId(null)}
+                className="p-1.5 -ml-1 rounded-lg hover:bg-bg-hover text-text-primary shrink-0"
+                aria-label={t('back')}
+              >
+                <ArrowLeft size={18} />
+              </button>
+              <span className="flex items-center gap-2 text-sm font-medium text-text-primary min-w-0">
+                <Lock size={14} className="text-[#7578db] shrink-0" />
+                <span className="truncate">{activeGroupLabel}</span>
+              </span>
             </div>
-            <div className="h-56 overflow-auto px-4 py-2 space-y-2">
+
+            {groupInvite && groupInviteId === activeGroupId && (
+              <div className="px-3 py-2 border-b border-bg-hover space-y-1 shrink-0">
+                <p className="text-[11px] text-text-secondary">{t('pvGroupInviteTitle')}</p>
+                <div className="flex items-center gap-2">
+                  <input readOnly value={groupInvite} className="flex-1 min-w-0 px-2 py-1 rounded-lg bg-bg-primary text-[11px] font-mono text-text-secondary truncate" />
+                  <button type="button" onClick={() => navigator.clipboard?.writeText(groupInvite)} className="px-3 py-1.5 rounded-lg bg-bg-hover text-xs text-text-primary">{t('pvCopy')}</button>
+                </div>
+              </div>
+            )}
+
+            <div className="flex-1 min-h-0 overflow-auto px-4 py-2 space-y-2">
               {groupMessages.length === 0 && <p className="text-xs text-text-tertiary">{t('pvNoMessagesShort')}</p>}
               {groupMessages.map(m => (
                 <div key={m.id} className={`max-w-[75%] px-3 py-2 rounded-2xl text-sm ${m.mine ? 'ml-auto bg-[#7578db] text-white' : 'mr-auto bg-bg-surface text-text-primary'}`}>{m.text}</div>
               ))}
             </div>
-            <div className="flex items-center gap-2 px-4 py-3 border-t border-bg-hover">
+            <div className="flex items-center gap-2 px-4 py-3 border-t border-bg-hover shrink-0">
               <input value={groupDraft} onChange={e => setGroupDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendGroup() } }} placeholder={t('pvGroupMessagePlaceholder')} className="flex-1 px-3 py-2 rounded-xl bg-bg-primary text-sm text-text-primary" />
               <button type="button" onClick={handleSendGroup} disabled={!groupDraft.trim()} className="p-2 rounded-xl bg-[#7578db] text-white disabled:opacity-50" aria-label={t('send')}><Send size={18} /></button>
             </div>

@@ -187,12 +187,12 @@ export function NetworkPage() {
                 <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${STATUS_DOT[ev.status]}`} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 text-[11px]">
-                    <span className={`font-semibold ${LAYER_STYLE[ev.layer]}`}>{ev.layer}</span>
+                    <span className={`font-semibold ${LAYER_STYLE[ev.layer]}`}>{ev.layer === 'supabase' ? t('netLayerServer') : ev.layer}</span>
                     <span className="text-text-primary font-mono">{ev.op}</span>
                     {typeof ev.ms === 'number' && <span className="text-text-tertiary">{ev.ms} ms</span>}
                     <span className="ml-auto text-text-tertiary">{timeOf(ev.t)}</span>
                   </div>
-                  {ev.endpoint && <p className="text-[11px] text-text-secondary font-mono break-all">{ev.endpoint}</p>}
+                  {ev.endpoint && <p className="text-[11px] text-text-secondary font-mono break-all">{ev.layer === 'supabase' ? t('netServerEurope') : ev.endpoint}</p>}
                   {ev.detail && <p className="text-[11px] text-text-tertiary break-all">{ev.detail}</p>}
                 </div>
               </div>

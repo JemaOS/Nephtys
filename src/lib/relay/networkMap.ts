@@ -50,7 +50,7 @@ export function egressInfo(): EgressInfo {
   if (isSmpV9Enabled()) {
     return { transport: 'SMP via pont', ip: '78.232.3.78', masked: false };
   }
-  return { transport: 'Direct (Supabase)', ip: 'votre IP d’entrée', masked: false };
+  return { transport: 'Serveur (Europe)', ip: 'votre IP d’entrée', masked: false };
 }
 
 /** IP/hôte du pont SMP courant (diagnostic). */
