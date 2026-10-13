@@ -247,6 +247,7 @@ export function PrivatePage() {
   const [tab, setTab] = useState<'connections' | 'groups' | 'status'>('connections')
   const [showJoin, setShowJoin] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false)
+  const [showJoinGroup, setShowJoinGroup] = useState(false)
   const localMediaRef = useRef<MediaStream | null>(null)
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null)
   const localVideoRef = useRef<HTMLVideoElement | null>(null)
@@ -1145,29 +1146,106 @@ export function PrivatePage() {
 
           {tab === 'groups' && (
             <>
-              <button
-                type="button"
-                onClick={handleCreateGroup}
-                disabled={groupBusy}
-                className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-[#7578db] text-white text-sm font-medium disabled:opacity-50"
-              >
-                <Plus size={16} /> {t('pvCreateGroup')}
-              </button>
-
+              {/* Invitation de groupe (même style que la carte d'invitation 1:1). */}
               {groupInvite && (
                 <div className="rounded-2xl bg-bg-surface p-4 flex flex-col items-center gap-3">
-                  <SafeQrCode value={groupInvite} size={160} />
+                  <div className="w-full flex items-center justify-between">
+                    <span className="text-xs text-text-secondary">{t('pvGroupInviteTitle')}</span>
+                    <button
+                      type="button"
+                      onClick={() => setGroupInvite(null)}
+                      className="p-1 rounded-lg hover:bg-bg-hover text-text-tertiary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7578db]"
+                      aria-label={t('close')}
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                  <SafeQrCode value={groupInvite} size={180} />
                   <div className="w-full flex items-center gap-2">
-                    <input readOnly value={groupInvite} className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-bg-primary text-[11px] font-mono text-text-secondary truncate" />
-                    <button type="button" onClick={() => navigator.clipboard?.writeText(groupInvite)} className="px-3 py-2 rounded-lg bg-bg-hover text-xs text-text-primary">{t('pvCopy')}</button>
+                    <input readOnly value={groupInvite} className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-bg-primary text-xs text-text-secondary font-mono truncate" />
+                    <button type="button" onClick={() => navigator.clipboard?.writeText(groupInvite)} className="px-3 py-2 rounded-lg bg-bg-hover text-xs text-text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7578db]">{t('pvCopy')}</button>
                   </div>
                 </div>
               )}
 
-              <div className="space-y-2">
-                <textarea value={groupJoinLink} onChange={e => setGroupJoinLink(e.target.value)} placeholder={t('pvGroupJoinPlaceholder')} rows={2} className="w-full px-3 py-2 rounded-xl bg-bg-surface text-xs text-text-primary font-mono resize-none outline-none" />
-                <button type="button" onClick={handleJoinGroup} disabled={groupBusy || !groupJoinLink.trim()} className="w-full px-3 py-2 rounded-xl bg-bg-hover text-text-primary text-sm font-medium disabled:opacity-50">{t('pvJoinAction')}</button>
-              </div>
+              {/* Création : une action principale, le reste replié (comme Connexions). */}
+              <button
+                type="button"
+                onClick={handleCreateGroup}
+                disabled={groupBusy}
+                aria-busy={groupBusy}
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-[#7578db] text-white text-sm font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7578db]"
+              >
+                {groupBusy ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" aria-hidden />
+                    {t('pvCreating')}
+                  </>
+                ) : (
+                  <>
+                    <Plus size={16} /> {t('pvCreateGroup')}
+                  </>
+                )}
+              </button>
+
+              <Disclosure label={t('pvJoinDisclosure')} open={showJoinGroup} onToggle={() => setShowJoinGroup(v => !v)}>
+                <textarea
+                  value={groupJoinLink}
+                  onChange={e => setGroupJoinLink(e.target.value)}
+                  placeholder={t('pvGroupJoinPlaceholder')}
+                  rows={2}
+                  className="w-full px-3 py-2 rounded-xl bg-bg-primary text-xs text-text-primary font-mono resize-none outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7578db]"
+                />
+                <button
+                  type="button"
+                  onClick={handleJoinGroup}
+                  disabled={groupBusy || !groupJoinLink.trim()}
+                  aria-busy={groupBusy}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-bg-hover text-text-primary text-sm font-medium hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {groupBusy ? (
+                    <>
+                      <Loader2 size={14} className="animate-spin" aria-hidden />
+                      {t('pvJoining')}
+                    </>
+                  ) : (
+                    t('pvJoinAction')
+                  )}
+                </button>
+              </Disclosure>
+
+              <Disclosure
+                label={t('pvAdvanced')}
+                open={showAdvanced}
+                onToggle={() => setShowAdvanced(v => !v)}
+                icon={<SlidersHorizontal size={14} />}
+              >
+                <p className="text-[11px] text-text-tertiary">
+                  {t('pvTransport')} : <span className="text-text-secondary break-all">{getRelayLabel()}</span>
+                </p>
+                <div className="flex items-center gap-2">
+                  <input
+                    value={relayInput}
+                    onChange={e => setRelayInput(e.target.value)}
+                    placeholder={t('pvRelayUrlPlaceholder')}
+                    aria-label={t('pvRelayUrlLabel')}
+                    className="flex-1 min-w-0 px-2 py-1 rounded-lg bg-bg-primary text-[11px] text-text-secondary font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (setRelayUrl(relayInput)) {
+                        globalThis.location.reload()
+                      } else {
+                        setError(tStatic('relayInvalidUrl'))
+                      }
+                    }}
+                    className="px-2 py-1 rounded-lg bg-bg-hover text-[11px] text-text-primary shrink-0"
+                  >
+                    {t('pvApply')}
+                  </button>
+                </div>
+              </Disclosure>
 
               {groupError && <div className="rounded-xl bg-red-500/10 border border-red-500/20 p-3 text-xs text-red-400">{groupError}</div>}
 
