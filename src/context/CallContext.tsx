@@ -1132,6 +1132,7 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
             .eq('id', callLog.id)
         }
       } catch (e) {
+        /* ignore */
       }
     }
   }

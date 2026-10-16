@@ -107,7 +107,7 @@ export function CaptchaWidget({ onVerify, onExpire, onError, resetSignal = 0, th
           return
         }
         removeWidget()
-        containerRef.current.innerHTML = ''
+        containerRef.current.replaceChildren()
         widgetIdRef.current = api.render(containerRef.current, {
           sitekey: CAPTCHA_SITE_KEY,
           theme,

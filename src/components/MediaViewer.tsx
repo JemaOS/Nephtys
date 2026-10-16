@@ -799,6 +799,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
         video.webkitEnterFullscreen();
         return true;
       } catch (e) {
+        /* ignore */
       }
     }
 
@@ -930,6 +931,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
         // @ts-expect-error - lock is experimental API not in TypeScript types
         await globalThis.screen.orientation.lock('landscape');
       } catch (e) {
+        /* ignore */
       }
     }
   };

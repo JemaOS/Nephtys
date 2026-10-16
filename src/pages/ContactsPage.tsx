@@ -840,8 +840,6 @@ const processContactForDeletion = async (
   // Handle Saved Messages (self-contact)
   if (isSelfContactCheck) {
     foundConversation = await deleteSavedMessagesConversation(userId, myConversations);
-    if (foundConversation) {
-    }
   } else {
     // Handle normal direct conversation
     foundConversation = await deleteDirectConversation(
@@ -850,8 +848,6 @@ const processContactForDeletion = async (
       isVirtual, 
       myConversations
     );
-    if (foundConversation) {
-    }
   }
   
   // Handle virtual contacts from group conversations
@@ -916,7 +912,6 @@ const getContactsToDelete = (
 
         if (error) {
           console.error('Error deleting contacts:', error)
-        } else {
         }
       }
 
