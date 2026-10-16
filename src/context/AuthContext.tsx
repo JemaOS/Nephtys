@@ -965,7 +965,7 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
    *
    * ⚠️ Action irréversible : l'historique chiffré avec l'ancienne phrase est
    * définitivement perdu. Les contacts et la liste des conversations restent
-   * côté serveur, mais apparaissent vides (façon WhatsApp sans sauvegarde).
+   * côté serveur, mais apparaissent vides (sans aucun message ni média).
    */
   const startFreshWithoutRecovery = async (): Promise<void> => {
     const uid = user?.id

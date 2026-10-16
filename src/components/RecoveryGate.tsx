@@ -199,7 +199,7 @@ function EnterPhraseScreen({ onRecovered }: { readonly onRecovered: () => void }
               </ul>
               <p>
                 Vos <b>contacts et vos conversations seront conservés</b>, mais
-                <b> vides</b> — comme WhatsApp lorsque vous restauriez sans sauvegarde.
+                <b> vides</b> : aucun message ni média n'y subsistera.
               </p>
               <p>
                 Une <b>nouvelle phrase de récupération</b> sera générée. Notez-la
