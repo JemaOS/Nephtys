@@ -64,13 +64,17 @@ const AUTH_PORTAL_URL = 'https://auth-app.jematech.fr';
 const REFRESH_URL = `${API_BASE}/v1/connect/refreshtoken`;
 
 const GRACE_KEY = 'jemaos_sub_ok_until';
-// SÉCURITÉ : en production, le stockage local ne doit JAMAIS accorder l'accès.
-// La « grâce » hors-ligne (jemaos_sub_ok_until) est une valeur purement
-// client, donc falsifiable (il suffit de la fixer dans le futur pour
-// contourner le paywall). Elle n'est donc honorée qu'en développement. En
-// production, seul le serveur tranche ; un mode hors-ligne réellement sûr
-// exigerait un jeton d'entitlement SIGNÉ par le serveur (hors de ce fichier).
-const TRUST_LOCAL_GRACE = import.meta.env.DEV;
+// Grâce hors-ligne : après une vérification serveur réussie, l'abonnement
+// reste valide sans internet (et sans jeton disponible) pendant
+// OFFLINE_GRACE_DAYS, renouvelée à chaque check en ligne et révoquée si le
+// serveur confirme "pas d'abonnement".
+//
+// Aligné sur le guard partagé des autres PWA (JemaNote, JemaPDF...) : ces
+// apps honorent la grâce locale stockée par profil. Nephtys la refusait en
+// production (TRUST_LOCAL_GRACE = DEV), ce qui le rendait la SEULE app à
+// exiger un jeton live à chaque ouverture — et donc à murer quand l'OS
+// n'injecte pas le jeton, alors que les autres apps restaient déverrouillées.
+// Le fichier doit rester identique dans toutes les apps PWA.
 // Tolérance hors-ligne : après une vérification réussie, l'abonnement est
 // considéré valide sans internet pendant cette durée (renouvelée à chaque
 // check en ligne, donc "OFFLINE_GRACE_DAYS jours depuis le dernier
@@ -247,7 +251,6 @@ function clearSubscriptionGrace() {
 }
 
 function inGracePeriod(): boolean {
-  if (!TRUST_LOCAL_GRACE) return false;
   try {
     const until = Number(localStorage.getItem(GRACE_KEY) || 0);
     return Date.now() < until;
