@@ -531,7 +531,6 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
           filter: `id=eq.${user.id}`
         },
         (payload) => {
-          console.log('Profile updated:', payload)
           setProfile(payload.new as Profile)
         }
       )
@@ -740,7 +739,6 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
         try {
           const { data: { session } } = await supabase.auth.getSession();
           if (session?.user) {
-            console.log('[Auth] Successfully reused ephemeral session');
             return; // Session valide réutilisée, aucun mot de passe requis.
           }
         } catch {

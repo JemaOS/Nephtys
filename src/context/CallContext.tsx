@@ -171,7 +171,6 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
   const processIceCandidateQueue = async () => {
     if (iceCandidateQueueRef.current.length === 0) return
 
-    console.log(`Processing ${iceCandidateQueueRef.current.length} queued ICE candidates`)
     const remainingCandidates: QueuedIceCandidate[] = []
     
     for (const item of iceCandidateQueueRef.current) {
@@ -359,7 +358,6 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
   const handleOfferSignal = async (signal: CallSignal) => {
     // Check if this is a renegotiation for the current call
     if (isInCall && (signal.conversation_id === currentCallConversationId || signal.from === currentCallUserId)) {
-      console.log('📞 CallContext: Received renegotiation offer');
       if (webrtcManager) {
         const answer = await webrtcManager.createAnswer(signal.data);
         await sendSignal({
@@ -456,7 +454,6 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
         })
       }
     } else {
-      console.log('Queueing ICE candidate (PC not ready or no remote description)')
       iceCandidateQueueRef.current.push({
         candidate: signal.data,
         timestamp: Date.now()
@@ -512,7 +509,7 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
           let errorMsg = tStatic('callPermsRequired')
           
           if (permError.name === 'NotAllowedError') {
-            errorMsg += tStatic('callPermsChromeMobile')
+            errorMsg += tStatic('callPermsJemaOSMobile')
           } else {
             errorMsg += tStatic('callPermsGeneric')
           }
@@ -596,7 +593,6 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
       // Add ICE restart handler for better stability
       webrtcManager.onIceConnectionStateChange(async (state) => {
         if (state === 'failed' || state === 'disconnected') {
-           console.log('Attempting ICE restart...');
            try {
              const offer = await webrtcManager.restartIce();
              await sendSignal({
@@ -693,7 +689,6 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
       // Add ICE restart handler for better stability
       webrtcManager.onIceConnectionStateChange(async (state) => {
         if (state === 'failed' || state === 'disconnected') {
-           console.log('Attempting ICE restart...');
            try {
              const offer = await webrtcManager.restartIce();
              await sendSignal({
@@ -787,8 +782,6 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
     if (!user) return
 
     try {
-      console.log('📞 addParticipant called, contactId:', contactId)
-      console.log('📞 Current state: isGroupCall:', isGroupCall, 'isInCall:', isInCall, 'currentCallUserId:', currentCallUserId)
       
       // Get the new participant's profile
       const { data: newProfile } = await supabase
@@ -802,7 +795,6 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
       if (isGroupCall && currentCallConversationId) {
         // --- SCENARIO 1: ALREADY IN GROUP CALL ---
         // Just send an invite to the new person
-        console.log('📞 Adding participant to existing group call:', contactId)
         
         // Get conversation info for the invite
         const { data: conversation } = await supabase
@@ -823,13 +815,11 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
           conversation_id: currentCallConversationId,
         })
 
-        console.log('📞 Invite sent to:', contactId)
 
       } else if (isInCall && currentCallUserId && currentCallConversationId) {
         // --- SCENARIO 2: 1-ON-1 CALL -> INVITE NEW PERSON ---
         // DON'T end the current call! Just send an invite to the new person
         // They will join as a third participant
-        console.log('📞 Inviting new participant to 1-on-1 call:', contactId)
         
         // Get current peer's profile for the invite message
         const { data: peerProfile } = await supabase
@@ -854,7 +844,6 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
           conversation_id: currentCallConversationId,
         })
 
-        console.log('📞 Invite sent to:', contactId, 'to join call with', peerName)
         
         // Update the UI to show we're now in a "group-like" call
         // But keep the existing WebRTC connection with the first peer
@@ -952,7 +941,7 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
       let errorMsg = tStatic('callPermsRequired')
       
       if (permError.name === 'NotAllowedError') {
-        errorMsg += tStatic('callPermsChromeMobile')
+        errorMsg += tStatic('callPermsJemaOSMobile')
       } else {
         errorMsg += tStatic('callPermsGeneric')
       }
@@ -1143,7 +1132,6 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
             .eq('id', callLog.id)
         }
       } catch (e) {
-        console.log('Could not update group call log with participant count:', e)
       }
     }
   }
@@ -1157,7 +1145,6 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
   ) => {
     if (sendEndSignal && otherUserId && conversationId && userId) {
       try {
-        console.log('📞 CallContext: Sending call-end signal');
         await sendSignal({
           type: 'call-end',
           from: userId,
@@ -1170,13 +1157,11 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
       }
     }
 
-    console.log('📞 CallContext: Calling webrtcManager.endCall()');
     webrtcManager.endCall()
   }
 
   // Reset call state to initial values
   const resetCallState = () => {
-    console.log('📞 CallContext: Resetting state');
     setIsInCall(false)
     setIsCalling(false)
     setIsRinging(false)
@@ -1192,7 +1177,6 @@ export function CallProvider({ children }: { readonly children: ReactNode }) {
 
   // End call - handles both group and 1-to-1 calls
   const endCall = async (sendEndSignal: boolean = true) => {
-    console.log('📞 CallContext: endCall initiated', { isGroupCall, sendEndSignal });
     
     const conversationId = currentCallConversationId
     const otherUserId = incomingCallSignal?.from || currentCallUserId

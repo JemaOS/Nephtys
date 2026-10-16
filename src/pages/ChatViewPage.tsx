@@ -1287,11 +1287,9 @@ export function ChatViewPage() {
     const now = Date.now()
     // Only allow reload every 10 seconds minimum (WhatsApp style)
     if (now - lastLoadTimeRef.current < 10000) {
-      console.log('[ChatViewPage] Skipping reload, too soon')
       return
     }
     if (isLoadingDataRef.current) {
-      console.log('[ChatViewPage] Skipping reload, already in progress')
       return
     }
     
@@ -1419,7 +1417,6 @@ export function ChatViewPage() {
         }
       })
       .subscribe((status) => {
-        console.log(`[realtime][msg:${conversationId}] statut:`, status)
       })
 
     const appChannel = supabase
@@ -1451,7 +1448,6 @@ export function ChatViewPage() {
         }
       })
       .subscribe((status) => {
-        console.log(`[realtime][app:${conversationId}] statut:`, status)
       })
 
     // Handle visibility change - WHATSAPP STYLE: NO reload on visibility change
@@ -1990,7 +1986,6 @@ export function ChatViewPage() {
     }
 
     const updatedCount = ids.length
-    console.log('[ChatViewPage] Marked as read:', updatedCount, 'messages in conv', conversationIdRef)
 
     // Mise \u00e0 jour optimiste de l'\u00e9tat local
     setMessages(prev =>
@@ -2700,7 +2695,6 @@ await decryptMessageRows(validData as any[], user.id)
             rawKey: encryptionKey,
             mediaIvBase64: mediaIv,
           })
-          console.log('[E2EE] Clés enveloppées créées:', result.inserted, '/', result.inserted + result.missingKeys.length, 'destinataires')
           if (result.missingKeys.length > 0) {
             console.warn('[E2EE] Membres sans clé publique (média non déchiffrable pour eux):', result.missingKeys)
           }
@@ -3177,7 +3171,7 @@ await decryptMessageRows(validData as any[], user.id)
         const { error } = await supabase.from('deleted_messages').insert(records)
         // 23505 = doublon (déjà supprimé) : ce n'est pas une erreur.
         if (error && error.code !== '23505') {
-          console.log('Using local state for delete for me:', error.message)
+          /* erreur non bloquante */
         }
       } catch (error) {
         console.error('Error deleting message for me:', error)
@@ -3482,7 +3476,7 @@ await decryptMessageRows(validData as any[], user.id)
 
       // Show feedback to user
       if (successCount > 0 && errorCount === 0) {
-        console.log(`Message transféré à ${successCount} conversation(s)`)
+        /* transfert réussi */
       } else if (errorCount > 0) {
         alert(t('forwardPartialError', { failed: errorCount, total: conversationIds.length }))
       }
@@ -3693,7 +3687,6 @@ await decryptMessageRows(validData as any[], user.id)
     const confirmed = window.confirm(t('reportConfirm'))
     if (confirmed) {
       // In a real implementation, this would send a report to the server
-      console.log('Message reported:', messageId)
       alert(t('reportedToAdmins'))
     }
   }
@@ -3818,7 +3811,7 @@ await decryptMessageRows(validData as any[], user.id)
         .insert(deletedRecords)
         .then(({ error }) => {
           if (error) {
-            console.log('Using local state for delete for me:', error.message)
+            /* erreur non bloquante */
           }
         })
     }
@@ -4129,7 +4122,7 @@ await decryptMessageRows(validData as any[], user.id)
         <Suspense fallback={null}>
         <MediaUploader
           conversationId={conversationId!}
-          onMediaSelect={(file, type) => console.log('Media selected:', file.name, type)}
+          onMediaSelect={() => undefined}
           onUploadComplete={handleMediaUploadComplete}
           onMultipleUploadComplete={handleMultipleUploadComplete}
           onCancel={() => setShowMediaUploader(false)}

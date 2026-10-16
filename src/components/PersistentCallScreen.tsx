@@ -130,7 +130,6 @@ export function PersistentCallScreen() {
   // Handle local stream attachment - re-attach when stream changes or video is toggled
   useEffect(() => {
     if (localVideoRef.current && localStream && videoEnabled) {
-      console.log('PersistentCallScreen: Attaching local stream to video element');
       localVideoRef.current.srcObject = localStream;
       localVideoRef.current.play().catch(err => {
         console.warn('Local video play failed:', err);
@@ -142,17 +141,10 @@ export function PersistentCallScreen() {
   // Re-attach when remoteStream changes OR when local videoEnabled changes (to ensure remote video stays attached)
   useEffect(() => {
     if (remoteStream) {
-      console.log('PersistentCallScreen: Attaching remote stream', {
-        audioTracks: remoteStream.getAudioTracks().length,
-        videoTracks: remoteStream.getVideoTracks().length,
-        videoEnabled,
-        remoteVideoEnabled
-      });
 
       // Ensure all tracks are enabled
       remoteStream.getTracks().forEach(track => {
         if (!track.enabled) {
-          console.log(`PersistentCallScreen: Enabling ${track.kind} track`);
           track.enabled = true;
         }
       });

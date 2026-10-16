@@ -69,7 +69,6 @@ export async function enroll2FA(friendlyName: string = 'Nephtys App'): Promise<{
       
       // Unenroll all unverified factors to allow fresh enrollment
       for (const factor of unverifiedFactors) {
-        console.log('[2FA] Removing unverified factor:', factor.id)
         try {
           await supabase.auth.mfa.unenroll({ factorId: factor.id })
         } catch (e) {

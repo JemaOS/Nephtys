@@ -30,7 +30,6 @@ export class ErrorBoundary extends React.Component<
     // Handle chunk loading errors by reloading the page
     if (error?.message?.includes('Failed to fetch dynamically imported module') ||
         error?.message?.includes('Importing a module script failed')) {
-      console.log('Chunk load error detected, reloading...');
       // Prevent infinite reload loops
       const lastReload = sessionStorage.getItem('chunk_reload_time');
       const now = Date.now();

@@ -190,7 +190,6 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
         webAudioSourceRef.current.stop();
       } catch {
         // Audio source might already be stopped - this is expected
-        console.log('Audio source already stopped or invalid');
       }
       webAudioSourceRef.current = null;
     }
@@ -203,7 +202,6 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
   // Play using Web Audio API (for formats that HTML5 audio can't handle)
   const playWithWebAudio = useCallback(async () => {
     try {
-      console.log('Trying Web Audio API playback...');
       
       const ctx = getAudioContext();
       
@@ -222,7 +220,6 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
         
         // Decode the audio data
         audioBufferRef.current = await ctx.decodeAudioData(arrayBuffer);
-        console.log('Audio decoded successfully, duration:', audioBufferRef.current.duration);
         
         // Update duration
         if (audioBufferRef.current.duration && Number.isFinite(audioBufferRef.current.duration)) {
@@ -262,7 +259,6 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
       }, 100);
       
       setIsPlaying(true);
-      console.log('Web Audio API playback started');
       return true;
     } catch (error) {
       console.error('Web Audio API playback failed:', error);
@@ -282,10 +278,8 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
   // Helper: Try HTML5 audio playback
   const tryHtml5Playback = async (audio: HTMLAudioElement): Promise<boolean> => {
     try {
-      console.log('Attempting to play audio:', url, 'readyState:', audio.readyState);
       await audio.play();
       setIsPlaying(true);
-      console.log('HTML5 audio playing successfully');
       return true;
     } catch (error) {
       console.error('HTML5 audio error:', error);
@@ -301,7 +295,6 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
   // Helper: Try blob URL playback as last resort
   const tryBlobPlayback = async (): Promise<boolean> => {
     try {
-      console.log('Trying blob URL playback...');
 
       const response = await fetch(effectiveUrl);
       if (!response.ok) {
@@ -354,7 +347,6 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
       }
       (audioRef as any).current = newAudio;
       setIsPlaying(true);
-      console.log('Blob URL playback successful');
       return true;
     } catch (blobError) {
       console.error('All playback methods failed:', blobError);

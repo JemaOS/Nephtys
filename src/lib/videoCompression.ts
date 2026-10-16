@@ -19,7 +19,6 @@ export const compressVideo = async (
   file: File,
   onProgress?: (progress: number) => void
 ): Promise<Blob> => {
-  console.log('[VideoCompression] Starting compression for:', file.name);
 
   try {
     // Create Input
@@ -59,7 +58,6 @@ export const compressVideo = async (
     }
 
     const blob = new Blob([target.buffer], { type: 'video/mp4' });
-    console.log('[VideoCompression] Compression complete. New size:', blob.size);
     
     return blob;
   } catch (error) {

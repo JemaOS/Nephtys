@@ -29,7 +29,6 @@ const selfHealStaleClient = async () => {
   // First boot OR build change: store new build, force one cache+SW purge.
   localStorage.setItem(BUILD_ID_KEY, APP_BUILD_ID);
   if (!previous) return; // first ever visit, nothing to clean
-  console.log('[App] New build detected, purging old SW + caches...', { previous, current: APP_BUILD_ID });
   try {
     if ('caches' in window) {
       const keys = await caches.keys();
@@ -70,7 +69,6 @@ const reloadOnceForNewWorker = () => {
   } catch {
     /* sessionStorage indisponible : le flag en mémoire suffit */
   }
-  console.log('[App] New service worker took control — reloading once');
   window.location.reload();
 };
 
@@ -83,7 +81,6 @@ const registerServiceWorker = async () => {
         updateViaCache: 'none'
       });
 
-      console.log('[App] Service Worker registered:', registration.scope, 'build', APP_BUILD_ID);
 
       // La page était-elle déjà contrôlée par un SW au moment de
       // l'enregistrement ? Si non (tout premier enregistrement), la prise de
@@ -114,7 +111,6 @@ const registerServiceWorker = async () => {
               // Nouveau SW prêt et une page est déjà contrôlée : on force la
               // prise de main (idempotent, le SW le fait déjà), le
               // rechargement suit via 'controllerchange' ci-dessus.
-              console.log('[App] New SW version available, activating now');
               newWorker.postMessage({ type: 'SKIP_WAITING' });
             }
           });

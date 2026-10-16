@@ -799,7 +799,6 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
         video.webkitEnterFullscreen();
         return true;
       } catch (e) {
-        console.log('webkitEnterFullscreen failed:', e);
       }
     }
 
@@ -895,7 +894,6 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
         globalThis.screen.orientation.unlock();
       } catch (e) {
         // Ignore unlock errors - orientation unlock is optional
-        console.log('Orientation unlock not available:', e);
       }
     }
   };
@@ -932,7 +930,6 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
         // @ts-expect-error - lock is experimental API not in TypeScript types
         await globalThis.screen.orientation.lock('landscape');
       } catch (e) {
-        console.log('Orientation lock not available:', e);
       }
     }
   };

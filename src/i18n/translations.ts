@@ -856,7 +856,7 @@ export const translations: Record<Lang, Record<string, string>> = {
 
     // ============ CALL CONTEXT ============
     callPermsRequired: '❌ Permissions required\n\nTo call, you must allow:\n',
-    callPermsChromeMobile: '• Camera and Microphone\n\nOn Chrome Mobile:\n1. Tap the 🔒 next to the URL\n2. Enable "Camera" and "Microphone"',
+    callPermsJemaOSMobile: '• Camera and Microphone\n\nOn JemaOS Mobile:\n1. Tap the 🔒 next to the URL\n2. Enable "Camera" and "Microphone"',
     callPermsGeneric: '• Camera and/or Microphone\n\nAllow access in your browser settings.',
     cannotAddParticipant: 'Cannot add the participant',
 
@@ -1877,7 +1877,7 @@ export const translations: Record<Lang, Record<string, string>> = {
 
     // ============ CALL CONTEXT ============
     callPermsRequired: '❌ Permissions requises\n\nPour appeler, vous devez autoriser :\n',
-    callPermsChromeMobile: '• Caméra et Microphone\n\nSur Chrome Mobile :\n1. Appuyez sur 🔒 à côté de l\'URL\n2. Activez "Caméra" et "Microphone"',
+    callPermsJemaOSMobile: '• Caméra et Microphone\n\nSur JemaOS Mobile :\n1. Appuyez sur 🔒 à côté de l\'URL\n2. Activez "Caméra" et "Microphone"',
     callPermsGeneric: '• Caméra et/ou Microphone\n\nAutorisez l\'accès dans les paramètres de votre navigateur.',
     cannotAddParticipant: 'Impossible d\'ajouter le participant',
 

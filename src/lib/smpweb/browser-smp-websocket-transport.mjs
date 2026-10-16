@@ -149,7 +149,7 @@ function createFrameQueue(socket, options = {}) {
     flushError(transportError('SMP_SMP_WS_SOCKET', 'SMP WebSocket transport error'));
   }));
   cleanups.push(eventTargetOn(socket, 'close', () => {
-    closed = true; console.log('[ws] CLOSE EVENT'); flushError(transportError('SMP_SMP_WS_CLOSED', 'SMP WebSocket transport closed'));
+    closed = true; flushError(transportError('SMP_SMP_WS_CLOSED', 'SMP WebSocket transport closed'));
   }));
 
   return {

@@ -236,7 +236,6 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
 
     // Check if it's a document file
     if (type === 'file' && isDocumentFile(file)) {
-      console.log('Opening document preview for:', file.name, 'type:', file.type);
       setDocumentFile(file);
       setShowDocumentPreview(true);
       return;
@@ -444,7 +443,6 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
     if (type === 'video') {
       const shouldCompress = await checkVideoNeedsCompression(preview);
       if (shouldCompress) {
-        console.log(`Compressing video ${file.name}...`);
         const { compressVideo } = await import('@/lib/videoCompression');
         const compressedBlob = await compressVideo(file);
         fileToUpload = compressedBlob;
@@ -574,7 +572,6 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
     if (type === 'video') {
       const shouldCompress = await checkVideoNeedsCompression(fileItem.preview);
       if (shouldCompress) {
-        console.log(`Compressing video ${file.name}...`);
         const { compressVideo } = await import('@/lib/videoCompression');
         const compressedBlob = await compressVideo(file);
         fileToUpload = compressedBlob;

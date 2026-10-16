@@ -92,7 +92,6 @@ export function getPerfSnapshot(): PerfSnapshot {
 
 export function reportPerf(): PerfSnapshot {
   const snap = getPerfSnapshot();
-  console.info('[perf]', snap);
   return snap;
 }
 

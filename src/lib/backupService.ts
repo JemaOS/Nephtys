@@ -147,13 +147,11 @@ export async function encryptData(data: string, password: string): Promise<strin
 // Decrypt data with AES-GCM
 export async function decryptData(encryptedData: string, password: string): Promise<string | null> {
   try {
-    console.log('Decryption: Starting, data length:', encryptedData.length)
     
     // Decode from base64 using chunked approach
     let combined: Uint8Array
     try {
       combined = base64ToUint8Array(encryptedData)
-      console.log('Decryption: Base64 decoded, bytes:', combined.length)
     } catch (e) {
       console.error('Decryption: Base64 decode failed:', e)
       return null
@@ -168,10 +166,8 @@ export async function decryptData(encryptedData: string, password: string): Prom
     const ivArray = combined.slice(16, 28)
     const dataArray = combined.slice(28)
     
-    console.log('Decryption: Salt:', saltArray.length, 'IV:', ivArray.length, 'Data:', dataArray.length)
     
     const key = await deriveKey(password, saltArray.buffer)
-    console.log('Decryption: Key derived')
     
     const decrypted = await crypto.subtle.decrypt(
       { name: 'AES-GCM', iv: ivArray },
@@ -179,7 +175,6 @@ export async function decryptData(encryptedData: string, password: string): Prom
       dataArray
     )
     
-    console.log('Decryption: Success, decrypted bytes:', decrypted.byteLength)
     return new TextDecoder().decode(decrypted)
   } catch (error: any) {
     console.error('Decryption failed:', error?.message || error)
@@ -360,10 +355,9 @@ async function processMediaInBatches(
   }
   
   if (skippedCount > 0) {
-    console.log(`Backup: Skipped ${skippedCount} files (failed to download)`)
+    /* fichiers ignorés */
   }
   
-  console.log(`Backup: Downloaded ${mediaFiles.length} files, total size: ${(totalMediaSize / (1024 * 1024)).toFixed(2)}MB`)
   
   return mediaFiles
 }
@@ -676,7 +670,6 @@ export async function restoreBackup(
       saveBackupSettings(backupData.settings)
     }
 
-    console.log('[Restore] Complete:', stats)
     onProgress?.(100, `Restauration terminée ! ${stats.conversations} conversations, ${stats.messages} messages, ${stats.contacts} contacts, ${stats.media} médias`)
 
     return { success: true, stats }
@@ -879,7 +872,6 @@ async function restoreMessagesToConversations(
 
   const messagesToRestore = backupData.messages.filter(m => existingConvIds.has(m.conversation_id))
 
-  console.log(`[Restore] Restoring ${messagesToRestore.length} messages to ${existingConvIds.size} conversations`)
 
   if (messagesToRestore.length === 0) return
 

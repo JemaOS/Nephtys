@@ -299,7 +299,6 @@ export function CallsPage() {
           schema: 'public',
           table: 'call_logs'
         }, () => {
-          console.log('📞 New call log detected, reloading...')
           loadCalls()
         })
         .subscribe()
@@ -595,7 +594,6 @@ export function CallsPage() {
     }
 
     try {
-      console.log('📞 Loading calls for user:', user.id)
       
       // Get user conversations
       const { data: memberConversations } = await supabase
@@ -604,7 +602,6 @@ export function CallsPage() {
         .eq('user_id', user.id)
       
       const userConversationIds = memberConversations?.map(m => m.conversation_id) || []
-      console.log('📞 User is member of conversations:', userConversationIds.length)
       
       // Fetch calls + pseudonyme de l'utilisateur courant (pour le sens)
       const [{ calls: callsData, error }, myRef] = await Promise.all([
@@ -903,14 +900,7 @@ export function CallsPage() {
     // Démarrer l'appel
     if (conversationId) {
       try {
-        console.log('🔍 DEBUG: Starting call from handleCallContact')
-        console.log('  - contactId:', contactId)
-        console.log('  - conversationId:', conversationId)
-        console.log('  - isVideo:', isVideo)
-        console.log('  - callerName:', profile?.display_name || profile?.username)
         await startCall(contactId, conversationId, { audio: true, video: isVideo })
-        console.log('🔍 DEBUG: Call started successfully')
-        console.log('  - Hook states should now be updated (isInCall/isCalling)')
         setShowContactsModal(false)
       } catch (error) {
         console.error('Erreur lors du démarrage de l\'appel:', error)
@@ -940,18 +930,12 @@ export function CallsPage() {
         .single()
       if (profile) await signFieldsBatch([profile as any], ['avatar_url'])
 
-      console.log('🔍 DEBUG: Recall button clicked')
-      console.log('  - conversationId:', selectedCall.conversation_id)
-      console.log('  - callType:', selectedCall.type)
-      console.log('  - otherUserId:', otherUserId)
-      console.log('  - callerName:', profile?.display_name || profile?.username)
       try {
         // Démarrer l'appel avec le même type (audio/vidéo) que l'appel précédent
         await startCall(otherUserId, selectedCall.conversation_id, {
           audio: true,
           video: selectedCall.type === 'video'
         })
-        console.log('🔍 DEBUG: Recall initiated successfully')
         setSelectedCall(null)
       } catch (error) {
         console.error('Erreur lors du rappel:', error)

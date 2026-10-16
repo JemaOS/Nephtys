@@ -164,7 +164,6 @@ const createNewConversation = async (supabase: any, userId: string, contactUserI
       ])
   }
   
-  console.log('Conversation created automatically:', conversation.id)
   return conversation.id
 }
 
@@ -261,7 +260,6 @@ const createNewSelfConversationAndAddMembers = async (
   }
 
   // Navigate immediately (optimistic)
-  console.log('Conversation created, navigating immediately:', conversation.id);
 
   // Add members in background (non-blocking)
   const addMembers = async () => {
@@ -271,7 +269,6 @@ const createNewSelfConversationAndAddMembers = async (
         .insert([
           { conversation_id: conversation.id, user_id: userId, role: 'admin', is_active: true }
         ]);
-      console.log('Members added successfully');
     } catch (err) {
       console.error('Error adding members:', err);
     }
@@ -306,7 +303,6 @@ const createNewDirectConversationAndAddMembers = async (
   }
 
   // Navigate immediately (optimistic)
-  console.log('Conversation created, navigating immediately:', conversation.id);
 
   // Add members in background (non-blocking)
   const addMembers = async () => {
@@ -317,7 +313,6 @@ const createNewDirectConversationAndAddMembers = async (
           { conversation_id: conversation.id, user_id: userId, role: 'admin', is_active: true },
           { conversation_id: conversation.id, user_id: contactId, role: 'member', is_active: true }
         ]);
-      console.log('Members added successfully');
     } catch (err) {
       console.error('Error adding members:', err);
     }
@@ -626,18 +621,15 @@ export function ContactsPage() {
 
     // Prevent duplicate creation attempts
     if (creatingConversationRef.current.has(contactId)) {
-      console.log('Already creating conversation with:', contactId)
       return
     }
 
-    console.log('Creating conversation with contact:', contactId)
 
     try {
       // OPTIMIZATION 1: Check IndexedDB cache first for instant navigation
       const cachedConvId = await findConversationForContact(contactId);
       
       if (cachedConvId) {
-        console.log('Found conversation in cache, navigating immediately:', cachedConvId)
         if (user?.id) await ensureMyMembership(supabase, user.id, cachedConvId)
         navigate(`/chat/${cachedConvId}`)
         return
@@ -650,7 +642,6 @@ export function ContactsPage() {
       const existingConvId = await checkExistingConversation(contactId);
 
       if (existingConvId) {
-        console.log('Existing conversation found:', existingConvId)
         creatingConversationRef.current.delete(contactId)
         if (user?.id) await ensureMyMembership(supabase, user.id, existingConvId)
         navigate(`/chat/${existingConvId}`)
@@ -850,7 +841,6 @@ const processContactForDeletion = async (
   if (isSelfContactCheck) {
     foundConversation = await deleteSavedMessagesConversation(userId, myConversations);
     if (foundConversation) {
-      console.log('Deleted Saved Messages conversation');
     }
   } else {
     // Handle normal direct conversation
@@ -861,13 +851,11 @@ const processContactForDeletion = async (
       myConversations
     );
     if (foundConversation) {
-      console.log('Deleted direct conversation');
     }
   }
   
   // Handle virtual contacts from group conversations
   if (!foundConversation && isVirtual) {
-    console.log('Virtual contact from group conversation - removing from shared groups');
     await removeContactFromGroups(userId, contactUserId, myConversations);
   }
   
@@ -894,13 +882,10 @@ const getContactsToDelete = (
     
     if (!confirm(confirmMessage)) return
 
-    console.log('Starting contact deletion...')
-    console.log('Selected contacts:', Array.from(selectedContacts))
 
     try {
       // Get the contact_user_ids for the selected contacts
       const contactsToDelete = contacts.filter(c => selectedContacts.has(c.id))
-      console.log('Contacts to delete:', contactsToDelete.map(c => ({ id: c.id, contact_user_id: c.contact_user_id, isVirtual: c.id.startsWith('chat-') })))
       
       // Get the conversations for the user
       const { data: myConversations } = await supabase
@@ -908,7 +893,6 @@ const getContactsToDelete = (
         .select('conversation_id')
         .eq('user_id', user.id)
 
-      console.log('My conversations count:', myConversations?.length)
 
       // Process each contact
       for (const contact of contactsToDelete) {
@@ -925,7 +909,6 @@ const getContactsToDelete = (
       const realContactIds = explicit.map(c => c.id)
 
       if (realContactIds.length > 0) {
-        console.log('Deleting explicit contacts with IDs:', realContactIds)
         const { error } = await supabase
           .from('contacts')
           .delete()
@@ -934,19 +917,16 @@ const getContactsToDelete = (
         if (error) {
           console.error('Error deleting contacts:', error)
         } else {
-          console.log('Explicit contacts deleted successfully')
         }
       }
 
       // Clear cache to ensure fresh data
       localStorage.removeItem(CACHE_PREFIX + 'contacts')
-      console.log('Cache cleared')
       
       // Reload contacts
       await loadContacts()
       setSelectedContacts(new Set())
       setIsSelectionMode(false)
-      console.log('Contacts reloaded successfully')
     } catch (err) {
       console.error('Error deleting contacts:', err)
       alert(t('deleteContactsError'))
@@ -987,7 +967,6 @@ const getContactsToDelete = (
                   </button>
                   <button
                     onClick={() => {
-                      console.log('Delete button clicked, selectedContacts:', selectedContacts.size)
                       deleteSelectedContacts()
                     }}
                     disabled={selectedContacts.size === 0}

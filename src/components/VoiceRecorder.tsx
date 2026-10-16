@@ -113,7 +113,6 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
         // WebM/Opus as last resort
         mimeTypeRef.current = 'audio/webm;codecs=opus';
       }
-      console.log('Using audio format:', mimeTypeRef.current, 'at', audioBitsPerSecond, 'bps');
 
       const mediaRecorder = new MediaRecorder(stream, {
         mimeType: mimeTypeRef.current,
@@ -160,7 +159,6 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
     if (!mediaRecorderRef.current) return;
     
     const state = mediaRecorderRef.current.state;
-    console.log('MediaRecorder state:', state);
     
     if (state === 'recording') {
       // Pause

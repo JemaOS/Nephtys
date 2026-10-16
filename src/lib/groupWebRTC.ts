@@ -65,7 +65,6 @@ export class GroupCallManager {
     conversationId: string,
     config: GroupCallConfig
   ): Promise<MediaStream> {
-    console.log('🎥 GroupWebRTC: Initializing group call for user:', userId);
     
     this.currentUserId = userId;
     this.conversationId = conversationId;
@@ -81,7 +80,6 @@ export class GroupCallManager {
       
       this.currentUserName = profile?.display_name || profile?.username || 'Moi';
       this.currentUserAvatar = profile?.avatar_url || undefined;
-      console.log('🎥 GroupWebRTC: Current user profile:', this.currentUserName);
     } catch (error) {
       console.error('🎥 GroupWebRTC: Error fetching user profile:', error);
       this.currentUserName = 'Moi';
@@ -98,7 +96,6 @@ export class GroupCallManager {
         } : false,
       });
 
-      console.log('🎥 GroupWebRTC: Local stream obtained:', this.localStream.getTracks().length, 'tracks');
 
       // Set up signaling channel
       await this.setupSignalingChannel();
@@ -116,7 +113,6 @@ export class GroupCallManager {
   // Set up Supabase Realtime channel for signaling
   private async setupSignalingChannel(): Promise<void> {
     const channelName = `group-call-${this.conversationId}`;
-    console.log('🎥 GroupWebRTC: Setting up signaling channel:', channelName);
 
     this.channel = supabase
       .channel(channelName)
@@ -132,13 +128,11 @@ export class GroupCallManager {
         await this.handleSignal(signal);
       })
       .subscribe((status) => {
-        console.log('🎥 GroupWebRTC: Channel subscription status:', status);
       });
   }
 
   // Handle incoming signals
   private async handleSignal(signal: GroupCallSignal): Promise<void> {
-    console.log('🎥 GroupWebRTC: Received signal:', signal.type, 'from:', signal.from);
 
     switch (signal.type) {
       case 'group-join':
@@ -167,7 +161,6 @@ export class GroupCallManager {
 
   // Join an existing group call
   async joinGroupCall(): Promise<void> {
-    console.log('🎥 GroupWebRTC: Joining group call');
 
     // Broadcast join signal to all participants with our profile info
     await this.sendSignal({
@@ -205,14 +198,12 @@ export class GroupCallManager {
   // Handle when a new participant joins
   private async handleParticipantJoin(signal: GroupCallSignal): Promise<void> {
     const participantId = signal.from;
-    console.log('🎥 GroupWebRTC: Participant joining:', participantId);
 
     // Check if we already have a connection with this participant
     const existingParticipant = this.participants.get(participantId);
     if (existingParticipant?.peerConnection) {
       const state = existingParticipant.peerConnection.connectionState;
       if (state === 'connected' || state === 'connecting') {
-        console.log('🎥 GroupWebRTC: Already connected/connecting to:', participantId, '- ignoring join');
         return;
       }
       // Close the old connection
@@ -264,7 +255,6 @@ export class GroupCallManager {
   // Handle incoming offer
   private async handleOffer(signal: GroupCallSignal): Promise<void> {
     const participantId = signal.from;
-    console.log('🎥 GroupWebRTC: Handling offer from:', participantId);
 
     // Get or create peer connection
     const participant = this.participants.get(participantId);
@@ -286,18 +276,15 @@ export class GroupCallManager {
       });
     } else {
       // Allow renegotiation (even if connected)
-      console.log('🎥 GroupWebRTC: Processing offer (possible renegotiation) from:', participantId);
       
       // If we're in the middle of negotiation, check if we should handle this offer
       // Use "polite peer" pattern - the peer with the lower ID is polite and yields
       if (peerConnection.signalingState !== 'stable') {
         const weArePolite = this.currentUserId < participantId;
         if (!weArePolite) {
-          console.log('🎥 GroupWebRTC: Ignoring offer due to glare - we are impolite peer');
           return;
         }
         // We are polite, so we rollback and accept the offer
-        console.log('🎥 GroupWebRTC: Rolling back local description due to glare');
         await peerConnection.setLocalDescription({ type: 'rollback' });
       }
     }
@@ -330,7 +317,6 @@ export class GroupCallManager {
   // Handle incoming answer
   private async handleAnswer(signal: GroupCallSignal): Promise<void> {
     const participantId = signal.from;
-    console.log('🎥 GroupWebRTC: Handling answer from:', participantId);
 
     const participant = this.participants.get(participantId);
     if (!participant?.peerConnection) {
@@ -341,7 +327,6 @@ export class GroupCallManager {
     // Check if we're in the right state to receive an answer
     const signalingState = participant.peerConnection.signalingState;
     if (signalingState !== 'have-local-offer') {
-      console.log('🎥 GroupWebRTC: Ignoring answer - wrong signaling state:', signalingState);
       return;
     }
 
@@ -393,7 +378,6 @@ export class GroupCallManager {
       return;
     }
 
-    console.log(`🎥 GroupWebRTC: Processing ${queue.length} queued ICE candidates for:`, participantId);
 
     for (const candidate of queue) {
       try {
@@ -424,7 +408,6 @@ export class GroupCallManager {
 
   // Handle participant leaving
   private handleParticipantLeave(participantId: string): void {
-    console.log('🎥 GroupWebRTC: Participant leaving:', participantId);
 
     const participant = this.participants.get(participantId);
     if (participant) {
@@ -443,7 +426,6 @@ export class GroupCallManager {
 
   // Create a peer connection for a participant
   private async createPeerConnection(participantId: string): Promise<RTCPeerConnection> {
-    console.log('🎥 GroupWebRTC: Creating peer connection for:', participantId);
 
     const peerConnection = new RTCPeerConnection(getPeerConnectionConfig());
 
@@ -470,7 +452,6 @@ export class GroupCallManager {
 
     // Handle remote stream
     peerConnection.ontrack = (event) => {
-      console.log('🎥 GroupWebRTC: Received remote track from:', participantId);
       
       if (event.streams?.[0]) {
         // Ensure all tracks are enabled
@@ -489,7 +470,6 @@ export class GroupCallManager {
 
     // Handle connection state changes
     peerConnection.onconnectionstatechange = () => {
-      console.log('🎥 GroupWebRTC: Connection state for', participantId, ':', peerConnection.connectionState);
       
       if (peerConnection.connectionState === 'disconnected' ||
           peerConnection.connectionState === 'failed' ||
@@ -536,7 +516,6 @@ export class GroupCallManager {
 
   // Toggle local video
   async toggleVideo(enabled: boolean): Promise<void> {
-    console.log('🎥 GroupWebRTC: toggleVideo called, enabled:', enabled);
     
     if (!this.localStream) {
       return;
@@ -592,7 +571,6 @@ export class GroupCallManager {
 
   // Renegotiate video track in all peer connections
   private async renegotiateVideoTrackInAllPeers(newTrack: MediaStreamTrack): Promise<void> {
-    console.log('🎥 GroupWebRTC: Renegotiating video track in', this.participants.size, 'peer connections');
     
     for (const [participantId, participant] of this.participants) {
       if (participant.peerConnection) {
@@ -629,7 +607,6 @@ export class GroupCallManager {
 
   // Leave the group call
   async leaveCall(): Promise<void> {
-    console.log('🎥 GroupWebRTC: Leaving group call');
 
     // Send leave signal
     await this.sendSignal({
@@ -644,7 +621,6 @@ export class GroupCallManager {
 
   // End the entire group call (for call initiator)
   async endCall(): Promise<void> {
-    console.log('🎥 GroupWebRTC: Ending group call');
 
     // Send end signal to all
     await this.sendSignal({

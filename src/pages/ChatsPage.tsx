@@ -43,10 +43,6 @@ const sortConversations = (conversations: ConversationWithDetails[]): Conversati
   })
 }
 
-
-
-
-
 // Helper function to check if conversation matches search query
 const matchesSearchQuery = (conv: ConversationWithDetails, query: string): boolean => {
   // Check conversation name first
@@ -150,7 +146,6 @@ export function ChatsPage() {
   const [conversations, setConversations] = useState<ConversationWithDetails[]>(() => {
     const cached = offlineStorage.getConversationsSync()
     if (cached && cached.length > 0) {
-      console.log('[ChatsPage] Initialized from memory cache:', cached.length)
       return cached
     }
     return []
@@ -220,7 +215,6 @@ export function ChatsPage() {
 
   // Helper to handle full updates (new/removed conversations or no cache)
   const handleFullUpdate = useCallback(async (sorted: ConversationWithDetails[]) => {
-    console.log('[ChatsPage] Full update needed')
     setConversations(sorted)
     await offlineStorage.saveConversations(sorted)
   }, [])
@@ -287,7 +281,6 @@ export function ChatsPage() {
       // FORCE FULL UPDATE: When returning from ChatViewPage, always do a full update
       // This ensures the conversation order is correct (newest message at top)
       if (forceFullUpdate) {
-        console.log('[ChatsPage] FORCE FULL UPDATE - Replacing all conversations')
         setConversations(sorted)
         await offlineStorage.saveConversations(sorted)
         return
@@ -296,14 +289,6 @@ export function ChatsPage() {
       // Analyze conversation changes to determine update strategy
       const currentConversations = conversationsRef.current
       const { hasNewConversations, hasRemovedConversations, hasDataChanged, pinnedOrderChanged } = analyzeConversationChanges(currentConversations, sorted)
-
-      console.log('[ChatsPage] Comparison:', {
-        hasDataChanged,
-        pinnedOrderChanged,
-        hasNewConversations,
-        hasRemovedConversations,
-        hasLoadedFromCache
-      })
       
       // If we have cached data, update the existing conversations in place
       // without changing the order (to avoid visual jump)
@@ -335,7 +320,6 @@ export function ChatsPage() {
       const cachedConversations = await offlineStorage.getConversations()
       
       if (cachedConversations && cachedConversations.length > 0) {
-        console.log(`[ChatsPage] Loaded ${cachedConversations.length} conversations from cache`)
         setConversations(cachedConversations)
         setHasLoadedFromCache(true)
         setIsLoading(false) // No spinner - show cached data immediately!
@@ -347,7 +331,6 @@ export function ChatsPage() {
         }, 100)
       } else {
         // No cache, show loading and fetch from server
-        console.log('[ChatsPage] No cached conversations, loading from server')
         await loadConversationsFromServer(true)
       }
     } catch (error) {
@@ -462,7 +445,6 @@ export function ChatsPage() {
     const member = payload.old
     // Check if the current user was removed from a conversation
     if (member && member.user_id === user.id) {
-      console.log('[ChatsPage] Current user removed from conversation:', member.conversation_id)
       // Instantly remove the conversation from the list
       setConversations(prev => prev.filter(c => c.id !== member.conversation_id))
     }
@@ -489,7 +471,6 @@ export function ChatsPage() {
   }, [])
   
   const exitSelectionMode = useCallback(() => {
-    console.log('[ChatsPage] exitSelectionMode called - resetting selection state ATOMICALLY')
     // CRITICAL: Set isSelectionMode to false FIRST and IMMEDIATELY
     // This ensures the UI switches to normal mode before any other state changes
     setIsSelectionMode(false)
@@ -795,14 +776,12 @@ export function ChatsPage() {
           () => debouncedReload()
         )
         .subscribe((status) => {
-          console.log('[realtime][chats-list] statut:', status)
         })
 
       // Handle visibility change - refresh data when app comes back to foreground
       // This is critical for PWA on mobile where the app may be suspended
       const handleVisibilityChange = () => {
         if (document.visibilityState === 'visible') {
-          console.log('[ChatsPage] App became visible, refreshing conversations...')
           // Reload conversations when app becomes visible again
           loadConversationsFromServer(false) // Background sync, no loading state
         }
@@ -811,7 +790,6 @@ export function ChatsPage() {
       // Handle focus event - refresh when user returns to the page
       // This ensures conversation order is correct when navigating back from ChatViewPage
       const handleFocus = () => {
-        console.log('[ChatsPage] Window focused, refreshing conversations...')
         loadConversationsFromServer(false) // Background sync, no loading state
       }
       
@@ -819,13 +797,11 @@ export function ChatsPage() {
       
       // Handle Supabase reconnection event (triggered by useSupabaseReconnect hook)
       const handleSupabaseReconnect = () => {
-        console.log('[ChatsPage] Supabase reconnected, reloading conversations...')
         loadConversationsFromServer(false) // Background sync, no loading state
       }
       
       // Handle connection lost event (triggered by health check)
       const handleConnectionLost = () => {
-        console.log('[ChatsPage] Connection lost detected, will retry on next action...')
         // Don't reload immediately - the health check will trigger reconnect
         // Just mark that we need to reload when connection is restored
       }
@@ -874,12 +850,6 @@ export function ChatsPage() {
       }
     }
   }, [user, debouncedReload, loadConversationsFromServer])
-
-
-
-
-
-
 
   const handleContextMenu = (e: React.MouseEvent, conversationId: string) => {
     e.preventDefault()
