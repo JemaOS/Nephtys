@@ -7,7 +7,7 @@ import { User } from '@supabase/supabase-js'
 import { supabase, Profile } from '@/lib/supabase'
 import { initializePresence, cleanupPresence } from '@/hooks/usePresence'
 import { resolveMediaUrl } from '@/lib/mediaUrl'
-import { deleteMyMessages } from '@/lib/conversationService'
+import { deleteMyMessages, hideAllMessagesForUser } from '@/lib/conversationService'
 import { setupRecoveryKeys, installKeysFromPhrase, hasLocalKeys, regenerateRecoveryKeys, verifyCurrentPhrase, checkPhraseMatchesAccount, resetRecoveryKeysWithoutPhrase } from '@/lib/recovery/recoveryService'
 import { getMFAChallenge, verifyMFAChallenge } from '@/lib/twoFactorAuth'
 import { clearLocalRatchetKeys } from '@/lib/ratchet/keyStore'
@@ -986,12 +986,18 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
       for (const key of toRemove) localStorage.removeItem(key)
     } catch { /* best effort */ }
 
-    // 3. Ancien matériel de clés (local + serveur) PUIS nouveau jeu de clés.
+    // 3. Masque TOUT l'historique côté serveur pour cet utilisateur (« supprimer
+    //    pour moi » sur chaque message) : les contacts et conversations restent,
+    //    mais plus aucun ancien message (chiffré avec l'ancienne phrase) n'est
+    //    affiché. Les autres participants gardent les leurs.
+    await hideAllMessagesForUser(uid)
+
+    // 4. Ancien matériel de clés (local + serveur) PUIS nouveau jeu de clés.
     //    Publie les nouvelles clés publiques : l'ancien historique devient
     //    illisible (perte volontaire et confirmée par l'utilisateur).
     const phrase = await resetRecoveryKeysWithoutPhrase(uid)
 
-    // 4. La nouvelle phrase DOIT être sauvegardée (comme à l'inscription).
+    // 5. La nouvelle phrase DOIT être sauvegardée (comme à l'inscription).
     setRecoveryRequired(false)
     setPendingPhrase(phrase)
   }

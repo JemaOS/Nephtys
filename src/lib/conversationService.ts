@@ -148,6 +148,52 @@ export async function deleteMyMessages(userId: string): Promise<void> {
   await supabase.from('messages').delete().in('id', ids)
 }
 
+/**
+ * Masque TOUT l'historique du compte pour cet utilisateur UNIQUEMENT (contacts
+ * et conversations conservés, mais vides). Utilisé par « j'ai perdu ma phrase » :
+ * les messages chiffrés avec l'ancienne phrase sont illisibles, on ne veut donc
+ * jamais les laisser apparaître (ni en clair, ni en « chiffré »).
+ *
+ * Même mécanisme que « supprimer pour moi » : chaque message est enregistré
+ * dans `deleted_messages`. L'autre participant CONSERVE les siens : rien n'est
+ * détruit côté serveur pour les autres.
+ *
+ * Paginé (la limite Supabase par défaut est de 1000 lignes par requête) pour
+ * couvrir l'intégralité de l'historique.
+ */
+export async function hideAllMessagesForUser(userId: string): Promise<void> {
+  const { data: memberships } = await supabase
+    .from('conversation_members')
+    .select('conversation_id')
+    .eq('user_id', userId)
+
+  const convIds = [
+    ...new Set((memberships ?? []).map((m: { conversation_id: string }) => m.conversation_id)),
+  ]
+  if (convIds.length === 0) return
+
+  const PAGE = 1000
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabase
+      .from('messages')
+      .select('id')
+      .in('conversation_id', convIds)
+      .order('id', { ascending: true })
+      .range(from, from + PAGE - 1)
+    if (error) throw error
+
+    const page = (data ?? []) as Array<{ id: string }>
+    const rows = page.map((m) => ({ message_id: m.id, user_id: userId }))
+    if (rows.length > 0) {
+      const { error: insError } = await supabase
+        .from('deleted_messages')
+        .upsert(rows, { onConflict: 'message_id,user_id', ignoreDuplicates: true })
+      if (insError && insError.code !== '23505') throw insError
+    }
+    if (page.length < PAGE) break
+  }
+}
+
 export interface BuildEnrichedConversationsParams {
   conversationsData: Conversation[]
   activeMembers: any[]
