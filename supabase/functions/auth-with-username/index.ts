@@ -185,6 +185,126 @@ class AuthError extends Error {
     }
 }
 
+// ─── CAPTCHA (Cloudflare Turnstile) ───────────────────────────────────
+// Protection anti-robot à seuil : en dessous de `after` échecs, rien ne
+// change ; au-delà, un token CAPTCHA valide est exigé. Fail-closed : si le
+// service de vérification est injoignable, on refuse.
+const CAPTCHA = {
+    enabled: String(Deno.env.get('CAPTCHA_ENABLED') ?? 'false').toLowerCase() === 'true',
+    secret: Deno.env.get('CAPTCHA_SECRET_KEY') ?? '',
+    // Nombre d'échecs d'auth (par IP / pseudo) avant d'exiger un CAPTCHA.
+    after: Number(Deno.env.get('AUTH_CAPTCHA_AFTER') ?? 3),
+    windowSec: Number(Deno.env.get('AUTH_CAPTCHA_WINDOW_SEC') ?? 900),
+    allowedHostnames: (Deno.env.get('CAPTCHA_ALLOWED_HOSTNAMES') ?? '')
+        .split(',')
+        .map((h) => h.trim().toLowerCase())
+        .filter(Boolean)
+};
+
+const TURNSTILE_VERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
+
+/** Vérifie un token Turnstile. Renvoie false (fail-closed) en cas de problème. */
+async function verifyCaptchaToken(token: string, ip: string): Promise<boolean> {
+    if (!CAPTCHA.secret) return false;
+    try {
+        const form = new URLSearchParams();
+        form.set('secret', CAPTCHA.secret);
+        form.set('response', token);
+        if (ip && ip !== 'unknown') form.set('remoteip', ip);
+
+        const res = await fetch(TURNSTILE_VERIFY_URL, { method: 'POST', body: form });
+        if (!res.ok) return false;
+        const data = await res.json();
+        if (data?.success !== true) return false;
+        if (
+            CAPTCHA.allowedHostnames.length &&
+            data?.hostname &&
+            !CAPTCHA.allowedHostnames.includes(String(data.hostname).toLowerCase())
+        ) {
+            return false;
+        }
+        return true;
+    } catch (e) {
+        console.error('[Captcha] verification error', e);
+        return false;
+    }
+}
+
+/** Compte les échecs récents (best-effort : 0 si le RPC échoue). */
+async function countAuthFailures(
+    supabaseUrl: string,
+    serviceRoleKey: string,
+    keyType: 'ip' | 'username',
+    keyValue: string,
+    action: 'signup' | 'signin'
+): Promise<number> {
+    try {
+        const res = await fetch(`${supabaseUrl}/rest/v1/rpc/count_auth_failures`, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${serviceRoleKey}`,
+                apikey: serviceRoleKey,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                p_key_type: keyType,
+                p_key_value: keyValue,
+                p_action: action,
+                p_window_seconds: CAPTCHA.windowSec
+            })
+        });
+        if (!res.ok) return 0;
+        const n = await res.json();
+        return typeof n === 'number' ? n : Number(n) || 0;
+    } catch {
+        return 0;
+    }
+}
+
+async function recordAuthFailure(
+    supabaseUrl: string,
+    serviceRoleKey: string,
+    keyType: 'ip' | 'username',
+    keyValue: string,
+    action: 'signup' | 'signin'
+): Promise<void> {
+    try {
+        await fetch(`${supabaseUrl}/rest/v1/rpc/record_auth_failure`, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${serviceRoleKey}`,
+                apikey: serviceRoleKey,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ p_key_type: keyType, p_key_value: keyValue, p_action: action })
+        });
+    } catch (e) {
+        console.error('[Captcha] recordAuthFailure error', e);
+    }
+}
+
+async function clearAuthFailures(
+    supabaseUrl: string,
+    serviceRoleKey: string,
+    keyType: 'ip' | 'username',
+    keyValue: string,
+    action: 'signup' | 'signin'
+): Promise<void> {
+    try {
+        await fetch(`${supabaseUrl}/rest/v1/rpc/clear_auth_failures`, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${serviceRoleKey}`,
+                apikey: serviceRoleKey,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ p_key_type: keyType, p_key_value: keyValue, p_action: action })
+        });
+    } catch (e) {
+        console.error('[Captcha] clearAuthFailures error', e);
+    }
+}
+
 /**
  * Vérifie ET enregistre une tentative en une seule requête atomique côté DB.
  * Lance RateLimitError si la limite est dépassée.
@@ -248,7 +368,7 @@ Deno.serve(async (req) => {
 
     try {
         // ── Parse + validation
-        let body: { action?: string; username?: string; password?: string };
+        let body: { action?: string; username?: string; password?: string; captchaToken?: string };
         try {
             body = await req.json();
         } catch {
@@ -290,6 +410,59 @@ Deno.serve(async (req) => {
         // quota global sur des tentatives déjà bloquées par IP/username.
         await enforceRateLimit(supabaseUrl, serviceRoleKey, 'ip', 'global', action, limits.global.max, limits.global.windowSec);
 
+        // ── CAPTCHA à seuil : au-delà de N échecs (par IP / pseudo), un token
+        // CAPTCHA valide est obligatoire. En dessous du seuil : aucune friction.
+        const failCountIp = await countAuthFailures(supabaseUrl, serviceRoleKey, 'ip', ipKey, action);
+        const failCountUser = await countAuthFailures(supabaseUrl, serviceRoleKey, 'username', canonicalUsernameKey, action);
+        const failureCount = Math.max(failCountIp, failCountUser);
+
+        if (CAPTCHA.enabled && failureCount >= CAPTCHA.after) {
+            if (!CAPTCHA.secret) {
+                console.error('[Captcha] CAPTCHA_ENABLED=true mais CAPTCHA_SECRET_KEY absent');
+                return jsonResponse(
+                    { error: { code: 'CONFIG_ERROR', message: 'Service indisponible.' } },
+                    503,
+                    corsHeaders
+                );
+            }
+            if (!body.captchaToken) {
+                return jsonResponse(
+                    {
+                        error: {
+                            code: 'CAPTCHA_REQUIRED',
+                            message: 'Vérification anti-robot requise.'
+                        }
+                    },
+                    429,
+                    corsHeaders
+                );
+            }
+            const captchaOk = await verifyCaptchaToken(body.captchaToken, clientIp);
+            if (!captchaOk) {
+                return jsonResponse(
+                    {
+                        error: {
+                            code: 'CAPTCHA_INVALID',
+                            message: 'Échec de la vérification anti-robot.'
+                        }
+                    },
+                    400,
+                    corsHeaders
+                );
+            }
+        }
+
+        // Enregistre un échec pour l'IP et le pseudo canonique (anti-force brute).
+        const recordFailure = async () => {
+            await recordAuthFailure(supabaseUrl, serviceRoleKey, 'ip', ipKey, action);
+            await recordAuthFailure(supabaseUrl, serviceRoleKey, 'username', canonicalUsernameKey, action);
+        };
+        // Efface les échecs après une authentification réussie.
+        const clearFailure = async () => {
+            await clearAuthFailures(supabaseUrl, serviceRoleKey, 'ip', ipKey, action);
+            await clearAuthFailures(supabaseUrl, serviceRoleKey, 'username', canonicalUsernameKey, action);
+        };
+
         // ── Génération email interne
         const sanitizedUsername = username.toLowerCase().replaceAll(/[^a-z0-9]/g, '');
         const email = `${sanitizedUsername}@nephtys.internal`;
@@ -314,6 +487,7 @@ Deno.serve(async (req) => {
             if (!createUserResponse.ok) {
                 const errorData = await createUserResponse.json().catch(() => ({}));
                 console.error('[Auth] createUser failed', createUserResponse.status, errorData);
+                await recordFailure();
                 const code = String((errorData as { error_code?: string }).error_code ?? '');
                 const msg = String((errorData as { msg?: string }).msg ?? '');
                 // GoTrue renvoie 422 pour plusieurs cas : ne PAS confondre
@@ -359,6 +533,7 @@ Deno.serve(async (req) => {
                     }
                 }).catch(() => { /* best effort */ });
                 console.error('[Auth] profile insert failed', errorText);
+                await recordFailure();
                 throw new AuthError('AUTH_ERROR', 'Erreur lors de la création du compte.', 400);
             }
 
@@ -374,10 +549,12 @@ Deno.serve(async (req) => {
 
             if (!signInResponse.ok) {
                 await signInResponse.json().catch(() => ({}));
+                await recordFailure();
                 throw new AuthError('AUTH_ERROR', 'Erreur lors de la création du compte.', 400);
             }
 
             const sessionData = await signInResponse.json();
+            await clearFailure();
             return jsonResponse(
                 { data: { session: sessionData, user: userData } },
                 200,
@@ -399,10 +576,12 @@ Deno.serve(async (req) => {
             // Message FIXE (pas de fuite GoTrue) : le client mappe « Invalid
             // credentials » sur « identifiants invalides ».
             await signInResponse.json().catch(() => ({}));
+            await recordFailure();
             throw new AuthError('INVALID_CREDENTIALS', 'Invalid credentials', 401);
         }
 
         const sessionData = await signInResponse.json();
+        await clearFailure();
         return jsonResponse({ data: { session: sessionData } }, 200, corsHeaders);
 
     } catch (error) {

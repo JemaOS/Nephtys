@@ -8,7 +8,7 @@ import { supabase, Profile } from '@/lib/supabase'
 import { initializePresence, cleanupPresence } from '@/hooks/usePresence'
 import { resolveMediaUrl } from '@/lib/mediaUrl'
 import { deleteMyMessages } from '@/lib/conversationService'
-import { setupRecoveryKeys, installKeysFromPhrase, hasLocalKeys, regenerateRecoveryKeys, verifyCurrentPhrase, checkPhraseMatchesAccount } from '@/lib/recovery/recoveryService'
+import { setupRecoveryKeys, installKeysFromPhrase, hasLocalKeys, regenerateRecoveryKeys, verifyCurrentPhrase, checkPhraseMatchesAccount, resetRecoveryKeysWithoutPhrase } from '@/lib/recovery/recoveryService'
 import { getMFAChallenge, verifyMFAChallenge } from '@/lib/twoFactorAuth'
 import { clearLocalRatchetKeys } from '@/lib/ratchet/keyStore'
 import { clearUserSessions } from '@/lib/ratchet/sessionStore'
@@ -100,9 +100,9 @@ interface AuthContextType {
   profile: Profile | null
   loading: boolean
   isOffline: boolean
-  signIn: (username: string, password: string) => Promise<void>
-  signUp: (username: string, password: string) => Promise<void>
-  signInAsGuest: (username: string) => Promise<void>
+  signIn: (username: string, password: string, captchaToken?: string) => Promise<void>
+  signUp: (username: string, password: string, captchaToken?: string) => Promise<void>
+  signInAsGuest: (username: string, captchaToken?: string) => Promise<void>
   signOut: () => Promise<void>
   /** Purge les données locales de CET appareil (clés E2EE + ratchet, stockage
    *  hors-ligne, caches localStorage) PUIS déconnecte. Différent de `signOut`,
@@ -122,6 +122,10 @@ interface AuthContextType {
   completeRecovery: (phrase: string) => Promise<void>
   /** Régénère les clés (nouvelle phrase) — exige la preuve de l'ancienne. */
   regenerateRecovery: (currentPhrase: string) => Promise<void>
+  /** « J'ai perdu ma phrase » : purge l'historique LOCAL (messages, médias,
+   *  caches) puis génère un nouveau jeu de clés. Perte DÉFINITIVE des messages
+   *  et médias ; les contacts et conversations restent, mais vides. */
+  startFreshWithoutRecovery: () => Promise<void>
   /** Gate 2FA en attente au login (challenge à saisir, ou vérification
    *  indisponible), sinon null. Tant que non-null, l'app n'est pas accessible. */
   mfaPending: MfaPendingState | null
@@ -164,6 +168,21 @@ async function extractFunctionError(
   }
   // Fallback générique
   return { code: 'UNKNOWN', message: error.message ?? 'Erreur réseau' }
+}
+
+/**
+ * Erreur signalant qu'un CAPTCHA est exigé (seuil d'échecs dépassé).
+ * `captchaRequired` permet à l'UI d'afficher le widget et de relancer la
+ * tentative avec le token.
+ */
+function makeCaptchaError(code: string): Error {
+  const err = new Error('Vérification anti-robot requise. Validez le CAPTCHA et réessayez.') as Error & {
+    captchaRequired: boolean
+    captchaCode: string
+  }
+  err.captchaRequired = true
+  err.captchaCode = code
+  return err
 }
 
 // Helper: Promise with timeout
@@ -555,17 +574,20 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
     }
   }
 
-  const signIn = async (username: string, password: string) => {
+  const signIn = async (username: string, password: string, captchaToken?: string) => {
     try {
       // Utiliser l'edge function pour connexion par pseudo
       const { data, error } = await supabase.functions.invoke('auth-with-username', {
-        body: { action: 'signin', username, password }
+        body: { action: 'signin', username, password, ...(captchaToken ? { captchaToken } : {}) }
       })
 
       // Tenter de récupérer l'erreur structurée renvoyée par l'edge function,
       // que ce soit dans `data` (200) ou dans `error.context` (4xx/5xx).
       const fnError = await extractFunctionError(error, data)
       if (fnError) {
+        if (fnError.code === 'CAPTCHA_REQUIRED' || fnError.code === 'CAPTCHA_INVALID') {
+          throw makeCaptchaError(fnError.code)
+        }
         if (fnError.code === 'RATE_LIMITED') {
           throw new Error(`${tStatic('tooManyAttempts')}\n\n${fnError.message}`)
         }
@@ -634,8 +656,8 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
         throw new Error(tStatic('authNoSession'))
       }
     } catch (err: any) {
-      // Si c'est déjà notre erreur formatée, la relancer
-      if (err.message.startsWith('❌')) {
+      // Si c'est déjà notre erreur formatée (ou un CAPTCHA requis), la relancer
+      if (err?.captchaRequired || err.message.startsWith('❌')) {
         throw err
       }
       // Sinon, formater l'erreur
@@ -644,15 +666,18 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
     }
   }
 
-  const signUp = async (username: string, password: string) => {
+  const signUp = async (username: string, password: string, captchaToken?: string) => {
     try {
       // Utiliser l'edge function pour inscription par pseudo
       const { data, error } = await supabase.functions.invoke('auth-with-username', {
-        body: { action: 'signup', username, password }
+        body: { action: 'signup', username, password, ...(captchaToken ? { captchaToken } : {}) }
       })
 
       const fnError = await extractFunctionError(error, data)
       if (fnError) {
+        if (fnError.code === 'CAPTCHA_REQUIRED' || fnError.code === 'CAPTCHA_INVALID') {
+          throw makeCaptchaError(fnError.code)
+        }
         if (fnError.code === 'RATE_LIMITED') {
           throw new Error(`❌ Trop d'inscriptions\n\n${fnError.message}`)
         }
@@ -691,8 +716,8 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
         throw new Error('❌ Erreur d\'inscription\n\nAucune session reçue.')
       }
     } catch (err: any) {
-      // Si c'est déjà notre erreur formatée, la relancer
-      if (err.message.startsWith('❌')) {
+      // Si c'est déjà notre erreur formatée (ou un CAPTCHA requis), la relancer
+      if (err?.captchaRequired || err.message.startsWith('❌')) {
         throw err
       }
       // Sinon, formater l'erreur
@@ -701,7 +726,7 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
     }
   }
 
-  const signInAsGuest = async (username: string) => {
+  const signInAsGuest = async (username: string, captchaToken?: string) => {
     try {
       // Check if we can reuse an existing ephemeral account
       const storedUser = localStorage.getItem('anu_ephemeral_user');
@@ -736,12 +761,16 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
           username: uniqueUsername,
           password: randomPassword,
           display_name: username,
-          is_ephemeral: true
+          is_ephemeral: true,
+          ...(captchaToken ? { captchaToken } : {})
         }
       })
 
       const fnError = await extractFunctionError(error, data)
       if (fnError) {
+        if (fnError.code === 'CAPTCHA_REQUIRED' || fnError.code === 'CAPTCHA_INVALID') {
+          throw makeCaptchaError(fnError.code)
+        }
         if (fnError.code === 'RATE_LIMITED') {
           throw new Error(`❌ Trop de créations\n\n${fnError.message}`)
         }
@@ -782,8 +811,8 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
       localStorage.setItem('anu_ephemeral_user', uniqueUsername)
       localStorage.removeItem('anu_ephemeral_password')
     } catch (err: any) {
-      // Si c'est déjà notre erreur formatée, la relancer
-      if (err.message.startsWith('❌')) {
+      // Si c'est déjà notre erreur formatée (ou un CAPTCHA requis), la relancer
+      if (err?.captchaRequired || err.message.startsWith('❌')) {
         throw err
       }
       // Sinon, formater l'erreur

@@ -8,6 +8,7 @@ import { Lock, User, Shield, Zap, EyeOff, X } from 'lucide-react'
 import { useI18n } from '@/i18n'
 import { SafeQrCode } from '@/components/SafeQrCode'
 import { createLinkRequest, applyLinkResponse, type LinkRequest } from '@/lib/recovery/deviceLinkChannel'
+import { CaptchaWidget, CAPTCHA_ENABLED } from '@/components/CaptchaWidget'
 
 // Type alias for auth mode
 type AuthMode = 'signin' | 'signup' | 'guest'
@@ -94,6 +95,10 @@ export function AuthPage() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  // CAPTCHA déclenché par le serveur au-delà du seuil anti-robot.
+  const [captchaRequired, setCaptchaRequired] = useState(false)
+  const [captchaToken, setCaptchaToken] = useState('')
+  const [captchaReset, setCaptchaReset] = useState(0)
   
   const { signIn, signUp, signInAsGuest } = useAuth()
 
@@ -132,13 +137,19 @@ export function AuthPage() {
     setLoading(true)
     try {
       if (mode === 'guest') {
-        await signInAsGuest(username.trim())
+        await signInAsGuest(username.trim(), captchaToken || undefined)
       } else if (mode === 'signin') {
-        await signIn(username.trim(), password)
+        await signIn(username.trim(), password, captchaToken || undefined)
       } else {
-        await signUp(username.trim(), password)
+        await signUp(username.trim(), password, captchaToken || undefined)
       }
     } catch (err: any) {
+      if (err?.captchaRequired) {
+        // Seuil atteint : on affiche le widget et on réinitialise le token.
+        setCaptchaRequired(true)
+        setCaptchaToken('')
+        setCaptchaReset((n) => n + 1)
+      }
       setError(err.message || t('errorOccurred'))
     } finally {
       setLoading(false)
@@ -318,6 +329,16 @@ export function AuthPage() {
               <div className="p-1.5 sm:p-2 lg:p-3 rounded-xl bg-[#ea4335]/10 border border-[#ea4335]/20">
                 <p className="text-[9px] sm:text-[10px] lg:text-xs text-[#ea4335]">{error}</p>
               </div>
+            )}
+
+            {captchaRequired && CAPTCHA_ENABLED && (
+              <CaptchaWidget
+                resetSignal={captchaReset}
+                theme="auto"
+                onVerify={(token) => setCaptchaToken(token)}
+                onExpire={() => setCaptchaToken('')}
+                onError={() => setCaptchaToken('')}
+              />
             )}
 
             <button
