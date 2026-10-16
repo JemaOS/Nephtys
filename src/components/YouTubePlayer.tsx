@@ -228,8 +228,13 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
     }
   };
 
-  // YouTube embed URL with autoplay
-  const embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&enablejsapi=1&rel=0&modestbranding=1&playsinline=1`;
+  // YouTube embed URL.
+  // Use www.youtube.com (NOT youtube-nocookie.com): the cookie-less embed cannot
+  // identify the viewer, so YouTube shows a "Sign in to confirm you're not a
+  // robot" wall and refuses to play. Passing the embedding origin helps YouTube
+  // validate the request.
+  const embedOrigin = typeof window === 'undefined' ? '' : window.location.origin;
+  const embedUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1&enablejsapi=1&rel=0&modestbranding=1&playsinline=1&origin=${encodeURIComponent(embedOrigin)}`;
 
   // PiP mode - small floating player with drag support
   if (isPiP) {
@@ -295,6 +300,7 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
           className="w-full h-full pointer-events-auto"
           style={{ pointerEvents: isDragging ? 'none' : 'auto' }}
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
+          referrerPolicy="origin"
           allowFullScreen
         />
 
@@ -340,6 +346,7 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
             title="YouTube video player"
             className="w-full h-full"
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
+          referrerPolicy="origin"
           allowFullScreen
           />
         </div>
