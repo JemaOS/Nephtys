@@ -58,11 +58,14 @@ function ShowPhraseScreen({ phrase, onConfirm }: { readonly phrase: string; read
 }
 
 function EnterPhraseScreen({ onRecovered }: { readonly onRecovered: () => void }) {
-  const { completeRecovery, signOut, clearRecoveryRequired } = useAuth();
+  const { completeRecovery, signOut, clearRecoveryRequired, startFreshWithoutRecovery } = useAuth();
   const [phrase, setPhrase] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
+  const [forgotOpen, setForgotOpen] = useState(false);
+  const [forgotAck, setForgotAck] = useState(false);
+  const [forgotBusy, setForgotBusy] = useState(false);
   const valid = validateRecoveryPhrase(phrase);
 
   const submit = async () => {
@@ -78,6 +81,23 @@ function EnterPhraseScreen({ onRecovered }: { readonly onRecovered: () => void }
       setError((e as Error)?.message ?? 'Phrase invalide.');
     } finally {
       setBusy(false);
+    }
+  };
+
+  const startFresh = async () => {
+    setForgotBusy(true);
+    setError(null);
+    try {
+      await startFreshWithoutRecovery();
+      // Un nouveau jeu de clés est installé → `pendingPhrase` est défini et le
+      // gate bascule sur l'affichage de la nouvelle phrase à sauvegarder.
+      setForgotOpen(false);
+      setForgotAck(false);
+    } catch (e) {
+      setForgotOpen(false);
+      setError((e as Error)?.message ?? 'Réinitialisation impossible.');
+    } finally {
+      setForgotBusy(false);
     }
   };
 
@@ -111,6 +131,13 @@ function EnterPhraseScreen({ onRecovered }: { readonly onRecovered: () => void }
           className="w-full px-4 py-3 rounded-2xl bg-bg-surface text-text-primary text-sm"
         >
           Scanner le QR code d'un appareil
+        </button>
+        <button
+          type="button"
+          onClick={() => { setForgotOpen(true); setError(null); }}
+          className="w-full text-xs text-amber-400"
+        >
+          J'ai perdu ma phrase de récupération
         </button>
         <button type="button" onClick={() => signOut()} className="w-full text-xs text-text-tertiary">
           Se déconnecter
@@ -154,6 +181,64 @@ function EnterPhraseScreen({ onRecovered }: { readonly onRecovered: () => void }
             }
           }}
         />
+      )}
+      {forgotOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md space-y-4 rounded-2xl bg-bg-surface p-5 shadow-2xl">
+            <h2 className="text-lg font-bold text-text-primary text-center">
+              Continuer sans phrase de récupération ?
+            </h2>
+            <div className="space-y-2 text-sm text-text-secondary">
+              <p>
+                Sans votre phrase de récupération, votre historique est
+                <b> définitivement illisible</b>. Vous allez perdre :
+              </p>
+              <ul className="list-disc space-y-1 pl-5">
+                <li>tous vos messages, dans chaque conversation ;</li>
+                <li>tous vos médias associés (photos, vidéos, vocaux, fichiers).</li>
+              </ul>
+              <p>
+                Vos <b>contacts et vos conversations seront conservés</b>, mais
+                <b> vides</b> — comme WhatsApp lorsque vous restauriez sans sauvegarde.
+              </p>
+              <p>
+                Une <b>nouvelle phrase de récupération</b> sera générée. Notez-la
+                précieusement : c'est votre seule clé pour retrouver vos messages
+                ailleurs. Cette action est <b>irréversible</b>.
+              </p>
+            </div>
+            <label className="flex cursor-pointer items-start gap-2 text-xs text-text-primary">
+              <input
+                type="checkbox"
+                checked={forgotAck}
+                onChange={(e) => setForgotAck(e.target.checked)}
+                className="mt-0.5"
+              />
+              <span>
+                Je comprends que mes messages et médias seront définitivement perdus
+                et ne pourront pas être restaurés.
+              </span>
+            </label>
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={startFresh}
+                disabled={!forgotAck || forgotBusy}
+                className="w-full px-4 py-3 rounded-2xl bg-red-500 text-white text-sm font-medium disabled:opacity-50"
+              >
+                {forgotBusy ? 'Effacement…' : 'Oui, tout effacer et continuer'}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setForgotOpen(false); setForgotAck(false); }}
+                disabled={forgotBusy}
+                className="w-full px-4 py-3 rounded-2xl bg-bg-hover text-text-primary text-sm"
+              >
+                Annuler
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

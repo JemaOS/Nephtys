@@ -956,6 +956,46 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
     setPendingPhrase(phrase)
   }
 
+  /**
+   * « J'ai perdu ma phrase » : repart de zéro sur cet appareil sans pouvoir
+   * restaurer l'ancien historique. On purge d'abord les données LOCALES
+   * (messages, médias, file d'attente, caches) afin de ne laisser aucun
+   * contenu indéchiffrable, puis on génère + publie un NOUVEAU jeu de clés.
+   * La nouvelle phrase est affichée pour sauvegarde obligatoire.
+   *
+   * ⚠️ Action irréversible : l'historique chiffré avec l'ancienne phrase est
+   * définitivement perdu. Les contacts et la liste des conversations restent
+   * côté serveur, mais apparaissent vides (façon WhatsApp sans sauvegarde).
+   */
+  const startFreshWithoutRecovery = async (): Promise<void> => {
+    const uid = user?.id
+    if (!uid) throw new Error('Non connecté')
+
+    // 1. Stockage hors-ligne (messages, médias, conversations, file d'attente).
+    try { await offlineStorage.clearAll() } catch { /* best effort */ }
+
+    // 2. Caches localStorage propres à cet appareil.
+    try {
+      localStorage.removeItem('nephtys_own_messages_v1')
+      localStorage.removeItem('nephtys_plaintext_cache_v1')
+      const toRemove: string[] = []
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i)
+        if (key?.startsWith('anu_cache_')) toRemove.push(key)
+      }
+      for (const key of toRemove) localStorage.removeItem(key)
+    } catch { /* best effort */ }
+
+    // 3. Ancien matériel de clés (local + serveur) PUIS nouveau jeu de clés.
+    //    Publie les nouvelles clés publiques : l'ancien historique devient
+    //    illisible (perte volontaire et confirmée par l'utilisateur).
+    const phrase = await resetRecoveryKeysWithoutPhrase(uid)
+
+    // 4. La nouvelle phrase DOIT être sauvegardée (comme à l'inscription).
+    setRecoveryRequired(false)
+    setPendingPhrase(phrase)
+  }
+
   const verifyMfaAtLogin = async (code: string): Promise<{ success: boolean; error?: string }> => {
     const pending = mfaPending
     if (!pending || pending.status !== 'challenge') {
@@ -1026,6 +1066,7 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
     clearRecoveryRequired,
     completeRecovery,
     regenerateRecovery,
+    startFreshWithoutRecovery,
     mfaPending,
     verifyMfaAtLogin,
     retryMfaCheck,

@@ -303,3 +303,20 @@ export async function regenerateRecoveryKeys(userId: string, currentPhrase: stri
   await clearLocalX25519(userId);
   return setupRecoveryKeys(userId);
 }
+
+/**
+ * Réinitialise les clés SANS la preuve de l'ancienne phrase (« j'ai perdu ma
+ * phrase »). Efface le matériel local ET serveur (ratchet, X25519, sessions,
+ * one-time prekeys) puis dérive + publie un NOUVEAU jeu de clés. Renvoie la
+ * nouvelle phrase (à afficher pour sauvegarde).
+ *
+ * ⚠️ L'historique chiffré avec l'ancienne phrase devient DÉFINITIVEMENT
+ * illisible : messages et médias perdus. Les contacts et la liste des
+ * conversations restent côté serveur, mais vides. Action volontaire et
+ * confirmée par l'utilisateur (aucun retour en arrière possible).
+ */
+export async function resetRecoveryKeysWithoutPhrase(userId: string): Promise<string> {
+  await clearLocalRatchetKeys(userId);
+  await clearLocalX25519(userId);
+  return setupRecoveryKeys(userId);
+}
