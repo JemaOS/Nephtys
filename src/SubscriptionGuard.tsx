@@ -1,5 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { tStatic } from './i18n';
+import {
+  getVerifiedSignedEntitlement,
+  storeSignedEntitlementFromServer,
+} from './entitlementToken';
 
 // SubscriptionGuard v3 (2026-09-04)
 // ---------------------------------
@@ -405,10 +409,30 @@ async function checkSubscription(token: string): Promise<CheckResult> {
     // Freemium gate (SaaS PR #54): un plan sans apps (app_scope 'none', ex. Freemium)
     // affiche le mur 'Passer a Pro' au lieu d'ouvrir l'app.
     if ((data as { apps_allowed?: unknown }).apps_allowed === false) return 'no-subscription';
+    // Entitlement signé : à chaque check réussi, on récupère/rafraîchit le JWT
+    // serveur (vérifiable hors-ligne) pour couvrir les cas où l'injection du
+    // cookie OS échoue ensuite. Best-effort, n'altère pas le verdict en cours.
+    void storeSignedEntitlementFromServer(token);
     return 'ok';
   } catch {
     return 'error'; // offline/DNS/CORS : conserver l'état courant
   }
+}
+
+// Dernier recours avant le mur : si un jeton d'entitlement SIGNÉ est en cache
+// (vérifié localement, non expiré), on s'appuie dessus. Rend l'accès robuste
+// quand l'OS n'injecte plus le cookie, sans trust client falsifiable (jeton
+// signé par le serveur).
+async function signedEntitlementFallback(): Promise<VerifyOutcome> {
+  const claims = await getVerifiedSignedEntitlement();
+  if (claims !== null) {
+    if (claims.apps_allowed) {
+      return 'allowed';
+    }
+    clearSubscriptionGrace();
+    return 'denied';
+  }
+  return inGracePeriod() ? 'allowed' : 'reauth';
 }
 
 // Cherche le refresh token : pont OEM (getJemaOSRefreshToken), puis
@@ -536,7 +560,7 @@ async function verifySubscription(): Promise<VerifyOutcome> {
           return 'denied';
         }
       }
-      return inGracePeriod() ? 'allowed' : 'reauth';
+      return signedEntitlementFallback();
     }
     if (await tryRefreshToken()) {
       token = await getAccessToken(stale);
@@ -553,7 +577,7 @@ async function verifySubscription(): Promise<VerifyOutcome> {
         }
       }
     }
-    return inGracePeriod() ? 'allowed' : 'reauth';
+    return signedEntitlementFallback();
   }
 
   // Aucun token : la session SSO peut encore être vivante, on tente un
@@ -574,7 +598,7 @@ async function verifySubscription(): Promise<VerifyOutcome> {
         return 'denied';
       }
     }
-    return inGracePeriod() ? 'allowed' : 'reauth';
+    return signedEntitlementFallback();
   }
   if (await tryRefreshToken()) {
     token = await getAccessToken();
@@ -591,7 +615,7 @@ async function verifySubscription(): Promise<VerifyOutcome> {
       }
     }
   }
-  return inGracePeriod() ? 'allowed' : 'reauth';
+  return signedEntitlementFallback();
 }
 
 function JemaOSLogo() {
