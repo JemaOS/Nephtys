@@ -45,10 +45,12 @@ export function ThemeProvider({ children }: { readonly children: ReactNode }) {
       document.documentElement.classList.remove('dark')
       document.documentElement.classList.add('light')
       document.documentElement.style.colorScheme = 'light'
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#f0f2f5')
     } else {
       document.documentElement.classList.remove('light')
       document.documentElement.classList.add('dark')
       document.documentElement.style.colorScheme = 'dark'
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#0b141a')
     }
   }
 
