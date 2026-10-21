@@ -30,7 +30,20 @@
   <link rel="manifest" href="/manifest.json" />
   
   <title>Nephtys - Messagerie Sécurisée</title>
-  <!-- build-bust: 2026-05-26-thumb-fix -->
+  <!-- Applique le thème avant le premier rendu (aucun flash). -->
+  <script>
+    (function () {
+      try {
+        var stored = localStorage.getItem('anu_theme');
+        var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        var dark = stored === 'dark' || ((!stored || stored === 'system') && prefersDark);
+        document.documentElement.classList.add(dark ? 'dark' : 'light');
+        document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+        document.documentElement.style.backgroundColor = dark ? '#0b141a' : '#f0f2f5';
+      } catch (e) {}
+    })();
+  </script>
+  <!-- build-bust: 2026-05-26-thumb-fix -->    
 </head>
 
 <body>

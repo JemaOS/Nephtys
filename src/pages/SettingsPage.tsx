@@ -52,7 +52,7 @@ import { isSendJitterEnabled, setSendJitterEnabled } from '@/lib/sendJitter'
 import {
   ArrowLeft, User, Lock, Bell, MessageSquare, Video, Palette,
   Globe, Database, HelpCircle, Info, LogOut, ChevronRight,
-  Moon, Sun, Check, Camera, Edit2, Shield, Key, Trash2,
+  Moon, Sun, Monitor, Check, Camera, Edit2, Shield, Key, Trash2,
   Eye, EyeOff, Wifi, WifiOff, Mail, Image, FileText, Mic, Loader2,
   Cloud, CloudUpload, DownloadCloud, Smartphone, Copy, X, QrCode
 } from 'lucide-react'
@@ -1269,10 +1269,11 @@ export function SettingsPage() {
               <span className="text-text-primary">{t('themeLabel')}</span>
               <div className="flex gap-2">
                 {[
+                  { value: 'system', icon: Monitor, label: t('themeSystem') },
                   { value: 'light', icon: Sun, label: t('themeLight') },
                   { value: 'dark', icon: Moon, label: t('themeDark') }
                 ].map((t) => (
-                  <button key={t.value} onClick={() => setTheme(t.value as any)} className={`p-2 rounded-xl transition-colors ${theme === t.value ? 'bg-accent text-white' : 'bg-bg-surface text-text-secondary'}`}>
+                  <button key={t.value} onClick={() => setTheme(t.value as any)} title={t.label} aria-label={t.label} className={`p-2 rounded-xl transition-colors ${theme === t.value ? 'bg-accent text-white' : 'bg-bg-surface text-text-secondary'}`}>
                     <t.icon size={20} />
                   </button>
                 ))}

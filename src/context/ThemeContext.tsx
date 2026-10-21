@@ -17,7 +17,8 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined)
 
 export function ThemeProvider({ children }: { readonly children: ReactNode }) {
   const [themeState, setThemeState] = useState<Theme>(() => {
-    return (localStorage.getItem('anu_theme') as Theme) || 'dark'
+    const stored = localStorage.getItem('anu_theme') as Theme | null
+    return stored === 'light' || stored === 'dark' || stored === 'system' ? stored : 'system'
   })
   
   const [wallpaperState, setWallpaperState] = useState<Wallpaper>(() => {
@@ -26,19 +27,28 @@ export function ThemeProvider({ children }: { readonly children: ReactNode }) {
 
   useEffect(() => {
     applyTheme(themeState)
+
+    if (themeState !== 'system' || !globalThis.matchMedia) return
+
+    const media = globalThis.matchMedia('(prefers-color-scheme: dark)')
+    const onChange = () => applyTheme('system')
+    media.addEventListener('change', onChange)
+    return () => media.removeEventListener('change', onChange)
   }, [themeState])
 
   const applyTheme = (newTheme: Theme) => {
-    if (newTheme === 'light') {
+    const prefersDark = globalThis.matchMedia
+      ? globalThis.matchMedia('(prefers-color-scheme: dark)').matches
+      : true
+
+    if (newTheme === 'light' || (newTheme === 'system' && !prefersDark)) {
       document.documentElement.classList.remove('dark')
       document.documentElement.classList.add('light')
-    } else if (newTheme === 'dark') {
+      document.documentElement.style.colorScheme = 'light'
+    } else {
       document.documentElement.classList.remove('light')
       document.documentElement.classList.add('dark')
-    } else {
-      const prefersDark = globalThis.matchMedia('(prefers-color-scheme: dark)').matches
-      document.documentElement.classList.toggle('dark', prefersDark)
-      document.documentElement.classList.toggle('light', !prefersDark)
+      document.documentElement.style.colorScheme = 'dark'
     }
   }
 
