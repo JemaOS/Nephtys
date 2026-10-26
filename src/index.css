@@ -112,6 +112,15 @@ img {
   height: 100dvh; /* Dynamic viewport height - adjusts for mobile browser UI */
 }
 
+/* Variante de centrage : min-height au lieu d'une hauteur fixe. Quand le
+   contenu est plus grand que l'écran, le conteneur grandit et le body
+   défile, au lieu d'être coupé en haut ET en bas par `justify-center` sur
+   une hauteur fixe (bug classique flexbox + overflow). */
+.min-h-screen-safe {
+  min-height: 100vh; /* Fallback for older browsers */
+  min-height: 100dvh; /* Dynamic viewport height */
+}
+
 /* Full height container that accounts for safe areas */
 .h-full-safe {
   height: 100%;

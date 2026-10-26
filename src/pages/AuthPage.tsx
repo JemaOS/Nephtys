@@ -159,11 +159,11 @@ export function AuthPage() {
   // Écran DÉDIÉ de liaison (opaque, dans le thème de l'app) — pas de superposition.
   if (linkReq) {
     return (
-      <div className="h-screen-safe bg-bg-primary flex flex-col items-center justify-center p-6 gap-5 overflow-auto">
+      <div className="min-h-screen-safe bg-bg-primary flex flex-col items-center justify-center px-4 pb-6 pt-16 sm:px-6 gap-3 sm:gap-4 lg:gap-5">
         <button
           type="button"
           onClick={() => setLinkReq(null)}
-          className="absolute top-3 right-3 p-2 rounded-lg bg-bg-surface text-text-primary"
+          className="fixed top-3 right-3 z-20 p-2 rounded-lg bg-bg-surface text-text-primary"
           aria-label={t('close')}
         >
           <X size={18} />
@@ -178,7 +178,7 @@ export function AuthPage() {
           <li>{t('linkDeviceStep2')}</li>
           <li>{t('linkDeviceStep3')}</li>
         </ol>
-        <div className="bg-white p-4 rounded-2xl shadow-lg">
+        <div className="bg-white p-3 sm:p-4 rounded-2xl shadow-lg w-[min(220px,64vw,34vh)] [&_svg]:w-full [&_svg]:h-auto">
           <SafeQrCode value={linkReq.payload} size={220} />
         </div>
         <div className="flex flex-col items-center gap-1">
