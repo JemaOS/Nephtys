@@ -164,7 +164,7 @@ export function AuthPage() {
           type="button"
           onClick={() => setLinkReq(null)}
           className="absolute top-3 right-3 p-2 rounded-lg bg-bg-surface text-text-primary"
-          aria-label="Fermer"
+          aria-label={t('close')}
         >
           <X size={18} />
         </button>
@@ -172,25 +172,25 @@ export function AuthPage() {
           <img src="/icon.svg" alt="Nephtys" className="w-11 h-11 rounded-2xl" />
           <h1 className="text-lg font-bold text-text-primary">Nephtys</h1>
         </div>
-        <h2 className="text-base font-semibold text-text-primary text-center">Liez votre appareil</h2>
+        <h2 className="text-base font-semibold text-text-primary text-center">{t('linkDeviceTitle')}</h2>
         <ol className="text-sm text-text-secondary space-y-1.5 max-w-sm list-decimal list-inside">
-          <li>Ouvrez Nephtys sur votre <b className="text-text-primary">autre appareil</b> (déjà connecté).</li>
-          <li>Paramètres → <b className="text-text-primary">Code QR</b> → <b className="text-text-primary">Scanner le code</b>.</li>
-          <li>Scannez ce code QR.</li>
+          <li>{t('linkDeviceStep1Prefix')} <b className="text-text-primary">{t('linkDeviceOtherDevice')}</b> {t('linkDeviceStep1Suffix')}</li>
+          <li>{t('linkDeviceStep2')}</li>
+          <li>{t('linkDeviceStep3')}</li>
         </ol>
         <div className="bg-white p-4 rounded-2xl shadow-lg">
           <SafeQrCode value={linkReq.payload} size={220} />
         </div>
         <div className="flex flex-col items-center gap-1">
           <p className="text-xs text-text-secondary text-center">
-            Code de confirmation à saisir sur l'autre appareil :
+            {t('linkDeviceConfirmCode')}
           </p>
-          <p className="text-2xl font-mono font-bold tracking-[0.35em] text-text-primary" aria-label="Code de confirmation">
+          <p className="text-2xl font-mono font-bold tracking-[0.35em] text-text-primary" aria-label={t('linkDeviceConfirmCodeLabel')}>
             {linkReq.code}
           </p>
         </div>
         <p className="text-xs text-text-secondary text-center">
-          {linking ? 'Connexion en cours…' : 'En attente du scan…'}
+          {linking ? t('linkDeviceConnecting') : t('linkDeviceWaiting')}
         </p>
         {linkError && <p className="text-xs text-amber-300 [.light_&]:text-amber-700 text-center max-w-xs">{linkError}</p>}
       </div>
@@ -374,14 +374,14 @@ export function AuthPage() {
             onClick={() => navigate('/private')}
             className="text-[10px] lg:text-xs text-accent hover:underline block w-full"
           >
-            Utiliser en mode privé (sans compte)
+            {t('privateModeLink')}
           </button>
           <button
             type="button"
             onClick={() => { setLinkError(null); void startLinking() }}
             className="text-[10px] lg:text-xs text-accent hover:underline block w-full"
           >
-            Lier un nouvel appareil (QR)
+            {t('linkDeviceQr')}
           </button>
         </div>
 

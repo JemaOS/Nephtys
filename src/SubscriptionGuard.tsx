@@ -798,11 +798,11 @@ function WebLoginForm({ onSuccess }: { onSuccess?: () => void }) {
       setCaptchaRequired(true);
       setCaptchaToken('');
       setCaptchaReset(value => value + 1);
-      setError('Vérification anti-robot requise. Validez le CAPTCHA et réessayez.');
+      setError(tStatic('jemaCaptchaRequired'));
       setBusy(false);
       return;
     }
-    setError('Connexion impossible. Vérifiez vos identifiants Jema.');
+    setError(tStatic('jemaLoginError'));
     setBusy(false);
   };
 
@@ -836,11 +836,11 @@ function WebLoginForm({ onSuccess }: { onSuccess?: () => void }) {
         marginTop: '0.5rem',
       }}
     >
-      <span style={labelStyle}>Compte Jema</span>
+      <span style={labelStyle}>{tStatic('jemaAccountLabel')}</span>
       <input
         type="email"
         required
-        placeholder="nom@exemple.com"
+        placeholder={tStatic('jemaEmailPlaceholder')}
         autoComplete="username"
         value={email}
         onChange={event => {
@@ -848,7 +848,7 @@ function WebLoginForm({ onSuccess }: { onSuccess?: () => void }) {
         }}
         style={inputStyle}
       />
-      <span style={labelStyle}>Mot de passe</span>
+      <span style={labelStyle}>{tStatic('passwordLabel')}</span>
       <input
         type="password"
         required
@@ -884,7 +884,7 @@ function WebLoginForm({ onSuccess }: { onSuccess?: () => void }) {
           marginTop: '0.25rem',
         }}
       >
-        {busy ? 'Connexion…' : 'Se connecter avec Jema'}
+        {busy ? tStatic('jemaSigningIn') : tStatic('jemaSignInButton')}
       </button>
       {error !== null && (
         <p style={{ color: '#dc2626', fontSize: '0.85rem', margin: 0 }}>{error}</p>
