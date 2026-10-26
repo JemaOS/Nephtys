@@ -44,11 +44,17 @@
 
 ## 📸 Screenshots
 
-<p align="center">
-  <img src="screenshots/login.png" width="820" alt="Nephtys sign in" />
-  <br />
-  <img src="screenshots/private.png" width="900" alt="Nephtys private connections" />
-</p>
+**Sign in**
+
+| Light | Dark |
+| :---: | :---: |
+| <img src="screenshots/login.png" alt="Nephtys sign in — light" /> | <img src="screenshots/login-dark.png" alt="Nephtys sign in — dark" /> |
+
+**Private mode**
+
+| Light | Dark |
+| :---: | :---: |
+| <img src="screenshots/private.png" alt="Nephtys private mode — light" /> | <img src="screenshots/private-dark.png" alt="Nephtys private mode — dark" /> |
 
 ---
 
