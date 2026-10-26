@@ -20,6 +20,10 @@
 
 [Features](#-features) · [Screenshots](#-screenshots) · [Two modes](#-two-modes) · [Security](#-security-model--limits) · [Getting started](#-getting-started) · [License](#-license)
 
+<br>
+
+<sub>**Keywords:** encrypted messaging · end-to-end encryption · E2EE · secure chat · private messenger · anonymous messaging · post-quantum · ML-KEM-768 · X25519 · Double Ratchet · Ed25519 · sealed sender · Tor · anonymous network · WebRTC calls · encrypted groups · ephemeral statuses · no account · local-first · PWA · React · TypeScript</sub>
+
 </div>
 
 ![Nephtys — sign in](screenshots/login.png)
@@ -49,6 +53,12 @@
 | Light | Dark |
 | :---: | :---: |
 | <img src="screenshots/login.png" alt="Nephtys sign in — light" /> | <img src="screenshots/login-dark.png" alt="Nephtys sign in — dark" /> |
+
+**Create an account / guest (ephemeral) mode**
+
+| Sign up | Guest (ephemeral) |
+| :---: | :---: |
+| <img src="screenshots/signup.png" alt="Nephtys — sign up" /> | <img src="screenshots/guest.png" alt="Nephtys — guest / ephemeral mode" /> |
 
 **Private mode**
 
