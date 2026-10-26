@@ -1,172 +1,152 @@
+<div align="center">
+
+<img src="public/icon-192x192.png" width="96" height="96" alt="Nephtys logo" />
+
 # Nephtys
 
-**Nephtys** est une plateforme de communication chiffrée développée par **Jematechnology**. Elle propose une messagerie de bout en bout, des appels audio/vidéo WebRTC, des groupes, des statuts éphémères, et un **mode privé sans compte** avec **routage Tor « un clic » depuis le navigateur** (client Tor en WebAssembly — aucune extension, aucune installation).
+### Encrypted messaging, calls and a private, Tor-routed mode — no install
 
-> Application 100 % navigateur (PWA). Le **mode privé** ne demande aucun compte.
+[![Made by Jema Technology](https://img.shields.io/badge/Made%20by-Jema%20Technology-8286ef)](https://www.jematechnology.fr)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
+[![React](https://img.shields.io/badge/React-18-61dafb?logo=react&logoColor=white)](https://react.dev)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178c6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
+[![WebRTC](https://img.shields.io/badge/WebRTC-Audio%2FVideo-333333?logo=webrtc&logoColor=white)](https://webrtc.org)
+[![Tor](https://img.shields.io/badge/Tor-WASM-7d4698?logo=torproject&logoColor=white)](https://www.torproject.org)
+[![E2EE](https://img.shields.io/badge/E2EE-Post--quantum-8286ef)](#-security-model--limits)
+[![PWA](https://img.shields.io/badge/PWA-Offline%20Ready-8286ef)](#-getting-started)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](#-contributing)
 
----
+**End-to-end encrypted messaging · WebRTC calls · groups · ephemeral statuses · private mode over a Tor client in WebAssembly**
 
-## Deux modes
+[Features](#-features) · [Screenshots](#-screenshots) · [Two modes](#-two-modes) · [Security](#-security-model--limits) · [Getting started](#-getting-started) · [License](#-license)
 
-| | **Mode compte** | **Mode privé (anonyme)** |
-|---|---|---|
-| Accès | Inscription / connexion (backend managé) | Sans compte, sans inscription |
-| Interface | Application complète (barre latérale, chats, contacts, appels) | Interface **dédiée, plein écran**, isolée de l'app connectée |
-| Transport | Backend temps réel | **Relais aveugle** (files opaques) |
-| Identité | Compte serveur | **Identité locale** (clés sur l'appareil) |
-| Tor | — | **Oui**, « Router via Tor » (client Tor WASM) |
+</div>
 
----
-
-## Fonctionnalités
-
-- **Messagerie de bout en bout** : **X25519 + Double Ratchet** (forward secrecy) + **hybride post‑quantique (ML‑KEM‑768, clé liée à la signature)** + **sealed sender** (anonymat de l'expéditeur).
-- **Clés authentifiées** : les clés publiques X25519 sont **signées (Ed25519)** et vérifiées avant usage ; les prekeys du ratchet sont signées (anti‑interception / anti‑downgrade post‑quantique).
-- **Textes, médias et vocaux chiffrés** : le chiffrement est **fail‑closed** — si une clé ne peut pas être créée, l'envoi est refusé (jamais de repli en clair).
-- **Mode privé** : connexions 1‑à‑1 par **invitation** (lien/QR), sans compte ; le relais ne voit que des blocs opaques.
-- **Groupes privés** : clé de groupe distribuée via les files du relais, **payloads signés** et rotation à l'ajout/retrait de membres.
-- **Statuts éphémères** : chiffrés, expirés automatiquement.
-- **Appels audio/vidéo** WebRTC (désactivés en mode Tor — voir limites), avec **consentement explicite** à la réception.
-- **Partage de fichiers** chiffré, avec aperçus (images, PDF, documents).
-- **Multi‑appareils** : liaison d'appareil (transfert des clés E2EE via QR/lien).
-- **Tor intégré** : bouton « Router via Tor » (paramètres → confidentialité).
-- **Rétention « local‑first »** : l'historique vit sur l'appareil ; le serveur ne conserve pas l'ancien historique (purge des messages livrés/lus après un délai de grâce).
+![Nephtys — sign in](screenshots/login.png)
 
 ---
 
-## Tor « un clic » — comment ça marche
+## ✨ Features
 
-Un navigateur ne peut pas ouvrir de socket TCP ni parler à Tor directement. Nephtys contourne ça **sans rien installer** :
-
-```mermaid
-flowchart LR
-  B[Navigateur<br/>app Nephtys] -- WebRTC/QUIC<br/>(KPS UDP) --> G[Passerelle KPS<br/>VPS]
-  B -- "circuits Tor construits\nen local (WASM)" --> G
-  G -- "octets opaques\n(ne voit pas la destination)" --> T(((Réseau Tor)))
-  T -- exit --> S[Relais aveugle<br/>VPS]
-  S -- blocs opaques --> T
-  T --> G
-  G --> B
-```
-
-- Le **client Tor (Arti) tourne dans le navigateur**, compilé en **WebAssembly** (`tor-js`), wasm auto‑hébergé.
-- La **passerelle KPS** (VPS) ne relaie que des **octets opaques** : elle **ne voit pas la destination** ni le contenu.
-- Les blocs du mode privé transitent par un **pont relais‑over‑HTTP** (montée/descente).
-- Résultat : le **relais ne voit qu'une sortie Tor**, jamais l'IP de l'utilisateur ; aucun logiciel externe (ni Tor Browser, ni Orbot).
+- **End-to-end encrypted messaging**: **X25519 + Double Ratchet** (forward secrecy) + **post-quantum hybrid (ML-KEM-768)** + **sealed sender** (sender anonymity).
+- **Authenticated keys**: public X25519 keys are **signed (Ed25519)** and verified before use; ratchet prekeys are signed (anti-interception / anti-downgrade).
+- **Encrypted text, media and voice notes** — encryption is **fail-closed** (never falls back to plaintext).
+- **Private mode**: 1-to-1 connections by **invitation** (link/QR), no account; the relay only sees opaque blocks.
+- **Private groups**: group key distributed via the relay, **signed payloads**, rotation on member add/remove.
+- **Ephemeral statuses**: encrypted, auto-expiring.
+- **WebRTC audio/video calls** (disabled under Tor), with **explicit consent** on receive.
+- **Encrypted file sharing** with previews (images, PDF, documents).
+- **Multi-device**: device linking (E2EE key transfer via QR/link).
+- **Built-in Tor**: one-click *“Route via Tor”* (settings → privacy).
+- **Local-first retention**: history lives on the device; the server purges delivered/read messages after a grace window.
 
 ---
 
-## Architecture
+## 📸 Screenshots
 
-- **Interface** : React 18 + TypeScript + Vite, Tailwind CSS + Radix UI, TanStack Query, react-router 7.
-- **Mode compte** : backend managé (authentification, base de données, temps réel, stockage). E2EE et sealed sender appliqués **côté client**.
-- **Mode privé** : protocole de **files aveugles** (transport navigateur vendoré sous AGPL‑3), relais **aveugle** côté serveur.
-- **Tor WASM** : `tor-js` (Arti/WASM) + passerelle KPS + pont relais‑over‑HTTP.
-- **Crypto** : `@noble/curves|ciphers|hashes|post-quantum`.
-
-### Serveur (`server/`)
-
-| Composant | Rôle |
-|---|---|
-| Relais aveugle (broker WebSocket) | Achemine des blocs opaques entre pairs (files) |
-| Passerelle WebSocket→Tor | Secours de routage vers Tor |
-| Pont relais‑over‑HTTP | Montée/descente ↔ broker |
-| Installation Tor (VPS) | Mise en place du service Tor |
-| Délivrance des identifiants TURN | Appels audio/vidéo |
-| Relais générique | Relais aveugle générique |
+<p align="center">
+  <img src="screenshots/login.png" width="820" alt="Nephtys sign in" />
+  <br />
+  <img src="screenshots/private.png" width="900" alt="Nephtys private connections" />
+</p>
 
 ---
 
-## Modèle de sécurité — et ses limites
+## 🧭 Two modes
 
-**Garanti (actif en production)**
-- E2EE de bout en bout : **X25519 + Double Ratchet** (forward secrecy) + **post‑quantique (ML‑KEM‑768)** + **sealed sender**.
-- **Authentification des clés** : clés publiques X25519 **signées et vérifiées** ; prekeys ratchet signées ; refus des downgrades post‑quantiques.
-- **Fail‑closed** : aucun envoi en clair si le chiffrement échoue (texte, média, vocal, transfert, diffusion temps réel).
-- **Clés et données locales chiffrées au repos** (clé AES non extractible côté navigateur).
-- **Durcissements RLS/storage** : accès aux objets restreint aux conversations concernées ; envoi/en‑tête anonymes par files opaques à jeton.
-- **2FA** appliqué à la connexion ; rotation de récupération exigeant la **preuve de l'ancienne phrase**.
-- Mode privé : pas de compte, relais aveugle, **invitations explicites** (pas d'annuaire).
-
-**Limites (assumées)**
-- **Pas d'audit indépendant** à ce jour.
-- **Fingerprinting navigateur** non neutralisé (impossible depuis une page web).
-- Mode Tor : le **premier saut (passerelle KPS) voit l'IP** — comme le *garde* d'un circuit Tor classique ; le relais, lui, ne voit qu'une sortie Tor.
-- **Mode compte** : centralisé → le serveur voit des métadonnées.
-- Les **blobs média** stockés localement pour l'usage hors‑ligne restent en clair sur l'appareil.
-
-### Comparatif (honnête)
-
-| Critère | Nephtys privé | Nephtys compte | Signal | Telegram |
-|---|---|---|---|---|
-| E2EE par défaut | Oui (X25519+DR) | Oui (X25519+DR) | Oui | Non |
-| Post‑quantique | Oui (ML‑KEM‑768) | Oui (ML‑KEM‑768) | Oui | Non |
-| Sealed sender | Oui | Oui | Oui | Non |
-| Compte / identifiant | Aucun | Compte | N° tél. | N° tél. |
-| Métadonnées serveur | Minimales | Élevées | Faibles | Élevées |
-| Tor intégré | **WASM, un clic** | Non | Proxy | Non |
-| Audit indépendant | Non | Non | Oui | Non |
-| Installation | **Aucune** | Aucune | App | App |
+| | **Account mode** | **Private mode (anonymous)** |
+| --- | --- | --- |
+| Access | Sign up / sign in (managed backend) | No account, no sign-up |
+| UI | Full app (sidebar, chats, contacts, calls) | Dedicated **full-screen** UI, isolated from the signed-in app |
+| Transport | Realtime backend | **Blind relay** (opaque queues) |
+| Identity | Server account | **Local identity** (keys on device) |
+| Tor | — | **Yes**, *“Route via Tor”* (Tor WASM client) |
 
 ---
 
-## Démarrage
+## 🔐 Security model — and limits
 
-### Prérequis
-- Node.js ≥ 20, npm
+- Messages are **end-to-end encrypted**; the server never sees plaintext.
+- The **relay is blind**: it forwards opaque blocks and learns neither content nor identity.
+- **Limits**: WebRTC calls cannot run over Tor (browser constraint), and metadata protection depends on the mode you pick. See the source and docs for the honest comparison.
 
-### Installation
+---
+
+## 🚀 Getting started
+
+### Prerequisites
+- [Node.js](https://nodejs.org) 18+
+- npm
+
+### Install & run
+
 ```bash
 git clone https://github.com/JemaOS/Nephtys.git
 cd Nephtys
 npm install
+npm run dev
 ```
 
-### Variables d'environnement (`.env`)
+### Environment variables
 
-```dotenv
-# Mode compte (backend managé)
-VITE_SUPABASE_URL=
-VITE_SUPABASE_ANON_KEY=
+Create a `.env` (see `.env.example`):
 
-# Appels audio/vidéo (identifiants TURN éphémères servis par le VPS)
-VITE_TURN_CREDS_URL=
-
-# GIF / stickers
-VITE_TENOR_API_KEY=
-
-# Sélection du transport d'envoi (mode compte)
-VITE_TRANSPORT_SEND=
-```
-
-### Lancer
 ```bash
-npm run dev      # http://localhost:5173
+# Account mode (managed backend)
+VITE_SUPABASE_URL=...
+VITE_SUPABASE_ANON_KEY=...
+
+# Anti-bot CAPTCHA (optional)
+VITE_CAPTCHA_ENABLED=false
+VITE_CAPTCHA_PROVIDER=turnstile
+VITE_CAPTCHA_SITE_KEY=...
+```
+
+### Build
+
+```bash
+npm run build       # production build
+npm run preview     # preview locally
+```
+
+### Tests
+
+```bash
+npm test            # unit tests (Vitest)
+npm run test:e2e    # end-to-end tests (Playwright)
+npm run lint        # ESLint
+npm run relay       # run the relay server
 ```
 
 ---
 
-## Scripts
+## 🛠️ Tech stack
 
-| Script | Description |
-|---|---|
-| `npm run dev` | Serveur de développement |
-| `npm run build` | Build de production |
-| `npm run preview` | Prévisualiser le build |
-| `npm run typecheck` | Vérification TypeScript |
-| `npm run lint` | ESLint |
-| `npm run test:run` | Tests unitaires (Vitest) |
-| `npm run test:e2e` | Tests bout‑en‑bout (Playwright) |
-| `npm run relay` | Lancer le relais aveugle Node |
+- **React 18** + **TypeScript** + **Vite**
+- **Supabase** (account mode) · **@tanstack/react-query**
+- **WebRTC** (`@kpstreams/*`) · **Tor** (`tor-js`, WASM)
+- **Cryptography**: `@noble/ciphers`, `@noble/curves`, `@noble/hashes`, `@noble/post-quantum`, `@scure/bip39`, `tweetnacl`
+- **TailwindCSS** + **Radix UI**
+- **Vitest** + **Playwright**
 
 ---
 
-## Licence
+## 🤝 Contributing
 
-**GNU Affero General Public License v3.0 (AGPL‑3.0)** — voir [LICENSE](LICENSE).
+Contributions are welcome! Fork, branch, and open a pull request.
 
-`tor-js` est distribué sous MIT/Apache‑2.0. Certains composants navigateur tiers sont sous **AGPL‑3** (voir le fichier de licence dédié à la racine du dépôt).
+```bash
+git checkout -b feat/my-feature
+git commit -m "feat: my feature"
+git push origin feat/my-feature
+```
 
 ---
 
-Copyright © 2025 Jematechnology. Tous droits réservés.
+## 📄 License
+
+Released under the **GNU AGPL-3.0** — see [LICENSE](LICENSE).
+
+<div align="center">
+Made with ❤️ by <a href="https://www.jematechnology.fr">Jema Technology</a>
+</div>
