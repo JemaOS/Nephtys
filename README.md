@@ -26,7 +26,7 @@
 
 </div>
 
-![Nephtys — sign in](screenshots/login.png)
+![Nephtys — end-to-end encrypted conversation](screenshots/chat-desktop-dark.png)
 
 ---
 
@@ -35,6 +35,9 @@
 - **End-to-end encrypted messaging**: **X25519 + Double Ratchet** (forward secrecy) + **post-quantum hybrid (ML-KEM-768)** + **sealed sender** (sender anonymity).
 - **Authenticated keys**: public X25519 keys are **signed (Ed25519)** and verified before use; ratchet prekeys are signed (anti-interception / anti-downgrade).
 - **Encrypted text, media and voice notes** — encryption is **fail-closed** (never falls back to plaintext).
+- **Rich sharing**: send **photos, videos, documents (PDF, Word, …), audio and animated GIFs**, all encrypted before upload and previewed inline.
+- **Emojis, stickers and GIF pickers** built into the composer, plus **quick reactions** (👍❤️😂😮😢🙏).
+- **Full message actions**: reply, copy, forward, pin, mark as important, multi-select and report.
 - **Private mode**: 1-to-1 connections by **invitation** (link/QR), no account; the relay only sees opaque blocks.
 - **Private groups**: group key distributed via the relay, **signed payloads**, rotation on member add/remove.
 - **Ephemeral statuses**: encrypted, auto-expiring.
@@ -47,6 +50,48 @@
 ---
 
 ## 📸 Screenshots
+
+> Screenshots taken from a real, end-to-end encrypted conversation between two demo accounts.
+
+### 💬 Conversations
+
+| 🌙 Dark | ☀️ Light |
+| :---: | :---: |
+| <img src="screenshots/chat-desktop-dark.png" alt="Nephtys conversation — dark" /> | <img src="screenshots/chat-desktop-light.png" alt="Nephtys conversation — light" /> |
+
+Replies, read receipts (✓✓), timestamps, and inline media — with **documents**, **photos**,
+**videos** and **animated GIFs** rendered right in the thread:
+
+<img src="screenshots/chat-media-dark.png" alt="Photo, video and emoji-rich messages in a Nephtys conversation" />
+
+### 📎 Send anything — encrypted
+
+Photos, videos, documents, audio and animated GIFs are **encrypted before upload**
+(see the *Joindre un fichier* sheet). Emojis, stickers and GIFs have their own tabs:
+
+| Attachments | Emoji picker |
+| :---: | :---: |
+| <img src="screenshots/media-sheet-dark.png" alt="Attachment picker: gallery, camera, video, document, audio, emoji, stickers, GIFs" /> | <img src="screenshots/emoji-picker-dark.png" alt="Emoji picker" /> |
+
+### ⚡ Interact
+
+Quick reactions (👍❤️😂😮😢🙏), reply, copy, forward, pin, mark as important, select, report:
+
+<img src="screenshots/message-actions-dark.png" alt="Message actions: reactions, reply, copy, forward, pin, select" />
+
+### 📱 On mobile
+
+| 🌙 Dark | ☀️ Light |
+| :---: | :---: |
+| <img src="screenshots/chat-mobile-dark.png" alt="Nephtys on mobile — dark" width="300" /> | <img src="screenshots/chat-mobile-light.png" alt="Nephtys on mobile — light" width="300" /> |
+
+### 🧭 Contacts · ⚙️ Settings · 📞 Calls
+
+| <img src="screenshots/contacts-dark.png" alt="Contacts" width="380" /> | <img src="screenshots/settings-dark.png" alt="Settings — privacy, relay, Tor" width="380" /> |
+| :---: | :---: |
+| Add contacts by username | Privacy, relay, **Tor**, storage, notifications |
+
+### 🔐 Onboarding
 
 **Sign in**
 
