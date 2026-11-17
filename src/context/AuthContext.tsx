@@ -300,6 +300,7 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
   // phrase requise (nouvel appareil sans clés locales).
   const [pendingPhrase, setPendingPhrase] = useState<string | null>(null)
   const [recoveryRequired, setRecoveryRequired] = useState(false)
+  const ephemeralKeysSetupRef = useRef<{ uid: string; promise: Promise<void> } | null>(null)
 
   // 2FA au login : tant que ce facteur est en attente, l'app n'est pas
   // considérée comme pleinement accessible (voir App.tsx → MfaGate).
@@ -392,6 +393,18 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
    * exposer l'utilisateur avant que le second facteur soit évalué, sinon des
    * routes protégées seraient montées en aal1.
    */
+  const ensureEphemeralKeys = useCallback((uid: string): Promise<void> => {
+    const inflight = ephemeralKeysSetupRef.current
+    if (inflight && inflight.uid === uid) return inflight.promise
+    const promise = setupRecoveryKeys(uid)
+      .then(() => undefined)
+      .finally(() => {
+        if (ephemeralKeysSetupRef.current?.uid === uid) ephemeralKeysSetupRef.current = null
+      })
+    ephemeralKeysSetupRef.current = { uid, promise }
+    return promise
+  }, [])
+
   const applyUser = useCallback((u: User) => {
     setUser(u)
     cacheUser(u)
@@ -400,9 +413,16 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
     // « Zéro serveur » : si l'appareil n'a pas les clés locales (nouvel
     // appareil / IndexedDB vidé), exiger la phrase de récupération.
     void hasLocalKeys(u.id)
-      .then(ok => { if (!ok) setRecoveryRequired(true) })
+      .then(ok => {
+        if (ok) return
+        if (localStorage.getItem('anu_ephemeral_mode') === 'true') {
+          void ensureEphemeralKeys(u.id).catch(() => {})
+        } else {
+          setRecoveryRequired(true)
+        }
+      })
       .catch(() => {})
-  }, [])
+  }, [ensureEphemeralKeys])
 
   useEffect(() => {
     // Get initial session with timeout and offline fallback
@@ -575,6 +595,8 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
 
   const signIn = async (username: string, password: string, captchaToken?: string) => {
     try {
+      localStorage.removeItem('anu_ephemeral_mode')
+      localStorage.removeItem('anu_ephemeral_user')
       // Utiliser l'edge function pour connexion par pseudo
       const { data, error } = await supabase.functions.invoke('auth-with-username', {
         body: { action: 'signin', username, password, ...(captchaToken ? { captchaToken } : {}) }
@@ -667,6 +689,8 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
 
   const signUp = async (username: string, password: string, captchaToken?: string) => {
     try {
+      localStorage.removeItem('anu_ephemeral_mode')
+      localStorage.removeItem('anu_ephemeral_user')
       // Utiliser l'edge function pour inscription par pseudo
       const { data, error } = await supabase.functions.invoke('auth-with-username', {
         body: { action: 'signup', username, password, ...(captchaToken ? { captchaToken } : {}) }
@@ -781,6 +805,14 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
 
       // Définir la session
       if (data?.data?.session) {
+        // Marquer le mode éphémère AVANT setSession : applyUser (SIGNED_IN) ne
+        // doit jamais exiger de phrase de récupération pour un compte jetable.
+        // NOTE : le mot de passe invité n'est VOLONTAIREMENT PAS persisté (aucun
+        // secret au repos). La reconnexion invité repose sur la session Supabase
+        // persistée par supabase-js ; on purge toute ancienne clé héritée.
+        localStorage.setItem('anu_ephemeral_mode', 'true')
+        localStorage.setItem('anu_ephemeral_user', uniqueUsername)
+        localStorage.removeItem('anu_ephemeral_password')
         const { error: sessionError } = await supabase.auth.setSession({
           access_token: data.data.session.access_token,
           refresh_token: data.data.session.refresh_token
@@ -795,19 +827,11 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
         // envoyée au serveur).
         const guestUserId = data.data.session.user?.id
         if (guestUserId) {
-          await setupRecoveryKeys(guestUserId)
+          await ensureEphemeralKeys(guestUserId)
         }
       } else {
         throw new Error(tStatic('creationErrorNoSession'))
       }
-
-      // Stocker en local que c'est un mode éphémère.
-      // NOTE : le mot de passe invité n'est VOLONTAIREMENT PAS persisté (aucun
-      // secret au repos). La reconnexion invité repose sur la session Supabase
-      // persistée par supabase-js ; on purge toute ancienne clé héritée.
-      localStorage.setItem('anu_ephemeral_mode', 'true')
-      localStorage.setItem('anu_ephemeral_user', uniqueUsername)
-      localStorage.removeItem('anu_ephemeral_password')
     } catch (err: any) {
       // Si c'est déjà notre erreur formatée (ou un CAPTCHA requis), la relancer
       if (err?.captchaRequired || err.message.startsWith('❌')) {

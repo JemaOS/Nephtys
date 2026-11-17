@@ -250,6 +250,10 @@ export function RecoveryGate({ children }: { readonly children: ReactNode }) {
   // sauvegarde `.neph` AVANT d'entrer dans l'app. Uniquement sur ce chemin :
   // jamais après l'écran de phrase d'inscription, ni sur « même appareil ».
   const [showRestorePrompt, setShowRestorePrompt] = useState(false);
+  // Compte éphémère : ni phrase à sauvegarder, ni historique à restaurer.
+  if (localStorage.getItem('anu_ephemeral_mode') === 'true') {
+    return <>{children}</>;
+  }
   if (pendingPhrase) {
     return <ShowPhraseScreen phrase={pendingPhrase} onConfirm={confirmPhraseSaved} />;
   }
